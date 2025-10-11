@@ -51,13 +51,17 @@ jobs:
             libpcsclite-dev \
             libudev-dev \
             cmake \
-            build-essential
+            build-essential \
+            gcovr \
+            lcov
 
-      - name: Configure CMake
+      - name: Configure CMake (with coverage)
         run: |
           mkdir -p build
           cd build
-          cmake ..
+          cmake -DCMAKE_BUILD_TYPE=Debug \
+                -DCMAKE_C_FLAGS="--coverage -fprofile-arcs -ftest-coverage" \
+                -DCMAKE_EXE_LINKER_FLAGS="--coverage" ..
 
       - name: Build
         run: |
@@ -71,6 +75,29 @@ jobs:
             ctest --output-on-failure
           else
             echo "No tests configured"
+          fi
+
+      - name: Generate coverage report
+        run: |
+          cd build
+          # Generate LCOV coverage report
+          lcov --directory . --capture --output-file coverage.info || echo "Coverage generation skipped (no test execution)"
+          # Filter out system/external files
+          lcov --remove coverage.info '/usr/*' '*/test/*' --output-file coverage_filtered.info || echo "Coverage filtering skipped"
+          # Generate coverage summary
+          lcov --list coverage_filtered.info || echo "No coverage data"
+
+      - name: Upload coverage to Codacy
+        env:
+          CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
+        run: |
+          if [ -f "build/coverage_filtered.info" ]; then
+            bash <(curl -Ls https://coverage.codacy.com/get.sh) report \
+              -r build/coverage_filtered.info \
+              --language C
+          else
+            echo "⚠️ No coverage report generated - tests need to be implemented"
+            echo "Coverage will be available after test suite is added (Phase 12)"
           fi
 
       - name: Check for build artifacts

@@ -53,9 +53,33 @@ const char* nfc_secure_strerror(int error_code)
 #include <windows.h>  /* For SecureZeroMemory */
 #endif
 
-/* C23 memset_explicit support (requires <string.h>) */
+/*
+ * C23 memset_explicit detection (requires actual compiler/library support)
+ * 
+ * NOTE: __STDC_VERSION__ >= 202311L only indicates C23 *standard*, not implementation.
+ * Many compilers (GCC <14, Clang <18) don't yet support memset_explicit.
+ * 
+ * Detection strategy:
+ * 1. Check C23 standard version
+ * 2. Verify compiler has __has_builtin (for runtime checks)
+ * 3. For safety, only enable if we can confirm support
+ * 
+ * TODO: As of 2025, most compilers lack full C23 support.
+ *       This may need adjustment as toolchains mature.
+ */
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
-#define HAVE_MEMSET_EXPLICIT 1
+  #if defined(__has_builtin)
+    #if __has_builtin(__builtin_memset_explicit)
+      /* Compiler claims to support memset_explicit builtin */
+      #define HAVE_MEMSET_EXPLICIT 1
+    #endif
+  #elif defined(__GNUC__) && __GNUC__ >= 14
+    /* GCC 14+ should have C23 memset_explicit */
+    #define HAVE_MEMSET_EXPLICIT 1
+  #elif defined(__clang__) && __clang_major__ >= 18
+    /* Clang 18+ should have C23 memset_explicit */
+    #define HAVE_MEMSET_EXPLICIT 1
+  #endif
 #endif
 
 /* C11 Annex K memset_s support (requires <errno.h> for errno_t) */
@@ -92,12 +116,32 @@ const char* nfc_secure_strerror(int error_code)
  *       if (dst_size + 100 < dst_size) { // ✗ overflow! wraps to 99
  * 
  * With SIZE_MAX/2 limit, such overflow scenarios are prevented.
+ * 
+ * NOTE: Using static const instead of constexpr for better compatibility.
+ *       C23 constexpr support is still immature in most compilers (2025).
  */
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
-/* C23: Use constexpr for better type safety */
-constexpr size_t MAX_BUFFER_SIZE = SIZE_MAX / 2;
+/* C23: Use static const (constexpr support still limited in compilers) */
+static const size_t MAX_BUFFER_SIZE = SIZE_MAX / 2;
 #else
 #define MAX_BUFFER_SIZE (SIZE_MAX / 2)
+#endif
+
+/*
+ * C23 nullptr support for better type safety
+ * 
+ * C23 introduces nullptr as a distinct null pointer constant with type nullptr_t.
+ * For older standards, we continue using NULL for compatibility.
+ * 
+ * Usage example:
+ *   if (ptr == NFC_NULL) { ... }  // Works in C89-C23
+ */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+  /* C23: Use standardized nullptr */
+  #define NFC_NULL nullptr
+#else
+  /* Pre-C23: Use traditional NULL */
+  #define NFC_NULL NULL
 #endif
 
 /**
@@ -209,8 +253,8 @@ static bool buffers_overlap(const void *dst, size_t dst_size,
  */
 int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size)
 {
-    /* Validation 1: NULL pointer checks */
-    if (dst == NULL)
+    /* Validation 1: NULL pointer checks (C23: uses nullptr, pre-C23: uses NULL) */
+    if (dst == NFC_NULL)
     {
 #ifdef LOG
         log_put_internal("nfc_safe_memcpy: dst is NULL");
@@ -218,7 +262,7 @@ int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size
         return NFC_SECURE_ERROR_INVALID;
     }
 
-    if (src == NULL)
+    if (src == NFC_NULL)
     {
 #ifdef LOG
         log_put_internal("nfc_safe_memcpy: src is NULL");
@@ -301,8 +345,8 @@ int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size
  */
 int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_size)
 {
-    /* Validation 1: NULL pointer checks */
-    if (dst == NULL)
+    /* Validation 1: NULL pointer checks (C23: uses nullptr, pre-C23: uses NULL) */
+    if (dst == NFC_NULL)
     {
 #ifdef LOG
         log_put_internal("nfc_safe_memmove: dst is NULL");
@@ -310,7 +354,7 @@ int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_siz
         return NFC_SECURE_ERROR_INVALID;
     }
 
-    if (src == NULL)
+    if (src == NFC_NULL)
     {
 #ifdef LOG
         log_put_internal("nfc_safe_memmove: src is NULL");
@@ -392,8 +436,8 @@ int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_siz
  */
 int nfc_secure_memset(void *ptr, int val, size_t size)
 {
-    /* Validation 1: NULL pointer check */
-    if (ptr == NULL)
+    /* Validation 1: NULL pointer check (C23: uses nullptr, pre-C23: uses NULL) */
+    if (ptr == NFC_NULL)
     {
 #ifdef LOG
         log_put_internal("nfc_secure_memset: ptr is NULL");
@@ -432,8 +476,21 @@ int nfc_secure_memset(void *ptr, int val, size_t size)
 #if defined(HAVE_MEMSET_EXPLICIT)
     /* C23: memset_explicit - standardized secure memset */
     memset_explicit(ptr, val, size);
+
 #elif defined(HAVE_MEMSET_S)
-    /* C11 Annex K: memset_s - portable when available (rare) */
+    /*
+     * C11 Annex K: memset_s - portable when available (rare)
+     * 
+     * Signature: errno_t memset_s(void *s, rsize_t smax, int c, rsize_t n)
+     *   s    - pointer to destination
+     *   smax - maximum size of destination buffer
+     *   c    - value to set (converted to unsigned char)
+     *   n    - number of bytes to set
+     * 
+     * NOTE: We pass 'size' for both smax and n since we trust the caller
+     *       to provide the correct buffer size. This is safe because we
+     *       already validated size <= MAX_BUFFER_SIZE above.
+     */
     errno_t result = memset_s(ptr, size, val, size);
     if (result != 0)
     {
@@ -442,12 +499,20 @@ int nfc_secure_memset(void *ptr, int val, size_t size)
 #endif
         return NFC_SECURE_ERROR_INVALID;
     }
+
 #elif defined(HAVE_EXPLICIT_BZERO)
-    /* POSIX/BSD: explicit_bzero - guaranteed not to be optimized away */
+    /*
+     * POSIX/BSD: explicit_bzero - guaranteed not to be optimized away
+     * 
+     * NOTE: Uses HAVE_EXPLICIT_BZERO macro defined at compile time.
+     *       This avoids duplicate platform detection logic.
+     */
     explicit_bzero(ptr, size);
+
 #elif defined(_WIN32) || defined(_WIN64)
     /* Windows: SecureZeroMemory */
     SecureZeroMemory(ptr, size);
+
 #else
     /* No platform-specific function available, use volatile fallback */
     use_volatile_fallback = true;

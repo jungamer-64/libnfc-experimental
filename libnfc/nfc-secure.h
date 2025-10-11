@@ -167,11 +167,11 @@ extern "C"
      * @param[in] src Source buffer (must be non-NULL)
      * @param[in] src_size Number of bytes to copy from source
      *
-     * @return  NFC_SECURE_SUCCESS (0)     on success
+     * @return  NFC_SECURE_SUCCESS (0)     on success (including zero-size operations)
      * @return  NFC_SECURE_ERROR_INVALID  if dst or src is NULL (or buffer overlap detected)
      * @return  NFC_SECURE_ERROR_OVERFLOW if dst_size < src_size (buffer overflow prevented)
      * @return  NFC_SECURE_ERROR_RANGE    if src_size or dst_size exceeds SIZE_MAX / 2
-     * @return  NFC_SECURE_ERROR_ZERO_SIZE if src_size is 0 (operation is valid but suspicious)
+     * @return  NFC_SECURE_ERROR_ZERO_SIZE (deprecated) - now returns SUCCESS for zero-size
      *
      * @note This function mimics the behavior of `memcpy_s()` defined in C11
      *       Annex K but does not require optional Annex K support from the C
@@ -231,10 +231,10 @@ extern "C"
  * @param[in] val Value to set (typically 0x00)
  * @param[in] size Number of bytes to set
  *
- * @return  NFC_SECURE_SUCCESS (0)     on success
+ * @return  NFC_SECURE_SUCCESS (0)     on success (including zero-size operations)
  * @return  NFC_SECURE_ERROR_INVALID  if ptr is NULL
  * @return  NFC_SECURE_ERROR_RANGE    if size exceeds SIZE_MAX / 2
- * @return  NFC_SECURE_ERROR_ZERO_SIZE if size is 0 (no-op, but returns success for compatibility)
+ * @return  NFC_SECURE_ERROR_ZERO_SIZE (deprecated) - now returns SUCCESS for zero-size
  *
  * @note This function is explicitly designed to prevent the compiler from
  *       optimizing away the memory write (for example, via dead-store
@@ -322,11 +322,11 @@ int nfc_secure_memset(void *ptr, int val, size_t size);
  * @param[in] src Source buffer (must be non-NULL)
  * @param[in] src_size Number of bytes to copy from source
  *
- * @return  NFC_SECURE_SUCCESS (0)     on success
+ * @return  NFC_SECURE_SUCCESS (0)     on success (including zero-size operations)
  * @return  NFC_SECURE_ERROR_INVALID  if dst or src is NULL
  * @return  NFC_SECURE_ERROR_OVERFLOW if dst_size < src_size (buffer overflow prevented)
  * @return  NFC_SECURE_ERROR_RANGE    if src_size or dst_size exceeds SIZE_MAX / 2
- * @return  NFC_SECURE_ERROR_ZERO_SIZE if src_size is 0 (operation is valid but suspicious)
+ * @return  NFC_SECURE_ERROR_ZERO_SIZE (deprecated) - now returns SUCCESS for zero-size
  *
  * @note This function uses memmove() internally, which correctly handles
  *       overlapping buffers. For non-overlapping buffers, nfc_safe_memcpy()
