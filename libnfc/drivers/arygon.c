@@ -49,6 +49,7 @@
 #include "drivers.h"
 #include "nfc-internal.h"
 #include "nfc-secure.h"
+#include "nfc-common.h"
 #include "chips/pn53x.h"
 #include "chips/pn53x-internal.h"
 #include "uart.h"
@@ -136,51 +137,34 @@ arygon_scan(const nfc_context *context, nfc_connstring connstrings[], const size
       }
 
       pnd->driver = &arygon_driver;
-      pnd->driver_data = malloc(sizeof(struct arygon_data));
-      if (!pnd->driver_data)
+      
+      // Use nfc_alloc_driver_data for unified allocation
+      if (nfc_alloc_driver_data(pnd, sizeof(struct arygon_data)) < 0)
       {
-        perror("malloc");
         uart_close(sp);
         nfc_device_free(pnd);
-        iDevice = 0;
-        while ((acPort = acPorts[iDevice++]))
-        {
-          free((void *)acPort);
-        }
-        free(acPorts);
-        return 0;
+        return nfc_cleanup_and_return((void**)acPorts, 0);
       }
       DRIVER_DATA(pnd)->port = sp;
 
       // Alloc and init chip's data
       if (pn53x_data_new(pnd, &arygon_tama_io) == NULL)
       {
-        perror("malloc");
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+                "Failed to allocate chip data");
         uart_close(DRIVER_DATA(pnd)->port);
         nfc_device_free(pnd);
-        iDevice = 0;
-        while ((acPort = acPorts[iDevice++]))
-        {
-          free((void *)acPort);
-        }
-        free(acPorts);
-        return 0;
+        return nfc_cleanup_and_return((void**)acPorts, 0);
       }
 
 #ifndef WIN32
-      // pipe-based abort mechanism
-      if (pipe(DRIVER_DATA(pnd)->iAbortFds) < 0)
+      // Use nfc_init_abort_mechanism for unified pipe setup
+      if (nfc_init_abort_mechanism(DRIVER_DATA(pnd)->iAbortFds) < 0)
       {
         uart_close(DRIVER_DATA(pnd)->port);
         pn53x_data_free(pnd);
         nfc_device_free(pnd);
-        iDevice = 0;
-        while ((acPort = acPorts[iDevice++]))
-        {
-          free((void *)acPort);
-        }
-        free(acPorts);
-        return 0;
+        return nfc_cleanup_and_return((void**)acPorts, 0);
       }
 #else
       DRIVER_DATA(pnd)->abort_flag = false;

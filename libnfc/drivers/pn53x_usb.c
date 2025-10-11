@@ -50,6 +50,7 @@ Thanks to d18c7db and Okko for example code
 
 #include "nfc-internal.h"
 #include "nfc-secure.h"
+#include "nfc-common.h"
 #include "buses/usbbus.h"
 #include "chips/pn53x.h"
 #include "chips/pn53x-internal.h"
@@ -480,16 +481,16 @@ pn53x_usb_open(const nfc_context *context, const nfc_connstring connstring)
       }
       pn53x_usb_get_usb_device_name(dev, data.pudh, pnd->name, sizeof(pnd->name));
 
-      pnd->driver_data = malloc(sizeof(struct pn53x_usb_data));
-      if (!pnd->driver_data) {
-        perror("malloc");
+      // Use nfc_alloc_driver_data for unified allocation with logging
+      if (nfc_alloc_driver_data(pnd, sizeof(struct pn53x_usb_data)) < 0) {
         goto error;
       }
       *DRIVER_DATA(pnd) = data;
 
-      // Alloc and init chip's data
+      // Alloc and init chip's data (nfc_device_open_failed handles cleanup)
       if (pn53x_data_new(pnd, &pn53x_usb_io) == NULL) {
-        perror("malloc");
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+                "Failed to allocate chip data");
         goto error;
       }
 
