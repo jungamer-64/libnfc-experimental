@@ -72,6 +72,7 @@
 
 #include <nfc/nfc.h>
 #include <nfc/nfc-emulation.h>
+#include "../libnfc/nfc-secure.h"
 
 #include "nfc-utils.h"
 
@@ -160,13 +161,22 @@ nfcforum_tag4_io(struct nfc_emulator *emulator, const uint8_t *data_in, const si
             const uint8_t ndef_capability_container[] = { 0xE1, 0x03 };
             const uint8_t ndef_file[] = { 0xE1, 0x04 };
             if ((data_in[LC] == sizeof(ndef_capability_container)) && (0 == memcmp(ndef_capability_container, data_in + DATA, data_in[LC]))) {
-              memcpy(data_out, "\x90\x00", res = 2);
+              // ISO7816-4 Success response: SW1=0x90, SW2=0x00
+              if (nfc_safe_memcpy(data_out, data_out_len, "\x90\x00", 2) < 0)
+                return -ENOSPC;
+              res = 2;
               state_machine_data->current_file = CC_FILE;
             } else if ((data_in[LC] == sizeof(ndef_file)) && (0 == memcmp(ndef_file, data_in + DATA, data_in[LC]))) {
-              memcpy(data_out, "\x90\x00", res = 2);
+              // ISO7816-4 Success response: SW1=0x90, SW2=0x00
+              if (nfc_safe_memcpy(data_out, data_out_len, "\x90\x00", 2) < 0)
+                return -ENOSPC;
+              res = 2;
               state_machine_data->current_file = NDEF_FILE;
             } else {
-              memcpy(data_out, "\x6a\x00", res = 2);
+              // ISO7816-4 Error response: SW1=0x6a (Wrong parameter), SW2=0x00
+              if (nfc_safe_memcpy(data_out, data_out_len, "\x6a\x00", 2) < 0)
+                return -ENOSPC;
+              res = 2;
               state_machine_data->current_file = NONE;
             }
 
@@ -177,12 +187,22 @@ nfcforum_tag4_io(struct nfc_emulator *emulator, const uint8_t *data_in, const si
 
             const uint8_t ndef_tag_application_name_v1[] = { 0xD2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x00 };
             const uint8_t ndef_tag_application_name_v2[] = { 0xD2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x01 };
-            if ((type4v == 1) && (data_in[LC] == sizeof(ndef_tag_application_name_v1)) && (0 == memcmp(ndef_tag_application_name_v1, data_in + DATA, data_in[LC])))
-              memcpy(data_out, "\x90\x00", res = 2);
-            else if ((type4v == 2) && (data_in[LC] == sizeof(ndef_tag_application_name_v2)) && (0 == memcmp(ndef_tag_application_name_v2, data_in + DATA, data_in[LC])))
-              memcpy(data_out, "\x90\x00", res = 2);
-            else
-              memcpy(data_out, "\x6a\x82", res = 2);
+            if ((type4v == 1) && (data_in[LC] == sizeof(ndef_tag_application_name_v1)) && (0 == memcmp(ndef_tag_application_name_v1, data_in + DATA, data_in[LC]))) {
+              // ISO7816-4 Success: Application selected (Type 4 Tag v1)
+              if (nfc_safe_memcpy(data_out, data_out_len, "\x90\x00", 2) < 0)
+                return -ENOSPC;
+              res = 2;
+            } else if ((type4v == 2) && (data_in[LC] == sizeof(ndef_tag_application_name_v2)) && (0 == memcmp(ndef_tag_application_name_v2, data_in + DATA, data_in[LC]))) {
+              // ISO7816-4 Success: Application selected (Type 4 Tag v2)
+              if (nfc_safe_memcpy(data_out, data_out_len, "\x90\x00", 2) < 0)
+                return -ENOSPC;
+              res = 2;
+            } else {
+              // ISO7816-4 Error: SW1=0x6a (Wrong parameter), SW2=0x82 (File not found)
+              if (nfc_safe_memcpy(data_out, data_out_len, "\x6a\x82", 2) < 0)
+                return -ENOSPC;
+              res = 2;
+            }
 
             break;
           default:
@@ -196,27 +216,52 @@ nfcforum_tag4_io(struct nfc_emulator *emulator, const uint8_t *data_in, const si
         }
         switch (state_machine_data->current_file) {
           case NONE:
-            memcpy(data_out, "\x6a\x82", res = 2);
+            // ISO7816-4 Error: No file selected (SW1=0x6a, SW2=0x82)
+            if (nfc_safe_memcpy(data_out, data_out_len, "\x6a\x82", 2) < 0)
+              return -ENOSPC;
+            res = 2;
             break;
           case CC_FILE:
-            memcpy(data_out, nfcforum_capability_container + (data_in[P1] << 8) + data_in[P2], data_in[LC]);
-            memcpy(data_out + data_in[LC], "\x90\x00", 2);
+            // Safe copy of Capability Container data with offset validation
+            if (nfc_safe_memcpy(data_out, data_out_len, 
+                                nfcforum_capability_container + (data_in[P1] << 8) + data_in[P2], 
+                                data_in[LC]) < 0)
+              return -ENOSPC;
+            // Append ISO7816-4 Success status (SW1SW2)
+            if (nfc_safe_memcpy(data_out + data_in[LC], data_out_len - data_in[LC], 
+                                "\x90\x00", 2) < 0)
+              return -ENOSPC;
             res = data_in[LC] + 2;
             break;
           case NDEF_FILE:
-            memcpy(data_out, ndef_data->ndef_file + (data_in[P1] << 8) + data_in[P2], data_in[LC]);
-            memcpy(data_out + data_in[LC], "\x90\x00", 2);
+            // Safe copy of NDEF file data with offset validation
+            if (nfc_safe_memcpy(data_out, data_out_len, 
+                                ndef_data->ndef_file + (data_in[P1] << 8) + data_in[P2], 
+                                data_in[LC]) < 0)
+              return -ENOSPC;
+            // Append ISO7816-4 Success status (SW1SW2)
+            if (nfc_safe_memcpy(data_out + data_in[LC], data_out_len - data_in[LC], 
+                                "\x90\x00", 2) < 0)
+              return -ENOSPC;
             res = data_in[LC] + 2;
             break;
         }
         break;
 
       case ISO7816_UPDATE_BINARY:
-        memcpy(ndef_data->ndef_file + (data_in[P1] << 8) + data_in[P2], data_in + DATA, data_in[LC]);
+        // Safe copy of NDEF write data with offset validation (P1P2 = offset)
+        if (nfc_safe_memcpy(ndef_data->ndef_file + (data_in[P1] << 8) + data_in[P2], 
+                            sizeof(ndef_data->ndef_file) - ((data_in[P1] << 8) + data_in[P2]),
+                            data_in + DATA, data_in[LC]) < 0)
+          return -ENOSPC;
+        // Update NDEF file length if writing at offset 0 (NDEF length prefix)
         if ((data_in[P1] << 8) + data_in[P2] == 0) {
           ndef_data->ndef_file_len = (ndef_data->ndef_file[0] << 8) + ndef_data->ndef_file[1] + 2;
         }
-        memcpy(data_out, "\x90\x00", res = 2);
+        // ISO7816-4 Success response
+        if (nfc_safe_memcpy(data_out, data_out_len, "\x90\x00", 2) < 0)
+          return -ENOSPC;
+        res = 2;
         break;
       default: // Unknown
         if (!quiet_output) {

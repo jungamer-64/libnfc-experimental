@@ -61,7 +61,7 @@ IF(LIBUSB_FOUND)
 ENDIF(LIBUSB_FOUND)
 
 # Library
-SET(LIBRARY_SOURCES nfc.c nfc-device.c nfc-emulation.c nfc-internal.c conf.c iso14443-subr.c mirror-subr.c target-subr.c ${DRIVERS_SOURCES} ${BUSES_SOURCES} ${CHIPS_SOURCES} ${WINDOWS_SOURCES})
+SET(LIBRARY_SOURCES nfc.c nfc-device.c nfc-emulation.c nfc-internal.c nfc-secure.c conf.c iso14443-subr.c mirror-subr.c target-subr.c ${DRIVERS_SOURCES} ${BUSES_SOURCES} ${CHIPS_SOURCES} ${WINDOWS_SOURCES})
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 
 IF(LIBNFC_LOG)
@@ -104,7 +104,7 @@ IF(WIN32)
     ADD_LIBRARY(win32lib ALIAS nfc)
   ENDIF()
 
-  # On Windows the shared (runtime) library should be either in the same 
+  # On Windows the shared (runtime) library should be either in the same
   # directory as the excutables or in the path, we add it to same directory
   INSTALL(TARGETS nfc RUNTIME DESTINATION bin COMPONENT libraries)
 
@@ -113,4 +113,3 @@ IF(WIN32)
 ELSE(WIN32)
   INSTALL(TARGETS nfc LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries)
 ENDIF(WIN32)
-

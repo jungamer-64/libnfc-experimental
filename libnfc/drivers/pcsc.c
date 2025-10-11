@@ -40,6 +40,7 @@
 
 #include "drivers/pcsc.h"
 #include "nfc-internal.h"
+#include "nfc-secure.h"
 
 // Bus
 #ifdef __APPLE__
@@ -258,8 +259,14 @@ static int pcsc_get_atqa(struct nfc_device *pnd, uint8_t *atqa, size_t atqa_len)
     return pnd->last_error;
   }
 
-  memcpy(atqa, resp, resp_len - 2);
-  return resp_len - 2;
+  // Safe copy ATQA data (PC/SC response minus SW1SW2)
+  size_t atqa_data_len = resp_len - 2;
+  if (nfc_safe_memcpy(atqa, atqa_len, resp, atqa_data_len) < 0)
+  {
+    pnd->last_error = NFC_ECHIP;
+    return pnd->last_error;
+  }
+  return atqa_data_len;
 }
 
 // get ats by send apdu
@@ -286,8 +293,19 @@ static int pcsc_get_ats(struct nfc_device *pnd, uint8_t *ats, size_t ats_len)
     return pnd->last_error;
   }
 
-  memcpy(ats, resp + 1, resp_len - 2 - 1); // data expect TL and SW1SW2
-  return resp_len - 2 - 1;
+  // Safe copy ATS data (skip TL byte, minus SW1SW2)
+  if (resp_len < 3)
+  {
+    pnd->last_error = NFC_ESOFT;
+    return pnd->last_error;
+  }
+  size_t ats_data_len = resp_len - 3;
+  if (nfc_safe_memcpy(ats, ats_len, resp + 1, ats_data_len) < 0)
+  {
+    pnd->last_error = NFC_ECHIP;
+    return pnd->last_error;
+  }
+  return ats_data_len;
 }
 
 // get sak by send apdu
@@ -314,8 +332,14 @@ static int pcsc_get_sak(struct nfc_device *pnd, uint8_t *sak, size_t sak_len)
     return pnd->last_error;
   }
 
-  memcpy(sak, resp, resp_len - 2);
-  return resp_len - 2;
+  // Safe copy SAK data (PC/SC response minus SW1SW2)
+  size_t sak_data_len = resp_len - 2;
+  if (nfc_safe_memcpy(sak, sak_len, resp, sak_data_len) < 0)
+  {
+    pnd->last_error = NFC_ECHIP;
+    return pnd->last_error;
+  }
+  return sak_data_len;
 }
 
 static int pcsc_get_uid(struct nfc_device *pnd, uint8_t *uid, size_t uid_len)
@@ -341,8 +365,14 @@ static int pcsc_get_uid(struct nfc_device *pnd, uint8_t *uid, size_t uid_len)
     return pnd->last_error;
   }
 
-  memcpy(uid, resp, resp_len - 2);
-  return resp_len - 2;
+  // Safe copy UID data (PC/SC response minus SW1SW2)
+  size_t uid_data_len = resp_len - 2;
+  if (nfc_safe_memcpy(uid, uid_len, resp, uid_data_len) < 0)
+  {
+    pnd->last_error = NFC_ECHIP;
+    return pnd->last_error;
+  }
+  return uid_data_len;
 }
 
 static int pcsc_props_to_target(struct nfc_device *pnd, uint8_t it, const uint8_t *patr, size_t szatr, const uint8_t *puid, int szuid, const nfc_modulation_type nmt, nfc_target *pnt)
@@ -354,12 +384,16 @@ static int pcsc_props_to_target(struct nfc_device *pnd, uint8_t it, const uint8_
     case NMT_ISO14443A:
       if ((it == ICC_TYPE_UNKNOWN || it == ICC_TYPE_14443A) && (szuid <= 0 || szuid == 4 || szuid == 7 || szuid == 10) && NULL != patr && szatr >= 5 && patr[0] == 0x3B && patr[1] == (0x80 | ((uint8_t)(szatr - 5))) && patr[2] == 0x80 && patr[3] == 0x01)
       {
-        memset(pnt, 0, sizeof *pnt);
+        // Safe struct initialization (ISO14443A)
+        if (nfc_secure_memset(pnt, 0x00, sizeof(*pnt)) < 0)
+          return NFC_ECHIP;
         pnt->nm.nmt = NMT_ISO14443A;
         pnt->nm.nbr = pcsc_supported_brs[0];
         if (szuid > 0)
         {
-          memcpy(pnt->nti.nai.abtUid, puid, szuid);
+          // Safe copy UID to target structure (4/7/10 bytes typical)
+          if (nfc_safe_memcpy(pnt->nti.nai.abtUid, sizeof(pnt->nti.nai.abtUid), puid, szuid) < 0)
+            return NFC_ECHIP;
           pnt->nti.nai.szUidLen = szuid;
         }
         if (is_pcsc_reader_vendor_feitian(pnd))
@@ -369,7 +403,9 @@ static int pcsc_props_to_target(struct nfc_device *pnd, uint8_t it, const uint8_
           // ATQA Coding of NXP Contactless Card ICs
           if (atqa[0] == 0x00 || atqa[0] == 0x03)
           {
-            memcpy(pnt->nti.nai.abtAtqa, atqa, 2);
+            // Safe copy ATQA (2 bytes fixed)
+            if (nfc_safe_memcpy(pnt->nti.nai.abtAtqa, sizeof(pnt->nti.nai.abtAtqa), atqa, 2) < 0)
+              return NFC_ECHIP;
           }
           else
           {
@@ -383,7 +419,9 @@ static int pcsc_props_to_target(struct nfc_device *pnd, uint8_t it, const uint8_
           uint8_t ats[256];
           int ats_len = pcsc_get_ats(pnd, ats, sizeof(ats));
           ats_len = (ats_len > 0 ? ats_len : 0); // The reader may not support to get ATS
-          memcpy(pnt->nti.nai.abtAts, ats, ats_len);
+          // Safe copy ATS data (variable size, may be 0)
+          if (nfc_safe_memcpy(pnt->nti.nai.abtAts, sizeof(pnt->nti.nai.abtAts), ats, ats_len) < 0)
+            return NFC_ECHIP;
           pnt->nti.nai.szAtsLen = ats_len;
         }
         else
@@ -391,10 +429,17 @@ static int pcsc_props_to_target(struct nfc_device *pnd, uint8_t it, const uint8_
           /* SAK_ISO14443_4_COMPLIANT */
           pnt->nti.nai.btSak = 0x20;
           /* Choose TL, TA, TB, TC according to Mifare DESFire */
-          memcpy(pnt->nti.nai.abtAts, "\x75\x77\x81\x02", 4);
+          // Safe copy DESFire defaults (fixed 4 bytes)
+          if (nfc_safe_memcpy(pnt->nti.nai.abtAts, sizeof(pnt->nti.nai.abtAts), "\x75\x77\x81\x02", 4) < 0)
+            return NFC_ECHIP;
           /* copy historical bytes */
-          memcpy(pnt->nti.nai.abtAts + 4, patr + 4, (uint8_t)(szatr - 5));
-          pnt->nti.nai.szAtsLen = 4 + (uint8_t)(szatr - 5);
+          // Safe copy historical bytes with compound offset
+          if (szatr < 5)
+            return NFC_EINVARG;
+          size_t hist_len = szatr - 5;
+          if (nfc_safe_memcpy(pnt->nti.nai.abtAts + 4, sizeof(pnt->nti.nai.abtAts) - 4, patr + 4, hist_len) < 0)
+            return NFC_ECHIP;
+          pnt->nti.nai.szAtsLen = 4 + (uint8_t)hist_len;
         }
 
         return NFC_SUCCESS;
@@ -403,11 +448,17 @@ static int pcsc_props_to_target(struct nfc_device *pnd, uint8_t it, const uint8_
     case NMT_ISO14443B:
       if ((ICC_TYPE_UNKNOWN == 0 || ICC_TYPE_14443B == 6) && (szuid <= 0 || szuid == 8) && NULL != patr && szatr == 5 + 8 && patr[0] == 0x3B && patr[1] == (0x80 | 0x08) && patr[2] == 0x80 && patr[3] == 0x01)
       {
-        memset(pnt, 0, sizeof *pnt);
+        // Safe struct initialization (ISO14443B)
+        if (nfc_secure_memset(pnt, 0x00, sizeof(*pnt)) < 0)
+          return NFC_ECHIP;
         pnt->nm.nmt = NMT_ISO14443B;
         pnt->nm.nbr = pcsc_supported_brs[0];
-        memcpy(pnt->nti.nbi.abtApplicationData, patr + 4, 4);
-        memcpy(pnt->nti.nbi.abtProtocolInfo, patr + 8, 3);
+        // Safe copy ApplicationData (fixed 4 bytes)
+        if (nfc_safe_memcpy(pnt->nti.nbi.abtApplicationData, sizeof(pnt->nti.nbi.abtApplicationData), patr + 4, 4) < 0)
+          return NFC_ECHIP;
+        // Safe copy ProtocolInfo (fixed 3 bytes)
+        if (nfc_safe_memcpy(pnt->nti.nbi.abtProtocolInfo, sizeof(pnt->nti.nbi.abtProtocolInfo), patr + 8, 3) < 0)
+          return NFC_ECHIP;
         /* PI_ISO14443_4_SUPPORTED */
         pnt->nti.nbi.abtProtocolInfo[1] = 0x01;
         return NFC_SUCCESS;
@@ -440,8 +491,9 @@ pcsc_scan(const nfc_context *context, nfc_connstring connstrings[], const size_t
   SCARDCONTEXT *pscc;
   int i;
 
-  // Clear the reader list
-  memset(acDeviceNames, '\0', szDeviceNamesLen);
+  // Clear the reader list (safe initialization)
+  if (nfc_secure_memset(acDeviceNames, '\0', szDeviceNamesLen) < 0)
+    return 0;
 
   // Test if context succeeded
   if (!(pscc = pcsc_get_scardcontext()))
@@ -515,7 +567,9 @@ pcsc_open(const nfc_context *context, const nfc_connstring connstring)
   }
   else
   {
-    memcpy(fullconnstring, connstring, sizeof(nfc_connstring));
+    // Safe copy connection string (fixed size)
+    if (nfc_safe_memcpy(fullconnstring, sizeof(nfc_connstring), connstring, sizeof(nfc_connstring)) < 0)
+      return NULL;
   }
   if (strlen(ndd.pcsc_device_name) < 5)
   { // We can assume it's a reader ID as pcsc_name always ends with "NN NN"
@@ -853,8 +907,11 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
       apdu_data[2] = 0x00;
       apdu_data[3] = pbtTx[1];
       apdu_data[4] = szTx - 2;
-      memcpy(apdu_data + 5, pbtTx + 2, szTx - 2);
-      send_size = 5 + szTx - 2;
+      // Safe copy write data payload with compound offset
+      size_t write_data_len = szTx - 2;
+      if (nfc_safe_memcpy(apdu_data + 5, sizeof(apdu_data) - 5, pbtTx + 2, write_data_len) < 0)
+        return NFC_ECHIP;
+      send_size = 5 + write_data_len;
     }
     else if (pbtTx[0] == 0x60 || pbtTx[0] == 0x61 || pbtTx[0] == 0x1A)
     { // Auth command
@@ -865,11 +922,16 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
         apdu_data[2] = 0x00;
         apdu_data[3] = 0x01;
         apdu_data[4] = 0x06;
-        memcpy(apdu_data + 5, pbtTx + 2, 6);
+        // Safe copy authentication key (6 bytes)
+        if (nfc_safe_memcpy(apdu_data + 5, sizeof(apdu_data) - 5, pbtTx + 2, 6) < 0)
+          return NFC_ECHIP;
         send_size = 11;
         pnd->last_error = pcsc_transmit(pnd, apdu_data, send_size, resp, &resp_len);
-        memset(apdu_data, 0, sizeof(apdu_data));
-        memset(resp, 0, sizeof(resp));
+        // Safe clear sensitive data
+        if (nfc_secure_memset(apdu_data, 0x00, sizeof(apdu_data)) < 0)
+          return NFC_ECHIP;
+        if (nfc_secure_memset(resp, 0x00, sizeof(resp)) < 0)
+          return NFC_ECHIP;
         usleep(500000); // delay 500ms
       }
       // then auth
@@ -892,8 +954,11 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
       apdu_data[2] = 0x00;
       apdu_data[3] = pbtTx[1]; // block index
       apdu_data[4] = 0x05;
-      memcpy(apdu_data + 5, pbtTx + 2, szTx - 2);
-      send_size = 5 + szTx - 2;
+      // Safe copy decrement value with compound offset
+      size_t dec_data_len = szTx - 2;
+      if (nfc_safe_memcpy(apdu_data + 5, sizeof(apdu_data) - 5, pbtTx + 2, dec_data_len) < 0)
+        return NFC_ECHIP;
+      send_size = 5 + dec_data_len;
     }
     else if (pbtTx[0] == 0xC1)
     { // INCREMENT cmd
@@ -902,8 +967,11 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
       apdu_data[2] = 0x00;
       apdu_data[3] = pbtTx[1]; // block index
       apdu_data[4] = 0x05;
-      memcpy(apdu_data + 5, pbtTx + 2, szTx - 2);
-      send_size = 5 + szTx - 2;
+      // Safe copy increment value with compound offset
+      size_t inc_data_len = szTx - 2;
+      if (nfc_safe_memcpy(apdu_data + 5, sizeof(apdu_data) - 5, pbtTx + 2, inc_data_len) < 0)
+        return NFC_ECHIP;
+      send_size = 5 + inc_data_len;
     }
     else if (pbtTx[0] == 0xC2)
     { // STORE cmd
@@ -912,19 +980,26 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
       apdu_data[2] = 0x00;
       apdu_data[3] = pbtTx[1];
       apdu_data[4] = szTx - 2;
-      memcpy(apdu_data + 5, pbtTx + 2, szTx - 2);
-      send_size = 5 + szTx - 2;
+      // Safe copy store value with compound offset
+      size_t store_data_len = szTx - 2;
+      if (nfc_safe_memcpy(apdu_data + 5, sizeof(apdu_data) - 5, pbtTx + 2, store_data_len) < 0)
+        return NFC_ECHIP;
+      send_size = 5 + store_data_len;
     }
     else
     { // other cmd
-      memcpy(apdu_data, pbtTx, szTx);
+      // Safe copy generic command data
+      if (nfc_safe_memcpy(apdu_data, sizeof(apdu_data), pbtTx, szTx) < 0)
+        return NFC_ECHIP;
       send_size = szTx;
     }
     LOG_HEX(NFC_LOG_GROUP_COM, "feitian reader pcsc apdu send:", apdu_data, send_size);
     pnd->last_error = pcsc_transmit(pnd, apdu_data, send_size, resp, &resp_len);
     LOG_HEX(NFC_LOG_GROUP_COM, "feitian reader pcsc apdu received:", resp, resp_len);
 
-    memcpy(pbtRx, resp, resp_len);
+    // Safe copy response data
+    if (nfc_safe_memcpy(pbtRx, szRx, resp, resp_len) < 0)
+      return NFC_ECHIP;
   }
   else
   {

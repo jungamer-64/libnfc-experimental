@@ -97,6 +97,19 @@ ENDIF(NOT DEFINED SHARE_INSTALL_PREFIX)
 IF(CMAKE_COMPILER_IS_GNUCC)
   # Make sure we will not miss some warnings ;)
   SET(CMAKE_C_FLAGS "-Wall -pedantic -std=c99 ${CMAKE_C_FLAGS}")
+
+  # Security compiler flags (Phase 4 refactoring)
+  # Stack protection against buffer overflows
+  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector-strong")
+  # Enable compile-time and runtime checks for common buffer overflow vulnerabilities
+  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_FORTIFY_SOURCE=2")
+  # Format string vulnerability detection
+  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wformat -Wformat-security")
+  # Position Independent Executable for ASLR support
+  IF(NOT WIN32)
+    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIE")
+    SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pie")
+  ENDIF(NOT WIN32)
 ENDIF(CMAKE_COMPILER_IS_GNUCC)
 
 # Workarounds for libusb in C99
@@ -145,7 +158,7 @@ IF(NOT WIN32)
   ENDIF(LIBNFC_DRIVER_ACR122_PCSC)
   # CMake lists are separated by a semi colon, replace with colon
   STRING(REPLACE ";" "," PKG_CONFIG_REQUIRES "${PKG_REQ}")
-  CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/libnfc.pc.in ${CMAKE_CURRENT_BINARY_DIR}/libnfc.pc @ONLY) 
+  CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/libnfc.pc.in ${CMAKE_CURRENT_BINARY_DIR}/libnfc.pc @ONLY)
   INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/libnfc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 ENDIF(NOT WIN32)
 
@@ -224,7 +237,7 @@ if (NOT MSVC)
   set ( LIBNFC_USE_FILE ${CMAKE_INSTALL_PREFIX}/${LIBNFC_CMAKE_CONFIG_DIR}/UseLibNFC.cmake )
 
 
-          
+
   if(CMAKE_VERSION VERSION_LESS 2.8.8)
     configure_file ( cmake/LibNFCConfig.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfig.cmake @ONLY )
     configure_file ( cmake/LibNFCConfigVersion.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfigVersion.cmake @ONLY )
@@ -243,18 +256,18 @@ if (NOT MSVC)
         NO_CHECK_REQUIRED_COMPONENTS_MACRO
     )
     write_basic_package_version_file (
-      LibNFCConfigVersion.cmake 
-      VERSION ${LIBNFC_VERSION_STRING} 
+      LibNFCConfigVersion.cmake
+      VERSION ${LIBNFC_VERSION_STRING}
       COMPATIBILITY AnyNewerVersion
     )
   endif ()
-   
+
   install ( FILES ${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfig.cmake
                   ${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfigVersion.cmake
                   cmake/UseLibNFC.cmake
             DESTINATION ${LIBNFC_CMAKE_CONFIG_DIR}
           )
-   
+
 endif ()
 
 # Binary Package
