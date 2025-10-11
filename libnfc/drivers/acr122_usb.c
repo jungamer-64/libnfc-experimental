@@ -200,8 +200,9 @@ struct acr122_usb_data
 #define SW1_Warning_with_NV_changed 0x63
 #define PN53x_Specific_Application_Level_Error_Code 0x7f
 
-// This frame template is copied at init time
-// Its designed for TAMA sending but is also used for simple ADPU frame: acr122_build_frame_from_apdu() will overwrite needed bytes
+// USB frame template for PN532 communication over ACR122
+// Initialized once and reused for both TAMA (PN532 direct) and APDU frames
+// APDU mode: acr122_build_frame_from_apdu() overwrites APDU-specific bytes
 const uint8_t acr122_usb_frame_template[] = {
     PC_to_RDR_XfrBlock,
     0x00,
@@ -525,13 +526,15 @@ acr122_usb_open(const nfc_context *context, const nfc_connstring connstring)
 
       // Safe copy USB frame templates for TAMA and APDU communication
       if (nfc_safe_memcpy(&(DRIVER_DATA(pnd)->tama_frame), sizeof(DRIVER_DATA(pnd)->tama_frame),
-                          acr122_usb_frame_template, sizeof(acr122_usb_frame_template)) < 0) {
+                          acr122_usb_frame_template, sizeof(acr122_usb_frame_template)) < 0)
+      {
         log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
                 "Failed to initialize TAMA frame template");
         goto error;
       }
       if (nfc_safe_memcpy(&(DRIVER_DATA(pnd)->apdu_frame), sizeof(DRIVER_DATA(pnd)->apdu_frame),
-                          acr122_usb_frame_template, sizeof(acr122_usb_frame_template)) < 0) {
+                          acr122_usb_frame_template, sizeof(acr122_usb_frame_template)) < 0)
+      {
         log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
                 "Failed to initialize APDU frame template");
         goto error;
@@ -619,10 +622,11 @@ acr122_build_frame_from_apdu(nfc_device *pnd, const uint8_t ins, const uint8_t p
   {
     // bLen is Lc when data != NULL
     DRIVER_DATA(pnd)->apdu_frame.apdu_header.bLen = data_len;
-    // Safe copy APDU payload data to USB frame
+    // Copy APDU payload to USB frame buffer (validated against buffer size)
     if (nfc_safe_memcpy(DRIVER_DATA(pnd)->apdu_frame.apdu_payload,
                         sizeof(DRIVER_DATA(pnd)->apdu_frame.apdu_payload),
-                        data, data_len) < 0) {
+                        data, data_len) < 0)
+    {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
               "Failed to copy APDU payload");
       return NFC_EIO;
@@ -644,16 +648,17 @@ acr122_build_frame_from_tama(nfc_device *pnd, const uint8_t *tama, const size_t 
 
   DRIVER_DATA(pnd)->tama_frame.ccid_header.dwLength = htole32(tama_len + sizeof(struct apdu_header) + 1);
   DRIVER_DATA(pnd)->tama_frame.apdu_header.bLen = tama_len + 1;
-  
-  // Safe copy TAMA payload data to USB frame
+
+  // Copy TAMA payload to USB frame buffer (validated against buffer size)
   if (nfc_safe_memcpy(DRIVER_DATA(pnd)->tama_frame.tama_payload,
                       sizeof(DRIVER_DATA(pnd)->tama_frame.tama_payload),
-                      tama, tama_len) < 0) {
+                      tama, tama_len) < 0)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
             "Failed to copy TAMA payload");
     return NFC_EIO;
   }
-  
+
   return (sizeof(struct ccid_header) + sizeof(struct apdu_header) + 1 + tama_len);
 }
 
@@ -685,8 +690,8 @@ acr122_usb_receive(nfc_device *pnd, uint8_t *pbtData, const size_t szDataLen, co
   int res;
 
   /*
-   * If no timeout is specified but the command is blocking, force a 200ms (USB_TIMEOUT_PER_PASS)
-   * timeout to allow breaking the loop if the user wants to stop it.
+   * Implement interruptible blocking operations using USB_TIMEOUT_PER_PASS (200ms) chunks
+   * This allows abort_flag checking even with infinite timeout (USB_INFINITE_TIMEOUT)
    */
   int usb_timeout;
   int remaining_time = timeout;
@@ -797,7 +802,7 @@ read:
       else
       {
         // Retry on timeout (non-abort case)
-        // Note: This retry behavior may need adjustment for specific hardware like Touchatag
+        // Note: Some devices (e.g., Touchatag) may require different timeout handling
         goto read;
       }
     }
@@ -846,7 +851,8 @@ read:
     return pnd->last_error;
   }
 
-  // Additional check to prevent underflow
+  // Validate data length to prevent buffer overread
+  // Ensure remaining buffer (after offset and APDU status bytes) can accommodate len
   if (len > sizeof(abtRxBuf) - offset - 4)
   {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Invalid data length");
@@ -876,8 +882,9 @@ read:
   }
   offset += 1;
 
-  // Safe copy received USB data to output buffer
-  if (nfc_safe_memcpy(pbtData, szDataLen, abtRxBuf + offset, len) < 0) {
+  // Copy received PN532 response data to output buffer
+  if (nfc_safe_memcpy(pbtData, szDataLen, abtRxBuf + offset, len) < 0)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
             "Failed to copy received data");
     pnd->last_error = NFC_EIO;

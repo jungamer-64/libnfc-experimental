@@ -363,7 +363,8 @@ static int pn53x_handle_mi(struct nfc_device *pnd, const uint8_t *pbtTx,
       return NFC_ECHIP;
     }
 
-    // Copy fragment data (skip status byte) - Safe copy with dynamic offset *res
+    // Copy fragment data (skip status byte)
+    // Offset (*res) is validated by buffer overflow check above
     if (nfc_safe_memcpy(pbtRx + *res, szRx - *res, abtRx2 + 1, res2 - 1) < 0)
       return NFC_ECHIP;
     pbtRx[0] = abtRx2[0]; // Update status byte
@@ -657,7 +658,7 @@ int pn53x_decode_target_data(const uint8_t *pbtRawData, size_t szRawData, pn53x_
     if (szRawData > (pnti->nai.szUidLen + 5))
     {
       pnti->nai.szAtsLen = ((*(pbtRawData++)) - 1); // In pbtRawData, ATS Length byte is counted in ATS Frame.
-      // Safe copy using Microsoft best practice pattern
+      // Validate destination buffer size before copying ATS data
       int copy_result = nfc_safe_memcpy(pnti->nai.abtAts, sizeof(pnti->nai.abtAts), pbtRawData, pnti->nai.szAtsLen);
       if (copy_result < 0)
       {
@@ -900,8 +901,7 @@ int pn53x_write_register(struct nfc_device *pnd, const uint16_t ui16RegisterAddr
 int pn53x_writeback_register(struct nfc_device *pnd)
 {
   int res = 0;
-  // Future enhancement: Add boundary checks during ReadRegister/WriteRegister operations
-  // to ensure we don't exceed the maximum supported frame length (PN53x_EXTENDED_FRAME__DATA_MAX_LEN)
+
   BUFFER_INIT(abtReadRegisterCmd, PN53x_EXTENDED_FRAME__DATA_MAX_LEN);
   BUFFER_APPEND(abtReadRegisterCmd, ReadRegister);
 
@@ -1379,8 +1379,8 @@ pn53x_initiator_select_passive_target_ext(struct nfc_device *pnd,
   {
     if (CHIP_DATA(pnd)->type == RCS360)
     {
-      // RC-S360 hardware limitation: Cannot send raw frames without initial target selection
-      // Future enhancement: Implement workaround by performing automatic pre-selection
+      // RC-S360 hardware limitation: Raw frame transmission requires prior target selection
+      // Workaround would require automatic target selection before each raw frame transmission
       pnd->last_error = NFC_ENOTIMPL;
       return pnd->last_error;
     }
@@ -1566,8 +1566,8 @@ pn53x_initiator_select_passive_target_ext(struct nfc_device *pnd,
   {
     if (CHIP_DATA(pnd)->type == RCS360)
     {
-      // RC-S360 hardware limitation: Cannot send raw frames without initial target selection
-      // Future enhancement: Implement workaround by performing automatic pre-selection
+      // RC-S360 hardware limitation: Raw frame transmission requires prior target selection
+      // Workaround would require automatic target selection before each raw frame transmission
       pnd->last_error = NFC_ENOTIMPL;
       return pnd->last_error;
     }
@@ -2133,8 +2133,8 @@ int pn53x_initiator_transceive_bits_timed(struct nfc_device *pnd, const uint8_t 
     pnd->last_error = NFC_ENOTIMPL;
     return pnd->last_error;
   }
-  // CRC support not implemented: likely doesn't make sense for non-byte-aligned transmissions (szTxBits % 8 != 0)
-  // Future enhancement: Implement CRC for byte-aligned cases only
+  // CRC handling not implemented for timed byte transmission
+  // Note: CRC calculation requires knowing the last transmitted byte for accurate timing
   if (pnd->bCrc)
   {
     pnd->last_error = NFC_ENOTIMPL;
@@ -2236,8 +2236,8 @@ int pn53x_initiator_transceive_bytes_timed(struct nfc_device *pnd, const uint8_t
     pnd->last_error = NFC_EINVARG;
     return pnd->last_error;
   }
-  // Easy framing not currently supported in this function
-  // Future enhancement: Implement easy framing support at the libnfc library level
+  // Easy framing not supported in timed transmission mode
+  // Timing measurements are incompatible with automatic framing overhead
   if (pnd->bEasyFraming)
   {
     pnd->last_error = NFC_ENOTIMPL;
@@ -3212,8 +3212,8 @@ int pn53x_target_receive_bytes(struct nfc_device *pnd, uint8_t *pbtRx, const siz
         }
         else
         {
-          // EasyFraming support for non-PN532 or non-AutoISO14443-4 cases not implemented
-          // Future enhancement: Implement software-based EasyFraming emulation
+          // EasyFraming for ISO14443-4 requires PN532 hardware support
+          // Software-based emulation would require implementing ISO14443-4 block protocol
           pnd->last_error = NFC_ENOTIMPL;
           return pnd->last_error;
         }
@@ -3334,8 +3334,8 @@ int pn53x_target_send_bytes(struct nfc_device *pnd, const uint8_t *pbtTx, const 
         }
         else
         {
-          // EasyFraming support for non-PN532 or non-AutoISO14443-4 cases not implemented
-          // Future enhancement: Implement software-based EasyFraming emulation
+          // EasyFraming for ISO14443-4 requires PN532 hardware support
+          // Software-based emulation would require implementing ISO14443-4 block protocol
           pnd->last_error = NFC_ENOTIMPL;
           return pnd->last_error;
         }

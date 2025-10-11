@@ -5,7 +5,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include "pn71xx.h"
@@ -28,16 +28,16 @@
 #define PN71XX_DRIVER_NAME "pn71xx"
 
 #define LOG_CATEGORY "libnfc.driver.pn71xx"
-#define LOG_GROUP    NFC_LOG_GROUP_DRIVER
+#define LOG_GROUP NFC_LOG_GROUP_DRIVER
 
 const nfc_modulation_type pn71xx_supported_modulation_as_target[] = {NMT_ISO14443A, NMT_FELICA, NMT_ISO14443B, NMT_ISO14443BI, NMT_ISO14443B2SR, NMT_ISO14443B2CT, NMT_JEWEL, NMT_DEP, 0};
 const nfc_modulation_type pn71xx_supported_modulation_as_initiator[] = {NMT_ISO14443A, NMT_FELICA, NMT_ISO14443B, NMT_ISO14443BI, NMT_ISO14443B2SR, NMT_ISO14443B2CT, NMT_JEWEL, NMT_DEP, 0};
 
-const nfc_baud_rate pn71xx_iso14443a_supported_baud_rates[] = { NBR_847, NBR_424, NBR_212, NBR_106, 0 };
-const nfc_baud_rate pn71xx_felica_supported_baud_rates[] = { NBR_424, NBR_212, 0 };
-const nfc_baud_rate pn71xx_dep_supported_baud_rates[] = { NBR_424, NBR_212, NBR_106, 0 };
-const nfc_baud_rate pn71xx_jewel_supported_baud_rates[] = { NBR_847, NBR_424, NBR_212, NBR_106, 0 };
-const nfc_baud_rate pn71xx_iso14443b_supported_baud_rates[] = { NBR_847, NBR_424, NBR_212, NBR_106, 0 };
+const nfc_baud_rate pn71xx_iso14443a_supported_baud_rates[] = {NBR_847, NBR_424, NBR_212, NBR_106, 0};
+const nfc_baud_rate pn71xx_felica_supported_baud_rates[] = {NBR_424, NBR_212, 0};
+const nfc_baud_rate pn71xx_dep_supported_baud_rates[] = {NBR_424, NBR_212, NBR_106, 0};
+const nfc_baud_rate pn71xx_jewel_supported_baud_rates[] = {NBR_847, NBR_424, NBR_212, NBR_106, 0};
+const nfc_baud_rate pn71xx_iso14443b_supported_baud_rates[] = {NBR_847, NBR_424, NBR_212, NBR_106, 0};
 
 static nfcTagCallback_t TagCB;
 static nfc_tag_info_t *TagInfo = NULL;
@@ -61,14 +61,18 @@ pn71xx_scan(const nfc_context *context, nfc_connstring connstrings[], const size
 {
   size_t device_found = 0;
 
-  if ((context == NULL) || (connstrings_len == 0)) return 0;
+  if ((context == NULL) || (connstrings_len == 0))
+    return 0;
 
-  if (nfcManager_doInitialize() == 0) {
+  if (nfcManager_doInitialize() == 0)
+  {
     nfc_connstring connstring = "pn71xx";
-    if (device_found < connstrings_len) {
+    if (device_found < connstrings_len)
+    {
       if (nfc_safe_memcpy(connstrings[device_found], sizeof(nfc_connstring),
-                          connstring, sizeof(nfc_connstring)) < 0) {
-        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, 
+                          connstring, sizeof(nfc_connstring)) < 0)
+      {
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
                 "Failed to copy connection string");
         return 0;
       }
@@ -109,25 +113,28 @@ pn71xx_open(const nfc_context *context, const nfc_connstring connstring)
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "open: %s", connstring);
 
   pnd = nfc_device_new(context, connstring);
-  if (!pnd) {
+  if (!pnd)
+  {
     perror("malloc");
     return NULL;
   }
 
   pnd->driver = &pn71xx_driver;
-  
+
   // Safe copy device name (fixed string copy)
-  if (nfc_safe_memcpy(pnd->name, sizeof(pnd->name), 
-                      "pn71xx-device", strlen("pn71xx-device") + 1) < 0) {
-    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, 
+  if (nfc_safe_memcpy(pnd->name, sizeof(pnd->name),
+                      "pn71xx-device", strlen("pn71xx-device") + 1) < 0)
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
             "Failed to copy device name");
     nfc_device_free(pnd);
     return NULL;
   }
-  
+
   // Safe copy connection string
   if (nfc_safe_memcpy(pnd->connstring, sizeof(pnd->connstring),
-                      connstring, strlen(connstring) + 1) < 0) {
+                      connstring, strlen(connstring) + 1) < 0)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
             "Failed to copy connection string");
     nfc_device_free(pnd);
@@ -150,36 +157,33 @@ pn71xx_open(const nfc_context *context, const nfc_connstring connstring)
 /** ------------------------------------------------------------------------ */
 static bool IsTechnology(nfc_tag_info_t *TagInfo, nfc_modulation_type nmt)
 {
-  switch (nmt) {
-    case NMT_ISO14443A:
-      if (TagInfo->technology == TARGET_TYPE_ISO14443_4
-          || TagInfo->technology == TARGET_TYPE_ISO14443_3A
-          || TagInfo->technology == TARGET_TYPE_MIFARE_CLASSIC
-          || TagInfo->technology == TARGET_TYPE_MIFARE_UL)
-        return true;
-      break;
+  switch (nmt)
+  {
+  case NMT_ISO14443A:
+    if (TagInfo->technology == TARGET_TYPE_ISO14443_4 || TagInfo->technology == TARGET_TYPE_ISO14443_3A || TagInfo->technology == TARGET_TYPE_MIFARE_CLASSIC || TagInfo->technology == TARGET_TYPE_MIFARE_UL)
+      return true;
+    break;
 
-    case NMT_ISO14443B:
-    case NMT_ISO14443BI:
-    case NMT_ISO14443B2SR:
-    case NMT_ISO14443B2CT:
-      if (TagInfo->technology == TARGET_TYPE_ISO14443_3B)
-        return true;
-      break;
+  case NMT_ISO14443B:
+  case NMT_ISO14443BI:
+  case NMT_ISO14443B2SR:
+  case NMT_ISO14443B2CT:
+    if (TagInfo->technology == TARGET_TYPE_ISO14443_3B)
+      return true;
+    break;
 
-    case NMT_FELICA:
-      if (TagInfo->technology == TARGET_TYPE_FELICA)
-        return true;
-      break;
+  case NMT_FELICA:
+    if (TagInfo->technology == TARGET_TYPE_FELICA)
+      return true;
+    break;
 
-    case NMT_JEWEL:
-      if (TagInfo->technology == TARGET_TYPE_ISO14443_3A
-          && TagInfo->protocol == NFA_PROTOCOL_T1T)
-        return true;
-      break;
+  case NMT_JEWEL:
+    if (TagInfo->technology == TARGET_TYPE_ISO14443_3A && TagInfo->protocol == NFA_PROTOCOL_T1T)
+      return true;
+    break;
 
-    default:
-      return false;
+  default:
+    return false;
   }
   return false;
 }
@@ -187,81 +191,102 @@ static bool IsTechnology(nfc_tag_info_t *TagInfo, nfc_modulation_type nmt)
 static void BufferPrintBytes(char *buffer, unsigned int buflen, const uint8_t *data, unsigned int datalen)
 {
   int cx = 0;
-  for (unsigned int i = 0x00; i < datalen; i++)	{
+  for (unsigned int i = 0x00; i < datalen; i++)
+  {
     cx += snprintf(buffer + cx, buflen - cx, "%02X ", data[i]);
   }
 }
 
 static void PrintTagInfo(nfc_tag_info_t *TagInfo)
 {
-  switch (TagInfo->technology) {
-    case TARGET_TYPE_UNKNOWN: {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type Unknown'");
-    }
-    break;
-    case TARGET_TYPE_ISO14443_3A: {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type 3A'");
-    }
-    break;
-    case TARGET_TYPE_ISO14443_3B: {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type 3B'");
-    }
-    break;
-    case TARGET_TYPE_ISO14443_4: {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type 4A'");
-    }
-    break;
-    case TARGET_TYPE_FELICA: {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type F'");
-    }
-    break;
-    case TARGET_TYPE_ISO15693: {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type V'");
-    }
-    break;
-    case TARGET_TYPE_NDEF: {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type NDEF'");
-    }
-    break;
-    case TARGET_TYPE_NDEF_FORMATABLE: {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type Formatable'");
-    }
-    break;
-    case TARGET_TYPE_MIFARE_CLASSIC: {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type A - Mifare Classic'");
-    }
-    break;
-    case TARGET_TYPE_MIFARE_UL: {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type A - Mifare Ul'");
-    }
-    break;
-    case TARGET_TYPE_KOVIO_BARCODE: {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type A - Kovio Barcode'");
-    }
-    break;
-    case TARGET_TYPE_ISO14443_3A_3B: {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type A/B'");
-    }
-    break;
-    default: {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type %d (Unknown or not supported)'\n", TagInfo->technology);
-    }
-    break;
+  switch (TagInfo->technology)
+  {
+  case TARGET_TYPE_UNKNOWN:
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type Unknown'");
+  }
+  break;
+  case TARGET_TYPE_ISO14443_3A:
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type 3A'");
+  }
+  break;
+  case TARGET_TYPE_ISO14443_3B:
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type 3B'");
+  }
+  break;
+  case TARGET_TYPE_ISO14443_4:
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type 4A'");
+  }
+  break;
+  case TARGET_TYPE_FELICA:
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type F'");
+  }
+  break;
+  case TARGET_TYPE_ISO15693:
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type V'");
+  }
+  break;
+  case TARGET_TYPE_NDEF:
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type NDEF'");
+  }
+  break;
+  case TARGET_TYPE_NDEF_FORMATABLE:
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type Formatable'");
+  }
+  break;
+  case TARGET_TYPE_MIFARE_CLASSIC:
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type A - Mifare Classic'");
+  }
+  break;
+  case TARGET_TYPE_MIFARE_UL:
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type A - Mifare Ul'");
+  }
+  break;
+  case TARGET_TYPE_KOVIO_BARCODE:
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type A - Kovio Barcode'");
+  }
+  break;
+  case TARGET_TYPE_ISO14443_3A_3B:
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type A/B'");
+  }
+  break;
+  default:
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "'Type %d (Unknown or not supported)'\n", TagInfo->technology);
+  }
+  break;
   }
   /*32 is max UID len (Kovio tags)*/
-  if ((0x00 != TagInfo->uid_length) && (32 >= TagInfo->uid_length)) {
-    char buffer [100];
+  if ((0x00 != TagInfo->uid_length) && (32 >= TagInfo->uid_length))
+  {
+    char buffer[100];
     int cx = 0;
 
-    if (4 == TagInfo->uid_length || 7 == TagInfo->uid_length || 10 == TagInfo->uid_length) {
+    if (4 == TagInfo->uid_length || 7 == TagInfo->uid_length || 10 == TagInfo->uid_length)
+    {
       cx += snprintf(buffer + cx, sizeof(buffer) - cx, "NFCID1 :    \t'");
-    } else if (8 == TagInfo->uid_length) {
+    }
+    else if (8 == TagInfo->uid_length)
+    {
       cx += snprintf(buffer + cx, sizeof(buffer) - cx, "NFCID2 :    \t'");
-    } else {
+    }
+    else
+    {
       cx += snprintf(buffer + cx, sizeof(buffer) - cx, "UID :    \t'");
     }
 
-    BufferPrintBytes(buffer + cx, sizeof(buffer) - cx, (unsigned char *) TagInfo->uid, TagInfo->uid_length);
+    BufferPrintBytes(buffer + cx, sizeof(buffer) - cx, (unsigned char *)TagInfo->uid, TagInfo->uid_length);
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s'", buffer);
   }
 }
@@ -274,15 +299,17 @@ static void onTagArrival(nfc_tag_info_t *pTagInfo)
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "tag found");
 
   TagInfo = malloc(sizeof(nfc_tag_info_t));
-  if (TagInfo == NULL) {
-    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, 
+  if (TagInfo == NULL)
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
             "Failed to allocate tag info");
     return;
   }
-  
+
   // Safe copy NFC tag information structure
   if (nfc_safe_memcpy(TagInfo, sizeof(nfc_tag_info_t),
-                      pTagInfo, sizeof(nfc_tag_info_t)) < 0) {
+                      pTagInfo, sizeof(nfc_tag_info_t)) < 0)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
             "Failed to copy tag info");
     free(TagInfo);
@@ -304,7 +331,8 @@ static void onTagDeparture(void)
 static int
 pn71xx_initiator_init(struct nfc_device *pnd)
 {
-  if (pnd == NULL) return NFC_EIO;
+  if (pnd == NULL)
+    return NFC_EIO;
   return NFC_SUCCESS;
 }
 
@@ -314,15 +342,18 @@ pn71xx_initiator_select_passive_target(struct nfc_device *pnd,
                                        const uint8_t *pbtInitData, const size_t szInitData,
                                        nfc_target *pnt)
 {
-  if (pnd == NULL) return NFC_EIO;
+  if (pnd == NULL)
+    return NFC_EIO;
 
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "select_passive_target");
 
-  if (TagInfo) {
+  if (TagInfo)
+  {
 
     nfc_target nttmp;
     // Secure clear NFC target structure (may contain sensitive UID/protocol data)
-    if (nfc_secure_memset(&nttmp, 0x00, sizeof(nfc_target)) < 0) {
+    if (nfc_secure_memset(&nttmp, 0x00, sizeof(nfc_target)) < 0)
+    {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
               "Failed to clear target structure");
       return NFC_EIO;
@@ -332,94 +363,110 @@ pn71xx_initiator_select_passive_target(struct nfc_device *pnd,
     void *uidPtr = NULL;
     unsigned int maxLen = 0;
 
-    switch (nm.nmt) {
-      case NMT_ISO14443A:
-        if (IsTechnology(TagInfo, nm.nmt)) {
-          maxLen = 10;
-          uidPtr = nttmp.nti.nai.abtUid;
+    switch (nm.nmt)
+    {
+    case NMT_ISO14443A:
+      if (IsTechnology(TagInfo, nm.nmt))
+      {
+        maxLen = 10;
+        uidPtr = nttmp.nti.nai.abtUid;
 
-          if (TagInfo->technology == TARGET_TYPE_MIFARE_CLASSIC) {
-            nttmp.nti.nai.btSak = 0x08;
-          } else {
-            // make hardcoded desfire for freefare lib check
-            nttmp.nti.nai.btSak = 0x20;
-            nttmp.nti.nai.szAtsLen = 5;
-            // Safe copy DESFire ATS bytes (Answer To Select)
-            if (nfc_safe_memcpy(nttmp.nti.nai.abtAts, sizeof(nttmp.nti.nai.abtAts),
-                                "\x75\x77\x81\x02", 4) < 0) {
-              log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
-                      "Failed to copy ATS data");
-              return NFC_EIO;
-            }
+        if (TagInfo->technology == TARGET_TYPE_MIFARE_CLASSIC)
+        {
+          nttmp.nti.nai.btSak = 0x08;
+        }
+        else
+        {
+          // make hardcoded desfire for freefare lib check
+          nttmp.nti.nai.btSak = 0x20;
+          nttmp.nti.nai.szAtsLen = 5;
+          // Safe copy DESFire ATS bytes (Answer To Select)
+          if (nfc_safe_memcpy(nttmp.nti.nai.abtAts, sizeof(nttmp.nti.nai.abtAts),
+                              "\x75\x77\x81\x02", 4) < 0)
+          {
+            log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+                    "Failed to copy ATS data");
+            return NFC_EIO;
           }
         }
-        break;
+      }
+      break;
 
-      case NMT_ISO14443B:
-        if (IsTechnology(TagInfo, nm.nmt)) {
-          maxLen = 4;
-          uidPtr = nttmp.nti.nbi.abtPupi;
-        }
-        break;
+    case NMT_ISO14443B:
+      if (IsTechnology(TagInfo, nm.nmt))
+      {
+        maxLen = 4;
+        uidPtr = nttmp.nti.nbi.abtPupi;
+      }
+      break;
 
-      case NMT_ISO14443BI:
-        if (IsTechnology(TagInfo, nm.nmt)) {
-          maxLen = 4;
-          uidPtr = nttmp.nti.nii.abtDIV;
-        }
-        break;
+    case NMT_ISO14443BI:
+      if (IsTechnology(TagInfo, nm.nmt))
+      {
+        maxLen = 4;
+        uidPtr = nttmp.nti.nii.abtDIV;
+      }
+      break;
 
-      case NMT_ISO14443B2SR:
-        if (IsTechnology(TagInfo, nm.nmt)) {
-          maxLen = 8;
-          uidPtr = nttmp.nti.nsi.abtUID;
-        }
-        break;
+    case NMT_ISO14443B2SR:
+      if (IsTechnology(TagInfo, nm.nmt))
+      {
+        maxLen = 8;
+        uidPtr = nttmp.nti.nsi.abtUID;
+      }
+      break;
 
-      case NMT_ISO14443B2CT:
-        if (IsTechnology(TagInfo, nm.nmt)) {
-          maxLen = 4;
-          uidPtr = nttmp.nti.nci.abtUID;
-        }
-        break;
+    case NMT_ISO14443B2CT:
+      if (IsTechnology(TagInfo, nm.nmt))
+      {
+        maxLen = 4;
+        uidPtr = nttmp.nti.nci.abtUID;
+      }
+      break;
 
-      case NMT_FELICA:
-        if (IsTechnology(TagInfo, nm.nmt)) {
-          maxLen = 8;
-          uidPtr = nttmp.nti.nfi.abtId;
-        }
-        break;
+    case NMT_FELICA:
+      if (IsTechnology(TagInfo, nm.nmt))
+      {
+        maxLen = 8;
+        uidPtr = nttmp.nti.nfi.abtId;
+      }
+      break;
 
-      case NMT_JEWEL:
-        if (IsTechnology(TagInfo, nm.nmt)) {
-          maxLen = 4;
-          uidPtr = nttmp.nti.nji.btId;
-        }
-        break;
+    case NMT_JEWEL:
+      if (IsTechnology(TagInfo, nm.nmt))
+      {
+        maxLen = 4;
+        uidPtr = nttmp.nti.nji.btId;
+      }
+      break;
 
-      default:
-        return 0;
+    default:
+      return 0;
     }
 
-    if (uidPtr && TagInfo->uid_length) {
+    if (uidPtr && TagInfo->uid_length)
+    {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "target found");
       int len = TagInfo->uid_length > maxLen ? maxLen : TagInfo->uid_length;
-      
+
       // Safe copy UID bytes (unique identifier for NFC tag)
-      if (nfc_safe_memcpy(uidPtr, maxLen, TagInfo->uid, len) < 0) {
+      if (nfc_safe_memcpy(uidPtr, maxLen, TagInfo->uid, len) < 0)
+      {
         log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
                 "Failed to copy UID data");
         return NFC_EIO;
       }
-      
+
       if (nm.nmt == NMT_ISO14443A)
         nttmp.nti.nai.szUidLen = len;
 
       // Is a tag info struct available
-      if (pnt) {
+      if (pnt)
+      {
         // Safe copy complete NFC target structure to caller
         if (nfc_safe_memcpy(pnt, sizeof(nfc_target),
-                            &nttmp, sizeof(nfc_target)) < 0) {
+                            &nttmp, sizeof(nfc_target)) < 0)
+        {
           log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
                   "Failed to copy target structure");
           return NFC_EIO;
@@ -435,26 +482,28 @@ pn71xx_initiator_select_passive_target(struct nfc_device *pnd,
 static int
 pn71xx_initiator_deselect_target(struct nfc_device *pnd)
 {
-  if (pnd == NULL) return NFC_EIO;
+  if (pnd == NULL)
+    return NFC_EIO;
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "deselect_passive_target");
   return NFC_SUCCESS;
 }
-
 
 static int
 pn71xx_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t *pbtTx, const size_t szTx, uint8_t *pbtRx,
                                   const size_t szRx, int timeout)
 {
-  if (pnd == NULL) return NFC_EIO;
+  if (pnd == NULL)
+    return NFC_EIO;
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "transceive_bytes  timeout=%d", timeout);
 
-  if (!TagInfo) return NFC_EINVARG;
+  if (!TagInfo)
+    return NFC_EINVARG;
 
   char buffer[500];
   BufferPrintBytes(buffer, sizeof(buffer), pbtTx, szTx);
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "===> %s", buffer);
 
-  int received = nfcTag_transceive(TagInfo->handle, (uint8_t *) pbtTx, szTx, pbtRx, szRx, 500);
+  int received = nfcTag_transceive(TagInfo->handle, (uint8_t *)pbtTx, szTx, pbtRx, szRx, 500);
   if (received <= 0)
     return NFC_EIO;
 
@@ -473,18 +522,23 @@ pn71xx_initiator_poll_target(struct nfc_device *pnd,
   static int periodFactor = 150000;
   int period = uiPeriod * periodFactor;
 
-  if (pnd == NULL) return 0;
+  if (pnd == NULL)
+    return 0;
 
-  for (int j = 0; j < uiPollNr; j++) {
-    for (unsigned int i = 0; i < szModulations; i++) {
+  for (int j = 0; j < uiPollNr; j++)
+  {
+    for (unsigned int i = 0; i < szModulations; i++)
+    {
       const nfc_modulation nm = pnmModulations[i];
 
       nfc_target nt;
       int res = pn71xx_initiator_select_passive_target(pnd, nm, 0, 0, &nt);
-      if (res > 0 && pnt) {
+      if (res > 0 && pnt)
+      {
         // Safe copy polled NFC target to caller
         if (nfc_safe_memcpy(pnt, sizeof(nfc_target),
-                            &nt, sizeof(nfc_target)) < 0) {
+                            &nt, sizeof(nfc_target)) < 0)
+        {
           log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
                   "Failed to copy polled target");
           return NFC_EIO;
@@ -501,27 +555,29 @@ pn71xx_initiator_poll_target(struct nfc_device *pnd,
 static int
 pn71xx_initiator_target_is_present(struct nfc_device *pnd, const nfc_target *pnt)
 {
-  if ((pnd == NULL) || (pnt == NULL)) return 1;
+  if ((pnd == NULL) || (pnt == NULL))
+    return 1;
   return !TagInfo;
 }
-
 
 /** ------------------------------------------------------------------------ */
 /** ------------------------------------------------------------------------ */
 static int
 pn71xx_get_supported_modulation(nfc_device *pnd, const nfc_mode mode, const nfc_modulation_type **const supported_mt)
 {
-  if (pnd == NULL) return NFC_EIO;
+  if (pnd == NULL)
+    return NFC_EIO;
 
-  switch (mode) {
-    case N_TARGET:
-      *supported_mt = (nfc_modulation_type *)pn71xx_supported_modulation_as_target;
-      break;
-    case N_INITIATOR:
-      *supported_mt = (nfc_modulation_type *)pn71xx_supported_modulation_as_initiator;
-      break;
-    default:
-      return NFC_EINVARG;
+  switch (mode)
+  {
+  case N_TARGET:
+    *supported_mt = (nfc_modulation_type *)pn71xx_supported_modulation_as_target;
+    break;
+  case N_INITIATOR:
+    *supported_mt = (nfc_modulation_type *)pn71xx_supported_modulation_as_initiator;
+    break;
+  default:
+    return NFC_EINVARG;
   }
   return NFC_SUCCESS;
 }
@@ -529,30 +585,34 @@ pn71xx_get_supported_modulation(nfc_device *pnd, const nfc_mode mode, const nfc_
 static int
 pn71xx_get_supported_baud_rate(nfc_device *pnd, const nfc_mode mode, const nfc_modulation_type nmt, const nfc_baud_rate **const supported_br)
 {
-  if (pnd == NULL) return NFC_EIO;
-  if (mode) {}
+  if (pnd == NULL)
+    return NFC_EIO;
+  if (mode)
+  {
+  }
 
-  switch (nmt) {
-    case NMT_FELICA:
-      *supported_br = (nfc_baud_rate *)pn71xx_felica_supported_baud_rates;
-      break;
-    case NMT_ISO14443A:
-      *supported_br = (nfc_baud_rate *)pn71xx_iso14443a_supported_baud_rates;
-      break;
-    case NMT_ISO14443B:
-    case NMT_ISO14443BI:
-    case NMT_ISO14443B2SR:
-    case NMT_ISO14443B2CT:
-      *supported_br = (nfc_baud_rate *)pn71xx_iso14443b_supported_baud_rates;
-      break;
-    case NMT_JEWEL:
-      *supported_br = (nfc_baud_rate *)pn71xx_jewel_supported_baud_rates;
-      break;
-    case NMT_DEP:
-      *supported_br = (nfc_baud_rate *)pn71xx_dep_supported_baud_rates;
-      break;
-    default:
-      return NFC_EINVARG;
+  switch (nmt)
+  {
+  case NMT_FELICA:
+    *supported_br = (nfc_baud_rate *)pn71xx_felica_supported_baud_rates;
+    break;
+  case NMT_ISO14443A:
+    *supported_br = (nfc_baud_rate *)pn71xx_iso14443a_supported_baud_rates;
+    break;
+  case NMT_ISO14443B:
+  case NMT_ISO14443BI:
+  case NMT_ISO14443B2SR:
+  case NMT_ISO14443B2CT:
+    *supported_br = (nfc_baud_rate *)pn71xx_iso14443b_supported_baud_rates;
+    break;
+  case NMT_JEWEL:
+    *supported_br = (nfc_baud_rate *)pn71xx_jewel_supported_baud_rates;
+    break;
+  case NMT_DEP:
+    *supported_br = (nfc_baud_rate *)pn71xx_dep_supported_baud_rates;
+    break;
+  default:
+    return NFC_EINVARG;
   }
   return NFC_SUCCESS;
 }
@@ -563,14 +623,16 @@ pn71xx_get_supported_baud_rate(nfc_device *pnd, const nfc_mode mode, const nfc_m
 static int
 pn71xx_set_property_bool(struct nfc_device *pnd, const nfc_property property, const bool bEnable)
 {
-  if (pnd == NULL) return NFC_EIO;
+  if (pnd == NULL)
+    return NFC_EIO;
   return NFC_SUCCESS;
 }
 
 static int
 pn71xx_set_property_int(struct nfc_device *pnd, const nfc_property property, const int value)
 {
-  if (pnd == NULL) return NFC_EIO;
+  if (pnd == NULL)
+    return NFC_EIO;
   return NFC_SUCCESS;
 }
 
@@ -580,17 +642,20 @@ pn71xx_get_information_about(nfc_device *pnd, char **pbuf)
   static const char *info = "PN71XX nfc driver using libnfc-nci userspace library";
   size_t buflen = strlen(info) + 1;
 
-  if (pnd == NULL) return NFC_EIO;
+  if (pnd == NULL)
+    return NFC_EIO;
 
   *pbuf = malloc(buflen);
-  if (*pbuf == NULL) {
+  if (*pbuf == NULL)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
             "Failed to allocate info buffer");
     return NFC_ESOFT;
   }
-  
+
   // Safe copy driver information string
-  if (nfc_safe_memcpy(*pbuf, buflen, info, buflen) < 0) {
+  if (nfc_safe_memcpy(*pbuf, buflen, info, buflen) < 0)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
             "Failed to copy info string");
     free(*pbuf);
@@ -609,7 +674,8 @@ pn71xx_get_information_about(nfc_device *pnd, char **pbuf)
 static int
 pn71xx_abort_command(nfc_device *pnd)
 {
-  if (pnd == NULL) return NFC_EIO;
+  if (pnd == NULL)
+    return NFC_EIO;
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "abort_command");
   return NFC_SUCCESS;
 }
@@ -617,7 +683,8 @@ pn71xx_abort_command(nfc_device *pnd)
 static int
 pn71xx_idle(struct nfc_device *pnd)
 {
-  if (pnd == NULL) return NFC_EIO;
+  if (pnd == NULL)
+    return NFC_EIO;
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "idle");
   return NFC_SUCCESS;
 }
@@ -625,7 +692,8 @@ pn71xx_idle(struct nfc_device *pnd)
 static int
 pn71xx_PowerDown(struct nfc_device *pnd)
 {
-  if (pnd == NULL) return NFC_EIO;
+  if (pnd == NULL)
+    return NFC_EIO;
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "PowerDown");
   return NFC_SUCCESS;
 }
@@ -633,39 +701,38 @@ pn71xx_PowerDown(struct nfc_device *pnd)
 /** ------------------------------------------------------------------------ */
 /** ------------------------------------------------------------------------ */
 const struct nfc_driver pn71xx_driver = {
-  .name                             = PN71XX_DRIVER_NAME,
-  .scan_type                        = NOT_INTRUSIVE,
-  .scan                             = pn71xx_scan,
-  .open                             = pn71xx_open,
-  .close                            = pn71xx_close,
-  .strerror                         = NULL,
+    .name = PN71XX_DRIVER_NAME,
+    .scan_type = NOT_INTRUSIVE,
+    .scan = pn71xx_scan,
+    .open = pn71xx_open,
+    .close = pn71xx_close,
+    .strerror = NULL,
 
-  .initiator_init                   = pn71xx_initiator_init,
-  .initiator_init_secure_element    = NULL,
-  .initiator_select_passive_target  = pn71xx_initiator_select_passive_target,
-  .initiator_poll_target            = pn71xx_initiator_poll_target,
-  .initiator_select_dep_target      = NULL,
-  .initiator_deselect_target        = pn71xx_initiator_deselect_target,
-  .initiator_transceive_bytes       = pn71xx_initiator_transceive_bytes,
-  .initiator_transceive_bits        = NULL,
-  .initiator_transceive_bytes_timed = NULL,
-  .initiator_transceive_bits_timed  = NULL,
-  .initiator_target_is_present      = pn71xx_initiator_target_is_present,
+    .initiator_init = pn71xx_initiator_init,
+    .initiator_init_secure_element = NULL,
+    .initiator_select_passive_target = pn71xx_initiator_select_passive_target,
+    .initiator_poll_target = pn71xx_initiator_poll_target,
+    .initiator_select_dep_target = NULL,
+    .initiator_deselect_target = pn71xx_initiator_deselect_target,
+    .initiator_transceive_bytes = pn71xx_initiator_transceive_bytes,
+    .initiator_transceive_bits = NULL,
+    .initiator_transceive_bytes_timed = NULL,
+    .initiator_transceive_bits_timed = NULL,
+    .initiator_target_is_present = pn71xx_initiator_target_is_present,
 
-  .target_init                      = NULL,
-  .target_send_bytes                = NULL,
-  .target_receive_bytes             = NULL,
-  .target_send_bits                 = NULL,
-  .target_receive_bits              = NULL,
+    .target_init = NULL,
+    .target_send_bytes = NULL,
+    .target_receive_bytes = NULL,
+    .target_send_bits = NULL,
+    .target_receive_bits = NULL,
 
-  .device_set_property_bool         = pn71xx_set_property_bool,
-  .device_set_property_int          = pn71xx_set_property_int,
-  .get_supported_modulation         = pn71xx_get_supported_modulation,
-  .get_supported_baud_rate          = pn71xx_get_supported_baud_rate,
-  .device_get_information_about     = pn71xx_get_information_about,
+    .device_set_property_bool = pn71xx_set_property_bool,
+    .device_set_property_int = pn71xx_set_property_int,
+    .get_supported_modulation = pn71xx_get_supported_modulation,
+    .get_supported_baud_rate = pn71xx_get_supported_baud_rate,
+    .device_get_information_about = pn71xx_get_information_about,
 
-  .abort_command  = pn71xx_abort_command,
-  .idle           = pn71xx_idle,
-  .powerdown      = pn71xx_PowerDown,
+    .abort_command = pn71xx_abort_command,
+    .idle = pn71xx_idle,
+    .powerdown = pn71xx_PowerDown,
 };
-

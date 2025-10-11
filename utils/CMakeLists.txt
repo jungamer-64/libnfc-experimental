@@ -1,4 +1,4 @@
-SET(UTILS-SOURCES 
+SET(UTILS-SOURCES
   nfc-barcode
   nfc-emulate-forum-tag4
   nfc-jewel
@@ -10,7 +10,7 @@ SET(UTILS-SOURCES
   nfc-scan-device
 )
 
-ADD_LIBRARY(nfcutils STATIC 
+ADD_LIBRARY(nfcutils STATIC
   nfc-utils.c
 )
 TARGET_LINK_LIBRARIES(nfcutils nfc)

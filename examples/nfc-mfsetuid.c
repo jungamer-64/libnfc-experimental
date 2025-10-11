@@ -46,7 +46,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include <stdio.h>
@@ -72,34 +72,34 @@ static uint8_t abtAtqa[2];
 static uint8_t abtSak;
 static uint8_t abtAts[MAX_FRAME_LEN];
 static uint8_t szAts = 0;
-static size_t szCL = 1;//Always start with Cascade Level 1 (CL1)
+static size_t szCL = 1; // Always start with Cascade Level 1 (CL1)
 static nfc_device *pnd;
 
-bool    quiet_output = false;
-bool    iso_ats_supported = false;
+bool quiet_output = false;
+bool iso_ats_supported = false;
 
 // ISO14443A Anti-Collision Commands
-uint8_t  abtReqa[1] = { 0x26 };
-uint8_t  abtSelectAll[2] = { 0x93, 0x20 };
-uint8_t  abtSelectTag[9] = { 0x93, 0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-uint8_t  abtRats[4] = { 0xe0, 0x50, 0x00, 0x00 };
-uint8_t  abtHalt[4] = { 0x50, 0x00, 0x00, 0x00 };
+uint8_t abtReqa[1] = {0x26};
+uint8_t abtSelectAll[2] = {0x93, 0x20};
+uint8_t abtSelectTag[9] = {0x93, 0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+uint8_t abtRats[4] = {0xe0, 0x50, 0x00, 0x00};
+uint8_t abtHalt[4] = {0x50, 0x00, 0x00, 0x00};
 #define CASCADE_BIT 0x04
 
 // special unlock command
-uint8_t  abtUnlock1[1] = { 0x40 };
-uint8_t  abtUnlock2[1] = { 0x43 };
-uint8_t  abtWipe[1] = { 0x41 };
-uint8_t abtWrite[4] = { 0xa0,  0x00,  0x5f,  0xb1 };
-uint8_t abtData[18] = { 0x01,  0x23,  0x45,  0x67,  0x00,  0x08,  0x04,  0x00,  0x46,  0x59,  0x25,  0x58,  0x49,  0x10,  0x23,  0x02,  0x23,  0xeb };
-uint8_t abtBlank[18] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x07, 0x80, 0x69, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x36, 0xCC };
+uint8_t abtUnlock1[1] = {0x40};
+uint8_t abtUnlock2[1] = {0x43};
+uint8_t abtWipe[1] = {0x41};
+uint8_t abtWrite[4] = {0xa0, 0x00, 0x5f, 0xb1};
+uint8_t abtData[18] = {0x01, 0x23, 0x45, 0x67, 0x00, 0x08, 0x04, 0x00, 0x46, 0x59, 0x25, 0x58, 0x49, 0x10, 0x23, 0x02, 0x23, 0xeb};
+uint8_t abtBlank[18] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x07, 0x80, 0x69, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x36, 0xCC};
 
-
-static  bool
+static bool
 transmit_bits(const uint8_t *pbtTx, const size_t szTxBits)
 {
   // Show transmitted command
-  if (!quiet_output) {
+  if (!quiet_output)
+  {
     printf("Sent bits:     ");
     print_hex_bits(pbtTx, szTxBits);
   }
@@ -108,7 +108,8 @@ transmit_bits(const uint8_t *pbtTx, const size_t szTxBits)
     return false;
 
   // Show received answer
-  if (!quiet_output) {
+  if (!quiet_output)
+  {
     printf("Received bits: ");
     print_hex_bits(abtRx, szRxBits);
   }
@@ -116,12 +117,12 @@ transmit_bits(const uint8_t *pbtTx, const size_t szTxBits)
   return true;
 }
 
-
-static  bool
+static bool
 transmit_bytes(const uint8_t *pbtTx, const size_t szTx)
 {
   // Show transmitted command
-  if (!quiet_output) {
+  if (!quiet_output)
+  {
     printf("Sent bits:     ");
     print_hex(pbtTx, szTx);
   }
@@ -131,7 +132,8 @@ transmit_bytes(const uint8_t *pbtTx, const size_t szTx)
     return false;
 
   // Show received answer
-  if (!quiet_output) {
+  if (!quiet_output)
+  {
     printf("Received bits: ");
     print_hex(abtRx, res);
   }
@@ -154,47 +156,61 @@ print_usage(char *argv[])
   printf("\n\t*** Note: this utility only works with special Mifare 1K cards (Chinese clones).\n\n");
 }
 
-int
-main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
-  int      arg, i;
-  bool     format = false;
+  int arg, i;
+  bool format = false;
   unsigned int c;
-  char     tmp[3] = { 0x00, 0x00, 0x00 };
-
+  char tmp[3] = {0x00, 0x00, 0x00};
 
   // Get commandline options
-  for (arg = 1; arg < argc; arg++) {
-    if (0 == strcmp(argv[arg], "-h")) {
+  for (arg = 1; arg < argc; arg++)
+  {
+    if (0 == strcmp(argv[arg], "-h"))
+    {
       print_usage(argv);
       exit(EXIT_SUCCESS);
-    } else if (0 == strcmp(argv[arg], "-f")) {
+    }
+    else if (0 == strcmp(argv[arg], "-f"))
+    {
       format = true;
-    } else if (0 == strcmp(argv[arg], "-q")) {
+    }
+    else if (0 == strcmp(argv[arg], "-q"))
+    {
       quiet_output = true;
-    } else if (strlen(argv[arg]) == 8) {
-      for (i = 0 ; i < 4 ; ++i) {
-        if (nfc_safe_memcpy(tmp, sizeof(tmp), argv[arg] + i * 2, 2) < 0) {
+    }
+    else if (strlen(argv[arg]) == 8)
+    {
+      for (i = 0; i < 4; ++i)
+      {
+        if (nfc_safe_memcpy(tmp, sizeof(tmp), argv[arg] + i * 2, 2) < 0)
+        {
           ERR("Failed to copy UID bytes");
           exit(EXIT_FAILURE);
         }
         sscanf(tmp, "%02x", &c);
-        abtData[i] = (char) c;
+        abtData[i] = (char)c;
       }
       abtData[4] = abtData[0] ^ abtData[1] ^ abtData[2] ^ abtData[3];
       iso14443a_crc_append(abtData, 16);
-    } else if (strlen(argv[arg]) == 32) {
-      for (i = 0 ; i < 16 ; ++i) {
-        if (nfc_safe_memcpy(tmp, sizeof(tmp), argv[arg] + i * 2, 2) < 0) {
+    }
+    else if (strlen(argv[arg]) == 32)
+    {
+      for (i = 0; i < 16; ++i)
+      {
+        if (nfc_safe_memcpy(tmp, sizeof(tmp), argv[arg] + i * 2, 2) < 0)
+        {
           ERR("Failed to copy BLOCK0 bytes");
           exit(EXIT_FAILURE);
         }
         sscanf(tmp, "%02x", &c);
-        abtData[i] = (char) c;
+        abtData[i] = (char)c;
       }
       abtData[4] = abtData[0] ^ abtData[1] ^ abtData[2] ^ abtData[3];
       iso14443a_crc_append(abtData, 16);
-    } else {
+    }
+    else
+    {
       ERR("%s is not supported option.", argv[arg]);
       print_usage(argv);
       exit(EXIT_FAILURE);
@@ -203,7 +219,8 @@ main(int argc, char *argv[])
 
   nfc_context *context;
   nfc_init(&context);
-  if (context == NULL) {
+  if (context == NULL)
+  {
     ERR("Unable to init libnfc (malloc)");
     exit(EXIT_FAILURE);
   }
@@ -211,14 +228,16 @@ main(int argc, char *argv[])
   // Try to open the NFC reader
   pnd = nfc_open(context, NULL);
 
-  if (pnd == NULL) {
+  if (pnd == NULL)
+  {
     ERR("Error opening NFC reader");
     nfc_exit(context);
     exit(EXIT_FAILURE);
   }
 
   // Initialise NFC device as "initiator"
-  if (nfc_initiator_init(pnd) < 0) {
+  if (nfc_initiator_init(pnd) < 0)
+  {
     nfc_perror(pnd, "nfc_initiator_init");
     nfc_close(pnd);
     nfc_exit(context);
@@ -226,21 +245,24 @@ main(int argc, char *argv[])
   }
 
   // Configure the CRC
-  if (nfc_device_set_property_bool(pnd, NP_HANDLE_CRC, false) < 0) {
+  if (nfc_device_set_property_bool(pnd, NP_HANDLE_CRC, false) < 0)
+  {
     nfc_perror(pnd, "nfc_device_set_property_bool");
     nfc_close(pnd);
     nfc_exit(context);
     exit(EXIT_FAILURE);
   }
   // Use raw send/receive methods
-  if (nfc_device_set_property_bool(pnd, NP_EASY_FRAMING, false) < 0) {
+  if (nfc_device_set_property_bool(pnd, NP_EASY_FRAMING, false) < 0)
+  {
     nfc_perror(pnd, "nfc_device_set_property_bool");
     nfc_close(pnd);
     nfc_exit(context);
     exit(EXIT_FAILURE);
   }
   // Disable 14443-4 autoswitching
-  if (nfc_device_set_property_bool(pnd, NP_AUTO_ISO14443_4, false) < 0) {
+  if (nfc_device_set_property_bool(pnd, NP_AUTO_ISO14443_4, false) < 0)
+  {
     nfc_perror(pnd, "nfc_device_set_property_bool");
     nfc_close(pnd);
     nfc_exit(context);
@@ -250,13 +272,15 @@ main(int argc, char *argv[])
   printf("NFC reader: %s opened\n", nfc_device_get_name(pnd));
 
   // Send the 7 bits request command specified in ISO 14443A (0x26)
-  if (!transmit_bits(abtReqa, 7)) {
+  if (!transmit_bits(abtReqa, 7))
+  {
     printf("Error: No tag available\n");
     nfc_close(pnd);
     nfc_exit(context);
     exit(EXIT_FAILURE);
   }
-  if (nfc_safe_memcpy(abtAtqa, sizeof(abtAtqa), abtRx, 2) < 0) {
+  if (nfc_safe_memcpy(abtAtqa, sizeof(abtAtqa), abtRx, 2) < 0)
+  {
     ERR("Failed to copy ATQA");
     nfc_close(pnd);
     nfc_exit(context);
@@ -267,20 +291,23 @@ main(int argc, char *argv[])
   transmit_bytes(abtSelectAll, 2);
 
   // Check answer
-  if ((abtRx[0] ^ abtRx[1] ^ abtRx[2] ^ abtRx[3] ^ abtRx[4]) != 0) {
+  if ((abtRx[0] ^ abtRx[1] ^ abtRx[2] ^ abtRx[3] ^ abtRx[4]) != 0)
+  {
     printf("WARNING: BCC check failed!\n");
   }
 
   // Save the UID CL1
-  if (nfc_safe_memcpy(abtRawUid, sizeof(abtRawUid), abtRx, 4) < 0) {
+  if (nfc_safe_memcpy(abtRawUid, sizeof(abtRawUid), abtRx, 4) < 0)
+  {
     ERR("Failed to save UID CL1");
     nfc_close(pnd);
     nfc_exit(context);
     exit(EXIT_FAILURE);
   }
 
-  //Prepare and send CL1 Select-Command
-  if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0) {
+  // Prepare and send CL1 Select-Command
+  if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0)
+  {
     ERR("Failed to prepare CL1 Select command");
     nfc_close(pnd);
     nfc_exit(context);
@@ -291,15 +318,18 @@ main(int argc, char *argv[])
   abtSak = abtRx[0];
 
   // Test if we are dealing with a CL2
-  if (abtSak & CASCADE_BIT) {
-    szCL = 2;//or more
+  if (abtSak & CASCADE_BIT)
+  {
+    szCL = 2; // or more
     // Check answer
-    if (abtRawUid[0] != 0x88) {
+    if (abtRawUid[0] != 0x88)
+    {
       printf("WARNING: Cascade bit set but CT != 0x88!\n");
     }
   }
 
-  if (szCL == 2) {
+  if (szCL == 2)
+  {
     // We have to do the anti-collision for cascade level 2
 
     // Prepare CL2 commands
@@ -309,12 +339,14 @@ main(int argc, char *argv[])
     transmit_bytes(abtSelectAll, 2);
 
     // Check answer
-    if ((abtRx[0] ^ abtRx[1] ^ abtRx[2] ^ abtRx[3] ^ abtRx[4]) != 0) {
+    if ((abtRx[0] ^ abtRx[1] ^ abtRx[2] ^ abtRx[3] ^ abtRx[4]) != 0)
+    {
       printf("WARNING: BCC check failed!\n");
     }
 
     // Save UID CL2
-    if (nfc_safe_memcpy(abtRawUid + 4, sizeof(abtRawUid) - 4, abtRx, 4) < 0) {
+    if (nfc_safe_memcpy(abtRawUid + 4, sizeof(abtRawUid) - 4, abtRx, 4) < 0)
+    {
       ERR("Failed to save UID CL2");
       nfc_close(pnd);
       nfc_exit(context);
@@ -323,7 +355,8 @@ main(int argc, char *argv[])
 
     // Selection
     abtSelectTag[0] = 0x95;
-    if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0) {
+    if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0)
+    {
       ERR("Failed to prepare CL2 Select command");
       nfc_close(pnd);
       nfc_exit(context);
@@ -334,15 +367,18 @@ main(int argc, char *argv[])
     abtSak = abtRx[0];
 
     // Test if we are dealing with a CL3
-    if (abtSak & CASCADE_BIT) {
+    if (abtSak & CASCADE_BIT)
+    {
       szCL = 3;
       // Check answer
-      if (abtRawUid[0] != 0x88) {
+      if (abtRawUid[0] != 0x88)
+      {
         printf("WARNING: Cascade bit set but CT != 0x88!\n");
       }
     }
 
-    if (szCL == 3) {
+    if (szCL == 3)
+    {
       // We have to do the anti-collision for cascade level 3
 
       // Prepare and send CL3 AC-Command
@@ -350,12 +386,14 @@ main(int argc, char *argv[])
       transmit_bytes(abtSelectAll, 2);
 
       // Check answer
-      if ((abtRx[0] ^ abtRx[1] ^ abtRx[2] ^ abtRx[3] ^ abtRx[4]) != 0) {
+      if ((abtRx[0] ^ abtRx[1] ^ abtRx[2] ^ abtRx[3] ^ abtRx[4]) != 0)
+      {
         printf("WARNING: BCC check failed!\n");
       }
 
       // Save UID CL3
-      if (nfc_safe_memcpy(abtRawUid + 8, sizeof(abtRawUid) - 8, abtRx, 4) < 0) {
+      if (nfc_safe_memcpy(abtRawUid + 8, sizeof(abtRawUid) - 8, abtRx, 4) < 0)
+      {
         ERR("Failed to save UID CL3");
         nfc_close(pnd);
         nfc_exit(context);
@@ -364,7 +402,8 @@ main(int argc, char *argv[])
 
       // Prepare and send final Select-Command
       abtSelectTag[0] = 0x97;
-      if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0) {
+      if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0)
+      {
         ERR("Failed to prepare CL3 Select command");
         nfc_close(pnd);
         nfc_exit(context);
@@ -377,28 +416,31 @@ main(int argc, char *argv[])
   }
 
   // Request ATS, this only applies to tags that support ISO 14443A-4
-  if (abtRx[0] & SAK_FLAG_ATS_SUPPORTED) {
+  if (abtRx[0] & SAK_FLAG_ATS_SUPPORTED)
+  {
     iso_ats_supported = true;
   }
 
   printf("\nFound tag with\n UID: ");
-  switch (szCL) {
-    case 1:
-      printf("%02x%02x%02x%02x", abtRawUid[0], abtRawUid[1], abtRawUid[2], abtRawUid[3]);
-      break;
-    case 2:
-      printf("%02x%02x%02x", abtRawUid[1], abtRawUid[2], abtRawUid[3]);
-      printf("%02x%02x%02x%02x", abtRawUid[4], abtRawUid[5], abtRawUid[6], abtRawUid[7]);
-      break;
-    case 3:
-      printf("%02x%02x%02x", abtRawUid[1], abtRawUid[2], abtRawUid[3]);
-      printf("%02x%02x%02x", abtRawUid[5], abtRawUid[6], abtRawUid[7]);
-      printf("%02x%02x%02x%02x", abtRawUid[8], abtRawUid[9], abtRawUid[10], abtRawUid[11]);
-      break;
+  switch (szCL)
+  {
+  case 1:
+    printf("%02x%02x%02x%02x", abtRawUid[0], abtRawUid[1], abtRawUid[2], abtRawUid[3]);
+    break;
+  case 2:
+    printf("%02x%02x%02x", abtRawUid[1], abtRawUid[2], abtRawUid[3]);
+    printf("%02x%02x%02x%02x", abtRawUid[4], abtRawUid[5], abtRawUid[6], abtRawUid[7]);
+    break;
+  case 3:
+    printf("%02x%02x%02x", abtRawUid[1], abtRawUid[2], abtRawUid[3]);
+    printf("%02x%02x%02x", abtRawUid[5], abtRawUid[6], abtRawUid[7]);
+    printf("%02x%02x%02x%02x", abtRawUid[8], abtRawUid[9], abtRawUid[10], abtRawUid[11]);
+    break;
   }
   printf("\n");
   printf("ATQA: %02x%02x\n SAK: %02x\n", abtAtqa[1], abtAtqa[0], abtSak);
-  if (szAts > 1) { // if = 1, it's not actual ATS but error code
+  if (szAts > 1)
+  { // if = 1, it's not actual ATS but error code
     printf(" ATS: ");
     print_hex(abtAts, szAts);
   }
@@ -408,27 +450,36 @@ main(int argc, char *argv[])
   iso14443a_crc_append(abtHalt, 2);
   transmit_bytes(abtHalt, 4);
 
-  if (!transmit_bits(abtUnlock1, 7)) {
+  if (!transmit_bits(abtUnlock1, 7))
+  {
     printf("Warning: Unlock command [1/2]: failed / not acknowledged.\n");
-  } else {
-    if (format) {
+  }
+  else
+  {
+    if (format)
+    {
       transmit_bytes(abtWipe, 1);
       transmit_bytes(abtHalt, 4);
       transmit_bits(abtUnlock1, 7);
     }
 
-    if (transmit_bytes(abtUnlock2, 1)) {
+    if (transmit_bytes(abtUnlock2, 1))
+    {
       printf("Card unlocked\n");
-    } else {
+    }
+    else
+    {
       printf("Warning: Unlock command [2/2]: failed / not acknowledged.\n");
     }
   }
 
   transmit_bytes(abtWrite, 4);
   transmit_bytes(abtData, 18);
-  if (format) {
-    for (i = 3 ; i < 64 ; i += 4) {
-      abtWrite[1] = (char) i;
+  if (format)
+  {
+    for (i = 3; i < 64; i += 4)
+    {
+      abtWrite[1] = (char)i;
       iso14443a_crc_append(abtWrite, 2);
       transmit_bytes(abtWrite, 4);
       transmit_bytes(abtBlank, 18);

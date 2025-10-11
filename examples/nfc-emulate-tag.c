@@ -126,8 +126,9 @@ target_io(nfc_target *pnt, const uint8_t *pbtInput, const size_t szInput, uint8_
       pbtOutput[0] = pnt->nti.nai.szAtsLen + 1; // ISO14443-4 says that ATS contains ATS_Length as first byte
       if (pnt->nti.nai.szAtsLen)
       {
-        if (nfc_safe_memcpy(pbtOutput + 1, MAX_FRAME_LEN - 1, 
-                            pnt->nti.nai.abtAts, pnt->nti.nai.szAtsLen) < 0) {
+        if (nfc_safe_memcpy(pbtOutput + 1, MAX_FRAME_LEN - 1,
+                            pnt->nti.nai.abtAts, pnt->nti.nai.szAtsLen) < 0)
+        {
           ERR("Failed to copy ATS");
           loop = false;
           break;
