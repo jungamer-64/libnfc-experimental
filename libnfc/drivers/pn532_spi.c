@@ -43,6 +43,7 @@
 
 #include "drivers.h"
 #include "nfc-internal.h"
+#include "nfc-secure.h"
 #include "chips/pn53x.h"
 #include "chips/pn53x-internal.h"
 #include "spi.h"
@@ -172,7 +173,11 @@ pn532_spi_scan(const nfc_context *context, nfc_connstring connstrings[], const s
         continue;
       }
 
-      memcpy(connstrings[device_found], connstring, sizeof(nfc_connstring));
+      if (nfc_safe_memcpy(connstrings[device_found], sizeof(nfc_connstring), 
+                          connstring, sizeof(nfc_connstring)) < 0) {
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy connection string");
+        continue;
+      }
       device_found++;
 
       // Test if we reach the maximum "wanted" devices
@@ -697,7 +702,10 @@ int pn532_spi_ack(nfc_device *pnd)
   uint8_t ack_tx_buf[1 + ack_frame_len];
 
   ack_tx_buf[0] = pn532_spi_cmd_datawrite;
-  memcpy(ack_tx_buf + 1, pn53x_ack_frame, ack_frame_len);
+  if (nfc_safe_memcpy(ack_tx_buf + 1, ack_frame_len, pn53x_ack_frame, ack_frame_len) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy ACK frame");
+    return NFC_EIO;
+  }
 
   int res = spi_send(DRIVER_DATA(pnd)->port, ack_tx_buf, ack_frame_len + 1, true);
   return res;
