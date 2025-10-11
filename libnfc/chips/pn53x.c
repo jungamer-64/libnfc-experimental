@@ -781,7 +781,8 @@ int pn53x_write_register(struct nfc_device *pnd, const uint16_t ui16RegisterAddr
 int pn53x_writeback_register(struct nfc_device *pnd)
 {
   int res = 0;
-  // TODO Check at each step (ReadRegister, WriteRegister) if we didn't exceed max supported frame length
+  // Future enhancement: Add boundary checks during ReadRegister/WriteRegister operations
+  // to ensure we don't exceed the maximum supported frame length (PN53x_EXTENDED_FRAME__DATA_MAX_LEN)
   BUFFER_INIT(abtReadRegisterCmd, PN53x_EXTENDED_FRAME__DATA_MAX_LEN);
   BUFFER_APPEND(abtReadRegisterCmd, ReadRegister);
 
@@ -1257,7 +1258,8 @@ pn53x_initiator_select_passive_target_ext(struct nfc_device *pnd,
   {
     if (CHIP_DATA(pnd)->type == RCS360)
     {
-      // TODO add support for RC-S360, at the moment it refuses to send raw frames without a first select
+      // RC-S360 hardware limitation: Cannot send raw frames without initial target selection
+      // Future enhancement: Implement workaround by performing automatic pre-selection
       pnd->last_error = NFC_ENOTIMPL;
       return pnd->last_error;
     }
@@ -1442,7 +1444,8 @@ pn53x_initiator_select_passive_target_ext(struct nfc_device *pnd,
   {
     if (CHIP_DATA(pnd)->type == RCS360)
     {
-      // TODO add support for RC-S360, at the moment it refuses to send raw frames without a first select
+      // RC-S360 hardware limitation: Cannot send raw frames without initial target selection
+      // Future enhancement: Implement workaround by performing automatic pre-selection
       pnd->last_error = NFC_ENOTIMPL;
       return pnd->last_error;
     }
@@ -1991,7 +1994,8 @@ int pn53x_initiator_transceive_bits_timed(struct nfc_device *pnd, const uint8_t 
     pnd->last_error = NFC_ENOTIMPL;
     return pnd->last_error;
   }
-  // TODO CRC support but it probably doesn't make sense for (szTxBits % 8 != 0) ...
+  // CRC support not implemented: likely doesn't make sense for non-byte-aligned transmissions (szTxBits % 8 != 0)
+  // Future enhancement: Implement CRC for byte-aligned cases only
   if (pnd->bCrc)
   {
     pnd->last_error = NFC_ENOTIMPL;
@@ -2093,8 +2097,8 @@ int pn53x_initiator_transceive_bytes_timed(struct nfc_device *pnd, const uint8_t
     pnd->last_error = NFC_EINVARG;
     return pnd->last_error;
   }
-  // Sorry, no easy framing support
-  // TODO to be changed once we'll provide easy framing support from libnfc itself...
+  // Easy framing not currently supported in this function
+  // Future enhancement: Implement easy framing support at the libnfc library level
   if (pnd->bEasyFraming)
   {
     pnd->last_error = NFC_ENOTIMPL;
@@ -3054,7 +3058,8 @@ int pn53x_target_receive_bytes(struct nfc_device *pnd, uint8_t *pbtRx, const siz
         }
         else
         {
-          // TODO Support EasyFraming for other cases by software
+          // EasyFraming support for non-PN532 or non-AutoISO14443-4 cases not implemented
+          // Future enhancement: Implement software-based EasyFraming emulation
           pnd->last_error = NFC_ENOTIMPL;
           return pnd->last_error;
         }
@@ -3171,7 +3176,8 @@ int pn53x_target_send_bytes(struct nfc_device *pnd, const uint8_t *pbtTx, const 
         }
         else
         {
-          // TODO Support EasyFraming for other cases by software
+          // EasyFraming support for non-PN532 or non-AutoISO14443-4 cases not implemented
+          // Future enhancement: Implement software-based EasyFraming emulation
           pnd->last_error = NFC_ENOTIMPL;
           return pnd->last_error;
         }

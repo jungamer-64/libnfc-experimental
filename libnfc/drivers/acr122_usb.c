@@ -768,7 +768,9 @@ read:
       }
       else
       {
-        goto read; // FIXME May cause some trouble on Touchatag, right ?
+        // Retry on timeout (non-abort case)
+        // Note: This retry behavior may need adjustment for specific hardware like Touchatag
+        goto read;
       }
     }
     if (res < 10)
