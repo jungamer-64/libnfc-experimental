@@ -985,25 +985,122 @@ int pn53x_set_property_int(struct nfc_device *pnd, const nfc_property property, 
   return NFC_SUCCESS;
 }
 
+/**
+ * @brief Configure CRC handling (automatic generation/checking)
+ *
+ * Enables or disables automatic receiving/sending of CRC bytes by PN53x chip.
+ *
+ * @param pnd NFC device
+ * @param bEnable true to enable CRC handling, false to disable
+ * @return NFC_SUCCESS on success, error code otherwise
+ */
+static int
+pn53x_set_handle_crc(struct nfc_device *pnd, bool bEnable)
+{
+  if (bEnable == pnd->bCrc) {
+    return NFC_SUCCESS; // Nothing to do
+  }
+
+  // TX and RX are both represented by the symbol 0x80
+  uint8_t btValue = bEnable ? 0x80 : 0x00;
+  int res;
+
+  if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_TxMode, SYMBOL_TX_CRC_ENABLE, btValue)) < 0)
+    return res;
+  if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_RxMode, SYMBOL_RX_CRC_ENABLE, btValue)) < 0)
+    return res;
+
+  pnd->bCrc = bEnable;
+  return NFC_SUCCESS;
+}
+
+/**
+ * @brief Force ISO14443-A mode configuration
+ *
+ * Configures PN53x registers to force ISO14443-A communication mode.
+ *
+ * @param pnd NFC device
+ * @param bEnable true to force ISO14443-A mode
+ * @return NFC_SUCCESS on success, error code otherwise
+ */
+static int
+pn53x_set_force_iso14443a(struct nfc_device *pnd, bool bEnable)
+{
+  if (!bEnable) {
+    return NFC_SUCCESS; // Nothing to do
+  }
+
+  int res;
+  
+  // Force pn53x to be in ISO14443-A mode
+  if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_TxMode, SYMBOL_TX_FRAMING, 0x00)) < 0) {
+    return res;
+  }
+  if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_RxMode, SYMBOL_RX_FRAMING, 0x00)) < 0) {
+    return res;
+  }
+  
+  // Set the PN53X to force 100% ASK Modified miller decoding (default for 14443A cards)
+  return pn53x_write_register(pnd, PN53X_REG_CIU_TxAuto, SYMBOL_FORCE_100_ASK, 0x40);
+}
+
+/**
+ * @brief Force ISO14443-B mode configuration
+ *
+ * Configures PN53x registers to force ISO14443-B communication mode.
+ *
+ * @param pnd NFC device
+ * @param bEnable true to force ISO14443-B mode
+ * @return NFC_SUCCESS on success, error code otherwise
+ */
+static int
+pn53x_set_force_iso14443b(struct nfc_device *pnd, bool bEnable)
+{
+  if (!bEnable) {
+    return NFC_SUCCESS; // Nothing to do
+  }
+
+  int res;
+  
+  // Force pn53x to be in ISO14443-B mode
+  if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_TxMode, SYMBOL_TX_FRAMING, 0x03)) < 0) {
+    return res;
+  }
+  return pn53x_write_register(pnd, PN53X_REG_CIU_RxMode, SYMBOL_RX_FRAMING, 0x03);
+}
+
+/**
+ * @brief Force 106 kbps communication speed
+ *
+ * Configures PN53x registers to force 106 kbps communication speed.
+ *
+ * @param pnd NFC device
+ * @param bEnable true to force 106 kbps
+ * @return NFC_SUCCESS on success, error code otherwise
+ */
+static int
+pn53x_set_force_speed_106(struct nfc_device *pnd, bool bEnable)
+{
+  if (!bEnable) {
+    return NFC_SUCCESS; // Nothing to do
+  }
+
+  int res;
+  
+  // Force pn53x to be at 106 kbps
+  if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_TxMode, SYMBOL_TX_SPEED, 0x00)) < 0) {
+    return res;
+  }
+  return pn53x_write_register(pnd, PN53X_REG_CIU_RxMode, SYMBOL_RX_SPEED, 0x00);
+}
+
 int pn53x_set_property_bool(struct nfc_device *pnd, const nfc_property property, const bool bEnable)
 {
   uint8_t btValue;
   int res = 0;
   switch (property) {
     case NP_HANDLE_CRC:
-      // Enable or disable automatic receiving/sending of CRC bytes
-      if (bEnable == pnd->bCrc) {
-        // Nothing to do
-        return NFC_SUCCESS;
-      }
-      // TX and RX are both represented by the symbol 0x80
-      btValue = (bEnable) ? 0x80 : 0x00;
-      if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_TxMode, SYMBOL_TX_CRC_ENABLE, btValue)) < 0)
-        return res;
-      if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_RxMode, SYMBOL_RX_CRC_ENABLE, btValue)) < 0)
-        return res;
-      pnd->bCrc = bEnable;
-      return NFC_SUCCESS;
+      return pn53x_set_handle_crc(pnd, bEnable);
 
     case NP_HANDLE_PARITY:
       // Handle parity bit by PN53X chip or parse it as data bit
@@ -1054,41 +1151,13 @@ int pn53x_set_property_bool(struct nfc_device *pnd, const nfc_property property,
       return pn53x_set_parameters(pnd, PARAM_AUTO_RATS, bEnable);
 
     case NP_FORCE_ISO14443_A:
-      if (!bEnable) {
-        // Nothing to do
-        return NFC_SUCCESS;
-      }
-      // Force pn53x to be in ISO14443-A mode
-      if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_TxMode, SYMBOL_TX_FRAMING, 0x00)) < 0) {
-        return res;
-      }
-      if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_RxMode, SYMBOL_RX_FRAMING, 0x00)) < 0) {
-        return res;
-      }
-      // Set the PN53X to force 100% ASK Modified miller decoding (default for 14443A cards)
-      return pn53x_write_register(pnd, PN53X_REG_CIU_TxAuto, SYMBOL_FORCE_100_ASK, 0x40);
+      return pn53x_set_force_iso14443a(pnd, bEnable);
 
     case NP_FORCE_ISO14443_B:
-      if (!bEnable) {
-        // Nothing to do
-        return NFC_SUCCESS;
-      }
-      // Force pn53x to be in ISO14443-B mode
-      if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_TxMode, SYMBOL_TX_FRAMING, 0x03)) < 0) {
-        return res;
-      }
-      return pn53x_write_register(pnd, PN53X_REG_CIU_RxMode, SYMBOL_RX_FRAMING, 0x03);
+      return pn53x_set_force_iso14443b(pnd, bEnable);
 
     case NP_FORCE_SPEED_106:
-      if (!bEnable) {
-        // Nothing to do
-        return NFC_SUCCESS;
-      }
-      // Force pn53x to be at 106 kbps
-      if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_TxMode, SYMBOL_TX_SPEED, 0x00)) < 0) {
-        return res;
-      }
-      return pn53x_write_register(pnd, PN53X_REG_CIU_RxMode, SYMBOL_RX_SPEED, 0x00);
+      return pn53x_set_force_speed_106(pnd, bEnable);
     // Following properties are invalid (not boolean)
     case NP_TIMEOUT_COMMAND:
     case NP_TIMEOUT_ATR:
