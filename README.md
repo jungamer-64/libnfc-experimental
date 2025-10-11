@@ -94,7 +94,13 @@ NFC_SECURE_MEMSET(password, 0x00);  // Guaranteed execution
 * **Usage Guide**: `libnfc/NFC_SECURE_USAGE_GUIDE.md` - Complete reference with examples
 * **API Reference**: `libnfc/nfc-secure.h` - Detailed API documentation
 * **Best Practices**: `libnfc/NFC_SECURE_BEST_PRACTICES_V4.md` - Design patterns
-* **Security Fixes**: `libnfc/NFC_SECURE_CRITICAL_FIXES_V5.md` - Recent improvements
+* **V7 Critical Fixes**: `NFC_SECURE_V7_CRITICAL_FIXES.md` - Latest improvements (2025-10-12)
+  * Fixed incorrect `__builtin_memset_explicit` detection (doesn't exist)
+  * Moved `NFC_NULL` to header for project-wide visibility
+  * Enhanced `typeof` compiler detection (GCC/Clang requirement)
+  * Added `__has_include` checks for `HAVE_EXPLICIT_BZERO` safety
+* **V6 Review**: `libnfc/NFC_SECURE_V6_REVIEW_RESPONSE.md` - nullptr support
+* **V5 Fixes**: `libnfc/NFC_SECURE_CRITICAL_FIXES_V5.md` - Security improvements
 
 **Standards Support**: C89/C99/C11/C23  
 **Quality Rating**: ⭐⭐⭐⭐⭐ (5.0/5.0) - Enterprise-Grade
