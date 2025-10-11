@@ -38,6 +38,7 @@
 
 #include <nfc/nfc.h>
 #include "nfc-internal.h"
+#include "nfc-secure.h"
 
 
 /**
@@ -139,21 +140,33 @@ iso14443_cascade_uid(const uint8_t abtUID[], const size_t szUID, uint8_t *pbtCas
   switch (szUID) {
     case 7:
       pbtCascadedUID[0] = 0x88;
-      memcpy(pbtCascadedUID + 1, abtUID, 7);
+      if (nfc_safe_memcpy(pbtCascadedUID + 1, 7, abtUID, 7) < 0) {
+        *pszCascadedUID = 0;
+        return;
+      }
       *pszCascadedUID = 8;
       break;
 
     case 10:
       pbtCascadedUID[0] = 0x88;
-      memcpy(pbtCascadedUID + 1, abtUID, 3);
+      if (nfc_safe_memcpy(pbtCascadedUID + 1, 3, abtUID, 3) < 0) {
+        *pszCascadedUID = 0;
+        return;
+      }
       pbtCascadedUID[4] = 0x88;
-      memcpy(pbtCascadedUID + 5, abtUID + 3, 7);
+      if (nfc_safe_memcpy(pbtCascadedUID + 5, 7, abtUID + 3, 7) < 0) {
+        *pszCascadedUID = 0;
+        return;
+      }
       *pszCascadedUID = 12;
       break;
 
     case 4:
     default:
-      memcpy(pbtCascadedUID, abtUID, szUID);
+      if (nfc_safe_memcpy(pbtCascadedUID, szUID, abtUID, szUID) < 0) {
+        *pszCascadedUID = 0;
+        return;
+      }
       *pszCascadedUID = szUID;
       break;
   }

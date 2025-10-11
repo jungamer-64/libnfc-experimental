@@ -47,6 +47,7 @@
 
 #include "drivers.h"
 #include "nfc-internal.h"
+#include "nfc-secure.h"
 #include "chips/pn53x.h"
 #include "chips/pn53x-internal.h"
 #include "buses/i2c.h"
@@ -243,7 +244,10 @@ pn532_i2c_scan(const nfc_context *context, nfc_connstring connstrings[], const s
         continue;
       }
 
-      memcpy(connstrings[device_found], connstring, sizeof(nfc_connstring));
+      if (nfc_safe_memcpy(connstrings[device_found], sizeof(nfc_connstring), connstring, sizeof(nfc_connstring)) < 0) {
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy connection string");
+        continue;
+      }
       device_found++;
 
       // Test if we reach the maximum "wanted" devices
@@ -405,7 +409,11 @@ pn532_i2c_send(nfc_device *pnd, const uint8_t *pbtData, const size_t szData, int
   uint8_t abtFrame[PN532_BUFFER_LEN];
   size_t szFrame = 0;
 
-  memcpy(abtFrame, pn53x_preamble_and_start, PN53X_PREAMBLE_AND_START_LEN);	// Every packet must start with the preamble and start bytes.
+  if (nfc_safe_memcpy(abtFrame, PN532_BUFFER_LEN, pn53x_preamble_and_start, PN53X_PREAMBLE_AND_START_LEN) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy preamble");
+    pnd->last_error = NFC_EIO;
+    return pnd->last_error;
+  }
   if ((res = pn53x_build_frame(abtFrame, &szFrame, pbtData, szData)) < 0) {
     pnd->last_error = res;
     return pnd->last_error;
@@ -497,7 +505,11 @@ pn532_i2c_wait_rdyframe(nfc_device *pnd, uint8_t *pbtData, const size_t szDataLe
         done = true;
         res = recCount - 1;
         copyLength = MIN(res, (int)szDataLen);
-        memcpy(pbtData, &(i2cRx[1]), copyLength);
+        if (nfc_safe_memcpy(pbtData, szDataLen, &(i2cRx[1]), copyLength) < 0) {
+          log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy I2C response data");
+          res = NFC_EIO;
+          break;
+        }
       } else {
         /* Not ready yet. Check for elapsed timeout. */
 
@@ -625,7 +637,11 @@ pn532_i2c_receive(nfc_device *pnd, uint8_t *pbtData, const size_t szDataLen, int
     goto error;
   }
 
-  memcpy(pbtData, &frameBuf[TFI_idx + 2], len - 2);
+  if (nfc_safe_memcpy(pbtData, szDataLen, &frameBuf[TFI_idx + 2], len - 2) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy frame data");
+    pnd->last_error = NFC_EIO;
+    goto error;
+  }
 
   /* The PN53x command is done and we successfully received the reply */
   return len - 2;
