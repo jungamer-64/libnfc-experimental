@@ -78,6 +78,7 @@
 #include <nfc/nfc.h>
 #include <nfc/nfc-emulation.h>
 
+#include "nfc-secure.h"
 #include "utils/nfc-utils.h"
 
 static nfc_device *pnd;
@@ -135,8 +136,13 @@ nfcforum_tag2_io(struct nfc_emulator *emulator, const uint8_t *data_in, const si
   switch (data_in[0]) {
     case READ:
       if (data_out_len >= 16) {
-        memcpy(data_out, nfcforum_tag2_memory_area + (data_in[1] * 4), 16);
-        res = 16;
+        if (nfc_safe_memcpy(data_out, data_out_len, 
+                            nfcforum_tag2_memory_area + (data_in[1] * 4), 16) < 0) {
+          ERR("Failed to copy tag memory");
+          res = -EIO;
+        } else {
+          res = 16;
+        }
       } else {
         res = -ENOSPC;
       }
