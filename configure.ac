@@ -5,7 +5,7 @@ AC_INIT([libnfc],[1.8.0],[nfc-tools@googlegroups.com])
 
 AC_CONFIG_MACRO_DIR([m4])
 
-AC_CONFIG_HEADER(config.h)
+AC_CONFIG_HEADERS([config.h])
 
 # GIT revison
 GIT_REVISION=`which git > /dev/null && git describe`
@@ -42,7 +42,15 @@ AM_CONDITIONAL(POSIX_ONLY_EXAMPLES_ENABLED, [test "$WITH_POSIX_ONLY_EXAMPLES" = 
 PKG_PROG_PKG_CONFIG
 
 # Checks for header files.
-AC_HEADER_STDC
+m4_warn([obsolete],
+[The preprocessor macro `STDC_HEADERS' is obsolete.
+  Except in unusual embedded environments, you can safely include all
+  ISO C90 headers unconditionally.])dnl
+# Autoupdate added the next two lines to ensure that your configure
+# script's behavior did not change.  They are probably safe to remove.
+AC_CHECK_INCLUDES_DEFAULT
+AC_PROG_EGREP
+
 AC_HEADER_STDBOOL
 AC_CHECK_HEADERS([fcntl.h limits.h stdio.h stdlib.h stdint.h stddef.h stdbool.h sys/ioctl.h sys/param.h sys/time.h termios.h])
 AC_CHECK_HEADERS([linux/spi/spidev.h], [spi_available="yes"])

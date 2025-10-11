@@ -107,58 +107,69 @@ extern "C"
 }
 #endif
 
-/**
- * @brief Safe memory copy with buffer size validation
- *
- * This function provides a secure alternative to memcpy() by validating
- * that the destination buffer has sufficient space before copying.
- *
- * Memory Safety Pattern:
- * ```c
- * // Constrained Memory Copy - prevents buffer overflow
- * if (dst_size >= src_size) {
- *     memcpy(dst, src, src_size);
- * } else {
- *     return error;
- * }
- * ```
- *
- * @param[out] dst Destination buffer (must be non-NULL)
- * @param[in] dst_size Size of destination buffer in bytes (CRITICAL for safety)
- * @param[in] src Source buffer (must be non-NULL)
- * @param[in] src_size Number of bytes to copy from source
- *
- * @return  NFC_SECURE_SUCCESS (0)     on success
- * @return  NFC_SECURE_ERROR_INVALID  if dst or src is NULL (or buffer overlap detected)
- * @return  NFC_SECURE_ERROR_OVERFLOW if dst_size < src_size (buffer overflow prevented)
- * @return  NFC_SECURE_ERROR_RANGE    if src_size or dst_size exceeds SIZE_MAX / 2
- * @return  NFC_SECURE_ERROR_ZERO_SIZE if src_size is 0 (operation is valid but suspicious)
- *
- * @note This function mimics the behavior of `memcpy_s()` defined in C11
- *       Annex K but does not require optional Annex K support from the C
- *       runtime. It performs explicit size validation on the destination
- *       buffer before copying to avoid buffer overflows.
- *
- * Example usage:
- * ```c
- * uint8_t buffer[10];
- * uint8_t data[5] = {1, 2, 3, 4, 5};
- *
- * // Safe copy - will succeed
- * int result = nfc_safe_memcpy(buffer, sizeof(buffer), data, sizeof(data));
- * if (result < 0) {
- *     // Handle error
- * }
- *
- * // Unsafe copy - will fail with -EOVERFLOW
- * uint8_t small_buffer[3];
- * result = nfc_safe_memcpy(small_buffer, sizeof(small_buffer), data, sizeof(data));
- * // result == -EOVERFLOW, buffer overflow prevented
- * ```
- */
-int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size);
-
-/**
+    /**
+     * @brief Safe memory copy with buffer size validation
+     *
+     * This function provides a secure alternative to memcpy() by validating
+     * that the destination buffer has sufficient space before copying.
+     *
+     * Memory Safety Pattern:
+     * ```c
+     * // Constrained Memory Copy - prevents buffer overflow
+     * if (dst_size >= src_size) {
+     *     memcpy(dst, src, src_size);
+     * } else {
+     *     return error;
+     * }
+     * ```
+     *
+     * @param[out] dst Destination buffer (must be non-NULL)
+     * @param[in] dst_size Size of destination buffer in bytes (CRITICAL for safety)
+     * @param[in] src Source buffer (must be non-NULL)
+     * @param[in] src_size Number of bytes to copy from source
+     *
+     * @return  NFC_SECURE_SUCCESS (0)     on success
+     * @return  NFC_SECURE_ERROR_INVALID  if dst or src is NULL (or buffer overlap detected)
+     * @return  NFC_SECURE_ERROR_OVERFLOW if dst_size < src_size (buffer overflow prevented)
+     * @return  NFC_SECURE_ERROR_RANGE    if src_size or dst_size exceeds SIZE_MAX / 2
+     * @return  NFC_SECURE_ERROR_ZERO_SIZE if src_size is 0 (operation is valid but suspicious)
+     *
+     * @note This function mimics the behavior of `memcpy_s()` defined in C11
+     *       Annex K but does not require optional Annex K support from the C
+     *       runtime. It performs explicit size validation on the destination
+     *       buffer before copying to avoid buffer overflows.
+     *
+     * ⚠️ CRITICAL: Dynamic Memory Warning
+     * When using dynamic memory (malloc/calloc/realloc), you MUST use the
+     * runtime function directly, NOT the macro:
+     * ```c
+     * uint8_t *buffer = malloc(100);
+     * 
+     * // ❌ WRONG - sizeof(buffer) is pointer size (4 or 8 bytes)!
+     * NFC_SAFE_MEMCPY(buffer, data, 50);
+     * 
+     * // ✅ CORRECT - explicit size parameter
+     * nfc_safe_memcpy(buffer, 100, data, 50);
+     * ```
+     *
+     * Example usage:
+     * ```c
+     * uint8_t buffer[10];
+     * uint8_t data[5] = {1, 2, 3, 4, 5};
+     *
+     * // Safe copy - will succeed
+     * int result = nfc_safe_memcpy(buffer, sizeof(buffer), data, sizeof(data));
+     * if (result != NFC_SECURE_SUCCESS) {
+     *     fprintf(stderr, "Copy failed: %s\n", nfc_secure_strerror(result));
+     * }
+     *
+     * // Unsafe copy - will fail with NFC_SECURE_ERROR_OVERFLOW
+     * uint8_t small_buffer[3];
+     * result = nfc_safe_memcpy(small_buffer, sizeof(small_buffer), data, sizeof(data));
+     * // result == NFC_SECURE_ERROR_OVERFLOW, buffer overflow prevented
+     * ```
+     */
+    int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size);/**
  * @brief Secure memset for sensitive data
  *
  * This function ensures that memory is securely erased and cannot be
@@ -193,13 +204,34 @@ int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size
  *       non-sensitive data, prefer the standard memset() for better
  *       performance.
  *
+ * ⚠️ WARNING: Alignment Requirements
+ * This function does NOT handle alignment issues. Ensure that:
+ * - Buffer is properly aligned for its intended use
+ * - On ARM/SPARC, misaligned access may cause SIGBUS
+ * - Use malloc/aligned_alloc for dynamic memory
+ *
+ * ⚠️ WARNING: Old Compiler Limitations
+ * On C89/C90 compilers:
+ * - No _Static_assert (compile-time checks disabled)
+ * - Volatile fallback may be less reliable
+ * - Test with objdump to verify memset is not optimized away
+ *
+ * Platform-specific implementations:
+ * - Windows: Uses SecureZeroMemory (guaranteed not optimized away)
+ * - BSD/Linux: Uses explicit_bzero (guaranteed not optimized away)
+ * - C11: Uses memset_s from Annex K (optional, guaranteed)
+ * - Fallback: volatile pointer + memory barriers
+ *
  * Example usage:
  * ```c
  * uint8_t key[16];
  * // ... use key for crypto operations ...
  *
  * // Securely erase key from memory
- * nfc_secure_memset(key, 0x00, sizeof(key));
+ * int result = nfc_secure_memset(key, 0x00, sizeof(key));
+ * if (result != NFC_SECURE_SUCCESS) {
+ *     fprintf(stderr, "Secure erase failed: %s\n", nfc_secure_strerror(result));
+ * }
  * // Compiler cannot optimize away this erasure
  * ```
  */
