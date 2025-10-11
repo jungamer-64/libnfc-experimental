@@ -4,25 +4,19 @@ Thank you for your interest in contributing to libnfc!
 
 ## Code Quality Standards
 
-This project maintains high code quality standards to ensure reliability and maintainability:
+All contributions should meet the following requirements:
 
-### Quality Gates
-
-All contributions must meet the following minimum requirements:
-
-* **Code Grade**: B (75%+) on Codacy
-* **Test Coverage**: 60%+ for new code (Phase 12+)
-* **Duplication**: <30% (target: <20%)
-* **Complex Files**: <30% of total files
+* **Test Coverage**: 60%+ for new code (when test infrastructure is available)
+* **Duplication**: <30%
 * **Build**: All targets compile without errors
 
 ### Continuous Integration
 
-Every commit is automatically verified through GitHub Actions:
+Every commit is automatically verified:
 
-1. **Codacy Analysis**: Static code analysis and security scanning
+1. **Static Analysis**: Code analysis and security scanning
 2. **Build & Test**: Compilation and unit tests (when available)
-3. **Code Quality Gate**: Verification of quality standards
+3. **Quality Gate**: Verification of standards
 
 View the CI/CD pipeline: [.github/workflows/code-quality.yml](.github/workflows/code-quality.yml)
 
@@ -80,11 +74,11 @@ if (frame[0] != 0x00 || frame[1] != 0x00 || frame[2] != 0xff) {
 }
 ```
 
-## Testing (Phase 12+)
+## Testing
 
 ### Coverage Requirements
 
-* **New Functions**: 80%+ line coverage required
+* **New Functions**: 80%+ line coverage
 * **Modified Functions**: Maintain or improve existing coverage
 * **Critical Paths**: 100% coverage for security-sensitive code
 
@@ -154,6 +148,7 @@ git commit -m "test: Add unit tests for nfc_initiator_init"
 ```
 
 Commit types:
+
 * `feat`: New feature
 * `fix`: Bug fix
 * `docs`: Documentation only
@@ -170,18 +165,20 @@ git push origin feature/your-feature-name
 ```
 
 Then create a Pull Request on GitHub. The CI/CD pipeline will automatically verify:
-* ✅ Build succeeds
-* ✅ Tests pass (Phase 12+)
-* ✅ Code quality standards met
-* ✅ Coverage targets achieved (Phase 12+)
 
-## Refactoring Guidelines (Phase 11)
+* Build succeeds
+* Tests pass (when available)
+* Code quality standards met
+* Coverage targets achieved (when test infrastructure is available)
+
+## Refactoring Guidelines
 
 ### Complexity Reduction
 
 Target: Reduce cyclomatic complexity (CC) of complex functions
 
-**High Priority Functions** (Week 2):
+**High Priority Functions**:
+
 * `acr122_usb_receive` (CC: 26 → 12)
 * `pn53x_usb_open` (CC: 25 → 10)
 * `pn532_uart_receive` (CC: 22 → 10)
@@ -213,9 +210,10 @@ int acr122_usb_receive(nfc_device *pnd, ...) {
 
 ### Duplication Reduction
 
-Target: 30% → 20% duplication
+Target: Reduce duplication from 30% to 20%
 
-**Common Patterns** (Week 3):
+**Common Patterns**:
+
 * Frame preamble: `0x00 0x00 0xff`
 * Checksum calculation (LCS, DCS)
 * Length encoding
@@ -223,35 +221,27 @@ Target: 30% → 20% duplication
 
 **Solution**: Centralized `nfc-frame.h/c` utilities
 
-## Project Phases
+## Development Goals
 
-### Phase 11: Code Quality Enhancement (Current)
+### Code Quality Enhancement
 
-**Week 1-2**: ✅ Foundation
+**Completed**:
+
 * Memory safety layer (nfc-secure)
 * Unified error handling (nfc-common)
 * Driver refactoring (4 drivers)
 * CI/CD pipeline
 
-**Week 2**: 🔄 High-Complexity Refactoring
-* Target: 6 functions with CC > 20
-* Goal: Reduce average complexity
+**In Progress**:
 
-**Week 3**: Frame Processing
-* Create nfc-frame utilities
-* Reduce code duplication
-* Standardize frame handling
+* High-complexity function refactoring
+* Frame processing utilities
+* Code duplication reduction
 
-**Week 4**: CI/CD Enhancement
-* Coverage integration ✅
-* Quality gates
-* Documentation updates
+**Future Work**:
 
-### Phase 12: Test Suite (Future)
-
-**Goals**:
-* 60%+ overall coverage
-* 80%+ coverage for new code
+* Test suite development
+* Coverage targets: 60%+ overall, 80%+ for new code
 * Unit tests for core functions
 * Integration tests for drivers
 
@@ -259,12 +249,11 @@ Target: 30% → 20% duplication
 
 * **Security**: [SECURITY.md](SECURITY.md)
 * **Memory Safety**: [libnfc/NFC_SECURE_USAGE_GUIDE.md](libnfc/NFC_SECURE_USAGE_GUIDE.md)
-* **Code Quality**: https://app.codacy.com/gh/jungamer-64/libnfc/dashboard
-* **CI/CD Pipeline**: https://github.com/jungamer-64/libnfc/actions
+* **CI/CD Pipeline**: [GitHub Actions](https://github.com/jungamer-64/libnfc/actions)
 
 ## Questions?
 
-* Open an issue: https://github.com/jungamer-64/libnfc/issues
-* Check existing discussions: https://github.com/jungamer-64/libnfc/discussions
+* [Open an issue](https://github.com/jungamer-64/libnfc/issues)
+* [Check existing discussions](https://github.com/jungamer-64/libnfc/discussions)
 
-Thank you for contributing to libnfc! 🚀
+Thank you for contributing to libnfc!
