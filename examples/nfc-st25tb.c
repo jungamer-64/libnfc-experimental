@@ -63,6 +63,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <nfc/nfc.h>
+#include "../utils/nfc-secure.h"
 
 #if defined(WIN32) /* mingw compiler */
 #include <getopt.h>
@@ -290,7 +291,10 @@ bool get_block_at(nfc_device *pnd, uint8_t block, uint8_t *data, uint8_t cbData,
 		{
 			if(cbData == res)
 			{
-				memcpy(data, rx, res);
+				if (nfc_safe_memcpy(data, cbData, rx, res) < 0) {
+					printf("ERROR - Failed to copy received data\n");
+					return false;
+				}
 				bRet = true;
 			}
 			else printf("ERROR - We got %i bytes for a %hhu buffer size?\n", res, cbData);
@@ -321,7 +325,10 @@ bool set_block_at(nfc_device *pnd, uint8_t block, uint8_t *data, uint8_t cbData,
 	
 	if(cbData <= ST25TB_SR_BLOCK_MAX_SIZE)
 	{
-		memcpy(tx + 2, data, cbData);
+		if (nfc_safe_memcpy(tx + 2, ST25TB_SR_BLOCK_MAX_SIZE, data, cbData) < 0) {
+			printf("ERROR - Failed to copy data for transmission\n");
+			return false;
+		}
 		
 		if(bPrintIt)
 		{

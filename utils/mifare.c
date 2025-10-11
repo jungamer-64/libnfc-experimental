@@ -42,6 +42,7 @@
 #include <string.h>
 
 #include <nfc/nfc.h>
+#include "nfc-secure.h"
 
 /**
  * @brief Execute a MIFARE Classic Command
@@ -98,8 +99,11 @@ nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_t ui8
   }
 
   // When available, copy the parameter bytes
-  if (szParamLen)
-    memcpy(abtCmd + 2, (uint8_t *) pmp, szParamLen);
+  if (szParamLen) {
+    if (nfc_safe_memcpy(abtCmd + 2, sizeof(abtCmd) - 2, (uint8_t *) pmp, szParamLen) < 0) {
+      return false;
+    }
+  }
 
   // FIXME: Save and restore bEasyFraming
   // bEasyFraming = nfc_device_get_property_bool (pnd, NP_EASY_FRAMING, &bEasyFraming);
@@ -133,7 +137,9 @@ nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_t ui8
 
     //Check the length of response data, with PCSC reader, there have 2 bytes for SW value
     if (res == 16 || res == (16 + 2)) {
-      memcpy(pmp->mpd.abtData, abtRx, 16);
+      if (nfc_safe_memcpy(pmp->mpd.abtData, sizeof(pmp->mpd.abtData), abtRx, 16) < 0) {
+        return false;
+      }
     } else {
       return false;
     }

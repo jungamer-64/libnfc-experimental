@@ -48,6 +48,7 @@
 
 #include "drivers.h"
 #include "nfc-internal.h"
+#include "nfc-secure.h"
 #include "chips/pn53x.h"
 #include "chips/pn53x-internal.h"
 #include "uart.h"
@@ -195,7 +196,11 @@ arygon_scan(const nfc_context *context, nfc_connstring connstrings[], const size
       }
 
       // ARYGON reader is found
-      memcpy(connstrings[device_found], connstring, sizeof(nfc_connstring));
+      if (nfc_safe_memcpy(connstrings[device_found], sizeof(nfc_connstring),
+                          connstring, sizeof(nfc_connstring)) < 0) {
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy connection string");
+        continue;
+      }
       device_found++;
 
       // Test if we reach the maximum "wanted" devices
@@ -592,7 +597,10 @@ void arygon_firmware(nfc_device *pnd, char *str)
     sscanf((const char *)p, "%02x%9s", &szData, p);
     if (szData > 9)
       szData = 9;
-    memcpy(str, p, szData);
+    if (nfc_safe_memcpy(str, 10, p, szData) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy arygon data");
+      return;
+    }
     *(str + szData) = '\0';
   }
 }

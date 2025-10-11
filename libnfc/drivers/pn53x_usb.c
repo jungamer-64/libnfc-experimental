@@ -49,6 +49,7 @@ Thanks to d18c7db and Okko for example code
 #include <nfc/nfc.h>
 
 #include "nfc-internal.h"
+#include "nfc-secure.h"
 #include "buses/usbbus.h"
 #include "chips/pn53x.h"
 #include "chips/pn53x-internal.h"
@@ -714,7 +715,11 @@ read:
   }
   offset += 1;
 
-  memcpy(pbtData, abtRxBuf + offset, len);
+  if (nfc_safe_memcpy(pbtData, szDataLen, abtRxBuf + offset, len) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy USB receive data");
+    pnd->last_error = NFC_EIO;
+    return pnd->last_error;
+  }
   offset += len;
 
   uint8_t btDCS = (256 - 0xD5);
