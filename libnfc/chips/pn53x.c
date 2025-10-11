@@ -3861,153 +3861,127 @@ int pn53x_build_frame(uint8_t *pbtFrame, size_t *pszFrame, const uint8_t *pbtDat
   }
   return NFC_SUCCESS;
 }
+
+// Mapping table: nfc_modulation -> pn53x_modulation
+typedef struct {
+  nfc_modulation_type nmt;
+  nfc_baud_rate nbr;
+  pn53x_modulation pm;
+} nm_to_pm_map_t;
+
+static const nm_to_pm_map_t nm_to_pm_table[] = {
+  // ISO14443A always maps to 106 kbps regardless of nbr
+  { NMT_ISO14443A,        NBR_UNDEFINED, PM_ISO14443A_106 },
+  
+  // ISO14443B and BICLASS support multiple baud rates
+  { NMT_ISO14443B,        NBR_106,       PM_ISO14443B_106 },
+  { NMT_ISO14443B,        NBR_212,       PM_ISO14443B_212 },
+  { NMT_ISO14443B,        NBR_424,       PM_ISO14443B_424 },
+  { NMT_ISO14443B,        NBR_847,       PM_ISO14443B_847 },
+  { NMT_ISO14443BICLASS,  NBR_106,       PM_ISO14443B_106 },
+  { NMT_ISO14443BICLASS,  NBR_212,       PM_ISO14443B_212 },
+  { NMT_ISO14443BICLASS,  NBR_424,       PM_ISO14443B_424 },
+  { NMT_ISO14443BICLASS,  NBR_847,       PM_ISO14443B_847 },
+  
+  // JEWEL and BARCODE always 106 kbps
+  { NMT_JEWEL,            NBR_UNDEFINED, PM_JEWEL_106 },
+  { NMT_BARCODE,          NBR_UNDEFINED, PM_BARCODE_106 },
+  
+  // FELICA supports 212 and 424 kbps
+  { NMT_FELICA,           NBR_212,       PM_FELICA_212 },
+  { NMT_FELICA,           NBR_424,       PM_FELICA_424 },
+};
+
 pn53x_modulation
 pn53x_nm_to_pm(const nfc_modulation nm)
 {
-  switch (nm.nmt) {
-    case NMT_ISO14443A:
-      return PM_ISO14443A_106;
-
-    case NMT_ISO14443B:
-    case NMT_ISO14443BICLASS:
-      switch (nm.nbr) {
-        case NBR_106:
-          return PM_ISO14443B_106;
-        case NBR_212:
-          return PM_ISO14443B_212;
-        case NBR_424:
-          return PM_ISO14443B_424;
-        case NBR_847:
-          return PM_ISO14443B_847;
-        case NBR_UNDEFINED:
-          // Nothing to do...
-          break;
+  // For types that don't depend on baud rate, try with NBR_UNDEFINED first
+  for (size_t i = 0; i < sizeof(nm_to_pm_table) / sizeof(nm_to_pm_table[0]); i++) {
+    if (nm_to_pm_table[i].nmt == nm.nmt) {
+      if (nm_to_pm_table[i].nbr == NBR_UNDEFINED || nm_to_pm_table[i].nbr == nm.nbr) {
+        return nm_to_pm_table[i].pm;
       }
-      break;
-
-    case NMT_JEWEL:
-      return PM_JEWEL_106;
-
-    case NMT_BARCODE:
-      return PM_BARCODE_106;
-
-    case NMT_FELICA:
-      switch (nm.nbr) {
-        case NBR_212:
-          return PM_FELICA_212;
-        case NBR_424:
-          return PM_FELICA_424;
-        case NBR_106:
-        case NBR_847:
-        case NBR_UNDEFINED:
-          // Nothing to do...
-          break;
-      }
-      break;
-
-    case NMT_ISO14443BI:
-    case NMT_ISO14443B2SR:
-    case NMT_ISO14443B2CT:
-    case NMT_DEP:
-      // Nothing to do...
-      break;
+    }
   }
   return PM_UNDEFINED;
 }
 
+// Mapping table: pn53x_target_type -> nfc_modulation
+typedef struct {
+  pn53x_target_type ptt;
+  nfc_modulation nm;
+} ptt_to_nm_map_t;
+
+static const ptt_to_nm_map_t ptt_to_nm_table[] = {
+  // ISO14443A types
+  { PTT_MIFARE,            { .nmt = NMT_ISO14443A, .nbr = NBR_106 } },
+  { PTT_ISO14443_4A_106,   { .nmt = NMT_ISO14443A, .nbr = NBR_106 } },
+  
+  // ISO14443B types
+  { PTT_ISO14443_4B_106,     { .nmt = NMT_ISO14443B, .nbr = NBR_106 } },
+  { PTT_ISO14443_4B_TCL_106, { .nmt = NMT_ISO14443B, .nbr = NBR_106 } },
+  
+  // JEWEL type
+  { PTT_JEWEL_106,         { .nmt = NMT_JEWEL,     .nbr = NBR_106 } },
+  
+  // FELICA types
+  { PTT_FELICA_212,        { .nmt = NMT_FELICA,    .nbr = NBR_212 } },
+  { PTT_FELICA_424,        { .nmt = NMT_FELICA,    .nbr = NBR_424 } },
+  
+  // DEP types (passive and active)
+  { PTT_DEP_PASSIVE_106,   { .nmt = NMT_DEP,       .nbr = NBR_106 } },
+  { PTT_DEP_ACTIVE_106,    { .nmt = NMT_DEP,       .nbr = NBR_106 } },
+  { PTT_DEP_PASSIVE_212,   { .nmt = NMT_DEP,       .nbr = NBR_212 } },
+  { PTT_DEP_ACTIVE_212,    { .nmt = NMT_DEP,       .nbr = NBR_212 } },
+  { PTT_DEP_PASSIVE_424,   { .nmt = NMT_DEP,       .nbr = NBR_424 } },
+  { PTT_DEP_ACTIVE_424,    { .nmt = NMT_DEP,       .nbr = NBR_424 } },
+};
+
 nfc_modulation
 pn53x_ptt_to_nm(const pn53x_target_type ptt)
 {
-  switch (ptt) {
-    case PTT_GENERIC_PASSIVE_106:
-    case PTT_GENERIC_PASSIVE_212:
-    case PTT_GENERIC_PASSIVE_424:
-    case PTT_UNDEFINED:
-      // XXX This should not happend, how handle it cleanly ?
-      break;
-
-    case PTT_MIFARE:
-    case PTT_ISO14443_4A_106:
-      return (const nfc_modulation) {.nmt = NMT_ISO14443A, .nbr = NBR_106};
-
-    case PTT_ISO14443_4B_106:
-    case PTT_ISO14443_4B_TCL_106:
-      return (const nfc_modulation) {.nmt = NMT_ISO14443B, .nbr = NBR_106};
-
-    case PTT_JEWEL_106:
-      return (const nfc_modulation) {.nmt = NMT_JEWEL, .nbr = NBR_106};
-
-    case PTT_FELICA_212:
-      return (const nfc_modulation) {.nmt = NMT_FELICA, .nbr = NBR_212};
-
-    case PTT_FELICA_424:
-      return (const nfc_modulation) {.nmt = NMT_FELICA, .nbr = NBR_424};
-
-    case PTT_DEP_PASSIVE_106:
-    case PTT_DEP_ACTIVE_106:
-      return (const nfc_modulation) {.nmt = NMT_DEP, .nbr = NBR_106};
-
-    case PTT_DEP_PASSIVE_212:
-    case PTT_DEP_ACTIVE_212:
-      return (const nfc_modulation) {.nmt = NMT_DEP, .nbr = NBR_212};
-
-    case PTT_DEP_PASSIVE_424:
-    case PTT_DEP_ACTIVE_424:
-      return (const nfc_modulation) {.nmt = NMT_DEP, .nbr = NBR_424};
+  for (size_t i = 0; i < sizeof(ptt_to_nm_table) / sizeof(ptt_to_nm_table[0]); i++) {
+    if (ptt_to_nm_table[i].ptt == ptt) {
+      return ptt_to_nm_table[i].nm;
+    }
   }
-  // We should never be here, this line silent compilation warning
+  // Default fallback for undefined or generic types
   return (const nfc_modulation) {.nmt = NMT_ISO14443A, .nbr = NBR_106};
 }
+
+// Mapping table: nfc_modulation -> pn53x_target_type
+typedef struct {
+  nfc_modulation_type nmt;
+  nfc_baud_rate nbr;
+  pn53x_target_type ptt;
+} nm_to_ptt_map_t;
+
+static const nm_to_ptt_map_t nm_to_ptt_table[] = {
+  // ISO14443A always maps to MIFARE (106 kbps)
+  { NMT_ISO14443A,        NBR_UNDEFINED, PTT_MIFARE },
+  
+  // ISO14443B and BICLASS only support 106 kbps for target type
+  { NMT_ISO14443B,        NBR_106,       PTT_ISO14443_4B_106 },
+  { NMT_ISO14443BICLASS,  NBR_106,       PTT_ISO14443_4B_106 },
+  
+  // JEWEL always 106 kbps
+  { NMT_JEWEL,            NBR_UNDEFINED, PTT_JEWEL_106 },
+  
+  // FELICA supports 212 and 424 kbps
+  { NMT_FELICA,           NBR_212,       PTT_FELICA_212 },
+  { NMT_FELICA,           NBR_424,       PTT_FELICA_424 },
+};
 
 pn53x_target_type
 pn53x_nm_to_ptt(const nfc_modulation nm)
 {
-  switch (nm.nmt) {
-    case NMT_ISO14443A:
-      return PTT_MIFARE;
-    // return PTT_ISO14443_4A_106;
-
-    case NMT_ISO14443B:
-    case NMT_ISO14443BICLASS:
-      switch (nm.nbr) {
-        case NBR_106:
-          return PTT_ISO14443_4B_106;
-
-        case NBR_UNDEFINED:
-        case NBR_212:
-        case NBR_424:
-        case NBR_847:
-          // Nothing to do...
-          break;
+  // Search in mapping table
+  for (size_t i = 0; i < sizeof(nm_to_ptt_table) / sizeof(nm_to_ptt_table[0]); i++) {
+    if (nm_to_ptt_table[i].nmt == nm.nmt) {
+      if (nm_to_ptt_table[i].nbr == NBR_UNDEFINED || nm_to_ptt_table[i].nbr == nm.nbr) {
+        return nm_to_ptt_table[i].ptt;
       }
-      break;
-
-    case NMT_JEWEL:
-      return PTT_JEWEL_106;
-
-    case NMT_FELICA:
-      switch (nm.nbr) {
-        case NBR_212:
-          return PTT_FELICA_212;
-
-        case NBR_424:
-          return PTT_FELICA_424;
-
-        case NBR_UNDEFINED:
-        case NBR_106:
-        case NBR_847:
-          // Nothing to do...
-          break;
-      }
-      break;
-
-    case NMT_ISO14443BI:
-    case NMT_ISO14443B2SR:
-    case NMT_ISO14443B2CT:
-    case NMT_BARCODE:
-    case NMT_DEP:
-      // Nothing to do...
-      break;
+    }
   }
   return PTT_UNDEFINED;
 }
