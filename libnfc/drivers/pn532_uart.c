@@ -44,6 +44,7 @@
 
 #include "drivers.h"
 #include "nfc-internal.h"
+#include "nfc-secure.h"
 #include "chips/pn53x.h"
 #include "chips/pn53x-internal.h"
 #include "uart.h"
@@ -173,7 +174,10 @@ pn532_uart_scan(const nfc_context *context, nfc_connstring connstrings[], const 
         continue;
       }
 
-      memcpy(connstrings[device_found], connstring, sizeof(nfc_connstring));
+      if (nfc_safe_memcpy(connstrings[device_found], sizeof(nfc_connstring), connstring, sizeof(nfc_connstring)) < 0) {
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy connection string");
+        continue;
+      }
       device_found++;
 
       // Test if we reach the maximum "wanted" devices

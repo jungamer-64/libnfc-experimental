@@ -662,7 +662,15 @@ acr122s_open(const nfc_context *context, const nfc_connstring connstring)
     return NULL;
   }
   pnd->driver = &acr122s_driver;
-  strcpy(pnd->name, ACR122S_DRIVER_NAME);
+  size_t driver_name_len = strlen(ACR122S_DRIVER_NAME);
+  if (nfc_safe_memcpy(pnd->name, DEVICE_NAME_LENGTH, ACR122S_DRIVER_NAME, driver_name_len) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy driver name");
+    free(ndd.port);
+    uart_close(sp);
+    nfc_device_free(pnd);
+    return NULL;
+  }
+  pnd->name[driver_name_len] = '\0';
   free(ndd.port);
 
   pnd->driver_data = malloc(sizeof(struct acr122s_data));
