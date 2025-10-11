@@ -61,6 +61,7 @@
 #include <nfc/nfc.h>
 
 #include "nfc-utils.h"
+#include "nfc-secure.h"
 
 #if defined(WIN32) /* mingw compiler */
 #include <getopt.h>
@@ -96,8 +97,16 @@ build_felica_frame(const nfc_felica_info nfi, const uint8_t command, const uint8
   frame[0] = 1 + 1 + 8 + payload_len;
   *frame_len = frame[0];
   frame[1] = command;
-  memcpy(frame + 2, nfi.abtId, 8);
-  memcpy(frame + 10, payload, payload_len);
+  if (nfc_safe_memcpy(frame + 2, 8, nfi.abtId, 8) < 0) {
+    ERR("Failed to copy FeliCa ID to frame");
+    *frame_len = 0;
+    return;
+  }
+  if (nfc_safe_memcpy(frame + 10, payload_len, payload, payload_len) < 0) {
+    ERR("Failed to copy FeliCa payload to frame");
+    *frame_len = 0;
+    return;
+  }
 }
 
 #define CHECK 0x06
@@ -160,7 +169,10 @@ nfc_forum_tag_type3_check(nfc_device *dev, const nfc_target *nt, const uint16_t 
   }
   // const uint8_t res_block_count = res[12];
   *data_len = res - res_overhead + 1; // +1 => block count is stored on 1 byte
-  memcpy(data, &rx[res_overhead + 1], *data_len);
+  if (nfc_safe_memcpy(data, *data_len, &rx[res_overhead + 1], *data_len) < 0) {
+    ERR("Failed to copy FeliCa block data");
+    return -1;
+  }
   return *data_len;
 }
 

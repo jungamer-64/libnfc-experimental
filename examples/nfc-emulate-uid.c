@@ -59,6 +59,7 @@
 #include <nfc/nfc.h>
 
 #include "utils/nfc-utils.h"
+#include "nfc-secure.h"
 
 #define MAX_FRAME_LEN 264
 
@@ -119,7 +120,10 @@ main(int argc, char *argv[])
       printf("[+] Using UID: %s\n", argv[arg]);
       abtUidBcc[4] = 0x00;
       for (i = 0; i < 4; ++i) {
-        memcpy(abtTmp, argv[arg] + i * 2, 2);
+        if (nfc_safe_memcpy(abtTmp, sizeof(abtTmp), argv[arg] + i * 2, 2) < 0) {
+          ERR("Failed to copy UID bytes from command line");
+          exit(EXIT_FAILURE);
+        }
         abtUidBcc[i] = (uint8_t) strtol((char *) abtTmp, NULL, 16);
         abtUidBcc[4] ^= abtUidBcc[i];
       }

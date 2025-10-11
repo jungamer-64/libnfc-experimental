@@ -61,6 +61,7 @@
 #include <nfc/nfc.h>
 
 #include "nfc-utils.h"
+#include "nfc-secure.h"
 
 #define MAX_FRAME_LEN 264
 #define MAX_DEVICE_COUNT 2
@@ -145,7 +146,9 @@ static int scan_hex_fd3(uint8_t *pbtData, size_t *pszBytes, const char *pchPrefi
       return -1;
     }
   }
-  strncpy(pchScan, pchPrefix, sizeof(pchScan) - 8);
+  if (nfc_safe_memcpy(pchScan, sizeof(pchScan) - 8, pchPrefix, strlen(pchPrefix) + 1) < 0) {
+    return -1;
+  }
   pchScan[sizeof(pchScan) - 8] = '\0';
   strncat(pchScan, " %04x:", 7);
   if (fscanf(fd3, pchScan, &uiBytes) < 1)
@@ -430,13 +433,23 @@ int main(int argc, char *argv[])
     pbtTk = iso14443a_locate_historical_bytes(ntEmulatedTarget.nti.nai.abtAts, ntEmulatedTarget.nti.nai.szAtsLen, &szTk);
     szTk = (szTk > 48) ? 48 : szTk;
     uint8_t pbtTkt[48];
-    memcpy(pbtTkt, pbtTk, szTk);
+    if (nfc_safe_memcpy(pbtTkt, sizeof(pbtTkt), pbtTk, szTk) < 0) {
+      ERR("Failed to copy historical bytes");
+      nfc_close(pndTarget);
+      nfc_exit(context);
+      exit(EXIT_FAILURE);
+    }
     ntEmulatedTarget.nti.nai.abtAts[0] = 0x75;
     ntEmulatedTarget.nti.nai.abtAts[1] = 0x33;
     ntEmulatedTarget.nti.nai.abtAts[2] = 0x92;
     ntEmulatedTarget.nti.nai.abtAts[3] = 0x03;
     ntEmulatedTarget.nti.nai.szAtsLen = 4 + szTk;
-    memcpy(&(ntEmulatedTarget.nti.nai.abtAts[4]), pbtTkt, szTk);
+    if (nfc_safe_memcpy(&(ntEmulatedTarget.nti.nai.abtAts[4]), sizeof(ntEmulatedTarget.nti.nai.abtAts) - 4, pbtTkt, szTk) < 0) {
+      ERR("Failed to copy historical bytes to ATS");
+      nfc_close(pndTarget);
+      nfc_exit(context);
+      exit(EXIT_FAILURE);
+    }
 
     printf("We will emulate:\n");
     print_nfc_target(&ntEmulatedTarget, false);
