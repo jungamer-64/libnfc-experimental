@@ -44,6 +44,7 @@
 #include "chips/pn53x.h"
 #include "drivers/acr122_pcsc.h"
 #include "nfc-internal.h"
+#include "nfc-secure.h"
 
 // Bus
 #ifdef __APPLE__
@@ -161,7 +162,11 @@ acr122_pcsc_scan(const nfc_context *context, nfc_connstring connstrings[], const
   int i;
 
   // Clear the reader list
-  memset(acDeviceNames, '\0', szDeviceNamesLen);
+  if (nfc_secure_memset(acDeviceNames, '\0', szDeviceNamesLen) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to initialize device names buffer");
+    return 0;
+  }
 
   // Test if context succeeded
   if (!(pscc = acr122_pcsc_get_scardcontext()))
@@ -235,7 +240,12 @@ acr122_pcsc_open(const nfc_context *context, const nfc_connstring connstring)
   }
   else
   {
-    memcpy(fullconnstring, connstring, sizeof(nfc_connstring));
+    if (nfc_safe_memcpy(fullconnstring, sizeof(nfc_connstring),
+                        connstring, sizeof(nfc_connstring)) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+              "Failed to copy connection string");
+      return NULL;
+    }
   }
   if (strlen(ndd.pcsc_device_name) < 5)
   { // We can assume it's a reader ID as pcsc_name always ends with "NN NN"
@@ -368,7 +378,14 @@ acr122_pcsc_send(nfc_device *pnd, const uint8_t *pbtData, const size_t szData, i
   // Prepare and transmit the send buffer
   const size_t szTxBuf = szData + 6;
   uint8_t abtTxBuf[ACR122_PCSC_WRAP_LEN + ACR122_PCSC_COMMAND_LEN] = {0xFF, 0x00, 0x00, 0x00, szData + 1, 0xD4};
-  memcpy(abtTxBuf + ACR122_PCSC_WRAP_LEN, pbtData, szData);
+  if (nfc_safe_memcpy(abtTxBuf + ACR122_PCSC_WRAP_LEN, 
+                      ACR122_PCSC_COMMAND_LEN,
+                      pbtData, szData) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to copy command data to transmit buffer");
+    pnd->last_error = NFC_EIO;
+    return pnd->last_error;
+  }
   LOG_HEX(NFC_LOG_GROUP_COM, "TX", abtTxBuf, szTxBuf);
 
   DRIVER_DATA(pnd)->szRx = 0;
@@ -473,7 +490,13 @@ acr122_pcsc_receive(nfc_device *pnd, uint8_t *pbtData, const size_t szData, int 
   }
   // Wipe out the 4 APDU emulation bytes: D5 4B .. .. .. 90 00
   len = DRIVER_DATA(pnd)->szRx - 4;
-  memcpy(pbtData, DRIVER_DATA(pnd)->abtRx + 2, len);
+  if (nfc_safe_memcpy(pbtData, szData, 
+                      DRIVER_DATA(pnd)->abtRx + 2, len) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to copy received data");
+    pnd->last_error = NFC_EIO;
+    return pnd->last_error;
+  }
 
   return len;
 }
@@ -486,7 +509,11 @@ acr122_pcsc_firmware(nfc_device *pnd)
 
   static char abtFw[11];
   DWORD dwFwLen = sizeof(abtFw);
-  memset(abtFw, 0x00, sizeof(abtFw));
+  if (nfc_secure_memset(abtFw, 0x00, sizeof(abtFw)) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to initialize firmware buffer");
+    return NULL;
+  }
   if (DRIVER_DATA(pnd)->ioCard.dwProtocol == SCARD_PROTOCOL_UNDEFINED)
   {
     uiResult = SCardControl(DRIVER_DATA(pnd)->hCard, IOCTL_CCID_ESCAPE_SCARD_CTL_CODE, abtGetFw, sizeof(abtGetFw), (uint8_t *)abtFw, dwFwLen - 1, &dwFwLen);
