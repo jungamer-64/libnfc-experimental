@@ -370,8 +370,18 @@ pn53x_usb_get_usb_device_name(struct usb_device *dev, usb_dev_handle *udev, char
   if (dev->descriptor.iManufacturer || dev->descriptor.iProduct) {
     if (udev) {
       usb_get_string_simple(udev, dev->descriptor.iManufacturer, buffer, len);
-      if (strlen(buffer) > 0)
-        strcpy(buffer + strlen(buffer), " / ");
+      if (strlen(buffer) > 0) {
+        size_t current_len = strlen(buffer);
+        const char *separator = " / ";
+        size_t sep_len = strlen(separator);
+        if (current_len + sep_len < len) {
+          if (nfc_safe_memcpy(buffer + current_len, len - current_len, separator, sep_len) < 0) {
+            log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to append separator");
+            return false;
+          }
+          buffer[current_len + sep_len] = '\0';
+        }
+      }
       usb_get_string_simple(udev, dev->descriptor.iProduct, buffer + strlen(buffer), len - strlen(buffer));
     }
   }
@@ -380,8 +390,13 @@ pn53x_usb_get_usb_device_name(struct usb_device *dev, usb_dev_handle *udev, char
     for (size_t n = 0; n < sizeof(pn53x_usb_supported_devices) / sizeof(struct pn53x_usb_supported_device); n++) {
       if ((pn53x_usb_supported_devices[n].vendor_id == dev->descriptor.idVendor) &&
           (pn53x_usb_supported_devices[n].product_id == dev->descriptor.idProduct)) {
-        strncpy(buffer, pn53x_usb_supported_devices[n].name, len);
-        buffer[len - 1] = '\0';
+        size_t name_len = strlen(pn53x_usb_supported_devices[n].name);
+        size_t copy_len = (name_len < len - 1) ? name_len : (len - 1);
+        if (nfc_safe_memcpy(buffer, len, pn53x_usb_supported_devices[n].name, copy_len) < 0) {
+          log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy device name");
+          return false;
+        }
+        buffer[copy_len] = '\0';
         return true;
       }
     }

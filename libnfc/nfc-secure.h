@@ -9,6 +9,10 @@
  * ISO/IEC TR 24772) and general industry memory safety practices.
  *
  * @internal Use within NFC secure runtime or safe utilities only.
+ *
+ * Configuration Options:
+ * - NFC_SECURE_CHECK_OVERLAP: Enable buffer overlap detection in nfc_safe_memcpy()
+ *   (Debug builds only. Adds runtime overhead. Use for testing/validation.)
  */
 
 #ifndef NFC_SECURE_H
@@ -46,7 +50,7 @@ extern "C"
      * @param[in] src_size Number of bytes to copy from source
      *
      * @return  0       on success
-     * @return -EINVAL  if dst or src is NULL
+     * @return -EINVAL  if dst or src is NULL (or buffer overlap detected with NFC_SECURE_CHECK_OVERLAP)
      * @return -EOVERFLOW if dst_size < src_size (buffer overflow prevented)
      * @return -ERANGE  if src_size or dst_size exceeds SIZE_MAX / 2
      *
@@ -136,6 +140,16 @@ extern "C"
      * caller-provided buffers and do not touch global mutable state.
      */
 
+/* Compile-time check for array vs pointer (C11 and later with GNU extensions) */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && \
+    (defined(__GNUC__) || defined(__clang__))
+#define NFC_IS_ARRAY(x) \
+    (!__builtin_types_compatible_p(__typeof__(x), __typeof__(&(x)[0])))
+#else
+/* Fallback for older compilers - no compile-time check */
+#define NFC_IS_ARRAY(x) (1)
+#endif
+
 /**
  * @brief Helper macro for safe memcpy with sizeof() validation
  *
@@ -152,6 +166,10 @@ extern "C"
  *          which can lead to incomplete or unsafe copies that incorrectly pass
  *          the size check.
  *
+ * @note Starting from C11 with GNU/Clang compilers, this macro will generate
+ *       a compile-time error if `dst` is a pointer instead of an array,
+ *       preventing this common mistake at build time rather than runtime.
+ *
  * Example (correct):
  * ```c
  * uint8_t buffer[10];
@@ -163,11 +181,22 @@ extern "C"
  * ```c
  * uint8_t *buffer = malloc(10);
  * uint8_t data[5];
- * NFC_SAFE_MEMCPY(buffer, data, sizeof(data)); // ❌ Dangerous: sizeof(buffer) == sizeof(void*) (e.g., 8 on x86_64)
+ * NFC_SAFE_MEMCPY(buffer, data, sizeof(data)); // ❌ Compile error (C11+): "dst must be an array, not a pointer"
  * ```
  */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && \
+    (defined(__GNUC__) || defined(__clang__))
+/* C11+ with GNU/Clang: compile-time array type check */
+#define NFC_SAFE_MEMCPY(dst, src, src_size) \
+    (__extension__({ \
+        _Static_assert(NFC_IS_ARRAY(dst), "NFC_SAFE_MEMCPY: dst must be an array, not a pointer"); \
+        nfc_safe_memcpy((dst), sizeof(dst), (src), (src_size)); \
+    }))
+#else
+/* Older compilers: no compile-time check */
 #define NFC_SAFE_MEMCPY(dst, src, src_size) \
     nfc_safe_memcpy((dst), sizeof(dst), (src), (src_size))
+#endif
 
 /**
  * @brief Helper macro for secure memset with sizeof() validation
@@ -178,6 +207,9 @@ extern "C"
  * @param ptr Pointer to memory (must be array, not pointer)
  * @param val Value to set
  *
+ * @note Starting from C11 with GNU/Clang compilers, this macro will generate
+ *       a compile-time error if `ptr` is a pointer instead of an array.
+ *
  * Example:
  * ```c
  * uint8_t key[16];
@@ -185,8 +217,19 @@ extern "C"
  * NFC_SECURE_MEMSET(key, 0xFF); // Fill with 0xFF
  * ```
  */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && \
+    (defined(__GNUC__) || defined(__clang__))
+/* C11+ with GNU/Clang: compile-time array type check */
+#define NFC_SECURE_MEMSET(ptr, val) \
+    (__extension__({ \
+        _Static_assert(NFC_IS_ARRAY(ptr), "NFC_SECURE_MEMSET: ptr must be an array, not a pointer"); \
+        nfc_secure_memset((ptr), (val), sizeof(ptr)); \
+    }))
+#else
+/* Older compilers: no compile-time check */
 #define NFC_SECURE_MEMSET(ptr, val) \
     nfc_secure_memset((ptr), (val), sizeof(ptr))
+#endif
 
 #ifdef __cplusplus
 }

@@ -218,7 +218,10 @@ main(int argc, const char *argv[])
   bReadAction = tolower((int)((unsigned char) * (argv[1])) == 'r');
 
   if (bReadAction) {
-    memset(&ttDump, 0x00, sizeof(ttDump));
+    if (nfc_secure_memset(&ttDump, 0x00, sizeof(ttDump)) < 0) {
+      ERR("Failed to initialize dump structure");
+      exit(EXIT_FAILURE);
+    }
   } else {
     pfDump = fopen(argv[2], "rb");
 

@@ -14,6 +14,20 @@
 #include "log-internal.h"
 
 #include <limits.h>
+#include <stdbool.h>
+
+/* Platform-specific headers for secure memset implementations */
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>  /* For SecureZeroMemory */
+#endif
+
+/* explicit_bzero declaration for systems that have it but don't expose it in headers */
+#if (defined(__GLIBC__) && __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 25) || \
+    defined(__OpenBSD__) || defined(__FreeBSD__)
+#ifndef _DEFAULT_SOURCE
+extern void explicit_bzero(void *s, size_t n);
+#endif
+#endif
 
 /* Maximum reasonable buffer size: half of SIZE_MAX to prevent integer overflow */
 #define MAX_BUFFER_SIZE (SIZE_MAX / 2)
@@ -80,6 +94,19 @@ int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size
         return -EOVERFLOW;
     }
 
+#ifdef NFC_SECURE_CHECK_OVERLAP
+    /* Validation 4: Buffer overlap check (debug builds only) */
+    /* memcpy() has undefined behavior with overlapping buffers */
+    /* For production code with possible overlap, use memmove() instead */
+    if (buffers_overlap(dst, dst_size, src, src_size))
+    {
+#ifdef LOG
+        log_put_internal("nfc_safe_memcpy: BUFFER OVERLAP DETECTED - use memmove() instead");
+#endif
+        return -EINVAL;
+    }
+#endif
+
     /* All checks passed - safe to copy */
     /* This memcpy is safe because dst_size >= src_size is validated above */
     memcpy(dst, src, src_size);
@@ -105,13 +132,11 @@ int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size
  * free(key);                     // Compiler sees key not used after memset
  * ```
  *
- * Volatile pointer prevents optimization:
- * ```c
- * volatile uint8_t *p = key;
- * while (size--) {
- *     *p++ = 0;  // Compiler cannot optimize away volatile write
- * }
- * ```
+ * This implementation uses platform-specific secure functions when available:
+ * 1. C11 memset_s (if __STDC_LIB_EXT1__ is defined)
+ * 2. explicit_bzero (BSD/Linux)
+ * 3. SecureZeroMemory (Windows)
+ * 4. Fallback to volatile pointer trick
  *
  * Typical use cases:
  * - MIFARE keys (6 bytes)
@@ -145,27 +170,63 @@ int nfc_secure_memset(void *ptr, int val, size_t size)
         return -ERANGE;
     }
 
-    /* Secure memset implementation using volatile pointer */
-    /* CRITICAL: volatile prevents compiler optimization */
-    volatile uint8_t *volatile_ptr = (volatile uint8_t *)ptr;
-    uint8_t byte_value = (uint8_t)val;
+    /* Use platform-specific secure memset implementations when available */
+    bool use_volatile_fallback = false;
 
-    /* Explicit loop to ensure every byte is written */
-    /* Compiler cannot optimize away writes to volatile pointer */
-    for (size_t i = 0; i < size; i++)
+#if defined(__STDC_LIB_EXT1__) && defined(__STDC_WANT_LIB_EXT1__)
+    /* C11 Annex K: memset_s - safest and most portable when available */
+    errno_t result = memset_s(ptr, size, val, size);
+    if (result != 0)
     {
-        volatile_ptr[i] = byte_value;
+#ifdef LOG
+        log_put_internal("nfc_secure_memset: memset_s failed");
+#endif
+        return -EINVAL;
+    }
+#elif defined(__unix__) || defined(__linux__) || defined(__APPLE__)
+    /* BSD/Linux: explicit_bzero - guaranteed not to be optimized away */
+#if defined(__GLIBC__) && __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 25
+    /* glibc 2.25+ provides explicit_bzero */
+    explicit_bzero(ptr, size);
+#elif defined(__OpenBSD__) || defined(__FreeBSD__)
+    /* BSD systems have explicit_bzero */
+    explicit_bzero(ptr, size);
+#else
+    /* Fallback for older glibc or other Unix systems */
+    use_volatile_fallback = true;
+#endif
+#elif defined(_WIN32) || defined(_WIN64)
+    /* Windows: SecureZeroMemory */
+    SecureZeroMemory(ptr, size);
+#else
+    /* No platform-specific function available, use volatile fallback */
+    use_volatile_fallback = true;
+#endif
+
+    if (use_volatile_fallback)
+    {
+        /* Secure memset implementation using volatile pointer */
+        /* CRITICAL: volatile prevents compiler optimization */
+        volatile uint8_t *volatile_ptr = (volatile uint8_t *)ptr;
+        uint8_t byte_value = (uint8_t)val;
+
+        /* Explicit loop to ensure every byte is written */
+        /* Compiler cannot optimize away writes to volatile pointer */
+        for (size_t i = 0; i < size; i++)
+        {
+            volatile_ptr[i] = byte_value;
+        }
     }
 
     return 0;
 }
 
 /**
- * @brief Internal helper: Check if buffers overlap (for future enhancement)
+ * @brief Internal helper: Check if buffers overlap
  *
- * Note: Current implementation does not check for buffer overlap.
- * Standard memcpy() has undefined behavior if source and destination overlap.
- * If overlap checking is needed, use memmove() instead.
+ * Note: Standard memcpy() has undefined behavior if source and destination overlap.
+ * This check is enabled in debug builds (NFC_SECURE_CHECK_OVERLAP) to detect
+ * programming errors. For production, prefer using memmove() when overlap is possible.
  *
  * @param dst Destination pointer
  * @param dst_size Destination size
@@ -173,7 +234,7 @@ int nfc_secure_memset(void *ptr, int val, size_t size)
  * @param src_size Source size
  * @return true if buffers overlap
  */
-#if 0  /* Disabled for now - enable if overlap checking is needed */
+#ifdef NFC_SECURE_CHECK_OVERLAP
 static bool buffers_overlap(const void *dst, size_t dst_size,
                             const void *src, size_t src_size)
 {
@@ -192,4 +253,4 @@ static bool buffers_overlap(const void *dst, size_t dst_size,
 
     return false;
 }
-#endif /* 0 */
+#endif /* NFC_SECURE_CHECK_OVERLAP */

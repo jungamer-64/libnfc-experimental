@@ -272,8 +272,15 @@ acr122_pcsc_open(const nfc_context *context, const nfc_connstring connstring)
       free(ndd.pcsc_device_name);
       return NULL;
     }
-    strncpy(fullconnstring, ncs[index], sizeof(nfc_connstring));
-    fullconnstring[sizeof(nfc_connstring) - 1] = '\0';
+    size_t conn_len = strlen(ncs[index]);
+    size_t copy_len = (conn_len < sizeof(nfc_connstring) - 1) ? conn_len : (sizeof(nfc_connstring) - 1);
+    if (nfc_safe_memcpy(fullconnstring, sizeof(nfc_connstring), ncs[index], copy_len) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy connection string");
+      free(ncs);
+      free(ndd.pcsc_device_name);
+      return NULL;
+    }
+    fullconnstring[copy_len] = '\0';
     free(ncs);
     connstring_decode_level = connstring_decode(fullconnstring, ACR122_PCSC_DRIVER_NAME, "pcsc", &ndd.pcsc_device_name, NULL);
 

@@ -594,8 +594,15 @@ pcsc_open(const nfc_context *context, const nfc_connstring connstring)
       free(ndd.pcsc_device_name);
       return NULL;
     }
-    strncpy(fullconnstring, ncs[index], sizeof(nfc_connstring));
-    fullconnstring[sizeof(nfc_connstring) - 1] = '\0';
+    size_t conn_len = strlen(ncs[index]);
+    size_t copy_len = (conn_len < sizeof(nfc_connstring) - 1) ? conn_len : (sizeof(nfc_connstring) - 1);
+    if (nfc_safe_memcpy(fullconnstring, sizeof(nfc_connstring), ncs[index], copy_len) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy connection string");
+      free(ncs);
+      free(ndd.pcsc_device_name);
+      return NULL;
+    }
+    fullconnstring[copy_len] = '\0';
     free(ncs);
     connstring_decode_level = connstring_decode(fullconnstring, PCSC_DRIVER_NAME, "pcsc", &ndd.pcsc_device_name, NULL);
 
@@ -806,11 +813,19 @@ static const char *stringify_error(const LONG pcscError)
                    pcscError);
   };
 
-  if (msg)
-    (void)strncpy(strError, msg, sizeof(strError));
-  else
+  if (msg) {
+    size_t msg_len = strlen(msg);
+    size_t copy_len = (msg_len < sizeof(strError) - 1) ? msg_len : (sizeof(strError) - 1);
+    if (nfc_safe_memcpy(strError, sizeof(strError), msg, copy_len) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy error message");
+      (void)snprintf(strError, sizeof(strError) - 1, "Unknown error: 0x%08lX", pcscError);
+    } else {
+      strError[copy_len] = '\0';
+    }
+  } else {
     (void)snprintf(strError, sizeof(strError) - 1, "Unknown error: 0x%08lX",
                    pcscError);
+  }
 
   /* add a null byte */
   strError[sizeof(strError) - 1] = '\0';
