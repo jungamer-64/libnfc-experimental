@@ -30,61 +30,55 @@
  */
 int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size)
 {
-    /* Validation 1: NULL pointer checks */
-    if (dst == NULL)
-    {
+  /* Validation 1: NULL pointer checks */
+  if (dst == NULL) {
 #ifdef LOG
-        log_put_internal("nfc_safe_memcpy: dst is NULL");
+    log_put_internal("nfc_safe_memcpy: dst is NULL");
 #endif
-        return -EINVAL;
-    }
+    return -EINVAL;
+  }
 
-    if (src == NULL)
-    {
+  if (src == NULL) {
 #ifdef LOG
-        log_put_internal("nfc_safe_memcpy: src is NULL");
+    log_put_internal("nfc_safe_memcpy: src is NULL");
 #endif
-        return -EINVAL;
-    }
+    return -EINVAL;
+  }
 
-    /* Validation 2: Size range checks (prevent integer overflow) */
-    if (src_size == 0)
-    {
-        /* Zero-size copy is technically valid but suspicious */
-        return 0;
-    }
-
-    if (src_size > MAX_BUFFER_SIZE)
-    {
-#ifdef LOG
-        log_put_internal("nfc_safe_memcpy: src_size exceeds MAX_BUFFER_SIZE");
-#endif
-        return -ERANGE;
-    }
-
-    if (dst_size > MAX_BUFFER_SIZE)
-    {
-#ifdef LOG
-        log_put_internal("nfc_safe_memcpy: dst_size exceeds MAX_BUFFER_SIZE");
-#endif
-        return -ERANGE;
-    }
-
-    /* Validation 3: CRITICAL BUFFER OVERFLOW CHECK */
-    /* This check prevents buffer overflow by ensuring destination has sufficient space */
-    if (dst_size < src_size)
-    {
-#ifdef LOG
-        log_put_internal("nfc_safe_memcpy: BUFFER OVERFLOW PREVENTED");
-#endif
-        return -EOVERFLOW;
-    }
-
-    /* All checks passed - safe to copy */
-    /* This memcpy is safe because dst_size >= src_size is validated above */
-    memcpy(dst, src, src_size);
-
+  /* Validation 2: Size range checks (prevent integer overflow) */
+  if (src_size == 0) {
+    /* Zero-size copy is technically valid but suspicious */
     return 0;
+  }
+
+  if (src_size > MAX_BUFFER_SIZE) {
+#ifdef LOG
+    log_put_internal("nfc_safe_memcpy: src_size exceeds MAX_BUFFER_SIZE");
+#endif
+    return -ERANGE;
+  }
+
+  if (dst_size > MAX_BUFFER_SIZE) {
+#ifdef LOG
+    log_put_internal("nfc_safe_memcpy: dst_size exceeds MAX_BUFFER_SIZE");
+#endif
+    return -ERANGE;
+  }
+
+  /* Validation 3: CRITICAL BUFFER OVERFLOW CHECK */
+  /* This check prevents buffer overflow by ensuring destination has sufficient space */
+  if (dst_size < src_size) {
+#ifdef LOG
+    log_put_internal("nfc_safe_memcpy: BUFFER OVERFLOW PREVENTED");
+#endif
+    return -EOVERFLOW;
+  }
+
+  /* All checks passed - safe to copy */
+  /* This memcpy is safe because dst_size >= src_size is validated above */
+  memcpy(dst, src, src_size);
+
+  return 0;
 }
 
 /**
@@ -121,43 +115,39 @@ int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size
  */
 int nfc_secure_memset(void *ptr, int val, size_t size)
 {
-    /* Validation 1: NULL pointer check */
-    if (ptr == NULL)
-    {
+  /* Validation 1: NULL pointer check */
+  if (ptr == NULL) {
 #ifdef LOG
-        log_put_internal("nfc_secure_memset: ptr is NULL");
+    log_put_internal("nfc_secure_memset: ptr is NULL");
 #endif
-        return -EINVAL;
-    }
+    return -EINVAL;
+  }
 
-    /* Validation 2: Size range check */
-    if (size == 0)
-    {
-        /* Zero-size memset is valid, no-op */
-        return 0;
-    }
-
-    if (size > MAX_BUFFER_SIZE)
-    {
-#ifdef LOG
-        log_put_internal("nfc_secure_memset: size exceeds MAX_BUFFER_SIZE");
-#endif
-        return -ERANGE;
-    }
-
-    /* Secure memset implementation using volatile pointer */
-    /* CRITICAL: volatile prevents compiler optimization */
-    volatile uint8_t *volatile_ptr = (volatile uint8_t *)ptr;
-    uint8_t byte_value = (uint8_t)val;
-
-    /* Explicit loop to ensure every byte is written */
-    /* Compiler cannot optimize away writes to volatile pointer */
-    for (size_t i = 0; i < size; i++)
-    {
-        volatile_ptr[i] = byte_value;
-    }
-
+  /* Validation 2: Size range check */
+  if (size == 0) {
+    /* Zero-size memset is valid, no-op */
     return 0;
+  }
+
+  if (size > MAX_BUFFER_SIZE) {
+#ifdef LOG
+    log_put_internal("nfc_secure_memset: size exceeds MAX_BUFFER_SIZE");
+#endif
+    return -ERANGE;
+  }
+
+  /* Secure memset implementation using volatile pointer */
+  /* CRITICAL: volatile prevents compiler optimization */
+  volatile uint8_t *volatile_ptr = (volatile uint8_t *)ptr;
+  uint8_t byte_value = (uint8_t)val;
+
+  /* Explicit loop to ensure every byte is written */
+  /* Compiler cannot optimize away writes to volatile pointer */
+  for (size_t i = 0; i < size; i++) {
+    volatile_ptr[i] = byte_value;
+  }
+
+  return 0;
 }
 
 /**
@@ -177,19 +167,19 @@ int nfc_secure_memset(void *ptr, int val, size_t size)
 static bool buffers_overlap(const void *dst, size_t dst_size,
                             const void *src, size_t src_size)
 {
-    const uint8_t *dst_ptr = (const uint8_t *)dst;
-    const uint8_t *src_ptr = (const uint8_t *)src;
+  const uint8_t *dst_ptr = (const uint8_t *)dst;
+  const uint8_t *src_ptr = (const uint8_t *)src;
 
-    /* Check if dst overlaps with src */
-    if (dst_ptr >= src_ptr && dst_ptr < (src_ptr + src_size)) {
-        return true;
-    }
+  /* Check if dst overlaps with src */
+  if (dst_ptr >= src_ptr && dst_ptr < (src_ptr + src_size)) {
+    return true;
+  }
 
-    /* Check if src overlaps with dst */
-    if (src_ptr >= dst_ptr && src_ptr < (dst_ptr + dst_size)) {
-        return true;
-    }
+  /* Check if src overlaps with dst */
+  if (src_ptr >= dst_ptr && src_ptr < (dst_ptr + dst_size)) {
+    return true;
+  }
 
-    return false;
+  return false;
 }
 #endif /* 0 */

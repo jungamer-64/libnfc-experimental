@@ -323,7 +323,7 @@ nfc_open(nfc_context *context, const nfc_connstring connstring)
       if (strcmp(ncs, context->user_defined_devices[i].connstring) == 0) {
         // This is a device sets by user, we use the device name given by user
         size_t name_len = strnlen(context->user_defined_devices[i].name, DEVICE_NAME_LENGTH);
-        if (nfc_safe_memcpy(pnd->name, DEVICE_NAME_LENGTH, 
+        if (nfc_safe_memcpy(pnd->name, DEVICE_NAME_LENGTH,
                             context->user_defined_devices[i].name, name_len) < 0) {
           log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy device name");
           nfc_close(pnd);

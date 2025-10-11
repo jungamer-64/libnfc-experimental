@@ -47,14 +47,14 @@
  * @brief Execute corresponding driver function if exists.
  */
 #define HAL( FUNCTION, ... ) __extension__ ({int res; \
-  pnd->last_error = 0; \
-  if (pnd->driver->FUNCTION) { \
-    res = pnd->driver->FUNCTION( __VA_ARGS__ ); \
-  } else { \
-    pnd->last_error = NFC_EDEVNOTSUPP; \
-    res = false; \
-  } \
-  res;})
+    pnd->last_error = 0; \
+    if (pnd->driver->FUNCTION) { \
+      res = pnd->driver->FUNCTION( __VA_ARGS__ ); \
+    } else { \
+      pnd->last_error = NFC_EDEVNOTSUPP; \
+      res = false; \
+    } \
+    res;})
 
 #ifndef MIN
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))

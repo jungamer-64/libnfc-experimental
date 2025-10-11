@@ -50,7 +50,7 @@ char    *optarg;                /* argument associated with option */
  * getopt --
  *      Parse argc/argv argument vector.
  */
-int getopt(int nargc, char * const nargv[], const char *ostr)
+int getopt(int nargc, char *const nargv[], const char *ostr)
 {
   static char *place = EMSG;              /* option letter processing */
   const char *oli;                              /* option letter list index */
@@ -67,26 +67,25 @@ int getopt(int nargc, char * const nargv[], const char *ostr)
       return (-1);
     }
   }                                       /* option letter okay? */
-  if ((optopt = (int)*place++) == (int)':' ||
-    !(oli = strchr(ostr, optopt))) {
-      /*
-      * if the user didn't specify '-' as an option,
-      * assume it means -1.
-      */
-      if (optopt == (int)'-')
-        return (-1);
-      if (!*place)
-        ++optind;
-      if (opterr && *ostr != ':')
-        (void)printf("illegal option -- %c\n", optopt);
-      return (BADCH);
+  if ((optopt = (int) * place++) == (int)':' ||
+      !(oli = strchr(ostr, optopt))) {
+    /*
+    * if the user didn't specify '-' as an option,
+    * assume it means -1.
+    */
+    if (optopt == (int)'-')
+      return (-1);
+    if (!*place)
+      ++optind;
+    if (opterr && *ostr != ':')
+      (void)printf("illegal option -- %c\n", optopt);
+    return (BADCH);
   }
   if (*++oli != ':') {                    /* don't need argument */
     optarg = NULL;
     if (!*place)
       ++optind;
-  }
-  else {                                  /* need an argument */
+  } else {                                /* need an argument */
     if (*place)                     /* no white space */
       optarg = place;
     else if (nargc <= ++optind) {   /* no arg */
@@ -96,8 +95,7 @@ int getopt(int nargc, char * const nargv[], const char *ostr)
       if (opterr)
         (void)printf("option requires an argument -- %c\n", optopt);
       return (BADCH);
-    }
-    else                            /* white space */
+    } else                          /* white space */
       optarg = nargv[optind];
     place = EMSG;
     ++optind;

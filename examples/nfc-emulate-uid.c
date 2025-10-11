@@ -77,8 +77,7 @@ static void
 intr_hdlr(int sig)
 {
   (void)sig;
-  if (pnd != NULL)
-  {
+  if (pnd != NULL) {
     printf("\nAborting current command...\n");
     nfc_abort_command(pnd);
     nfc_close(pnd);
@@ -108,36 +107,27 @@ int main(int argc, char *argv[])
       i;
 
   // Get commandline options
-  for (arg = 1; arg < argc; arg++)
-  {
-    if (0 == strcmp(argv[arg], "-h"))
-    {
+  for (arg = 1; arg < argc; arg++) {
+    if (0 == strcmp(argv[arg], "-h")) {
       print_usage(argv);
       exit(EXIT_SUCCESS);
-    }
-    else if (0 == strcmp(argv[arg], "-q"))
-    {
+    } else if (0 == strcmp(argv[arg], "-q")) {
       printf("Quiet mode.\n");
       quiet_output = true;
-    }
-    else if ((arg == argc - 1) && (strlen(argv[arg]) == 8))
-    { // See if UID was specified as HEX string
+    } else if ((arg == argc - 1) && (strlen(argv[arg]) == 8)) {
+      // See if UID was specified as HEX string
       uint8_t abtTmp[3] = {0x00, 0x00, 0x00};
       printf("[+] Using UID: %s\n", argv[arg]);
       abtUidBcc[4] = 0x00;
-      for (i = 0; i < 4; ++i)
-      {
-        if (nfc_safe_memcpy(abtTmp, sizeof(abtTmp), argv[arg] + i * 2, 2) < 0)
-        {
+      for (i = 0; i < 4; ++i) {
+        if (nfc_safe_memcpy(abtTmp, sizeof(abtTmp), argv[arg] + i * 2, 2) < 0) {
           ERR("Failed to copy UID bytes from command line");
           exit(EXIT_FAILURE);
         }
         abtUidBcc[i] = (uint8_t)strtol((char *)abtTmp, NULL, 16);
         abtUidBcc[4] ^= abtUidBcc[i];
       }
-    }
-    else
-    {
+    } else {
       ERR("%s is not supported option.", argv[arg]);
       print_usage(argv);
       exit(EXIT_FAILURE);
@@ -151,8 +141,7 @@ int main(int argc, char *argv[])
 #endif
 
   nfc_init(&context);
-  if (context == NULL)
-  {
+  if (context == NULL) {
     ERR("Unable to init libnfc (malloc)");
     exit(EXIT_FAILURE);
   }
@@ -160,8 +149,7 @@ int main(int argc, char *argv[])
   // Try to open the NFC device
   pnd = nfc_open(context, NULL);
 
-  if (pnd == NULL)
-  {
+  if (pnd == NULL) {
     ERR("Unable to open NFC device");
     nfc_exit(context);
     exit(EXIT_FAILURE);
@@ -175,22 +163,21 @@ int main(int argc, char *argv[])
 
   // Note: We have to build a "fake" nfc_target in order to do exactly the same that was done before the new nfc_target_init() was introduced.
   nfc_target nt = {
-      .nm = {
-          .nmt = NMT_ISO14443A,
-          .nbr = NBR_UNDEFINED,
+    .nm = {
+      .nmt = NMT_ISO14443A,
+      .nbr = NBR_UNDEFINED,
+    },
+    .nti = {
+      .nai = {
+        .abtAtqa = {0x04, 0x00},
+        .abtUid = {0x08, 0xad, 0xbe, 0xef},
+        .btSak = 0x20,
+        .szUidLen = 4,
+        .szAtsLen = 0,
       },
-      .nti = {
-          .nai = {
-              .abtAtqa = {0x04, 0x00},
-              .abtUid = {0x08, 0xad, 0xbe, 0xef},
-              .btSak = 0x20,
-              .szUidLen = 4,
-              .szAtsLen = 0,
-          },
-      },
+    },
   };
-  if ((szRecvBits = nfc_target_init(pnd, &nt, abtRecv, sizeof(abtRecv), 0)) < 0)
-  {
+  if ((szRecvBits = nfc_target_init(pnd, &nt, abtRecv, sizeof(abtRecv), 0)) < 0) {
     nfc_perror(pnd, "nfc_target_init");
     ERR("Could not come out of auto-emulation, no command was received");
     nfc_close(pnd);
@@ -200,8 +187,7 @@ int main(int argc, char *argv[])
   printf("[+] Received initiator command: ");
   print_hex_bits(abtRecv, (size_t)szRecvBits);
   printf("[+] Configuring communication\n");
-  if ((nfc_device_set_property_bool(pnd, NP_HANDLE_CRC, false) < 0) || (nfc_device_set_property_bool(pnd, NP_HANDLE_PARITY, true) < 0))
-  {
+  if ((nfc_device_set_property_bool(pnd, NP_HANDLE_CRC, false) < 0) || (nfc_device_set_property_bool(pnd, NP_HANDLE_PARITY, true) < 0)) {
     nfc_perror(pnd, "nfc_device_set_property_bool");
     nfc_close(pnd);
     nfc_exit(context);
@@ -210,55 +196,48 @@ int main(int argc, char *argv[])
   printf("[+] Done, the emulated tag is initialized with UID: %02X%02X%02X%02X\n\n", abtUidBcc[0], abtUidBcc[1],
          abtUidBcc[2], abtUidBcc[3]);
 
-  while (true)
-  {
+  while (true) {
     // Test if we received a frame
-    if ((szRecvBits = nfc_target_receive_bits(pnd, abtRecv, sizeof(abtRecv), 0)) > 0)
-    {
+    if ((szRecvBits = nfc_target_receive_bits(pnd, abtRecv, sizeof(abtRecv), 0)) > 0) {
       // Prepare the command to send back for the anti-collision request
-      switch (szRecvBits)
-      {
-      case 7: // Request or Wakeup
-        pbtTx = abtAtqa;
-        szTxBits = 16;
-        // New anti-collsion session started
-        if (!quiet_output)
-          printf("\n");
-        break;
+      switch (szRecvBits) {
+        case 7: // Request or Wakeup
+          pbtTx = abtAtqa;
+          szTxBits = 16;
+          // New anti-collsion session started
+          if (!quiet_output)
+            printf("\n");
+          break;
 
-      case 16: // Select All
-        pbtTx = abtUidBcc;
-        szTxBits = 40;
-        break;
+        case 16: // Select All
+          pbtTx = abtUidBcc;
+          szTxBits = 40;
+          break;
 
-      case 72: // Select Tag
-        pbtTx = abtSak;
-        szTxBits = 24;
-        break;
+        case 72: // Select Tag
+          pbtTx = abtSak;
+          szTxBits = 24;
+          break;
 
-      default: // unknown length?
-        szTxBits = 0;
-        break;
+        default: // unknown length?
+          szTxBits = 0;
+          break;
       }
 
-      if (!quiet_output)
-      {
+      if (!quiet_output) {
         printf("R: ");
         print_hex_bits(abtRecv, (size_t)szRecvBits);
       }
       // Test if we know how to respond
-      if (szTxBits)
-      {
+      if (szTxBits) {
         // Send and print the command to the screen
-        if (nfc_target_send_bits(pnd, pbtTx, szTxBits, NULL) < 0)
-        {
+        if (nfc_target_send_bits(pnd, pbtTx, szTxBits, NULL) < 0) {
           nfc_perror(pnd, "nfc_target_send_bits");
           nfc_close(pnd);
           nfc_exit(context);
           exit(EXIT_FAILURE);
         }
-        if (!quiet_output)
-        {
+        if (!quiet_output) {
           printf("T: ");
           print_hex_bits(pbtTx, szTxBits);
         }

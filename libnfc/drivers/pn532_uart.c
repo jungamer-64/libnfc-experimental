@@ -58,8 +58,7 @@
 
 // Internal data structs
 const struct pn53x_io pn532_uart_io;
-struct pn532_uart_data
-{
+struct pn532_uart_data {
   serial_port port;
 #ifndef WIN32
   int iAbortFds[2];
@@ -83,13 +82,11 @@ pn532_uart_scan(const nfc_context *context, nfc_connstring connstrings[], const 
   const char *acPort;
   int iDevice = 0;
 
-  while ((acPort = acPorts[iDevice++]))
-  {
+  while ((acPort = acPorts[iDevice++])) {
     sp = uart_open(acPort);
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Trying to find PN532 device on serial port: %s at %d baud.", acPort, PN532_UART_DEFAULT_SPEED);
 
-    if ((sp != INVALID_SERIAL_PORT) && (sp != CLAIMED_SERIAL_PORT))
-    {
+    if ((sp != INVALID_SERIAL_PORT) && (sp != CLAIMED_SERIAL_PORT)) {
       // We need to flush input to be sure first reply does not comes from older byte transceive
       uart_flush_input(sp, true);
       // Serial port claimed but we need to check if a PN532_UART is opened.
@@ -98,30 +95,27 @@ pn532_uart_scan(const nfc_context *context, nfc_connstring connstrings[], const 
       nfc_connstring connstring;
       snprintf(connstring, sizeof(nfc_connstring), "%s:%s:%" PRIu32, PN532_UART_DRIVER_NAME, acPort, PN532_UART_DEFAULT_SPEED);
       nfc_device *pnd = nfc_device_new(context, connstring);
-      if (!pnd)
-      {
+      if (!pnd) {
         log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to allocate device");
         uart_close(sp);
-        return nfc_cleanup_and_return((void**)acPorts, 0);
+        return nfc_cleanup_and_return((void **)acPorts, 0);
       }
       pnd->driver = &pn532_uart_driver;
       // Use nfc_alloc_driver_data for unified allocation with logging
-      if (nfc_alloc_driver_data(pnd, sizeof(struct pn532_uart_data)) < 0)
-      {
+      if (nfc_alloc_driver_data(pnd, sizeof(struct pn532_uart_data)) < 0) {
         uart_close(sp);
         nfc_device_free(pnd);
-        return nfc_cleanup_and_return((void**)acPorts, 0);
+        return nfc_cleanup_and_return((void **)acPorts, 0);
       }
       DRIVER_DATA(pnd)->port = sp;
 
       // Alloc and init chip's data
-      if (pn53x_data_new(pnd, &pn532_uart_io) == NULL)
-      {
+      if (pn53x_data_new(pnd, &pn532_uart_io) == NULL) {
         log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
                 "Failed to allocate chip data");
         uart_close(DRIVER_DATA(pnd)->port);
         nfc_device_free(pnd);
-        return nfc_cleanup_and_return((void**)acPorts, 0);
+        return nfc_cleanup_and_return((void **)acPorts, 0);
       }
       // SAMConfiguration command if needed to wakeup the chip and pn53x_SAMConfiguration check if the chip is a PN532
       CHIP_DATA(pnd)->type = PN532;
@@ -130,12 +124,11 @@ pn532_uart_scan(const nfc_context *context, nfc_connstring connstrings[], const 
 
 #ifndef WIN32
       // Use nfc_init_abort_mechanism for unified pipe setup
-      if (nfc_init_abort_mechanism(DRIVER_DATA(pnd)->iAbortFds) < 0)
-      {
+      if (nfc_init_abort_mechanism(DRIVER_DATA(pnd)->iAbortFds) < 0) {
         uart_close(DRIVER_DATA(pnd)->port);
         pn53x_data_free(pnd);
         nfc_device_free(pnd);
-        return nfc_cleanup_and_return((void**)acPorts, 0);
+        return nfc_cleanup_and_return((void **)acPorts, 0);
       }
 #else
       DRIVER_DATA(pnd)->abort_flag = false;
@@ -146,8 +139,7 @@ pn532_uart_scan(const nfc_context *context, nfc_connstring connstrings[], const 
       uart_close(DRIVER_DATA(pnd)->port);
       pn53x_data_free(pnd);
       nfc_device_free(pnd);
-      if (res < 0)
-      {
+      if (res < 0) {
         continue;
       }
 
@@ -163,16 +155,14 @@ pn532_uart_scan(const nfc_context *context, nfc_connstring connstrings[], const 
     }
   }
   iDevice = 0;
-  while ((acPort = acPorts[iDevice++]))
-  {
+  while ((acPort = acPorts[iDevice++])) {
     free((void *)acPort);
   }
   free(acPorts);
   return device_found;
 }
 
-struct pn532_uart_descriptor
-{
+struct pn532_uart_descriptor {
   char *port;
   uint32_t speed;
 };
@@ -201,11 +191,9 @@ pn532_uart_open(const nfc_context *context, const nfc_connstring connstring)
   struct pn532_uart_descriptor ndd;
   char *speed_s;
   int connstring_decode_level = connstring_decode(connstring, PN532_UART_DRIVER_NAME, NULL, &ndd.port, &speed_s);
-  if (connstring_decode_level == 3)
-  {
+  if (connstring_decode_level == 3) {
     ndd.speed = 0;
-    if (sscanf(speed_s, "%10" PRIu32, &ndd.speed) != 1)
-    {
+    if (sscanf(speed_s, "%10" PRIu32, &ndd.speed) != 1) {
       // speed_s is not a number
       free(ndd.port);
       free(speed_s);
@@ -213,12 +201,10 @@ pn532_uart_open(const nfc_context *context, const nfc_connstring connstring)
     }
     free(speed_s);
   }
-  if (connstring_decode_level < 2)
-  {
+  if (connstring_decode_level < 2) {
     return NULL;
   }
-  if (connstring_decode_level < 3)
-  {
+  if (connstring_decode_level < 3) {
     ndd.speed = PN532_UART_DEFAULT_SPEED;
   }
   serial_port sp;
@@ -231,8 +217,7 @@ pn532_uart_open(const nfc_context *context, const nfc_connstring connstring)
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Invalid serial port: %s", ndd.port);
   if (sp == CLAIMED_SERIAL_PORT)
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Serial port already claimed: %s", ndd.port);
-  if ((sp == CLAIMED_SERIAL_PORT) || (sp == INVALID_SERIAL_PORT))
-  {
+  if ((sp == CLAIMED_SERIAL_PORT) || (sp == INVALID_SERIAL_PORT)) {
     free(ndd.port);
     return NULL;
   }
@@ -242,8 +227,7 @@ pn532_uart_open(const nfc_context *context, const nfc_connstring connstring)
 
   // We have a connection
   pnd = nfc_device_new(context, connstring);
-  if (!pnd)
-  {
+  if (!pnd) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to allocate device");
     free(ndd.port);
     uart_close(sp);
@@ -253,8 +237,7 @@ pn532_uart_open(const nfc_context *context, const nfc_connstring connstring)
   free(ndd.port);
 
   // Use nfc_alloc_driver_data for unified allocation with logging
-  if (nfc_alloc_driver_data(pnd, sizeof(struct pn532_uart_data)) < 0)
-  {
+  if (nfc_alloc_driver_data(pnd, sizeof(struct pn532_uart_data)) < 0) {
     uart_close(sp);
     nfc_device_free(pnd);
     return NULL;
@@ -262,8 +245,7 @@ pn532_uart_open(const nfc_context *context, const nfc_connstring connstring)
   DRIVER_DATA(pnd)->port = sp;
 
   // Alloc and init chip's data
-  if (pn53x_data_new(pnd, &pn532_uart_io) == NULL)
-  {
+  if (pn53x_data_new(pnd, &pn532_uart_io) == NULL) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
             "Failed to allocate chip data");
     uart_close(DRIVER_DATA(pnd)->port);
@@ -281,8 +263,7 @@ pn532_uart_open(const nfc_context *context, const nfc_connstring connstring)
 
 #ifndef WIN32
   // pipe-based abort mechanism
-  if (pipe(DRIVER_DATA(pnd)->iAbortFds) < 0)
-  {
+  if (pipe(DRIVER_DATA(pnd)->iAbortFds) < 0) {
     uart_close(DRIVER_DATA(pnd)->port);
     pn53x_data_free(pnd);
     nfc_device_free(pnd);
@@ -293,8 +274,7 @@ pn532_uart_open(const nfc_context *context, const nfc_connstring connstring)
 #endif
 
   // Check communication using "Diagnose" command, with "Communication test" (0x00)
-  if (pn53x_check_communication(pnd) < 0)
-  {
+  if (pn53x_check_communication(pnd) < 0) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "pn53x_check_communication error");
     pn532_uart_close(pnd);
     return NULL;
@@ -318,29 +298,28 @@ static int
 pn532_uart_handle_power_mode(nfc_device *pnd)
 {
   int res = 0;
-  
-  switch (CHIP_DATA(pnd)->power_mode)
-  {
-  case LOWVBAT:
-    // PN532C106 wakeup and SAMConfiguration
-    if ((res = pn532_uart_wakeup(pnd)) < 0)
-      return res;
-    // According to PN532 application note, C106 appendix: exit Low Vbat mode
-    if ((res = pn532_SAMConfiguration(pnd, PSM_NORMAL, 1000)) < 0)
-      return res;
-    break;
-    
-  case POWERDOWN:
-    // Simple wakeup
-    if ((res = pn532_uart_wakeup(pnd)) < 0)
-      return res;
-    break;
-    
-  case NORMAL:
-    // Nothing to do
-    break;
+
+  switch (CHIP_DATA(pnd)->power_mode) {
+    case LOWVBAT:
+      // PN532C106 wakeup and SAMConfiguration
+      if ((res = pn532_uart_wakeup(pnd)) < 0)
+        return res;
+      // According to PN532 application note, C106 appendix: exit Low Vbat mode
+      if ((res = pn532_SAMConfiguration(pnd, PSM_NORMAL, 1000)) < 0)
+        return res;
+      break;
+
+    case POWERDOWN:
+      // Simple wakeup
+      if ((res = pn532_uart_wakeup(pnd)) < 0)
+        return res;
+      break;
+
+    case NORMAL:
+      // Nothing to do
+      break;
   }
-  
+
   return NFC_SUCCESS;
 }
 
@@ -350,19 +329,17 @@ pn532_uart_wait_for_ack(nfc_device *pnd, int timeout)
 {
   uint8_t abtRxBuf[PN53x_ACK_FRAME__LEN];
   int res = uart_receive(DRIVER_DATA(pnd)->port, abtRxBuf, sizeof(abtRxBuf), 0, timeout);
-  
-  if (res != 0)
-  {
+
+  if (res != 0) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "Unable to read ACK");
     pnd->last_error = res;
     return pnd->last_error;
   }
 
-  if (pn53x_check_ack_frame(pnd, abtRxBuf, sizeof(abtRxBuf)) != 0)
-  {
+  if (pn53x_check_ack_frame(pnd, abtRxBuf, sizeof(abtRxBuf)) != 0) {
     return pnd->last_error;
   }
-  
+
   return NFC_SUCCESS;
 }
 
@@ -371,7 +348,7 @@ static int
 pn532_uart_send(nfc_device *pnd, const uint8_t *pbtData, const size_t szData, int timeout)
 {
   int res = 0;
-  
+
   // Discard any junk bytes before sending
   uart_flush_input(DRIVER_DATA(pnd)->port, false);
 
@@ -383,16 +360,14 @@ pn532_uart_send(nfc_device *pnd, const uint8_t *pbtData, const size_t szData, in
   uint8_t abtFrame[PN532_BUFFER_LEN] = {0x00, 0x00, 0xff};
   size_t szFrame = 0;
 
-  if ((res = pn53x_build_frame(abtFrame, &szFrame, pbtData, szData)) < 0)
-  {
+  if ((res = pn53x_build_frame(abtFrame, &szFrame, pbtData, szData)) < 0) {
     pnd->last_error = res;
     return pnd->last_error;
   }
 
   // Transmit frame
   res = uart_send(DRIVER_DATA(pnd)->port, abtFrame, szFrame, timeout);
-  if (res != 0)
-  {
+  if (res != 0) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Unable to transmit data. (TX)");
     pnd->last_error = res;
     return pnd->last_error;
@@ -412,61 +387,50 @@ pn532_uart_receive(nfc_device *pnd, uint8_t *pbtData, const size_t szDataLen, in
 #ifndef WIN32
   abort_p = &(DRIVER_DATA(pnd)->iAbortFds[1]);
 #else
-  abort_p = (void *)&(DRIVER_DATA(pnd)->abort_flag);
+  abort_p = (void *) & (DRIVER_DATA(pnd)->abort_flag);
 #endif
 
   pnd->last_error = uart_receive(DRIVER_DATA(pnd)->port, abtRxBuf, 5, abort_p, timeout);
 
-  if (abort_p && (NFC_EOPABORTED == pnd->last_error))
-  {
+  if (abort_p && (NFC_EOPABORTED == pnd->last_error)) {
     pn532_uart_ack(pnd);
     return NFC_EOPABORTED;
   }
 
-  if (pnd->last_error < 0)
-  {
+  if (pnd->last_error < 0) {
     goto error;
   }
 
   const uint8_t pn53x_preamble[3] = {0x00, 0x00, 0xff};
-  if (0 != (memcmp(abtRxBuf, pn53x_preamble, 3)))
-  {
+  if (0 != (memcmp(abtRxBuf, pn53x_preamble, 3))) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Frame preamble+start code mismatch");
     pnd->last_error = NFC_EIO;
     goto error;
   }
 
-  if ((0x01 == abtRxBuf[3]) && (0xff == abtRxBuf[4]))
-  {
+  if ((0x01 == abtRxBuf[3]) && (0xff == abtRxBuf[4])) {
     // Error frame
     uart_receive(DRIVER_DATA(pnd)->port, abtRxBuf, 3, 0, timeout);
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Application level error detected");
     pnd->last_error = NFC_EIO;
     goto error;
-  }
-  else if ((0xff == abtRxBuf[3]) && (0xff == abtRxBuf[4]))
-  {
+  } else if ((0xff == abtRxBuf[3]) && (0xff == abtRxBuf[4])) {
     // Extended frame
     pnd->last_error = uart_receive(DRIVER_DATA(pnd)->port, abtRxBuf, 3, 0, timeout);
-    if (pnd->last_error != 0)
-    {
+    if (pnd->last_error != 0) {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Unable to receive data. (RX)");
       goto error;
     }
     // (abtRxBuf[0] << 8) + abtRxBuf[1] (LEN) include TFI + (CC+1)
     len = (abtRxBuf[0] << 8) + abtRxBuf[1] - 2;
-    if (((abtRxBuf[0] + abtRxBuf[1] + abtRxBuf[2]) % 256) != 0)
-    {
+    if (((abtRxBuf[0] + abtRxBuf[1] + abtRxBuf[2]) % 256) != 0) {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Length checksum mismatch");
       pnd->last_error = NFC_EIO;
       goto error;
     }
-  }
-  else
-  {
+  } else {
     // Normal frame
-    if (256 != (abtRxBuf[3] + abtRxBuf[4]))
-    {
+    if (256 != (abtRxBuf[3] + abtRxBuf[4])) {
       // Length checksum validation failed
       // Note: Retry logic could be implemented here for transient errors
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Length checksum mismatch");
@@ -478,8 +442,7 @@ pn532_uart_receive(nfc_device *pnd, uint8_t *pbtData, const size_t szDataLen, in
     len = abtRxBuf[3] - 2;
   }
 
-  if (len > szDataLen)
-  {
+  if (len > szDataLen) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to receive data: buffer too small. (szDataLen: %" PRIuPTR ", len: %" PRIuPTR ")", szDataLen, len);
     pnd->last_error = NFC_EIO;
     goto error;
@@ -487,59 +450,50 @@ pn532_uart_receive(nfc_device *pnd, uint8_t *pbtData, const size_t szDataLen, in
 
   // TFI + PD0 (CC+1)
   pnd->last_error = uart_receive(DRIVER_DATA(pnd)->port, abtRxBuf, 2, 0, timeout);
-  if (pnd->last_error != 0)
-  {
+  if (pnd->last_error != 0) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Unable to receive data. (RX)");
     goto error;
   }
 
-  if (abtRxBuf[0] != 0xD5)
-  {
+  if (abtRxBuf[0] != 0xD5) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "TFI Mismatch");
     pnd->last_error = NFC_EIO;
     goto error;
   }
 
-  if (abtRxBuf[1] != CHIP_DATA(pnd)->last_command + 1)
-  {
+  if (abtRxBuf[1] != CHIP_DATA(pnd)->last_command + 1) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Command Code verification failed");
     pnd->last_error = NFC_EIO;
     goto error;
   }
 
-  if (len)
-  {
+  if (len) {
     pnd->last_error = uart_receive(DRIVER_DATA(pnd)->port, pbtData, len, 0, timeout);
-    if (pnd->last_error != 0)
-    {
+    if (pnd->last_error != 0) {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Unable to receive data. (RX)");
       goto error;
     }
   }
 
   pnd->last_error = uart_receive(DRIVER_DATA(pnd)->port, abtRxBuf, 2, 0, timeout);
-  if (pnd->last_error != 0)
-  {
+  if (pnd->last_error != 0) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Unable to receive data. (RX)");
     goto error;
   }
 
   uint8_t btDCS = (256 - 0xD5);
   btDCS -= CHIP_DATA(pnd)->last_command + 1;
-  for (size_t szPos = 0; szPos < len; szPos++)
-  {
+  for (size_t szPos = 0; szPos < len; szPos++) {
     btDCS -= pbtData[szPos];
   }
 
-  if (btDCS != abtRxBuf[0])
-  {
+  if (btDCS != abtRxBuf[0]) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Data checksum mismatch");
     pnd->last_error = NFC_EIO;
     goto error;
   }
 
-  if (0x00 != abtRxBuf[1])
-  {
+  if (0x00 != abtRxBuf[1]) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Frame postamble mismatch");
     pnd->last_error = NFC_EIO;
     goto error;
@@ -553,11 +507,9 @@ error:
 
 int pn532_uart_ack(nfc_device *pnd)
 {
-  if (POWERDOWN == CHIP_DATA(pnd)->power_mode)
-  {
+  if (POWERDOWN == CHIP_DATA(pnd)->power_mode) {
     int res = 0;
-    if ((res = pn532_uart_wakeup(pnd)) < 0)
-    {
+    if ((res = pn532_uart_wakeup(pnd)) < 0) {
       return res;
     }
   }
@@ -567,12 +519,10 @@ int pn532_uart_ack(nfc_device *pnd)
 static int
 pn532_uart_abort_command(nfc_device *pnd)
 {
-  if (pnd)
-  {
+  if (pnd) {
 #ifndef WIN32
     close(DRIVER_DATA(pnd)->iAbortFds[0]);
-    if (pipe(DRIVER_DATA(pnd)->iAbortFds) < 0)
-    {
+    if (pipe(DRIVER_DATA(pnd)->iAbortFds) < 0) {
       return NFC_ESOFT;
     }
 #else
@@ -583,43 +533,43 @@ pn532_uart_abort_command(nfc_device *pnd)
 }
 
 const struct pn53x_io pn532_uart_io = {
-    .send = pn532_uart_send,
-    .receive = pn532_uart_receive,
+  .send = pn532_uart_send,
+  .receive = pn532_uart_receive,
 };
 
 const struct nfc_driver pn532_uart_driver = {
-    .name = PN532_UART_DRIVER_NAME,
-    .scan_type = INTRUSIVE,
-    .scan = pn532_uart_scan,
-    .open = pn532_uart_open,
-    .close = pn532_uart_close,
-    .strerror = pn53x_strerror,
+  .name = PN532_UART_DRIVER_NAME,
+  .scan_type = INTRUSIVE,
+  .scan = pn532_uart_scan,
+  .open = pn532_uart_open,
+  .close = pn532_uart_close,
+  .strerror = pn53x_strerror,
 
-    .initiator_init = pn53x_initiator_init,
-    .initiator_init_secure_element = pn532_initiator_init_secure_element,
-    .initiator_select_passive_target = pn53x_initiator_select_passive_target,
-    .initiator_poll_target = pn53x_initiator_poll_target,
-    .initiator_select_dep_target = pn53x_initiator_select_dep_target,
-    .initiator_deselect_target = pn53x_initiator_deselect_target,
-    .initiator_transceive_bytes = pn53x_initiator_transceive_bytes,
-    .initiator_transceive_bits = pn53x_initiator_transceive_bits,
-    .initiator_transceive_bytes_timed = pn53x_initiator_transceive_bytes_timed,
-    .initiator_transceive_bits_timed = pn53x_initiator_transceive_bits_timed,
-    .initiator_target_is_present = pn53x_initiator_target_is_present,
+  .initiator_init = pn53x_initiator_init,
+  .initiator_init_secure_element = pn532_initiator_init_secure_element,
+  .initiator_select_passive_target = pn53x_initiator_select_passive_target,
+  .initiator_poll_target = pn53x_initiator_poll_target,
+  .initiator_select_dep_target = pn53x_initiator_select_dep_target,
+  .initiator_deselect_target = pn53x_initiator_deselect_target,
+  .initiator_transceive_bytes = pn53x_initiator_transceive_bytes,
+  .initiator_transceive_bits = pn53x_initiator_transceive_bits,
+  .initiator_transceive_bytes_timed = pn53x_initiator_transceive_bytes_timed,
+  .initiator_transceive_bits_timed = pn53x_initiator_transceive_bits_timed,
+  .initiator_target_is_present = pn53x_initiator_target_is_present,
 
-    .target_init = pn53x_target_init,
-    .target_send_bytes = pn53x_target_send_bytes,
-    .target_receive_bytes = pn53x_target_receive_bytes,
-    .target_send_bits = pn53x_target_send_bits,
-    .target_receive_bits = pn53x_target_receive_bits,
+  .target_init = pn53x_target_init,
+  .target_send_bytes = pn53x_target_send_bytes,
+  .target_receive_bytes = pn53x_target_receive_bytes,
+  .target_send_bits = pn53x_target_send_bits,
+  .target_receive_bits = pn53x_target_receive_bits,
 
-    .device_set_property_bool = pn53x_set_property_bool,
-    .device_set_property_int = pn53x_set_property_int,
-    .get_supported_modulation = pn53x_get_supported_modulation,
-    .get_supported_baud_rate = pn53x_get_supported_baud_rate,
-    .device_get_information_about = pn53x_get_information_about,
+  .device_set_property_bool = pn53x_set_property_bool,
+  .device_set_property_int = pn53x_set_property_int,
+  .get_supported_modulation = pn53x_get_supported_modulation,
+  .get_supported_baud_rate = pn53x_get_supported_baud_rate,
+  .device_get_information_about = pn53x_get_information_about,
 
-    .abort_command = pn532_uart_abort_command,
-    .idle = pn53x_idle,
-    .powerdown = pn53x_PowerDown,
+  .abort_command = pn532_uart_abort_command,
+  .idle = pn53x_idle,
+  .powerdown = pn53x_PowerDown,
 };

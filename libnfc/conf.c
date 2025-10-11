@@ -66,8 +66,7 @@ escaped_value(const char line[BUFSIZ], int i, char **value)
   if (line[i] == 0 || line[i] == '\n')
     goto FAIL;
   int c = 0;
-  while (line[i] && line[i] != '"')
-  {
+  while (line[i] && line[i] != '"') {
     i++;
     c++;
   }
@@ -97,8 +96,7 @@ static int
 non_escaped_value(const char line[BUFSIZ], int i, char **value)
 {
   int c = 0;
-  while (line[i] && !isspace(line[i]))
-  {
+  while (line[i] && !isspace(line[i])) {
     i++;
     c++;
   }
@@ -137,8 +135,7 @@ parse_line(const char line[BUFSIZ], char **key, char **value)
     return -1;
 
   // key
-  while (isalnum(line[i]) || line[i] == '_' || line[i] == '.')
-  {
+  while (isalnum(line[i]) || line[i] == '_' || line[i] == '.') {
     i++;
     c++;
   }
@@ -190,39 +187,32 @@ conf_parse_file(const char *filename,
                 void *data)
 {
   FILE *f = fopen(filename, "r");
-  if (!f)
-  {
+  if (!f) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_INFO, "Unable to open file: %s", filename);
     return;
   }
   char line[BUFSIZ];
 
   int lineno = 0;
-  while (fgets(line, BUFSIZ, f) != NULL)
-  {
+  while (fgets(line, BUFSIZ, f) != NULL) {
     lineno++;
-    switch (line[0])
-    {
-    case '#':
-    case '\n':
-      break;
-    default:
-    {
-      char *key;
-      char *value;
-      if (parse_line(line, &key, &value) == 0)
-      {
-        conf_keyvalue(data, key, value);
-        free(key);
-        free(value);
+    switch (line[0]) {
+      case '#':
+      case '\n':
+        break;
+      default: {
+        char *key;
+        char *value;
+        if (parse_line(line, &key, &value) == 0) {
+          conf_keyvalue(data, key, value);
+          free(key);
+          free(value);
+        } else {
+          free(key);
+          free(value);
+          log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Parse error on line #%d: %s", lineno, line);
+        }
       }
-      else
-      {
-        free(key);
-        free(value);
-        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Parse error on line #%d: %s", lineno, line);
-      }
-    }
     }
   }
   fclose(f);
@@ -234,24 +224,15 @@ conf_keyvalue_context(void *data, const char *key, const char *value)
 {
   nfc_context *context = (nfc_context *)data;
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "key: [%s], value: [%s]", key, value);
-  if (strcmp(key, "allow_autoscan") == 0)
-  {
+  if (strcmp(key, "allow_autoscan") == 0) {
     string_as_boolean(value, &(context->allow_autoscan));
-  }
-  else if (strcmp(key, "allow_intrusive_scan") == 0)
-  {
+  } else if (strcmp(key, "allow_intrusive_scan") == 0) {
     string_as_boolean(value, &(context->allow_intrusive_scan));
-  }
-  else if (strcmp(key, "log_level") == 0)
-  {
+  } else if (strcmp(key, "log_level") == 0) {
     context->log_level = atoi(value);
-  }
-  else if (strcmp(key, "device.name") == 0)
-  {
-    if ((context->user_defined_device_count == 0) || strcmp(context->user_defined_devices[context->user_defined_device_count - 1].name, "") != 0)
-    {
-      if (context->user_defined_device_count >= MAX_USER_DEFINED_DEVICES)
-      {
+  } else if (strcmp(key, "device.name") == 0) {
+    if ((context->user_defined_device_count == 0) || strcmp(context->user_defined_devices[context->user_defined_device_count - 1].name, "") != 0) {
+      if (context->user_defined_device_count >= MAX_USER_DEFINED_DEVICES) {
         log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Configuration exceeded maximum user-defined devices.");
         return;
       }
@@ -259,19 +240,15 @@ conf_keyvalue_context(void *data, const char *key, const char *value)
     }
     size_t value_len = strlen(value);
     size_t copy_len = (value_len < DEVICE_NAME_LENGTH - 1) ? value_len : DEVICE_NAME_LENGTH - 1;
-    if (nfc_safe_memcpy(context->user_defined_devices[context->user_defined_device_count - 1].name, 
+    if (nfc_safe_memcpy(context->user_defined_devices[context->user_defined_device_count - 1].name,
                         DEVICE_NAME_LENGTH, value, copy_len) < 0) {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy device name");
       return;
     }
     context->user_defined_devices[context->user_defined_device_count - 1].name[copy_len] = '\0';
-  }
-  else if (strcmp(key, "device.connstring") == 0)
-  {
-    if ((context->user_defined_device_count == 0) || strcmp(context->user_defined_devices[context->user_defined_device_count - 1].connstring, "") != 0)
-    {
-      if (context->user_defined_device_count >= MAX_USER_DEFINED_DEVICES)
-      {
+  } else if (strcmp(key, "device.connstring") == 0) {
+    if ((context->user_defined_device_count == 0) || strcmp(context->user_defined_devices[context->user_defined_device_count - 1].connstring, "") != 0) {
+      if (context->user_defined_device_count >= MAX_USER_DEFINED_DEVICES) {
         log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Configuration exceeded maximum user-defined devices.");
         return;
       }
@@ -285,13 +262,9 @@ conf_keyvalue_context(void *data, const char *key, const char *value)
       return;
     }
     context->user_defined_devices[context->user_defined_device_count - 1].connstring[copy_len] = '\0';
-  }
-  else if (strcmp(key, "device.optional") == 0)
-  {
-    if ((context->user_defined_device_count == 0) || context->user_defined_devices[context->user_defined_device_count - 1].optional)
-    {
-      if (context->user_defined_device_count >= MAX_USER_DEFINED_DEVICES)
-      {
+  } else if (strcmp(key, "device.optional") == 0) {
+    if ((context->user_defined_device_count == 0) || context->user_defined_devices[context->user_defined_device_count - 1].optional) {
+      if (context->user_defined_device_count >= MAX_USER_DEFINED_DEVICES) {
         log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Configuration exceeded maximum user-defined devices.");
         return;
       }
@@ -299,9 +272,7 @@ conf_keyvalue_context(void *data, const char *key, const char *value)
     }
     if ((strcmp(value, "true") == 0) || (strcmp(value, "True") == 0) || (strcmp(value, "1") == 0)) // optional
       context->user_defined_devices[context->user_defined_device_count - 1].optional = true;
-  }
-  else
-  {
+  } else {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_INFO, "Unknown key in config line: %s = %s", key, value);
   }
 }
@@ -318,34 +289,26 @@ static void
 conf_devices_load(const char *dirname, nfc_context *context)
 {
   DIR *d = opendir(dirname);
-  if (!d)
-  {
+  if (!d) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Unable to open directory: %s", dirname);
-  }
-  else
-  {
+  } else {
     struct dirent *de;
     // Note: Device ordering is determined by filesystem readdir() order
     // For consistent ordering, devices can be explicitly configured in libnfc.conf
-    while ((de = readdir(d)) != NULL)
-    {
-      if (de->d_name[0] != '.')
-      {
+    while ((de = readdir(d)) != NULL) {
+      if (de->d_name[0] != '.') {
         const size_t filename_len = strlen(de->d_name);
         const size_t extension_len = strlen(".conf");
         if ((filename_len > extension_len) &&
-            (strncmp(".conf", de->d_name + (filename_len - extension_len), extension_len) == 0))
-        {
+            (strncmp(".conf", de->d_name + (filename_len - extension_len), extension_len) == 0)) {
           char filename[BUFSIZ];
           snprintf(filename, sizeof(filename), LIBNFC_DEVICECONFDIR "/%s", de->d_name);
           struct stat s;
-          if (stat(filename, &s) == -1)
-          {
+          if (stat(filename, &s) == -1) {
             perror("stat");
             continue;
           }
-          if (S_ISREG(s.st_mode))
-          {
+          if (S_ISREG(s.st_mode)) {
             conf_parse_file(filename, conf_keyvalue_device, context);
           }
         }

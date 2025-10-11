@@ -32,7 +32,7 @@
  * ```
  *
  * Configuration Options:
- * 
+ *
  * - NFC_SECURE_CHECK_OVERLAP: Enable buffer overlap detection in nfc_safe_memcpy()
  *   Default: Enabled in debug builds (!NDEBUG), disabled in release builds
  *   Performance impact: ~10-20 CPU cycles per call
@@ -112,27 +112,27 @@
 
 /*
  * C23 nullptr support for better type safety
- * 
+ *
  * C23 introduces nullptr as a distinct null pointer constant with type nullptr_t.
  * For older standards, we continue using NULL for compatibility.
- * 
+ *
  * This macro provides a consistent way to check for null pointers across all
  * C standards (C89, C99, C11, C17, C23).
- * 
+ *
  * Usage example:
  *   if (ptr == NFC_NULL) { return error; }  // Works in C89-C23
- * 
+ *
  * Benefits:
  * - C23: Type-safe nullptr (distinct type, better diagnostics)
  * - Pre-C23: Standard NULL (backward compatible)
  * - Consistent API surface across all standards
  */
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
-  /* C23: Use standardized nullptr */
-  #define NFC_NULL nullptr
+/* C23: Use standardized nullptr */
+#define NFC_NULL nullptr
 #else
-  /* Pre-C23: Use traditional NULL */
-  #define NFC_NULL NULL
+/* Pre-C23: Use traditional NULL */
+#define NFC_NULL NULL
 #endif
 
 #ifdef __cplusplus
@@ -140,100 +140,99 @@ extern "C"
 {
 #endif
 
-    /**
-     * @brief NFC Secure library error codes
-     *
-     * Platform-independent error codes for secure memory operations.
-     * These are negative values to distinguish from success (0).
-     *
-     * @note We define our own error codes instead of using errno constants
-     *       (EINVAL, EOVERFLOW, ERANGE) for better cross-platform compatibility.
-     *       Windows and POSIX systems have different errno values.
-     */
-    enum nfc_secure_error
-    {
-        NFC_SECURE_SUCCESS = 0,         /**< Operation succeeded */
-        NFC_SECURE_ERROR_INVALID = -1,  /**< Invalid parameter (NULL pointer, etc.) */
-        NFC_SECURE_ERROR_OVERFLOW = -2, /**< Buffer overflow would occur */
-        NFC_SECURE_ERROR_RANGE = -3,    /**< Size parameter out of valid range */
-        NFC_SECURE_ERROR_ZERO_SIZE = -4 /**< Zero-size operation (deprecated, always returns SUCCESS) */
-    };
+/**
+ * @brief NFC Secure library error codes
+ *
+ * Platform-independent error codes for secure memory operations.
+ * These are negative values to distinguish from success (0).
+ *
+ * @note We define our own error codes instead of using errno constants
+ *       (EINVAL, EOVERFLOW, ERANGE) for better cross-platform compatibility.
+ *       Windows and POSIX systems have different errno values.
+ */
+enum nfc_secure_error {
+  NFC_SECURE_SUCCESS = 0,         /**< Operation succeeded */
+  NFC_SECURE_ERROR_INVALID = -1,  /**< Invalid parameter (NULL pointer, etc.) */
+  NFC_SECURE_ERROR_OVERFLOW = -2, /**< Buffer overflow would occur */
+  NFC_SECURE_ERROR_RANGE = -3,    /**< Size parameter out of valid range */
+  NFC_SECURE_ERROR_ZERO_SIZE = -4 /**< Zero-size operation (deprecated, always returns SUCCESS) */
+};
 
-    /**
-     * @brief Get human-readable error message
-     *
-     * @param error_code Error code from nfc_secure_error enum
-     * @return String describing the error, or "Unknown error" for invalid codes
-     */
-    const char *nfc_secure_strerror(int error_code);
+/**
+ * @brief Get human-readable error message
+ *
+ * @param error_code Error code from nfc_secure_error enum
+ * @return String describing the error, or "Unknown error" for invalid codes
+ */
+const char *nfc_secure_strerror(int error_code);
 
 #ifdef __cplusplus
 }
 #endif
 
-    /**
-     * @brief Safe memory copy with buffer size validation
-     *
-     * This function provides a secure alternative to memcpy() by validating
-     * that the destination buffer has sufficient space before copying.
-     *
-     * Memory Safety Pattern:
-     * ```c
-     * // Constrained Memory Copy - prevents buffer overflow
-     * if (dst_size >= src_size) {
-     *     memcpy(dst, src, src_size);
-     * } else {
-     *     return error;
-     * }
-     * ```
-     *
-     * @param[out] dst Destination buffer (must be non-NULL)
-     * @param[in] dst_size Size of destination buffer in bytes (CRITICAL for safety)
-     * @param[in] src Source buffer (must be non-NULL)
-     * @param[in] src_size Number of bytes to copy from source
-     *
-     * @return  NFC_SECURE_SUCCESS (0)     on success (including zero-size operations)
-     * @return  NFC_SECURE_ERROR_INVALID  if dst or src is NULL (or buffer overlap detected)
-     * @return  NFC_SECURE_ERROR_OVERFLOW if dst_size < src_size (buffer overflow prevented)
-     * @return  NFC_SECURE_ERROR_RANGE    if src_size or dst_size exceeds SIZE_MAX / 2
-     * @return  NFC_SECURE_ERROR_ZERO_SIZE (deprecated) - now returns SUCCESS for zero-size
-     *
-     * @note This function mimics the behavior of `memcpy_s()` defined in C11
-     *       Annex K but does not require optional Annex K support from the C
-     *       runtime. It performs explicit size validation on the destination
-     *       buffer before copying to avoid buffer overflows.
-     *
-     * ⚠️ CRITICAL: Dynamic Memory Warning
-     * When using dynamic memory (malloc/calloc/realloc), you MUST use the
-     * runtime function directly, NOT the macro:
-     * ```c
-     * uint8_t *buffer = malloc(100);
-     * 
-     * // ❌ WRONG - sizeof(buffer) is pointer size (4 or 8 bytes)!
-     * NFC_SAFE_MEMCPY(buffer, data, 50);
-     * 
-     * // ✅ CORRECT - explicit size parameter
-     * nfc_safe_memcpy(buffer, 100, data, 50);
-     * ```
-     *
-     * Example usage:
-     * ```c
-     * uint8_t buffer[10];
-     * uint8_t data[5] = {1, 2, 3, 4, 5};
-     *
-     * // Safe copy - will succeed
-     * int result = nfc_safe_memcpy(buffer, sizeof(buffer), data, sizeof(data));
-     * if (result != NFC_SECURE_SUCCESS) {
-     *     fprintf(stderr, "Copy failed: %s\n", nfc_secure_strerror(result));
-     * }
-     *
-     * // Unsafe copy - will fail with NFC_SECURE_ERROR_OVERFLOW
-     * uint8_t small_buffer[3];
-     * result = nfc_safe_memcpy(small_buffer, sizeof(small_buffer), data, sizeof(data));
-     * // result == NFC_SECURE_ERROR_OVERFLOW, buffer overflow prevented
-     * ```
-     */
-    int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size);/**
+/**
+ * @brief Safe memory copy with buffer size validation
+ *
+ * This function provides a secure alternative to memcpy() by validating
+ * that the destination buffer has sufficient space before copying.
+ *
+ * Memory Safety Pattern:
+ * ```c
+ * // Constrained Memory Copy - prevents buffer overflow
+ * if (dst_size >= src_size) {
+ *     memcpy(dst, src, src_size);
+ * } else {
+ *     return error;
+ * }
+ * ```
+ *
+ * @param[out] dst Destination buffer (must be non-NULL)
+ * @param[in] dst_size Size of destination buffer in bytes (CRITICAL for safety)
+ * @param[in] src Source buffer (must be non-NULL)
+ * @param[in] src_size Number of bytes to copy from source
+ *
+ * @return  NFC_SECURE_SUCCESS (0)     on success (including zero-size operations)
+ * @return  NFC_SECURE_ERROR_INVALID  if dst or src is NULL (or buffer overlap detected)
+ * @return  NFC_SECURE_ERROR_OVERFLOW if dst_size < src_size (buffer overflow prevented)
+ * @return  NFC_SECURE_ERROR_RANGE    if src_size or dst_size exceeds SIZE_MAX / 2
+ * @return  NFC_SECURE_ERROR_ZERO_SIZE (deprecated) - now returns SUCCESS for zero-size
+ *
+ * @note This function mimics the behavior of `memcpy_s()` defined in C11
+ *       Annex K but does not require optional Annex K support from the C
+ *       runtime. It performs explicit size validation on the destination
+ *       buffer before copying to avoid buffer overflows.
+ *
+ * ⚠️ CRITICAL: Dynamic Memory Warning
+ * When using dynamic memory (malloc/calloc/realloc), you MUST use the
+ * runtime function directly, NOT the macro:
+ * ```c
+ * uint8_t *buffer = malloc(100);
+ *
+ * // ❌ WRONG - sizeof(buffer) is pointer size (4 or 8 bytes)!
+ * NFC_SAFE_MEMCPY(buffer, data, 50);
+ *
+ * // ✅ CORRECT - explicit size parameter
+ * nfc_safe_memcpy(buffer, 100, data, 50);
+ * ```
+ *
+ * Example usage:
+ * ```c
+ * uint8_t buffer[10];
+ * uint8_t data[5] = {1, 2, 3, 4, 5};
+ *
+ * // Safe copy - will succeed
+ * int result = nfc_safe_memcpy(buffer, sizeof(buffer), data, sizeof(data));
+ * if (result != NFC_SECURE_SUCCESS) {
+ *     fprintf(stderr, "Copy failed: %s\n", nfc_secure_strerror(result));
+ * }
+ *
+ * // Unsafe copy - will fail with NFC_SECURE_ERROR_OVERFLOW
+ * uint8_t small_buffer[3];
+ * result = nfc_safe_memcpy(small_buffer, sizeof(small_buffer), data, sizeof(data));
+ * // result == NFC_SECURE_ERROR_OVERFLOW, buffer overflow prevented
+ * ```
+ */
+int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size);/**
  * @brief Secure memset for sensitive data
  *
  * This function ensures that memory is securely erased and cannot be
@@ -290,12 +289,12 @@ extern "C"
  * - Small buffers (≤256 bytes): Optimized volatile loop (~20-50 cycles overhead)
  *   * Ideal for: Crypto keys (16-32 bytes), MIFARE keys (6 bytes), UIDs (4-10 bytes)
  *   * Performance: ~1-5 microseconds on modern CPUs
- * 
+ *
  * - Large buffers (>256 bytes): memset + memory barrier fallback
  *   * Penalty: ~10-30% slower than standard memset
  *   * Still acceptable for: Authentication buffers (<1KB), temporary command buffers
  *   * NOT recommended for: Large file buffers, network packet buffers (use standard memset)
- * 
+ *
  * - Platform functions (SecureZeroMemory/explicit_bzero): Near-native performance
  *   * Minimal overhead compared to standard memset
  *   * Always preferred when available
@@ -378,81 +377,81 @@ int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_siz
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  *
  * 1. WHEN TO USE memcpy vs memmove:
- * 
+ *
  *    ✅ Use nfc_safe_memcpy() when:
  *       - Buffers are GUARANTEED not to overlap
  *       - Copying between different objects (e.g., struct to array)
  *       - Slightly faster (~5-10% on some platforms)
- * 
+ *
  *    ✅ Use nfc_safe_memmove() when:
  *       - Buffers MAY overlap (e.g., moving within same buffer)
  *       - Unsure about overlap - always safe
  *       - Moving data left/right within an array
- * 
+ *
  *    ⚠️  RULE OF THUMB: If in doubt, use memmove - it's always safe!
  *        Modern compilers optimize memmove to memcpy when overlap is impossible.
- * 
+ *
  * 2. MACRO vs FUNCTION:
- * 
+ *
  *    ✅ Use MACROS (NFC_SAFE_MEMCPY, NFC_SECURE_MEMSET) when:
  *       - Working with fixed-size arrays: uint8_t buffer[16]
  *       - Want compile-time type checking (C11+)
  *       - Automatic sizeof() calculation
- * 
+ *
  *    ✅ Use FUNCTIONS (nfc_safe_memcpy, nfc_secure_memset) when:
  *       - Working with dynamic memory: malloc(), calloc()
  *       - Pointer arithmetic: buffer + offset
  *       - Size is calculated at runtime
- * 
+ *
  * 3. ERROR HANDLING:
- * 
+ *
  *    ⚠️  ALWAYS check return values in production code:
- * 
+ *
  *       int result = nfc_safe_memcpy(dst, dst_size, src, src_size);
  *       if (result != NFC_SECURE_SUCCESS) {
  *           log_error("Copy failed: %s", nfc_secure_strerror(result));
  *           return result;  // Propagate error
  *       }
- * 
+ *
  *    ⚠️  NEVER ignore errors - they indicate real security issues!
- * 
+ *
  * 4. PERFORMANCE OPTIMIZATION:
- * 
+ *
  *    For sensitive data (keys, passwords):
  *       → Use nfc_secure_memset() - accept the performance cost
- * 
+ *
  *    For non-sensitive data (general buffers):
  *       → Use standard memset() - ~10-30% faster
- * 
+ *
  *    For large buffer clears (>1KB):
  *       → Consider whether data is truly sensitive
  *       → Standard memset may be acceptable for non-crypto data
- * 
+ *
  * 5. DEBUG vs RELEASE BUILDS:
- * 
+ *
  *    Debug builds (recommended):
  *       - Enable NFC_SECURE_CHECK_OVERLAP (auto-enabled by default)
  *       - Enable NFC_SECURE_DEBUG for extra validation
  *       - Catches bugs early in development
- * 
+ *
  *    Release builds (recommended):
  *       - Disable NFC_SECURE_CHECK_OVERLAP (define NDEBUG)
  *       - Disable NFC_SECURE_DEBUG
  *       - Maximizes performance
- * 
+ *
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  */
 
 /*
  * Compile-time check for array vs pointer
- * 
+ *
  * IMPORTANT: This macro relies on compiler-specific extensions:
  * - __builtin_types_compatible_p: GCC/Clang builtin (NOT C standard)
  * - typeof: C23 standard operator (or __typeof__ in GCC/Clang)
- * 
+ *
  * C23 standardizes `typeof`, but __builtin_types_compatible_p remains
  * a compiler extension. Therefore, we require GCC/Clang even in C23 mode.
- * 
+ *
  * Platform Support:
  * - C23 + GCC/Clang: Full compile-time array detection
  * - C11 + GCC/Clang: Full compile-time array detection
@@ -462,12 +461,12 @@ int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_siz
     (defined(__GNUC__) || defined(__clang__))
 /* C23 with GCC/Clang: Use standardized typeof + builtin */
 #define NFC_IS_ARRAY(x) \
-    (!__builtin_types_compatible_p(typeof(x), typeof(&(x)[0])))
+  (!__builtin_types_compatible_p(typeof(x), typeof(&(x)[0])))
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && \
     (defined(__GNUC__) || defined(__clang__))
 /* C11 with GNU/Clang extensions: Use __typeof__ + builtin */
 #define NFC_IS_ARRAY(x) \
-    (!__builtin_types_compatible_p(__typeof__(x), __typeof__(&(x)[0])))
+  (!__builtin_types_compatible_p(__typeof__(x), __typeof__(&(x)[0])))
 #else
 /* Fallback for other compilers - no compile-time check */
 #define NFC_IS_ARRAY(x) (1)
@@ -511,14 +510,14 @@ int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_siz
     (defined(__GNUC__) || defined(__clang__))
 /* C11+ with GNU/Clang: compile-time array type check */
 #define NFC_SAFE_MEMCPY(dst, src, src_size)                                                        \
-    (__extension__({                                                                               \
-        _Static_assert(NFC_IS_ARRAY(dst), "NFC_SAFE_MEMCPY: dst must be an array, not a pointer"); \
-        nfc_safe_memcpy((dst), sizeof(dst), (src), (src_size));                                    \
-    }))
+  (__extension__({                                                                               \
+    _Static_assert(NFC_IS_ARRAY(dst), "NFC_SAFE_MEMCPY: dst must be an array, not a pointer"); \
+    nfc_safe_memcpy((dst), sizeof(dst), (src), (src_size));                                    \
+  }))
 #else
 /* Older compilers: no compile-time check */
 #define NFC_SAFE_MEMCPY(dst, src, src_size) \
-    nfc_safe_memcpy((dst), sizeof(dst), (src), (src_size))
+  nfc_safe_memcpy((dst), sizeof(dst), (src), (src_size))
 #endif
 
 /**
@@ -544,14 +543,14 @@ int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_siz
     (defined(__GNUC__) || defined(__clang__))
 /* C11+ with GNU/Clang: compile-time array type check */
 #define NFC_SECURE_MEMSET(ptr, val)                                                                  \
-    (__extension__({                                                                                 \
-        _Static_assert(NFC_IS_ARRAY(ptr), "NFC_SECURE_MEMSET: ptr must be an array, not a pointer"); \
-        nfc_secure_memset((ptr), (val), sizeof(ptr));                                                \
-    }))
+  (__extension__({                                                                                 \
+    _Static_assert(NFC_IS_ARRAY(ptr), "NFC_SECURE_MEMSET: ptr must be an array, not a pointer"); \
+    nfc_secure_memset((ptr), (val), sizeof(ptr));                                                \
+  }))
 #else
 /* Older compilers: no compile-time check */
 #define NFC_SECURE_MEMSET(ptr, val) \
-    nfc_secure_memset((ptr), (val), sizeof(ptr))
+  nfc_secure_memset((ptr), (val), sizeof(ptr))
 #endif
 
 /**
@@ -588,14 +587,14 @@ int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_siz
     (defined(__GNUC__) || defined(__clang__))
 /* C11+ with GNU/Clang: compile-time array type check */
 #define NFC_SAFE_MEMMOVE(dst, src, src_size)                                                        \
-    (__extension__({                                                                                \
-        _Static_assert(NFC_IS_ARRAY(dst), "NFC_SAFE_MEMMOVE: dst must be an array, not a pointer"); \
-        nfc_safe_memmove((dst), sizeof(dst), (src), (src_size));                                    \
-    }))
+  (__extension__({                                                                                \
+    _Static_assert(NFC_IS_ARRAY(dst), "NFC_SAFE_MEMMOVE: dst must be an array, not a pointer"); \
+    nfc_safe_memmove((dst), sizeof(dst), (src), (src_size));                                    \
+  }))
 #else
 /* Older compilers: no compile-time check */
 #define NFC_SAFE_MEMMOVE(dst, src, src_size) \
-    nfc_safe_memmove((dst), sizeof(dst), (src), (src_size))
+  nfc_safe_memmove((dst), sizeof(dst), (src), (src_size))
 #endif
 
 #ifdef __cplusplus

@@ -60,13 +60,12 @@
 
 #if defined(__linux__)
 const char *i2c_ports_device_radix[] =
-    {"i2c-", NULL};
+{"i2c-", NULL};
 #else
 #error "Can't determine I2C devices standard names for your system"
 #endif
 
-struct i2c_device_unix
-{
+struct i2c_device_unix {
   int fd; // I2C device file descriptor
 };
 
@@ -88,15 +87,13 @@ i2c_open(const char *pcI2C_busName, uint32_t devAddr)
     return INVALID_I2C_BUS;
 
   id->fd = open(pcI2C_busName, O_RDWR | O_NOCTTY | O_NONBLOCK);
-  if (id->fd == -1)
-  {
+  if (id->fd == -1) {
     perror("Cannot open I2C bus");
     i2c_close(id);
     return INVALID_I2C_BUS;
   }
 
-  if (ioctl(id->fd, I2C_SLAVE, devAddr) < 0)
-  {
+  if (ioctl(id->fd, I2C_SLAVE, devAddr) < 0) {
     perror("Cannot select I2C device");
     i2c_close(id);
     return INVALID_I2C_ADDRESS;
@@ -112,8 +109,7 @@ i2c_open(const char *pcI2C_busName, uint32_t devAddr)
  */
 void i2c_close(const i2c_device id)
 {
-  if (I2C_DATA(id)->fd >= 0)
-  {
+  if (I2C_DATA(id)->fd >= 0) {
     close(I2C_DATA(id)->fd);
   }
   free(id);
@@ -135,20 +131,14 @@ i2c_read(i2c_device id, uint8_t *pbtRx, const size_t szRx)
 
   recCount = read(I2C_DATA(id)->fd, pbtRx, szRx);
 
-  if (recCount < 0)
-  {
+  if (recCount < 0) {
     res = NFC_EIO;
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
             "Error: read only %d bytes (%d expected) (%s).", (int)recCount, (int)szRx, strerror(errno));
-  }
-  else
-  {
-    if (recCount < (ssize_t)szRx)
-    {
+  } else {
+    if (recCount < (ssize_t)szRx) {
       res = NFC_EINVARG;
-    }
-    else
-    {
+    } else {
       res = recCount;
     }
   }
@@ -170,14 +160,11 @@ int i2c_write(i2c_device id, const uint8_t *pbtTx, const size_t szTx)
   ssize_t writeCount;
   writeCount = write(I2C_DATA(id)->fd, pbtTx, szTx);
 
-  if ((const ssize_t)szTx == writeCount)
-  {
+  if ((const ssize_t)szTx == writeCount) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG,
             "wrote %d bytes successfully.", (int)szTx);
     return NFC_SUCCESS;
-  }
-  else
-  {
+  } else {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
             "Error: wrote only %d bytes (%d expected) (%s).", (int)writeCount, (int)szTx, strerror(errno));
     return NFC_EIO;
@@ -194,8 +181,7 @@ char **
 i2c_list_ports(void)
 {
   char **res = malloc(sizeof(char *));
-  if (!res)
-  {
+  if (!res) {
     perror("malloc");
     return res;
   }
@@ -203,29 +189,23 @@ i2c_list_ports(void)
 
   res[0] = NULL;
   DIR *pdDir;
-  if ((pdDir = opendir("/dev")) == NULL)
-  {
+  if ((pdDir = opendir("/dev")) == NULL) {
     perror("opendir error: /dev");
     return res;
   }
   struct dirent *pdDirEnt;
-  while ((pdDirEnt = readdir(pdDir)) != NULL)
-  {
+  while ((pdDirEnt = readdir(pdDir)) != NULL) {
     const char **p = i2c_ports_device_radix;
-    while (*p)
-    {
-      if (!strncmp(pdDirEnt->d_name, *p, strlen(*p)))
-      {
+    while (*p) {
+      if (!strncmp(pdDirEnt->d_name, *p, strlen(*p))) {
         char **res2 = realloc(res, (szRes + 1) * sizeof(char *));
-        if (!res2)
-        {
+        if (!res2) {
           perror("malloc");
           goto oom;
         }
         res = res2;
         size_t path_len = 6 + strlen(pdDirEnt->d_name);
-        if (!(res[szRes - 1] = malloc(path_len)))
-        {
+        if (!(res[szRes - 1] = malloc(path_len))) {
           perror("malloc");
           goto oom;
         }
