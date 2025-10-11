@@ -636,6 +636,55 @@ acr122_usb_send(nfc_device *pnd, const uint8_t *pbtData, const size_t szData, co
 }
 
 #define USB_TIMEOUT_PER_PASS 200
+
+/**
+ * @brief Compute timeout for USB bulk read operation
+ * 
+ * Implements interruptible blocking with USB_TIMEOUT_PER_PASS chunks
+ * to allow abort_flag checking even with infinite timeout.
+ * 
+ * @param timeout User-provided timeout or USB_INFINITE_TIMEOUT
+ * @param remaining_time Pointer to remaining time counter
+ * @param pnd NFC device pointer for error reporting
+ * @return Computed USB timeout value, or -1 on timeout expiry
+ */
+static int
+acr122_usb_compute_timeout(int timeout, int *remaining_time, nfc_device *pnd)
+{
+  if (timeout == USB_INFINITE_TIMEOUT) {
+    return USB_TIMEOUT_PER_PASS;
+  }
+  
+  // User-provided timeout: cut into chunks for abort checking
+  *remaining_time -= USB_TIMEOUT_PER_PASS;
+  if (*remaining_time <= 0) {
+    pnd->last_error = NFC_ETIMEOUT;
+    return -1; // Timeout expired
+  }
+  
+  return MIN(*remaining_time, USB_TIMEOUT_PER_PASS);
+}
+
+/**
+ * @brief Handle abort flag during receive operation
+ * 
+ * Checks abort flag and performs acknowledgment if needed.
+ * 
+ * @param pnd NFC device pointer
+ * @return NFC_EOPABORTED if aborted, 0 otherwise
+ */
+static int
+acr122_usb_handle_abort(nfc_device *pnd)
+{
+  if (DRIVER_DATA(pnd)->abort_flag) {
+    DRIVER_DATA(pnd)->abort_flag = false;
+    acr122_usb_ack(pnd);
+    pnd->last_error = NFC_EOPABORTED;
+    return pnd->last_error;
+  }
+  return 0;
+}
+
 static int
 acr122_usb_receive(nfc_device *pnd, uint8_t *pbtData, const size_t szDataLen, const int timeout)
 {
@@ -644,24 +693,12 @@ acr122_usb_receive(nfc_device *pnd, uint8_t *pbtData, const size_t szDataLen, co
   uint8_t abtRxBuf[255 + sizeof(struct ccid_header)];
   int res;
 
-  /*
-   * Implement interruptible blocking operations using USB_TIMEOUT_PER_PASS (200ms) chunks
-   * This allows abort_flag checking even with infinite timeout (USB_INFINITE_TIMEOUT)
-   */
   int usb_timeout;
   int remaining_time = timeout;
 read:
-  if (timeout == USB_INFINITE_TIMEOUT) {
-    usb_timeout = USB_TIMEOUT_PER_PASS;
-  } else {
-    // A user-provided timeout is set, we have to cut it in multiple chunk to be able to keep an nfc_abort_command() mechanism
-    remaining_time -= USB_TIMEOUT_PER_PASS;
-    if (remaining_time <= 0) {
-      pnd->last_error = NFC_ETIMEOUT;
-      return pnd->last_error;
-    } else {
-      usb_timeout = MIN(remaining_time, USB_TIMEOUT_PER_PASS);
-    }
+  usb_timeout = acr122_usb_compute_timeout(timeout, &remaining_time, pnd);
+  if (usb_timeout < 0) {
+    return pnd->last_error; // Timeout expired
   }
 
   res = acr122_usb_bulk_read(DRIVER_DATA(pnd), abtRxBuf, sizeof(abtRxBuf), usb_timeout);
@@ -671,14 +708,11 @@ read:
   int error, status;
 
   if (res == NFC_ETIMEOUT) {
-    if (DRIVER_DATA(pnd)->abort_flag) {
-      DRIVER_DATA(pnd)->abort_flag = false;
-      acr122_usb_ack(pnd);
-      pnd->last_error = NFC_EOPABORTED;
-      return pnd->last_error;
-    } else {
-      goto read;
+    int abort_res = acr122_usb_handle_abort(pnd);
+    if (abort_res != 0) {
+      return abort_res;
     }
+    goto read;
   }
   if (res < 10) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Invalid RDR_to_PC_DataBlock frame");
@@ -728,16 +762,13 @@ read:
     }
     res = acr122_usb_send_apdu(pnd, APDU_GetAdditionnalData, 0x00, 0x00, NULL, 0, abtRxBuf[11], abtRxBuf, sizeof(abtRxBuf));
     if (res == NFC_ETIMEOUT) {
-      if (DRIVER_DATA(pnd)->abort_flag) {
-        DRIVER_DATA(pnd)->abort_flag = false;
-        acr122_usb_ack(pnd);
-        pnd->last_error = NFC_EOPABORTED;
-        return pnd->last_error;
-      } else {
-        // Retry on timeout (non-abort case)
-        // Note: Some devices (e.g., Touchatag) may require different timeout handling
-        goto read;
+      int abort_res = acr122_usb_handle_abort(pnd);
+      if (abort_res != 0) {
+        return abort_res;
       }
+      // Retry on timeout (non-abort case)
+      // Note: Some devices (e.g., Touchatag) may require different timeout handling
+      goto read;
     }
     if (res < 10) {
       // try to interrupt current device state
