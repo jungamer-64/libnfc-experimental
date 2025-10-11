@@ -37,21 +37,39 @@
 //There is no setenv()and unsetenv() in windows,but we can use putenv() instead.
 int setenv(const char *name, const char *value, int overwrite)
 {
+  if (!name || !value) {
+    return -1;
+  }
+  
   char *env = getenv(name);
   if ((env && overwrite) || (!env)) {
-    char *str[32];
-    strcpy(str, name);
-    strcat(str, "=");
-    strcat(str, value);
-    return putenv(str);
+    // Calculate required buffer size: name + "=" + value + null terminator
+    size_t len = strlen(name) + strlen(value) + 2;
+    char *str = malloc(len);
+    if (!str) {
+      return -1;
+    }
+    snprintf(str, len, "%s=%s", name, value);
+    int result = putenv(str);
+    // Note: Do not free str as putenv takes ownership of the string
+    return result;
   }
   return -1;
 }
 
 void unsetenv(const char *name)
 {
-  char *str[32];
-  strcpy(str, name);
-  strcat(str, "=");
+  if (!name) {
+    return;
+  }
+  
+  // Calculate required buffer size: name + "=" + null terminator
+  size_t len = strlen(name) + 2;
+  char *str = malloc(len);
+  if (!str) {
+    return;
+  }
+  snprintf(str, len, "%s=", name);
   putenv(str);
+  // Note: Do not free str as putenv takes ownership of the string
 }

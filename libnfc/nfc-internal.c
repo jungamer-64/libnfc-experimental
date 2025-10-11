@@ -233,9 +233,13 @@ connstring_decode(const nfc_connstring connstring, const char *driver_name, cons
 
   if (res < 1 || ((0 != strcmp(param0, driver_name)) &&
                   (0 != strcmp(param0, bus_name)))) {
-    // Driver name does not match.
-    res = 0;
+    // Driver name does not match - free all allocated memory
+    free(param0);
+    free(param1);
+    free(param2);
+    return 0;
   }
+  
   if (pparam1 != NULL) {
     if (res < 2) {
       free(param1);
@@ -246,6 +250,7 @@ connstring_decode(const nfc_connstring connstring, const char *driver_name, cons
   } else {
     free(param1);
   }
+  
   if (pparam2 != NULL) {
     if (res < 3) {
       free(param2);
@@ -256,6 +261,7 @@ connstring_decode(const nfc_connstring connstring, const char *driver_name, cons
   } else {
     free(param2);
   }
+  
   free(param0);
   return res;
 }

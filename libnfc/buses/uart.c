@@ -414,11 +414,12 @@ uart_list_ports(void)
           goto oom;
         }
         res = res2;
-        if (!(res[szRes - 1] = malloc(6 + strlen(pdDirEnt->d_name)))) {
+        size_t path_len = 6 + strlen(pdDirEnt->d_name);
+        if (!(res[szRes - 1] = malloc(path_len))) {
           perror("malloc");
           goto oom;
         }
-        sprintf(res[szRes - 1], "/dev/%s", pdDirEnt->d_name);
+        snprintf(res[szRes - 1], path_len, "/dev/%s", pdDirEnt->d_name);
 
         szRes++;
         res[szRes - 1] = NULL;

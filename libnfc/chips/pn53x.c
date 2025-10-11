@@ -167,6 +167,12 @@ pn53x_reset_settings(struct nfc_device *pnd)
 int
 pn53x_transceive(struct nfc_device *pnd, const uint8_t *pbtTx, const size_t szTx, uint8_t *pbtRx, const size_t szRxLen, int timeout)
 {
+  // Validate input parameters
+  if (!pnd || !pbtTx || szTx == 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Invalid parameters in pn53x_transceive");
+    return NFC_EINVARG;
+  }
+  
   bool mi = false;
   int res = 0;
   if (CHIP_DATA(pnd)->wb_trigged) {
@@ -505,6 +511,11 @@ pn53x_decode_target_data(const uint8_t *pbtRawData, size_t szRawData, pn53x_type
       // Did we received an optional ATS (Smardcard ATR)
       if (szRawData > (pnti->nai.szUidLen + 5)) {
         pnti->nai.szAtsLen = ((*(pbtRawData++)) - 1);     // In pbtRawData, ATS Length byte is counted in ATS Frame.
+        // Ensure ATS length doesn't exceed buffer size
+        if (pnti->nai.szAtsLen > sizeof(pnti->nai.abtAts)) {
+          log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "ATS length exceeds buffer size");
+          return NFC_ECHIP;
+        }
         memcpy(pnti->nai.abtAts, pbtRawData, pnti->nai.szAtsLen);
       } else {
         pnti->nai.szAtsLen = 0;
@@ -3344,6 +3355,12 @@ pn53x_check_error_frame(struct nfc_device *pnd, const uint8_t *pbtRxFrame, const
 int
 pn53x_build_frame(uint8_t *pbtFrame, size_t *pszFrame, const uint8_t *pbtData, const size_t szData)
 {
+  // Validate input parameters
+  if (!pbtFrame || !pszFrame || !pbtData) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Invalid NULL pointer in pn53x_build_frame");
+    return NFC_EINVARG;
+  }
+  
   if (szData <= PN53x_NORMAL_FRAME__DATA_MAX_LEN) {
     // LEN - Packet length = data length (len) + checksum (1) + end of stream marker (1)
     pbtFrame[3] = szData + 1;

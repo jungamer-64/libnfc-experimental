@@ -96,9 +96,8 @@ target_io(nfc_target *pnt, const uint8_t *pbtInput, const size_t szInput, uint8_
     switch (pbtInput[0]) {
       case 0x30: // Mifare read
         // block address is in pbtInput[1]
-        *pszOutput = 15;
-        strcpy((char *)pbtOutput, "You read block ");
-        pbtOutput[15] = pbtInput[1];
+        *pszOutput = 16;
+        snprintf((char *)pbtOutput, *pszOutput, "You read block %c", pbtInput[1]);
         break;
       case 0x50: // HLTA (ISO14443-3)
         if (!quiet_output) {
