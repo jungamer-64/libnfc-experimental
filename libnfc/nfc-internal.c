@@ -46,6 +46,11 @@
 #include <string.h>
 #include <inttypes.h>
 
+// Declare strnlen if not available
+#ifndef HAVE_STRNLEN
+extern size_t strnlen(const char *s, size_t maxlen);
+#endif
+
 #define LOG_GROUP NFC_LOG_GROUP_GENERAL
 #define LOG_CATEGORY "libnfc.general"
 

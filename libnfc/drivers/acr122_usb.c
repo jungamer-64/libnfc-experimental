@@ -696,6 +696,7 @@ read:
 
   len = abtRxBuf[offset++];
   status = abtRxBuf[7];
+  (void)status; // Reserved for future status checking (see comment below)
   error = abtRxBuf[8];
   if (len == 0 && error == 0xFE) {
     // ICC_MUTE; XXX check for more errors

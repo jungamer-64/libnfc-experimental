@@ -82,6 +82,11 @@
 #include <string.h>
 #include <assert.h>
 
+// Declare strnlen if not available
+#ifndef HAVE_STRNLEN
+extern size_t strnlen(const char *s, size_t maxlen);
+#endif
+
 #include <nfc/nfc.h>
 
 #include "nfc-internal.h"

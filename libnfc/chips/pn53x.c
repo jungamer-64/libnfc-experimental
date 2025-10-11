@@ -1426,6 +1426,7 @@ pn53x_select_barcode_target(struct nfc_device *pnd,
                             int timeout)
 {
   int res = 0;
+  (void)timeout; // Unused parameter
 
   if (CHIP_DATA(pnd)->type == RCS360) {
     // RC-S360 hardware limitation
