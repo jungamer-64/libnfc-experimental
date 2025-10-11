@@ -31,7 +31,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include "uart.h"
@@ -54,54 +54,57 @@
 #include <nfc/nfc.h>
 #include "nfc-internal.h"
 
-#define LOG_GROUP    NFC_LOG_GROUP_COM
+#define LOG_GROUP NFC_LOG_GROUP_COM
 #define LOG_CATEGORY "libnfc.bus.uart"
 
 #ifndef _WIN32
 // Needed by sleep() under Unix
-#  include <unistd.h>
-#  include <time.h>
-#  define msleep(x) do { \
-    struct timespec xsleep; \
-    xsleep.tv_sec = x / 1000; \
+#include <unistd.h>
+#include <time.h>
+#define msleep(x)                                              \
+  do                                                           \
+  {                                                            \
+    struct timespec xsleep;                                    \
+    xsleep.tv_sec = x / 1000;                                  \
     xsleep.tv_nsec = (x - xsleep.tv_sec * 1000) * 1000 * 1000; \
-    nanosleep(&xsleep, NULL); \
+    nanosleep(&xsleep, NULL);                                  \
   } while (0)
 #else
 // Needed by Sleep() under Windows
-#  include <winbase.h>
-#  define msleep Sleep
+#include <winbase.h>
+#define msleep Sleep
 #endif
 
-#  if defined(__APPLE__)
-const char *serial_ports_device_radix[] = { "tty.SLAB_USBtoUART", "tty.usbserial", "tty.usbmodem", NULL };
-#  elif defined (__FreeBSD__) || defined (__OpenBSD__) || defined(__FreeBSD_kernel__)
-const char *serial_ports_device_radix[] = { "cuaU", "cuau", NULL };
-#  elif defined (__NetBSD__)
-const char *serial_ports_device_radix[] = { "tty0", "ttyC", "ttyS", "ttyU", "ttyY", NULL };
-#  elif defined (__linux__) || defined (__CYGWIN__)
-const char *serial_ports_device_radix[] = { "ttyUSB", "ttyS", "ttyACM", "ttyAMA", "ttyO", NULL };
-#  else
-#    error "Can't determine serial string for your system"
-#  endif
+#if defined(__APPLE__)
+const char *serial_ports_device_radix[] = {"tty.SLAB_USBtoUART", "tty.usbserial", "tty.usbmodem", NULL};
+#elif defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__FreeBSD_kernel__)
+const char *serial_ports_device_radix[] = {"cuaU", "cuau", NULL};
+#elif defined(__NetBSD__)
+const char *serial_ports_device_radix[] = {"tty0", "ttyC", "ttyS", "ttyU", "ttyY", NULL};
+#elif defined(__linux__) || defined(__CYGWIN__)
+const char *serial_ports_device_radix[] = {"ttyUSB", "ttyS", "ttyACM", "ttyAMA", "ttyO", NULL};
+#else
+#error "Can't determine serial string for your system"
+#endif
 
 // As of 2015/Feb/22, Cygwin does not handle FIONREAD on physical serial devices.
 // We'll use TIOCINQ instead which is pretty much the same.
 #ifdef __CYGWIN__
-#  include <sys/termios.h>
-#  define FIONREAD TIOCINQ
+#include <sys/termios.h>
+#define FIONREAD TIOCINQ
 #endif
 
 // Work-around to claim uart interface using the c_iflag (software input processing) from the termios struct
-#  define CCLAIMED 0x80000000
+#define CCLAIMED 0x80000000
 
-struct serial_port_unix {
-  int 			fd; 			// Serial port file descriptor
-  struct termios 	termios_backup; 	// Terminal info before using the port
-  struct termios 	termios_new; 		// Terminal info during the transaction
+struct serial_port_unix
+{
+  int fd;                        // Serial port file descriptor
+  struct termios termios_backup; // Terminal info before using the port
+  struct termios termios_new;    // Terminal info during the transaction
 };
 
-#define UART_DATA( X ) ((struct serial_port_unix *) X)
+#define UART_DATA(X) ((struct serial_port_unix *)X)
 
 void uart_close_ext(const serial_port sp, const bool restore_termios);
 
@@ -114,17 +117,20 @@ uart_open(const char *pcPortName)
     return INVALID_SERIAL_PORT;
 
   sp->fd = open(pcPortName, O_RDWR | O_NOCTTY | O_NONBLOCK);
-  if (sp->fd == -1) {
+  if (sp->fd == -1)
+  {
     uart_close_ext(sp, false);
     return INVALID_SERIAL_PORT;
   }
 
-  if (tcgetattr(sp->fd, &sp->termios_backup) == -1) {
+  if (tcgetattr(sp->fd, &sp->termios_backup) == -1)
+  {
     uart_close_ext(sp, false);
     return INVALID_SERIAL_PORT;
   }
   // Make sure the port is not claimed already
-  if (sp->termios_backup.c_iflag & CCLAIMED) {
+  if (sp->termios_backup.c_iflag & CCLAIMED)
+  {
     uart_close_ext(sp, false);
     return CLAIMED_SERIAL_PORT;
   }
@@ -136,24 +142,25 @@ uart_open(const char *pcPortName)
   sp->termios_new.c_oflag = 0;
   sp->termios_new.c_lflag = 0;
 
-  sp->termios_new.c_cc[VMIN] = 0;     // block until n bytes are received
-  sp->termios_new.c_cc[VTIME] = 0;    // block until a timer expires (n * 100 mSec.)
+  sp->termios_new.c_cc[VMIN] = 0;  // block until n bytes are received
+  sp->termios_new.c_cc[VTIME] = 0; // block until a timer expires (n * 100 mSec.)
 
-  if (tcsetattr(sp->fd, TCSANOW, &sp->termios_new) == -1) {
+  if (tcsetattr(sp->fd, TCSANOW, &sp->termios_new) == -1)
+  {
     uart_close_ext(sp, true);
     return INVALID_SERIAL_PORT;
   }
   return sp;
 }
 
-void
-uart_flush_input(serial_port sp, bool wait)
+void uart_flush_input(serial_port sp, bool wait)
 {
   // flush commands may seem to be without effect
   // if asked too quickly after previous event, cf comments below
   // therefore a "wait" argument allows now to wait before flushing
   // I believe that now the byte-eater part is not required anymore --Phil
-  if (wait) {
+  if (wait)
+  {
     msleep(50); // 50 ms
   }
 
@@ -164,19 +171,23 @@ uart_flush_input(serial_port sp, bool wait)
   int available_bytes_count = 0;
   int res;
   res = ioctl(UART_DATA(sp)->fd, FIONREAD, &available_bytes_count);
-  if (res != 0) {
+  if (res != 0)
+  {
     return;
   }
-  if (available_bytes_count == 0) {
+  if (available_bytes_count == 0)
+  {
     return;
   }
   char *rx = malloc(available_bytes_count);
-  if (!rx) {
+  if (!rx)
+  {
     perror("malloc");
     return;
   }
   // There is something available, read the data
-  if (read(UART_DATA(sp)->fd, rx, available_bytes_count) < 0) {
+  if (read(UART_DATA(sp)->fd, rx, available_bytes_count) < 0)
+  {
     perror("uart read");
     free(rx);
     return;
@@ -185,54 +196,55 @@ uart_flush_input(serial_port sp, bool wait)
   free(rx);
 }
 
-void
-uart_set_speed(serial_port sp, const uint32_t uiPortSpeed)
+void uart_set_speed(serial_port sp, const uint32_t uiPortSpeed)
 {
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Serial port speed requested to be set to %d baud.", uiPortSpeed);
 
   // Portability note: on some systems, B9600 != 9600 so we have to do
   // uint32_t <=> speed_t associations by hand.
   speed_t stPortSpeed = B9600;
-  switch (uiPortSpeed) {
-    case 9600:
-      stPortSpeed = B9600;
-      break;
-    case 19200:
-      stPortSpeed = B19200;
-      break;
-    case 38400:
-      stPortSpeed = B38400;
-      break;
-#  ifdef B57600
-    case 57600:
-      stPortSpeed = B57600;
-      break;
-#  endif
-#  ifdef B115200
-    case 115200:
-      stPortSpeed = B115200;
-      break;
-#  endif
-#  ifdef B230400
-    case 230400:
-      stPortSpeed = B230400;
-      break;
-#  endif
-#  ifdef B460800
-    case 460800:
-      stPortSpeed = B460800;
-      break;
-#  endif
-    default:
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to set serial port speed to %d baud. Speed value must be one of those defined in termios(3).",
-              uiPortSpeed);
-      return;
+  switch (uiPortSpeed)
+  {
+  case 9600:
+    stPortSpeed = B9600;
+    break;
+  case 19200:
+    stPortSpeed = B19200;
+    break;
+  case 38400:
+    stPortSpeed = B38400;
+    break;
+#ifdef B57600
+  case 57600:
+    stPortSpeed = B57600;
+    break;
+#endif
+#ifdef B115200
+  case 115200:
+    stPortSpeed = B115200;
+    break;
+#endif
+#ifdef B230400
+  case 230400:
+    stPortSpeed = B230400;
+    break;
+#endif
+#ifdef B460800
+  case 460800:
+    stPortSpeed = B460800;
+    break;
+#endif
+  default:
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to set serial port speed to %d baud. Speed value must be one of those defined in termios(3).",
+            uiPortSpeed);
+    return;
   };
 
   // Set port speed (Input and Output)
   cfsetispeed(&(UART_DATA(sp)->termios_new), stPortSpeed);
   cfsetospeed(&(UART_DATA(sp)->termios_new), stPortSpeed);
-  if (tcsetattr(UART_DATA(sp)->fd, TCSADRAIN, &(UART_DATA(sp)->termios_new)) == -1) {
+  if (tcsetattr(UART_DATA(sp)->fd, TCSADRAIN, &(UART_DATA(sp)->termios_new)) == -1)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Unable to apply new speed settings.");
   }
 }
@@ -241,45 +253,46 @@ uint32_t
 uart_get_speed(serial_port sp)
 {
   uint32_t uiPortSpeed = 0;
-  switch (cfgetispeed(&UART_DATA(sp)->termios_new)) {
-    case B9600:
-      uiPortSpeed = 9600;
-      break;
-    case B19200:
-      uiPortSpeed = 19200;
-      break;
-    case B38400:
-      uiPortSpeed = 38400;
-      break;
-#  ifdef B57600
-    case B57600:
-      uiPortSpeed = 57600;
-      break;
-#  endif
-#  ifdef B115200
-    case B115200:
-      uiPortSpeed = 115200;
-      break;
-#  endif
-#  ifdef B230400
-    case B230400:
-      uiPortSpeed = 230400;
-      break;
-#  endif
-#  ifdef B460800
-    case B460800:
-      uiPortSpeed = 460800;
-      break;
-#  endif
+  switch (cfgetispeed(&UART_DATA(sp)->termios_new))
+  {
+  case B9600:
+    uiPortSpeed = 9600;
+    break;
+  case B19200:
+    uiPortSpeed = 19200;
+    break;
+  case B38400:
+    uiPortSpeed = 38400;
+    break;
+#ifdef B57600
+  case B57600:
+    uiPortSpeed = 57600;
+    break;
+#endif
+#ifdef B115200
+  case B115200:
+    uiPortSpeed = 115200;
+    break;
+#endif
+#ifdef B230400
+  case B230400:
+    uiPortSpeed = 230400;
+    break;
+#endif
+#ifdef B460800
+  case B460800:
+    uiPortSpeed = 460800;
+    break;
+#endif
   }
 
   return uiPortSpeed;
 }
 
-void
-uart_close_ext(const serial_port sp, const bool restore_termios)
+void uart_close_ext(const serial_port sp, const bool restore_termios)
 {
-  if (UART_DATA(sp)->fd >= 0) {
+  if (UART_DATA(sp)->fd >= 0)
+  {
     if (restore_termios)
       tcsetattr(UART_DATA(sp)->fd, TCSANOW, &UART_DATA(sp)->termios_backup);
     close(UART_DATA(sp)->fd);
@@ -287,8 +300,7 @@ uart_close_ext(const serial_port sp, const bool restore_termios)
   free(sp);
 }
 
-void
-uart_close(const serial_port sp)
+void uart_close(const serial_port sp)
 {
   uart_close_ext(sp, true);
 }
@@ -298,8 +310,7 @@ uart_close(const serial_port sp)
  *
  * @return 0 on success, otherwise driver error code
  */
-int
-uart_receive(serial_port sp, uint8_t *pbtRx, const size_t szRx, void *abort_p, int timeout)
+int uart_receive(serial_port sp, uint8_t *pbtRx, const size_t szRx, void *abort_p, int timeout)
 {
   int iAbortFd = abort_p ? *((int *)abort_p) : 0;
   int received_bytes_count = 0;
@@ -307,42 +318,49 @@ uart_receive(serial_port sp, uint8_t *pbtRx, const size_t szRx, void *abort_p, i
   const int expected_bytes_count = (int)szRx;
   int res;
   fd_set rfds;
-  do {
-select:
+  do
+  {
+  select:
     // Reset file descriptor
     FD_ZERO(&rfds);
     FD_SET(UART_DATA(sp)->fd, &rfds);
 
-    if (iAbortFd) {
+    if (iAbortFd)
+    {
       FD_SET(iAbortFd, &rfds);
     }
 
     struct timeval timeout_tv;
-    if (timeout > 0) {
+    if (timeout > 0)
+    {
       timeout_tv.tv_sec = (timeout / 1000);
       timeout_tv.tv_usec = ((timeout % 1000) * 1000);
     }
 
     res = select(MAX(UART_DATA(sp)->fd, iAbortFd) + 1, &rfds, NULL, NULL, timeout ? &timeout_tv : NULL);
 
-    if ((res < 0) && (EINTR == errno)) {
+    if ((res < 0) && (EINTR == errno))
+    {
       // The system call was interupted by a signal and a signal handler was
       // run.  Restart the interupted system call.
       goto select;
     }
 
     // Read error
-    if (res < 0) {
+    if (res < 0)
+    {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Error: %s", strerror(errno));
       return NFC_EIO;
     }
     // Read time-out
-    if (res == 0) {
+    if (res == 0)
+    {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "Timeout!");
       return NFC_ETIMEOUT;
     }
 
-    if (FD_ISSET(iAbortFd, &rfds)) {
+    if (FD_ISSET(iAbortFd, &rfds))
+    {
       // Abort requested
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "Abort!");
       close(iAbortFd);
@@ -351,13 +369,15 @@ select:
 
     // Retrieve the count of the incoming bytes
     res = ioctl(UART_DATA(sp)->fd, FIONREAD, &available_bytes_count);
-    if (res != 0) {
+    if (res != 0)
+    {
       return NFC_EIO;
     }
     // There is something available, read the data
     res = read(UART_DATA(sp)->fd, pbtRx + received_bytes_count, MIN(available_bytes_count, (expected_bytes_count - received_bytes_count)));
     // Stop if the OS has some troubles reading the data
-    if (res <= 0) {
+    if (res <= 0)
+    {
       return NFC_EIO;
     }
     received_bytes_count += res;
@@ -372,12 +392,11 @@ select:
  *
  * @return 0 on success, otherwise a driver error is returned
  */
-int
-uart_send(serial_port sp, const uint8_t *pbtTx, const size_t szTx, int timeout)
+int uart_send(serial_port sp, const uint8_t *pbtTx, const size_t szTx, int timeout)
 {
-  (void) timeout;
+  (void)timeout;
   LOG_HEX(LOG_GROUP, "TX", pbtTx, szTx);
-  if ((int) szTx == write(UART_DATA(sp)->fd, pbtTx, szTx))
+  if ((int)szTx == write(UART_DATA(sp)->fd, pbtTx, szTx))
     return NFC_SUCCESS;
   else
     return NFC_EIO;
@@ -387,7 +406,8 @@ char **
 uart_list_ports(void)
 {
   char **res = malloc(sizeof(char *));
-  if (!res) {
+  if (!res)
+  {
     perror("malloc");
     return res;
   }
@@ -395,27 +415,33 @@ uart_list_ports(void)
 
   res[0] = NULL;
   DIR *pdDir;
-  if ((pdDir = opendir("/dev")) == NULL) {
+  if ((pdDir = opendir("/dev")) == NULL)
+  {
     perror("opendir error: /dev");
     return res;
   }
   struct dirent *pdDirEnt;
-  while ((pdDirEnt = readdir(pdDir)) != NULL) {
+  while ((pdDirEnt = readdir(pdDir)) != NULL)
+  {
 #if !defined(__APPLE__)
     if (!isdigit(pdDirEnt->d_name[strlen(pdDirEnt->d_name) - 1]))
       continue;
 #endif
     const char **p = serial_ports_device_radix;
-    while (*p) {
-      if (!strncmp(pdDirEnt->d_name, *p, strlen(*p))) {
+    while (*p)
+    {
+      if (!strncmp(pdDirEnt->d_name, *p, strlen(*p)))
+      {
         char **res2 = realloc(res, (szRes + 1) * sizeof(char *));
-        if (!res2) {
+        if (!res2)
+        {
           perror("malloc");
           goto oom;
         }
         res = res2;
         size_t path_len = 6 + strlen(pdDirEnt->d_name);
-        if (!(res[szRes - 1] = malloc(path_len))) {
+        if (!(res[szRes - 1] = malloc(path_len)))
+        {
           perror("malloc");
           goto oom;
         }

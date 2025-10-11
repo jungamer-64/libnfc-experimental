@@ -34,19 +34,22 @@
 // Handle platform specific includes
 #include "contrib/windows.h"
 
-//There is no setenv()and unsetenv() in windows,but we can use putenv() instead.
+// There is no setenv()and unsetenv() in windows,but we can use putenv() instead.
 int setenv(const char *name, const char *value, int overwrite)
 {
-  if (!name || !value) {
+  if (!name || !value)
+  {
     return -1;
   }
-  
+
   char *env = getenv(name);
-  if ((env && overwrite) || (!env)) {
+  if ((env && overwrite) || (!env))
+  {
     // Calculate required buffer size: name + "=" + value + null terminator
     size_t len = strlen(name) + strlen(value) + 2;
     char *str = malloc(len);
-    if (!str) {
+    if (!str)
+    {
       return -1;
     }
     snprintf(str, len, "%s=%s", name, value);
@@ -59,14 +62,16 @@ int setenv(const char *name, const char *value, int overwrite)
 
 void unsetenv(const char *name)
 {
-  if (!name) {
+  if (!name)
+  {
     return;
   }
-  
+
   // Calculate required buffer size: name + "=" + null terminator
   size_t len = strlen(name) + 2;
   char *str = malloc(len);
-  if (!str) {
+  if (!str)
+  {
     return;
   }
   snprintf(str, len, "%s=", name);

@@ -45,9 +45,8 @@
  * http://acs.com.hk/drivers/eng/API_ACR122U.pdf
  */
 
-
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 /*
@@ -73,12 +72,12 @@ Thanks to d18c7db and Okko for example code
 
 #define ACR122_USB_DRIVER_NAME "acr122_usb"
 
-#define LOG_GROUP     NFC_LOG_GROUP_DRIVER
+#define LOG_GROUP NFC_LOG_GROUP_DRIVER
 #define LOG_CATEGORY "libnfc.driver.acr122_usb"
 
-#define USB_INFINITE_TIMEOUT   0
+#define USB_INFINITE_TIMEOUT 0
 
-#define DRIVER_DATA(pnd) ((struct acr122_usb_data*)(pnd->driver_data))
+#define DRIVER_DATA(pnd) ((struct acr122_usb_data *)(pnd->driver_data))
 
 /*
 USB activity trace for PN533, ACR122 and Touchatag
@@ -142,7 +141,8 @@ PC_to_RDR_XfrBlock   APDU
 */
 
 #pragma pack(1)
-struct ccid_header {
+struct ccid_header
+{
   uint8_t bMessageType;
   uint32_t dwLength;
   uint8_t bSlot;
@@ -150,7 +150,8 @@ struct ccid_header {
   uint8_t bMessageSpecific[3];
 };
 
-struct apdu_header {
+struct apdu_header
+{
   uint8_t bClass;
   uint8_t bIns;
   uint8_t bP1;
@@ -158,14 +159,16 @@ struct apdu_header {
   uint8_t bLen;
 };
 
-struct acr122_usb_tama_frame {
+struct acr122_usb_tama_frame
+{
   struct ccid_header ccid_header;
   struct apdu_header apdu_header;
   uint8_t tama_header;
   uint8_t tama_payload[254]; // According to ACR122U manual: Pseudo APDUs (Section 6.0), Lc is 1-byte long (Data In: 255-bytes).
 };
 
-struct acr122_usb_apdu_frame {
+struct acr122_usb_apdu_frame
+{
   struct ccid_header ccid_header;
   struct apdu_header apdu_header;
   uint8_t apdu_payload[255]; // APDU Lc is 1-byte long
@@ -173,7 +176,8 @@ struct acr122_usb_apdu_frame {
 #pragma pack()
 
 // Internal data struct
-struct acr122_usb_data {
+struct acr122_usb_data
+{
   usb_dev_handle *pudh;
   uint32_t uiEndPointIn;
   uint32_t uiEndPointOut;
@@ -185,23 +189,35 @@ struct acr122_usb_data {
 };
 
 // CCID Bulk-Out messages type
-#define PC_to_RDR_IccPowerOn	0x62
-#define PC_to_RDR_XfrBlock	0x6f
+#define PC_to_RDR_IccPowerOn 0x62
+#define PC_to_RDR_XfrBlock 0x6f
 
-#define RDR_to_PC_DataBlock	0x80
+#define RDR_to_PC_DataBlock 0x80
 
 // ISO 7816-4
 #define SW1_More_Data_Available 0x61
 #define SW1_Warning_with_NV_changed 0x63
 #define PN53x_Specific_Application_Level_Error_Code 0x7f
 
-
 // This frame template is copied at init time
 // Its designed for TAMA sending but is also used for simple ADPU frame: acr122_build_frame_from_apdu() will overwrite needed bytes
 const uint8_t acr122_usb_frame_template[] = {
-  PC_to_RDR_XfrBlock, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // CCID header
-  0xff, 0x00, 0x00, 0x00, 0x00, // ADPU header
-  0xd4, // PN532 direction
+    PC_to_RDR_XfrBlock,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00, // CCID header
+    0xff,
+    0x00,
+    0x00,
+    0x00,
+    0x00, // ADPU header
+    0xd4, // PN532 direction
 };
 
 // APDUs instructions
@@ -220,14 +236,20 @@ static int acr122_usb_send_apdu(nfc_device *pnd,
 static int
 acr122_usb_bulk_read(struct acr122_usb_data *data, uint8_t abtRx[], const size_t szRx, const int timeout)
 {
-  int res = usb_bulk_read(data->pudh, data->uiEndPointIn, (char *) abtRx, szRx, timeout);
-  if (res > 0) {
+  int res = usb_bulk_read(data->pudh, data->uiEndPointIn, (char *)abtRx, szRx, timeout);
+  if (res > 0)
+  {
     LOG_HEX(NFC_LOG_GROUP_COM, "RX", abtRx, res);
-  } else if (res < 0) {
-    if (res != -USB_TIMEDOUT) {
+  }
+  else if (res < 0)
+  {
+    if (res != -USB_TIMEDOUT)
+    {
       res = NFC_EIO;
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to read from USB (%s)", _usb_strerror(res));
-    } else {
+    }
+    else
+    {
       res = NFC_ETIMEOUT;
     }
   }
@@ -238,33 +260,41 @@ static int
 acr122_usb_bulk_write(struct acr122_usb_data *data, uint8_t abtTx[], const size_t szTx, const int timeout)
 {
   LOG_HEX(NFC_LOG_GROUP_COM, "TX", abtTx, szTx);
-  int res = usb_bulk_write(data->pudh, data->uiEndPointOut, (char *) abtTx, szTx, timeout);
-  if (res > 0) {
+  int res = usb_bulk_write(data->pudh, data->uiEndPointOut, (char *)abtTx, szTx, timeout);
+  if (res > 0)
+  {
     // HACK This little hack is a well know problem of USB, see http://www.libusb.org/ticket/6 for more details
-    if ((res % data->uiMaxPacketSize) == 0) {
+    if ((res % data->uiMaxPacketSize) == 0)
+    {
       usb_bulk_write(data->pudh, data->uiEndPointOut, "\0", 0, timeout);
     }
-  } else if (res < 0) {
+  }
+  else if (res < 0)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to write to USB (%s)", _usb_strerror(res));
-    if (res == -USB_TIMEDOUT) {
+    if (res == -USB_TIMEDOUT)
+    {
       res = NFC_ETIMEOUT;
-    } else {
+    }
+    else
+    {
       res = NFC_EIO;
     }
   }
   return res;
 }
 
-struct acr122_usb_supported_device {
+struct acr122_usb_supported_device
+{
   uint16_t vendor_id;
   uint16_t product_id;
   const char *name;
 };
 
 const struct acr122_usb_supported_device acr122_usb_supported_devices[] = {
-  { 0x072F, 0x2200, "ACS ACR122" },
-  { 0x072F, 0x90CC, "Touchatag" },
-  { 0x072F, 0x2214, "ACS ACR1222" },
+    {0x072F, 0x2200, "ACS ACR122"},
+    {0x072F, 0x90CC, "Touchatag"},
+    {0x072F, 0x2214, "ACS ACR1222"},
 };
 
 // Find transfer endpoints for bulk transfers
@@ -276,7 +306,8 @@ acr122_usb_get_end_points(struct usb_device *dev, struct acr122_usb_data *data)
   struct usb_interface_descriptor *puid = dev->config->interface->altsetting;
 
   // 3 Endpoints maximum: Interrupt In, Bulk In, Bulk Out
-  for (uiIndex = 0; uiIndex < puid->bNumEndpoints; uiIndex++) {
+  for (uiIndex = 0; uiIndex < puid->bNumEndpoints; uiIndex++)
+  {
     // Only accept bulk transfer endpoints (ignore interrupt endpoints)
     if (puid->endpoint[uiIndex].bmAttributes != USB_ENDPOINT_TYPE_BULK)
       continue;
@@ -285,12 +316,14 @@ acr122_usb_get_end_points(struct usb_device *dev, struct acr122_usb_data *data)
     uiEndPoint = puid->endpoint[uiIndex].bEndpointAddress;
 
     // Test if we dealing with a bulk IN endpoint
-    if ((uiEndPoint & USB_ENDPOINT_DIR_MASK) == USB_ENDPOINT_IN) {
+    if ((uiEndPoint & USB_ENDPOINT_DIR_MASK) == USB_ENDPOINT_IN)
+    {
       data->uiEndPointIn = uiEndPoint;
       data->uiMaxPacketSize = puid->endpoint[uiIndex].wMaxPacketSize;
     }
     // Test if we dealing with a bulk OUT endpoint
-    if ((uiEndPoint & USB_ENDPOINT_DIR_MASK) == USB_ENDPOINT_OUT) {
+    if ((uiEndPoint & USB_ENDPOINT_DIR_MASK) == USB_ENDPOINT_OUT)
+    {
       data->uiEndPointOut = uiEndPoint;
       data->uiMaxPacketSize = puid->endpoint[uiIndex].wMaxPacketSize;
     }
@@ -307,20 +340,26 @@ acr122_usb_scan(const nfc_context *context, nfc_connstring connstrings[], const 
   size_t device_found = 0;
   uint32_t uiBusIndex = 0;
   struct usb_bus *bus;
-  for (bus = usb_get_busses(); bus; bus = bus->next) {
+  for (bus = usb_get_busses(); bus; bus = bus->next)
+  {
     struct usb_device *dev;
 
-    for (dev = bus->devices; dev; dev = dev->next, uiBusIndex++) {
-      for (size_t n = 0; n < sizeof(acr122_usb_supported_devices) / sizeof(struct acr122_usb_supported_device); n++) {
+    for (dev = bus->devices; dev; dev = dev->next, uiBusIndex++)
+    {
+      for (size_t n = 0; n < sizeof(acr122_usb_supported_devices) / sizeof(struct acr122_usb_supported_device); n++)
+      {
         if ((acr122_usb_supported_devices[n].vendor_id == dev->descriptor.idVendor) &&
-            (acr122_usb_supported_devices[n].product_id == dev->descriptor.idProduct)) {
+            (acr122_usb_supported_devices[n].product_id == dev->descriptor.idProduct))
+        {
           // Make sure there are 2 endpoints available
           // with libusb-win32 we got some null pointers so be robust before looking at endpoints:
-          if (dev->config == NULL || dev->config->interface == NULL || dev->config->interface->altsetting == NULL) {
+          if (dev->config == NULL || dev->config->interface == NULL || dev->config->interface->altsetting == NULL)
+          {
             // Nope, we maybe want the next one, let's try to find another
             continue;
           }
-          if (dev->config->interface->altsetting->bNumEndpoints < 2) {
+          if (dev->config->interface->altsetting->bNumEndpoints < 2)
+          {
             // Nope, we maybe want the next one, let's try to find another
             continue;
           }
@@ -333,13 +372,15 @@ acr122_usb_scan(const nfc_context *context, nfc_connstring connstrings[], const 
           // acr122_usb_get_usb_device_name (dev, udev, pnddDevices[device_found].acDevice, sizeof (pnddDevices[device_found].acDevice));
           log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "device found: Bus %s Device %s Name %s", bus->dirname, dev->filename, acr122_usb_supported_devices[n].name);
           usb_close(udev);
-          if (snprintf(connstrings[device_found], sizeof(nfc_connstring), "%s:%s:%s", ACR122_USB_DRIVER_NAME, bus->dirname, dev->filename) >= (int)sizeof(nfc_connstring)) {
+          if (snprintf(connstrings[device_found], sizeof(nfc_connstring), "%s:%s:%s", ACR122_USB_DRIVER_NAME, bus->dirname, dev->filename) >= (int)sizeof(nfc_connstring))
+          {
             // truncation occurred, skipping that one
             continue;
           }
           device_found++;
           // Test if we reach the maximum "wanted" devices
-          if (device_found == connstrings_len) {
+          if (device_found == connstrings_len)
+          {
             return device_found;
           }
         }
@@ -350,7 +391,8 @@ acr122_usb_scan(const nfc_context *context, nfc_connstring connstrings[], const 
   return device_found;
 }
 
-struct acr122_usb_descriptor {
+struct acr122_usb_descriptor
+{
   char *dirname;
   char *filename;
 };
@@ -360,8 +402,10 @@ acr122_usb_get_usb_device_name(struct usb_device *dev, usb_dev_handle *udev, cha
 {
   *buffer = '\0';
 
-  if (dev->descriptor.iManufacturer || dev->descriptor.iProduct) {
-    if (udev) {
+  if (dev->descriptor.iManufacturer || dev->descriptor.iProduct)
+  {
+    if (udev)
+    {
       usb_get_string_simple(udev, dev->descriptor.iManufacturer, buffer, len);
       if (strlen(buffer) > 0)
         strcpy(buffer + strlen(buffer), " / ");
@@ -369,10 +413,13 @@ acr122_usb_get_usb_device_name(struct usb_device *dev, usb_dev_handle *udev, cha
     }
   }
 
-  if (!*buffer) {
-    for (size_t n = 0; n < sizeof(acr122_usb_supported_devices) / sizeof(struct acr122_usb_supported_device); n++) {
+  if (!*buffer)
+  {
+    for (size_t n = 0; n < sizeof(acr122_usb_supported_devices) / sizeof(struct acr122_usb_supported_device); n++)
+    {
       if ((acr122_usb_supported_devices[n].vendor_id == dev->descriptor.idVendor) &&
-          (acr122_usb_supported_devices[n].product_id == dev->descriptor.idProduct)) {
+          (acr122_usb_supported_devices[n].product_id == dev->descriptor.idProduct))
+      {
         strncpy(buffer, acr122_usb_supported_devices[n].name, len);
         buffer[len - 1] = '\0';
         return true;
@@ -387,31 +434,36 @@ static nfc_device *
 acr122_usb_open(const nfc_context *context, const nfc_connstring connstring)
 {
   nfc_device *pnd = NULL;
-  struct acr122_usb_descriptor desc = { NULL, NULL };
+  struct acr122_usb_descriptor desc = {NULL, NULL};
   int connstring_decode_level = connstring_decode(connstring, ACR122_USB_DRIVER_NAME, "usb", &desc.dirname, &desc.filename);
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%d element(s) have been decoded from \"%s\"", connstring_decode_level, connstring);
-  if (connstring_decode_level < 1) {
+  if (connstring_decode_level < 1)
+  {
     goto free_mem;
   }
 
   struct acr122_usb_data data = {
-    .pudh = NULL,
-    .uiEndPointIn = 0,
-    .uiEndPointOut = 0,
+      .pudh = NULL,
+      .uiEndPointIn = 0,
+      .uiEndPointOut = 0,
   };
   struct usb_bus *bus;
   struct usb_device *dev;
 
   usb_prepare();
 
-  for (bus = usb_get_busses(); bus; bus = bus->next) {
-    if (connstring_decode_level > 1)  {
+  for (bus = usb_get_busses(); bus; bus = bus->next)
+  {
+    if (connstring_decode_level > 1)
+    {
       // A specific bus have been specified
       if (0 != strcmp(bus->dirname, desc.dirname))
         continue;
     }
-    for (dev = bus->devices; dev; dev = dev->next) {
-      if (connstring_decode_level > 2)  {
+    for (dev = bus->devices; dev; dev = dev->next)
+    {
+      if (connstring_decode_level > 2)
+      {
         // A specific dev have been specified
         if (0 != strcmp(dev->filename, desc.filename))
           continue;
@@ -425,7 +477,8 @@ acr122_usb_open(const nfc_context *context, const nfc_connstring connstring)
       acr122_usb_get_end_points(dev, &data);
       // Claim interface
       int res = usb_claim_interface(data.pudh, 0);
-      if (res < 0) {
+      if (res < 0)
+      {
         log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to claim USB interface (%s)", _usb_strerror(res));
         usb_close(data.pudh);
         // we failed to use the specified device
@@ -433,9 +486,11 @@ acr122_usb_open(const nfc_context *context, const nfc_connstring connstring)
       }
 
       // Check if there are more than 0 alternative interfaces and claim the first one
-      if (dev->config->interface->altsetting->bAlternateSetting > 0) {
+      if (dev->config->interface->altsetting->bAlternateSetting > 0)
+      {
         res = usb_set_altinterface(data.pudh, 0);
-        if (res < 0) {
+        if (res < 0)
+        {
           log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to set alternate setting on USB interface (%s)", _usb_strerror(res));
           usb_close(data.pudh);
           // we failed to use the specified device
@@ -445,21 +500,24 @@ acr122_usb_open(const nfc_context *context, const nfc_connstring connstring)
 
       // Allocate memory for the device info and specification, fill it and return the info
       pnd = nfc_device_new(context, connstring);
-      if (!pnd) {
+      if (!pnd)
+      {
         perror("malloc");
         goto error;
       }
       acr122_usb_get_usb_device_name(dev, data.pudh, pnd->name, sizeof(pnd->name));
 
       pnd->driver_data = malloc(sizeof(struct acr122_usb_data));
-      if (!pnd->driver_data) {
+      if (!pnd->driver_data)
+      {
         perror("malloc");
         goto error;
       }
       *DRIVER_DATA(pnd) = data;
 
       // Alloc and init chip's data
-      if (pn53x_data_new(pnd, &acr122_usb_io) == NULL) {
+      if (pn53x_data_new(pnd, &acr122_usb_io) == NULL)
+      {
         perror("malloc");
         goto error;
       }
@@ -469,7 +527,8 @@ acr122_usb_open(const nfc_context *context, const nfc_connstring connstring)
       CHIP_DATA(pnd)->timer_correction = 46; // empirical tuning
       pnd->driver = &acr122_usb_driver;
 
-      if (acr122_usb_init(pnd) < 0) {
+      if (acr122_usb_init(pnd) < 0)
+      {
         usb_close(data.pudh);
         goto error;
       }
@@ -497,11 +556,13 @@ acr122_usb_close(nfc_device *pnd)
   pn53x_idle(pnd);
 
   int res;
-  if ((res = usb_release_interface(DRIVER_DATA(pnd)->pudh, 0)) < 0) {
+  if ((res = usb_release_interface(DRIVER_DATA(pnd)->pudh, 0)) < 0)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to release USB interface (%s)", _usb_strerror(res));
   }
 
-  if ((res = usb_close(DRIVER_DATA(pnd)->pudh)) < 0) {
+  if ((res = usb_close(DRIVER_DATA(pnd)->pudh)) < 0)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to close USB connection (%s)", _usb_strerror(res));
   }
   pn53x_data_free(pnd);
@@ -515,11 +576,13 @@ uint32_t htole32(uint32_t u32);
 uint32_t
 htole32(uint32_t u32)
 {
-  union {
+  union
+  {
     uint8_t arr[4];
     uint32_t u32;
   } u;
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 4; i++)
+  {
     u.arr[i] = (u32 & 0xff);
     u32 >>= 8;
   }
@@ -540,11 +603,14 @@ acr122_build_frame_from_apdu(nfc_device *pnd, const uint8_t ins, const uint8_t p
   DRIVER_DATA(pnd)->apdu_frame.apdu_header.bIns = ins;
   DRIVER_DATA(pnd)->apdu_frame.apdu_header.bP1 = p1;
   DRIVER_DATA(pnd)->apdu_frame.apdu_header.bP2 = p2;
-  if (data) {
+  if (data)
+  {
     // bLen is Lc when data != NULL
     DRIVER_DATA(pnd)->apdu_frame.apdu_header.bLen = data_len;
     memcpy(DRIVER_DATA(pnd)->apdu_frame.apdu_payload, data, data_len);
-  } else {
+  }
+  else
+  {
     // bLen is Le when no data.
     DRIVER_DATA(pnd)->apdu_frame.apdu_header.bLen = le;
   }
@@ -567,12 +633,14 @@ static int
 acr122_usb_send(nfc_device *pnd, const uint8_t *pbtData, const size_t szData, const int timeout)
 {
   int res;
-  if ((res = acr122_build_frame_from_tama(pnd, pbtData, szData)) < 0) {
+  if ((res = acr122_build_frame_from_tama(pnd, pbtData, szData)) < 0)
+  {
     pnd->last_error = NFC_EINVARG;
     return pnd->last_error;
   }
 
-  if ((res = acr122_usb_bulk_write(DRIVER_DATA(pnd), (unsigned char *) & (DRIVER_DATA(pnd)->tama_frame), res, timeout)) < 0) {
+  if ((res = acr122_usb_bulk_write(DRIVER_DATA(pnd), (unsigned char *)&(DRIVER_DATA(pnd)->tama_frame), res, timeout)) < 0)
+  {
     pnd->last_error = res;
     return pnd->last_error;
   }
@@ -585,7 +653,7 @@ acr122_usb_receive(nfc_device *pnd, uint8_t *pbtData, const size_t szDataLen, co
 {
   off_t offset = 0;
 
-  uint8_t  abtRxBuf[255 + sizeof(struct ccid_header)];
+  uint8_t abtRxBuf[255 + sizeof(struct ccid_header)];
   int res;
 
   /*
@@ -595,15 +663,21 @@ acr122_usb_receive(nfc_device *pnd, uint8_t *pbtData, const size_t szDataLen, co
   int usb_timeout;
   int remaining_time = timeout;
 read:
-  if (timeout == USB_INFINITE_TIMEOUT) {
+  if (timeout == USB_INFINITE_TIMEOUT)
+  {
     usb_timeout = USB_TIMEOUT_PER_PASS;
-  } else {
+  }
+  else
+  {
     // A user-provided timeout is set, we have to cut it in multiple chunk to be able to keep an nfc_abort_command() mechanism
     remaining_time -= USB_TIMEOUT_PER_PASS;
-    if (remaining_time <= 0) {
+    if (remaining_time <= 0)
+    {
       pnd->last_error = NFC_ETIMEOUT;
       return pnd->last_error;
-    } else {
+    }
+    else
+    {
       usb_timeout = MIN(remaining_time, USB_TIMEOUT_PER_PASS);
     }
   }
@@ -614,24 +688,30 @@ read:
   size_t len;
   int error, status;
 
-  if (res == NFC_ETIMEOUT) {
-    if (DRIVER_DATA(pnd)->abort_flag) {
+  if (res == NFC_ETIMEOUT)
+  {
+    if (DRIVER_DATA(pnd)->abort_flag)
+    {
       DRIVER_DATA(pnd)->abort_flag = false;
       acr122_usb_ack(pnd);
       pnd->last_error = NFC_EOPABORTED;
       return pnd->last_error;
-    } else {
+    }
+    else
+    {
       goto read;
     }
   }
-  if (res < 10) {
+  if (res < 10)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Invalid RDR_to_PC_DataBlock frame");
     // try to interrupt current device state
     acr122_usb_ack(pnd);
     pnd->last_error = NFC_EIO;
     return pnd->last_error;
   }
-  if (abtRxBuf[offset] != attempted_response) {
+  if (abtRxBuf[offset] != attempted_response)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Frame header mismatch");
     pnd->last_error = NFC_EIO;
     return pnd->last_error;
@@ -641,44 +721,58 @@ read:
   len = abtRxBuf[offset++];
   status = abtRxBuf[7];
   error = abtRxBuf[8];
-  if (len == 0 && error == 0xFE) { // ICC_MUTE; XXX check for more errors
-      // Do not check status; my ACR122U seemingly has status=0 in this case,
-      // even though the spec says it should have had bmCommandStatus=1
-      // and bmICCStatus=1.
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "Command timed out");
-      pnd->last_error = NFC_ETIMEOUT;
-      return pnd->last_error;
+  if (len == 0 && error == 0xFE)
+  { // ICC_MUTE; XXX check for more errors
+    // Do not check status; my ACR122U seemingly has status=0 in this case,
+    // even though the spec says it should have had bmCommandStatus=1
+    // and bmICCStatus=1.
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "Command timed out");
+    pnd->last_error = NFC_ETIMEOUT;
+    return pnd->last_error;
   }
 
-  if (!((len > 1) && (abtRxBuf[10] == 0xd5))) { // In case we didn't get an immediate answer:
-    if (len != 2) {
+  if (!((len > 1) && (abtRxBuf[10] == 0xd5)))
+  { // In case we didn't get an immediate answer:
+    if (len != 2)
+    {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Wrong reply");
       pnd->last_error = NFC_EIO;
       return pnd->last_error;
     }
-    if (abtRxBuf[10] != SW1_More_Data_Available) {
-      if ((abtRxBuf[10] == SW1_Warning_with_NV_changed) && (abtRxBuf[11] == PN53x_Specific_Application_Level_Error_Code)) {
+    if (abtRxBuf[10] != SW1_More_Data_Available)
+    {
+      if ((abtRxBuf[10] == SW1_Warning_with_NV_changed) && (abtRxBuf[11] == PN53x_Specific_Application_Level_Error_Code))
+      {
         log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "PN532 has detected an error at the application level");
-      } else if ((abtRxBuf[10] == SW1_Warning_with_NV_changed) && (abtRxBuf[11] == 0x00)) {
+      }
+      else if ((abtRxBuf[10] == SW1_Warning_with_NV_changed) && (abtRxBuf[11] == 0x00))
+      {
         log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "PN532 didn't reply");
-      } else {
+      }
+      else
+      {
         log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unexpected Status Word (SW1: %02x SW2: %02x)", abtRxBuf[10], abtRxBuf[11]);
       }
       pnd->last_error = NFC_EIO;
       return pnd->last_error;
     }
     res = acr122_usb_send_apdu(pnd, APDU_GetAdditionnalData, 0x00, 0x00, NULL, 0, abtRxBuf[11], abtRxBuf, sizeof(abtRxBuf));
-    if (res == NFC_ETIMEOUT) {
-      if (DRIVER_DATA(pnd)->abort_flag) {
+    if (res == NFC_ETIMEOUT)
+    {
+      if (DRIVER_DATA(pnd)->abort_flag)
+      {
         DRIVER_DATA(pnd)->abort_flag = false;
         acr122_usb_ack(pnd);
         pnd->last_error = NFC_EOPABORTED;
         return pnd->last_error;
-      } else {
+      }
+      else
+      {
         goto read; // FIXME May cause some trouble on Touchatag, right ?
       }
     }
-    if (res < 10) {
+    if (res < 10)
+    {
       // try to interrupt current device state
       acr122_usb_ack(pnd);
       pnd->last_error = NFC_EIO;
@@ -686,7 +780,8 @@ read:
     }
   }
   offset = 0;
-  if (abtRxBuf[offset] != attempted_response) {
+  if (abtRxBuf[offset] != attempted_response)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Frame header mismatch");
     pnd->last_error = NFC_EIO;
     return pnd->last_error;
@@ -695,31 +790,35 @@ read:
 
   // XXX In CCID specification, len is a 32-bits (dword), do we need to decode more than 1 byte ? (0-255 bytes for PN532 reply)
   len = abtRxBuf[offset++];
-  if ((abtRxBuf[offset] != 0x00) && (abtRxBuf[offset + 1] != 0x00) && (abtRxBuf[offset + 2] != 0x00)) {
+  if ((abtRxBuf[offset] != 0x00) && (abtRxBuf[offset + 1] != 0x00) && (abtRxBuf[offset + 2] != 0x00))
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Not implemented: only 1-byte length is supported, please report this bug with a full trace.");
     pnd->last_error = NFC_EIO;
     return pnd->last_error;
   }
   offset += 3;
 
-  if (len < 4) {
+  if (len < 4)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Too small reply");
     pnd->last_error = NFC_EIO;
     return pnd->last_error;
   }
-  
+
   // We skip 2 bytes for PN532 direction byte (D5) and command byte (CMD+1), then 2 bytes for APDU status (90 00).
   len -= 4;
 
   // Ensure we don't overflow the destination buffer
-  if (len > szDataLen) {
+  if (len > szDataLen)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Unable to receive data: buffer too small. (szDataLen: %" PRIuPTR ", len: %" PRIuPTR ")", szDataLen, len);
     pnd->last_error = NFC_EOVFLOW;
     return pnd->last_error;
   }
-  
+
   // Additional check to prevent underflow
-  if (len > sizeof(abtRxBuf) - offset - 4) {
+  if (len > sizeof(abtRxBuf) - offset - 4)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Invalid data length");
     pnd->last_error = NFC_EIO;
     return pnd->last_error;
@@ -731,14 +830,16 @@ read:
   offset += 1; // bRFU should be 0x00
 
   // TFI + PD0 (CC+1)
-  if (abtRxBuf[offset] != 0xD5) {
+  if (abtRxBuf[offset] != 0xD5)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "TFI Mismatch");
     pnd->last_error = NFC_EIO;
     return pnd->last_error;
   }
   offset += 1;
 
-  if (abtRxBuf[offset] != CHIP_DATA(pnd)->last_command + 1) {
+  if (abtRxBuf[offset] != CHIP_DATA(pnd)->last_command + 1)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Command Code verification failed");
     pnd->last_error = NFC_EIO;
     return pnd->last_error;
@@ -750,18 +851,17 @@ read:
   return len;
 }
 
-int
-acr122_usb_ack(nfc_device *pnd)
+int acr122_usb_ack(nfc_device *pnd)
 {
-  (void) pnd;
+  (void)pnd;
   int res = 0;
-  uint8_t acr122_ack_frame[] = { GetFirmwareVersion }; // We can't send a PN532's ACK frame, so we use a normal command to cancel current command
+  uint8_t acr122_ack_frame[] = {GetFirmwareVersion}; // We can't send a PN532's ACK frame, so we use a normal command to cancel current command
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "ACR122 Abort");
   if ((res = acr122_build_frame_from_tama(pnd, acr122_ack_frame, sizeof(acr122_ack_frame))) < 0)
     return res;
-  if ((res = acr122_usb_bulk_write(DRIVER_DATA(pnd), (unsigned char *) & (DRIVER_DATA(pnd)->tama_frame), res, 1000)) < 0)
+  if ((res = acr122_usb_bulk_write(DRIVER_DATA(pnd), (unsigned char *)&(DRIVER_DATA(pnd)->tama_frame), res, 1000)) < 0)
     return res;
-  uint8_t  abtRxBuf[255 + sizeof(struct ccid_header)];
+  uint8_t abtRxBuf[255 + sizeof(struct ccid_header)];
   res = acr122_usb_bulk_read(DRIVER_DATA(pnd), abtRxBuf, sizeof(abtRxBuf), 1000);
   return res;
 }
@@ -773,19 +873,18 @@ acr122_usb_send_apdu(nfc_device *pnd,
 {
   int res;
   size_t frame_len = acr122_build_frame_from_apdu(pnd, ins, p1, p2, data, data_len, le);
-  if ((res = acr122_usb_bulk_write(DRIVER_DATA(pnd), (unsigned char *) & (DRIVER_DATA(pnd)->apdu_frame), frame_len, 1000)) < 0)
+  if ((res = acr122_usb_bulk_write(DRIVER_DATA(pnd), (unsigned char *)&(DRIVER_DATA(pnd)->apdu_frame), frame_len, 1000)) < 0)
     return res;
   if ((res = acr122_usb_bulk_read(DRIVER_DATA(pnd), out, out_size, 1000)) < 0)
     return res;
   return res;
 }
 
-int
-acr122_usb_init(nfc_device *pnd)
+int acr122_usb_init(nfc_device *pnd)
 {
   int res = 0;
   int i;
-  uint8_t  abtRxBuf[255 + sizeof(struct ccid_header)];
+  uint8_t abtRxBuf[255 + sizeof(struct ccid_header)];
 
   /*
   // See ACR122 manual: "Bi-Color LED and Buzzer Control" section
@@ -815,8 +914,7 @@ acr122_usb_init(nfc_device *pnd)
 
   // Power On ICC
   uint8_t ccid_frame[] = {
-    PC_to_RDR_IccPowerOn, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00
-  };
+      PC_to_RDR_IccPowerOn, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00};
 
   if ((res = acr122_usb_bulk_write(DRIVER_DATA(pnd), ccid_frame, sizeof(struct ccid_header), 1000)) < 0)
     return res;
@@ -828,7 +926,8 @@ acr122_usb_init(nfc_device *pnd)
     return res;
 
   res = 0;
-  for (i = 0; i < 3; i++) {
+  for (i = 0; i < 3; i++)
+  {
     if (res < 0)
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "PN532 init failed, trying again...");
     if ((res = pn53x_init(pnd)) >= 0)
@@ -848,44 +947,44 @@ acr122_usb_abort_command(nfc_device *pnd)
 }
 
 const struct pn53x_io acr122_usb_io = {
-  .send       = acr122_usb_send,
-  .receive    = acr122_usb_receive,
+    .send = acr122_usb_send,
+    .receive = acr122_usb_receive,
 };
 
 const struct nfc_driver acr122_usb_driver = {
-  .name                             = ACR122_USB_DRIVER_NAME,
-  .scan_type                        = NOT_INTRUSIVE,
-  .scan                             = acr122_usb_scan,
-  .open                             = acr122_usb_open,
-  .close                            = acr122_usb_close,
-  .strerror                         = pn53x_strerror,
+    .name = ACR122_USB_DRIVER_NAME,
+    .scan_type = NOT_INTRUSIVE,
+    .scan = acr122_usb_scan,
+    .open = acr122_usb_open,
+    .close = acr122_usb_close,
+    .strerror = pn53x_strerror,
 
-  .initiator_init                   = pn53x_initiator_init,
-  .initiator_init_secure_element    = NULL, // No secure-element support
-  .initiator_select_passive_target  = pn53x_initiator_select_passive_target,
-  .initiator_poll_target            = pn53x_initiator_poll_target,
-  .initiator_select_dep_target      = pn53x_initiator_select_dep_target,
-  .initiator_deselect_target        = pn53x_initiator_deselect_target,
-  .initiator_transceive_bytes       = pn53x_initiator_transceive_bytes,
-  .initiator_transceive_bits        = pn53x_initiator_transceive_bits,
-  .initiator_transceive_bytes_timed = pn53x_initiator_transceive_bytes_timed,
-  .initiator_transceive_bits_timed  = pn53x_initiator_transceive_bits_timed,
-  .initiator_target_is_present      = pn53x_initiator_target_is_present,
+    .initiator_init = pn53x_initiator_init,
+    .initiator_init_secure_element = NULL, // No secure-element support
+    .initiator_select_passive_target = pn53x_initiator_select_passive_target,
+    .initiator_poll_target = pn53x_initiator_poll_target,
+    .initiator_select_dep_target = pn53x_initiator_select_dep_target,
+    .initiator_deselect_target = pn53x_initiator_deselect_target,
+    .initiator_transceive_bytes = pn53x_initiator_transceive_bytes,
+    .initiator_transceive_bits = pn53x_initiator_transceive_bits,
+    .initiator_transceive_bytes_timed = pn53x_initiator_transceive_bytes_timed,
+    .initiator_transceive_bits_timed = pn53x_initiator_transceive_bits_timed,
+    .initiator_target_is_present = pn53x_initiator_target_is_present,
 
-  .target_init           = pn53x_target_init,
-  .target_send_bytes     = pn53x_target_send_bytes,
-  .target_receive_bytes  = pn53x_target_receive_bytes,
-  .target_send_bits      = pn53x_target_send_bits,
-  .target_receive_bits   = pn53x_target_receive_bits,
+    .target_init = pn53x_target_init,
+    .target_send_bytes = pn53x_target_send_bytes,
+    .target_receive_bytes = pn53x_target_receive_bytes,
+    .target_send_bits = pn53x_target_send_bits,
+    .target_receive_bits = pn53x_target_receive_bits,
 
-  .device_set_property_bool     = pn53x_set_property_bool,
-  .device_set_property_int      = pn53x_set_property_int,
-  .get_supported_modulation     = pn53x_get_supported_modulation,
-  .get_supported_baud_rate      = pn53x_get_supported_baud_rate,
-  .device_get_information_about = pn53x_get_information_about,
+    .device_set_property_bool = pn53x_set_property_bool,
+    .device_set_property_int = pn53x_set_property_int,
+    .get_supported_modulation = pn53x_get_supported_modulation,
+    .get_supported_baud_rate = pn53x_get_supported_baud_rate,
+    .device_get_information_about = pn53x_get_information_about,
 
-  .abort_command  = acr122_usb_abort_command,
-  .idle           = pn53x_idle,
-  /* Even if PN532, PowerDown is not recommended on those devices */
-  .powerdown      = NULL,
+    .abort_command = acr122_usb_abort_command,
+    .idle = pn53x_idle,
+    /* Even if PN532, PowerDown is not recommended on those devices */
+    .powerdown = NULL,
 };

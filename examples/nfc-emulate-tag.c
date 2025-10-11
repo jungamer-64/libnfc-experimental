@@ -44,7 +44,7 @@
 // timings, e.g. a Nokia NFC and will drop communication too soon for us.
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include <stdio.h>
@@ -71,9 +71,10 @@ static bool init_mfc_auth = false;
 static void
 intr_hdlr(int sig)
 {
-  (void) sig;
+  (void)sig;
   printf("\nQuitting...\n");
-  if (pnd != NULL) {
+  if (pnd != NULL)
+  {
     nfc_abort_command(pnd);
   }
   nfc_close(pnd);
@@ -88,55 +89,63 @@ target_io(nfc_target *pnt, const uint8_t *pbtInput, const size_t szInput, uint8_
   *pszOutput = 0;
 
   // Show transmitted command
-  if (!quiet_output) {
+  if (!quiet_output)
+  {
     printf("    In: ");
     print_hex(pbtInput, szInput);
   }
-  if (szInput) {
-    switch (pbtInput[0]) {
-      case 0x30: // Mifare read
-        // block address is in pbtInput[1]
-        *pszOutput = 16;
-        snprintf((char *)pbtOutput, *pszOutput, "You read block %c", pbtInput[1]);
-        break;
-      case 0x50: // HLTA (ISO14443-3)
-        if (!quiet_output) {
-          printf("Initiator HLTA me. Bye!\n");
-        }
-        loop = false;
-        break;
-      case 0x60: // Mifare authA
-      case 0x61: // Mifare authB
-        // Let's give back a very random nonce...
-        *pszOutput = 2;
-        pbtOutput[0] = 0x12;
-        pbtOutput[1] = 0x34;
-        // Next commands will be without CRC
-        init_mfc_auth = true;
-        break;
-      case 0xe0: // RATS (ISO14443-4)
-        // Send ATS
-        *pszOutput = pnt->nti.nai.szAtsLen + 1;
-        pbtOutput[0] = pnt->nti.nai.szAtsLen + 1; // ISO14443-4 says that ATS contains ATS_Length as first byte
-        if (pnt->nti.nai.szAtsLen) {
-          memcpy(pbtOutput + 1, pnt->nti.nai.abtAts, pnt->nti.nai.szAtsLen);
-        }
-        break;
-      case 0xc2: // S-block DESELECT
-        if (!quiet_output) {
-          printf("Initiator DESELECT me. Bye!\n");
-        }
-        loop = false;
-        break;
-      default: // Unknown
-        if (!quiet_output) {
-          printf("Unknown frame, emulated target abort.\n");
-        }
-        loop = false;
+  if (szInput)
+  {
+    switch (pbtInput[0])
+    {
+    case 0x30: // Mifare read
+      // block address is in pbtInput[1]
+      *pszOutput = 16;
+      snprintf((char *)pbtOutput, *pszOutput, "You read block %c", pbtInput[1]);
+      break;
+    case 0x50: // HLTA (ISO14443-3)
+      if (!quiet_output)
+      {
+        printf("Initiator HLTA me. Bye!\n");
+      }
+      loop = false;
+      break;
+    case 0x60: // Mifare authA
+    case 0x61: // Mifare authB
+      // Let's give back a very random nonce...
+      *pszOutput = 2;
+      pbtOutput[0] = 0x12;
+      pbtOutput[1] = 0x34;
+      // Next commands will be without CRC
+      init_mfc_auth = true;
+      break;
+    case 0xe0: // RATS (ISO14443-4)
+      // Send ATS
+      *pszOutput = pnt->nti.nai.szAtsLen + 1;
+      pbtOutput[0] = pnt->nti.nai.szAtsLen + 1; // ISO14443-4 says that ATS contains ATS_Length as first byte
+      if (pnt->nti.nai.szAtsLen)
+      {
+        memcpy(pbtOutput + 1, pnt->nti.nai.abtAts, pnt->nti.nai.szAtsLen);
+      }
+      break;
+    case 0xc2: // S-block DESELECT
+      if (!quiet_output)
+      {
+        printf("Initiator DESELECT me. Bye!\n");
+      }
+      loop = false;
+      break;
+    default: // Unknown
+      if (!quiet_output)
+      {
+        printf("Unknown frame, emulated target abort.\n");
+      }
+      loop = false;
     }
   }
   // Show transmitted command
-  if ((!quiet_output) && *pszOutput) {
+  if ((!quiet_output) && *pszOutput)
+  {
     printf("    Out: ");
     print_hex(pbtOutput, *pszOutput);
   }
@@ -150,22 +159,29 @@ nfc_target_emulate_tag(nfc_device *dev, nfc_target *pnt)
   uint8_t abtTx[MAX_FRAME_LEN];
   bool loop = true;
 
-  if ((szRx = nfc_target_init(dev, pnt, abtRx, sizeof(abtRx), 0)) < 0) {
+  if ((szRx = nfc_target_init(dev, pnt, abtRx, sizeof(abtRx), 0)) < 0)
+  {
     nfc_perror(dev, "nfc_target_init");
     return false;
   }
 
-  while (loop) {
-    loop = target_io(pnt, abtRx, (size_t) szRx, abtTx, &szTx);
-    if (szTx) {
-      if (nfc_target_send_bytes(dev, abtTx, szTx, 0) < 0) {
+  while (loop)
+  {
+    loop = target_io(pnt, abtRx, (size_t)szRx, abtTx, &szTx);
+    if (szTx)
+    {
+      if (nfc_target_send_bytes(dev, abtTx, szTx, 0) < 0)
+      {
         nfc_perror(dev, "nfc_target_send_bytes");
         return false;
       }
     }
-    if (loop) {
-      if (init_mfc_auth) {
-        if (nfc_device_set_property_bool(dev, NP_HANDLE_CRC, false) < 0) {
+    if (loop)
+    {
+      if (init_mfc_auth)
+      {
+        if (nfc_device_set_property_bool(dev, NP_HANDLE_CRC, false) < 0)
+        {
           nfc_perror(pnd, "nfc_target_emulate_tag");
           nfc_close(pnd);
           nfc_exit(context);
@@ -173,7 +189,8 @@ nfc_target_emulate_tag(nfc_device *dev, nfc_target *pnt)
         }
         init_mfc_auth = false;
       }
-      if ((szRx = nfc_target_receive_bytes(dev, abtRx, sizeof(abtRx), 0)) < 0) {
+      if ((szRx = nfc_target_receive_bytes(dev, abtRx, sizeof(abtRx), 0)) < 0)
+      {
         nfc_perror(dev, "nfc_target_receive_bytes");
         return false;
       }
@@ -182,20 +199,20 @@ nfc_target_emulate_tag(nfc_device *dev, nfc_target *pnt)
   return true;
 }
 
-int
-main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
-  (void) argc;
+  (void)argc;
   const char *acLibnfcVersion;
 
 #ifdef WIN32
-  signal(SIGINT, (void (__cdecl *)(int)) intr_hdlr);
+  signal(SIGINT, (void(__cdecl *)(int))intr_hdlr);
 #else
   signal(SIGINT, intr_hdlr);
 #endif
 
   nfc_init(&context);
-  if (context == NULL) {
+  if (context == NULL)
+  {
     ERR("Unable to init libnfc (malloc)");
     exit(EXIT_FAILURE);
   }
@@ -207,7 +224,8 @@ main(int argc, char *argv[])
   // Try to open the NFC reader
   pnd = nfc_open(context, NULL);
 
-  if (pnd == NULL) {
+  if (pnd == NULL)
+  {
     ERR("Unable to open NFC device");
     nfc_exit(context);
     exit(EXIT_FAILURE);
@@ -226,19 +244,19 @@ main(int argc, char *argv[])
   // Example of a Mifare Classic Mini
   // Note that crypto1 is not implemented in this example
   nfc_target nt = {
-    .nm = {
-      .nmt = NMT_ISO14443A,
-      .nbr = NBR_UNDEFINED,
-    },
-    .nti = {
-      .nai = {
-        .abtAtqa = { 0x00, 0x04 },
-        .abtUid = { 0x08, 0xab, 0xcd, 0xef },
-        .btSak = 0x09,
-        .szUidLen = 4,
-        .szAtsLen = 0,
+      .nm = {
+          .nmt = NMT_ISO14443A,
+          .nbr = NBR_UNDEFINED,
       },
-    },
+      .nti = {
+          .nai = {
+              .abtAtqa = {0x00, 0x04},
+              .abtUid = {0x08, 0xab, 0xcd, 0xef},
+              .btSak = 0x09,
+              .szUidLen = 4,
+              .szAtsLen = 0,
+          },
+      },
   };
   /*
   // Example of a FeliCa
@@ -280,14 +298,16 @@ main(int argc, char *argv[])
   print_nfc_target(&nt, true);
 
   // Switch off NP_EASY_FRAMING if target is not ISO14443-4
-  if (nfc_device_set_property_bool(pnd, NP_EASY_FRAMING, (nt.nti.nai.btSak & SAK_ISO14443_4_COMPLIANT)) < 0) {
+  if (nfc_device_set_property_bool(pnd, NP_EASY_FRAMING, (nt.nti.nai.btSak & SAK_ISO14443_4_COMPLIANT)) < 0)
+  {
     nfc_perror(pnd, "nfc_target_emulate_tag");
     nfc_close(pnd);
     nfc_exit(context);
     exit(EXIT_FAILURE);
   }
   printf("NFC device (configured as target) is now emulating the tag, please touch it with a second NFC device (initiator)\n");
-  if (!nfc_target_emulate_tag(pnd, &nt)) {
+  if (!nfc_target_emulate_tag(pnd, &nt))
+  {
     nfc_perror(pnd, "nfc_target_emulate_tag");
     nfc_close(pnd);
     nfc_exit(context);
@@ -298,4 +318,3 @@ main(int argc, char *argv[])
   nfc_exit(context);
   exit(EXIT_SUCCESS);
 }
-
