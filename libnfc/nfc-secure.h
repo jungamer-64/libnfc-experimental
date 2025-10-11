@@ -110,6 +110,31 @@
 #define NFC_SECURE_CHECK_OVERLAP 1
 #endif
 
+/*
+ * C23 nullptr support for better type safety
+ * 
+ * C23 introduces nullptr as a distinct null pointer constant with type nullptr_t.
+ * For older standards, we continue using NULL for compatibility.
+ * 
+ * This macro provides a consistent way to check for null pointers across all
+ * C standards (C89, C99, C11, C17, C23).
+ * 
+ * Usage example:
+ *   if (ptr == NFC_NULL) { return error; }  // Works in C89-C23
+ * 
+ * Benefits:
+ * - C23: Type-safe nullptr (distinct type, better diagnostics)
+ * - Pre-C23: Standard NULL (backward compatible)
+ * - Consistent API surface across all standards
+ */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+  /* C23: Use standardized nullptr */
+  #define NFC_NULL nullptr
+#else
+  /* Pre-C23: Use traditional NULL */
+  #define NFC_NULL NULL
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -421,21 +446,30 @@ int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_siz
 /*
  * Compile-time check for array vs pointer
  * 
- * C23: typeof is standardized (no __typeof__ needed)
- * C11: Requires GNU/Clang extensions (__typeof__, __builtin_types_compatible_p)
- * Older: No compile-time check available
+ * IMPORTANT: This macro relies on compiler-specific extensions:
+ * - __builtin_types_compatible_p: GCC/Clang builtin (NOT C standard)
+ * - typeof: C23 standard operator (or __typeof__ in GCC/Clang)
+ * 
+ * C23 standardizes `typeof`, but __builtin_types_compatible_p remains
+ * a compiler extension. Therefore, we require GCC/Clang even in C23 mode.
+ * 
+ * Platform Support:
+ * - C23 + GCC/Clang: Full compile-time array detection
+ * - C11 + GCC/Clang: Full compile-time array detection
+ * - Other compilers: Runtime checks only (no compile-time guarantee)
  */
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
-/* C23: Use standardized typeof operator */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L && \
+    (defined(__GNUC__) || defined(__clang__))
+/* C23 with GCC/Clang: Use standardized typeof + builtin */
 #define NFC_IS_ARRAY(x) \
     (!__builtin_types_compatible_p(typeof(x), typeof(&(x)[0])))
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && \
     (defined(__GNUC__) || defined(__clang__))
-/* C11 with GNU/Clang extensions: Use __typeof__ */
+/* C11 with GNU/Clang extensions: Use __typeof__ + builtin */
 #define NFC_IS_ARRAY(x) \
     (!__builtin_types_compatible_p(__typeof__(x), __typeof__(&(x)[0])))
 #else
-/* Fallback for older compilers - no compile-time check */
+/* Fallback for other compilers - no compile-time check */
 #define NFC_IS_ARRAY(x) (1)
 #endif
 

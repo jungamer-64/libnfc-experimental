@@ -54,33 +54,47 @@ const char* nfc_secure_strerror(int error_code)
 #endif
 
 /*
- * C23 memset_explicit detection (requires actual compiler/library support)
+ * C23 memset_explicit detection (DISABLED as of 2025)
  * 
- * NOTE: __STDC_VERSION__ >= 202311L only indicates C23 *standard*, not implementation.
- * Many compilers (GCC <14, Clang <18) don't yet support memset_explicit.
+ * CRITICAL ISSUE FIXED: __builtin_memset_explicit does NOT exist.
+ * memset_explicit is a regular function declared in <string.h>, not a builtin.
  * 
- * Detection strategy:
- * 1. Check C23 standard version
- * 2. Verify compiler has __has_builtin (for runtime checks)
- * 3. For safety, only enable if we can confirm support
+ * STATUS (2025-10-12):
+ * - GCC 14.x: Partial C23 support, memset_explicit NOT YET implemented
+ * - Clang 18.x: Partial C23 support, memset_explicit NOT YET implemented  
+ * - MSVC 2024: No C23 support announced yet
  * 
- * TODO: As of 2025, most compilers lack full C23 support.
- *       This may need adjustment as toolchains mature.
+ * FUTURE ENABLEMENT:
+ * When compilers mature (estimated 2026-2027), uncomment and test:
+ * 
+ * #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+ *   #if defined(__GNUC__) && __GNUC__ >= 15  // Estimated
+ *     #define HAVE_MEMSET_EXPLICIT 1
+ *   #elif defined(__clang__) && __clang_major__ >= 20  // Estimated
+ *     #define HAVE_MEMSET_EXPLICIT 1
+ *   #elif defined(_MSC_VER) && _MSC_VER >= 1950  // Estimated
+ *     #define HAVE_MEMSET_EXPLICIT 1
+ *   #endif
+ * #endif
+ * 
+ * For now, we rely on existing secure implementations:
+ * - C11 Annex K: memset_s (Windows/MSVC)
+ * - POSIX/BSD: explicit_bzero (glibc 2.25+, *BSD)
+ * - Windows: SecureZeroMemory
+ * - Universal: volatile fallback
  */
+#if 0  /* DISABLED: Enable when C23 compilers mature (2026+) */
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
-  #if defined(__has_builtin)
-    #if __has_builtin(__builtin_memset_explicit)
-      /* Compiler claims to support memset_explicit builtin */
-      #define HAVE_MEMSET_EXPLICIT 1
-    #endif
-  #elif defined(__GNUC__) && __GNUC__ >= 14
-    /* GCC 14+ should have C23 memset_explicit */
+  /* Check for actual implementation, not just standard version */
+  #if defined(__GNUC__) && __GNUC__ >= 15
     #define HAVE_MEMSET_EXPLICIT 1
-  #elif defined(__clang__) && __clang_major__ >= 18
-    /* Clang 18+ should have C23 memset_explicit */
+  #elif defined(__clang__) && __clang_major__ >= 20
+    #define HAVE_MEMSET_EXPLICIT 1
+  #elif defined(_MSC_VER) && _MSC_VER >= 1950
     #define HAVE_MEMSET_EXPLICIT 1
   #endif
 #endif
+#endif  /* End of disabled C23 memset_explicit detection */
 
 /* C11 Annex K memset_s support (requires <errno.h> for errno_t) */
 #if defined(__STDC_LIB_EXT1__) && defined(__STDC_WANT_LIB_EXT1__)
@@ -89,16 +103,37 @@ const char* nfc_secure_strerror(int error_code)
 #endif
 
 /*
- * explicit_bzero detection with proper glibc version checking
+ * explicit_bzero detection with robust header checking
  * 
- * Correct logic: (__GLIBC__ > 2) OR (__GLIBC__ == 2 AND __GLIBC_MINOR__ >= 25)
- * This handles glibc 3.x correctly (where __GLIBC_MINOR__ comparison is irrelevant)
+ * Platform requirements:
+ * - Linux glibc: Requires glibc 2.25+ (explicit_bzero added in 2.25)
+ * - BSD systems: Available in all modern versions
+ * 
+ * Correct version logic:
+ *   (__GLIBC__ > 2) OR (__GLIBC__ == 2 AND __GLIBC_MINOR__ >= 25)
+ * This handles glibc 3.x correctly (where __GLIBC_MINOR__ is irrelevant).
+ * 
+ * Safety Enhancement:
+ * - Verify <string.h> or <strings.h> availability before enabling
+ * - Prevents link errors if headers are missing
+ * - Graceful degradation to fallback implementation
+ * 
+ * Header locations:
+ * - Linux/glibc: <string.h>
+ * - BSD (OpenBSD/FreeBSD): <string.h> or <strings.h>
  */
-#if (defined(__GLIBC__) && \
-     ((__GLIBC__ > 2) || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 25))) || \
-    defined(__OpenBSD__) || defined(__FreeBSD__)
-/* Feature test macros defined above should expose explicit_bzero */
-#define HAVE_EXPLICIT_BZERO 1
+#if ((defined(__GLIBC__) && \
+      ((__GLIBC__ > 2) || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 25))) || \
+     defined(__OpenBSD__) || defined(__FreeBSD__))
+  /* Verify header availability (most systems have string.h) */
+  #if defined(__has_include)
+    #if __has_include(<string.h>) || __has_include(<strings.h>)
+      #define HAVE_EXPLICIT_BZERO 1
+    #endif
+  #else
+    /* Assume header is available if __has_include not supported */
+    #define HAVE_EXPLICIT_BZERO 1
+  #endif
 #endif
 
 /**
@@ -128,21 +163,9 @@ static const size_t MAX_BUFFER_SIZE = SIZE_MAX / 2;
 #endif
 
 /*
- * C23 nullptr support for better type safety
- * 
- * C23 introduces nullptr as a distinct null pointer constant with type nullptr_t.
- * For older standards, we continue using NULL for compatibility.
- * 
- * Usage example:
- *   if (ptr == NFC_NULL) { ... }  // Works in C89-C23
+ * NFC_NULL is now defined in nfc-secure.h for project-wide visibility.
+ * See header file for C23 nullptr support details.
  */
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
-  /* C23: Use standardized nullptr */
-  #define NFC_NULL nullptr
-#else
-  /* Pre-C23: Use traditional NULL */
-  #define NFC_NULL NULL
-#endif
 
 /**
  * @brief Runtime size validation for macro usage (debug mode only)
