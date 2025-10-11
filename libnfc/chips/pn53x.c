@@ -1032,7 +1032,7 @@ pn53x_set_force_iso14443a(struct nfc_device *pnd, bool bEnable)
   }
 
   int res;
-  
+
   // Force pn53x to be in ISO14443-A mode
   if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_TxMode, SYMBOL_TX_FRAMING, 0x00)) < 0) {
     return res;
@@ -1040,7 +1040,7 @@ pn53x_set_force_iso14443a(struct nfc_device *pnd, bool bEnable)
   if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_RxMode, SYMBOL_RX_FRAMING, 0x00)) < 0) {
     return res;
   }
-  
+
   // Set the PN53X to force 100% ASK Modified miller decoding (default for 14443A cards)
   return pn53x_write_register(pnd, PN53X_REG_CIU_TxAuto, SYMBOL_FORCE_100_ASK, 0x40);
 }
@@ -1062,7 +1062,7 @@ pn53x_set_force_iso14443b(struct nfc_device *pnd, bool bEnable)
   }
 
   int res;
-  
+
   // Force pn53x to be in ISO14443-B mode
   if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_TxMode, SYMBOL_TX_FRAMING, 0x03)) < 0) {
     return res;
@@ -1087,7 +1087,7 @@ pn53x_set_force_speed_106(struct nfc_device *pnd, bool bEnable)
   }
 
   int res;
-  
+
   // Force pn53x to be at 106 kbps
   if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_TxMode, SYMBOL_TX_SPEED, 0x00)) < 0) {
     return res;
@@ -2688,15 +2688,15 @@ pn53x_setup_target_mode(struct nfc_device *pnd, const nfc_target *pnt)
   switch (pnt->nm.nmt) {
     case NMT_ISO14443A:
       ptm = PTM_PASSIVE_ONLY;
-      
+
       // Validate UID constraints
       if ((pnt->nti.nai.abtUid[0] != 0x08) || (pnt->nti.nai.szUidLen != 4)) {
         pnd->last_error = NFC_EINVARG;
         return pnd->last_error;
       }
-      
+
       pn53x_set_parameters(pnd, PARAM_AUTO_ATR_RES, false);
-      
+
       // Configure ISO14443-4 PICC mode for PN532
       if (CHIP_DATA(pnd)->type == PN532) {
         if ((pnt->nti.nai.btSak & SAK_ISO14443_4_COMPLIANT) && (pnd->bAutoIso14443_4)) {
@@ -2716,7 +2716,7 @@ pn53x_setup_target_mode(struct nfc_device *pnd, const nfc_target *pnt)
     case NMT_DEP:
       pn53x_set_parameters(pnd, PARAM_AUTO_ATR_RES, true);
       ptm = PTM_DEP_ONLY;
-      
+
       // Add passive mode restriction if requested
       if (pnt->nti.ndi.ndm == NDM_PASSIVE) {
         ptm |= PTM_PASSIVE_ONLY;
@@ -2801,7 +2801,7 @@ int pn53x_target_init(struct nfc_device *pnd, nfc_target *pnt, uint8_t *pbtRx, c
     return ptm_result; // Error occurred
   }
   pn53x_target_mode ptm = (pn53x_target_mode)ptm_result;
-  
+
   int res = 0;
 
   // Let the PN53X be activated by the RF level detector from power down mode
@@ -2923,7 +2923,7 @@ int pn53x_target_init(struct nfc_device *pnd, nfc_target *pnt, uint8_t *pbtRx, c
       return res;
     }
     szRx = (size_t)res;
-    
+
     // Decode activation mode
     nfc_modulation nm;
     nfc_dep_mode ndm;
@@ -3493,10 +3493,10 @@ int pn53x_InAutoPoll(struct nfc_device *pnd,
 
 /**
  * @brief Build InJumpForDEP command buffer
- * 
+ *
  * Constructs the command buffer for InJumpForDEP operation including
  * baud rate configuration, passive initiator data, NFCID3, and general bytes.
- * 
+ *
  * @param abtCmd Output command buffer (must be at least 67 bytes)
  * @param ndm DEP mode (Active or Passive)
  * @param nbr Baud rate
@@ -3508,17 +3508,17 @@ int pn53x_InAutoPoll(struct nfc_device *pnd,
  */
 static int
 pn53x_build_injumpfordep_command(uint8_t *abtCmd,
-                                  const nfc_dep_mode ndm,
-                                  const nfc_baud_rate nbr,
-                                  const uint8_t *pbtPassiveInitiatorData,
-                                  const uint8_t *pbtNFCID3i,
-                                  const uint8_t *pbtGBi,
-                                  const size_t szGBi)
+                                 const nfc_dep_mode ndm,
+                                 const nfc_baud_rate nbr,
+                                 const uint8_t *pbtPassiveInitiatorData,
+                                 const uint8_t *pbtNFCID3i,
+                                 const uint8_t *pbtGBi,
+                                 const size_t szGBi)
 {
   abtCmd[0] = InJumpForDEP;
   abtCmd[1] = (ndm == NDM_ACTIVE) ? 0x01 : 0x00;
   abtCmd[3] = 0x00; // Following parameters flag
-  
+
   size_t offset = 4;
 
   // Configure baud rate and passive initiator data
@@ -3576,10 +3576,10 @@ pn53x_build_injumpfordep_command(uint8_t *abtCmd,
 
 /**
  * @brief Parse InJumpForDEP response into nfc_target structure
- * 
+ *
  * Extracts target information from InJumpForDEP response including
  * NFCID3, DID, baudrate, timeout, and general bytes.
- * 
+ *
  * @param pnt Output target structure (optional, can be NULL)
  * @param abtRx Response buffer
  * @param szRx Response size
@@ -3589,10 +3589,10 @@ pn53x_build_injumpfordep_command(uint8_t *abtCmd,
  */
 static int
 pn53x_parse_injumpfordep_response(nfc_target *pnt,
-                                   const uint8_t *abtRx,
-                                   size_t szRx,
-                                   const nfc_dep_mode ndm,
-                                   const nfc_baud_rate nbr)
+                                  const uint8_t *abtRx,
+                                  size_t szRx,
+                                  const nfc_dep_mode ndm,
+                                  const nfc_baud_rate nbr)
 {
   if (!pnt) {
     return 0; // No target structure provided
@@ -3601,18 +3601,18 @@ pn53x_parse_injumpfordep_response(nfc_target *pnt,
   pnt->nm.nmt = NMT_DEP;
   pnt->nm.nbr = nbr;
   pnt->nti.ndi.ndm = ndm;
-  
+
   // Copy NFCID3 (10 bytes at offset +2)
   if (nfc_safe_memcpy(pnt->nti.ndi.abtNFCID3, sizeof(pnt->nti.ndi.abtNFCID3), abtRx + 2, 10) < 0)
     return NFC_ECHIP;
-  
+
   // Copy DEP parameters
   pnt->nti.ndi.btDID = abtRx[12];
   pnt->nti.ndi.btBS = abtRx[13];
   pnt->nti.ndi.btBR = abtRx[14];
   pnt->nti.ndi.btTO = abtRx[15];
   pnt->nti.ndi.btPP = abtRx[16];
-  
+
   // Copy general bytes if present
   if (szRx > 17) {
     pnt->nti.ndi.szGB = szRx - 17;
@@ -3621,7 +3621,7 @@ pn53x_parse_injumpfordep_response(nfc_target *pnt,
   } else {
     pnt->nti.ndi.szGB = 0;
   }
-  
+
   return 0;
 }
 
@@ -3646,11 +3646,11 @@ int pn53x_InJumpForDEP(struct nfc_device *pnd,
 {
   uint8_t abtCmd[67];
   int res;
-  
+
   // Build command buffer
-  res = pn53x_build_injumpfordep_command(abtCmd, ndm, nbr, 
-                                          pbtPassiveInitiatorData,
-                                          pbtNFCID3i, pbtGBi, szGBi);
+  res = pn53x_build_injumpfordep_command(abtCmd, ndm, nbr,
+                                         pbtPassiveInitiatorData,
+                                         pbtNFCID3i, pbtGBi, szGBi);
   if (res < 0) {
     if (res == NFC_EINVARG) {
       pnd->last_error = NFC_EINVARG;
@@ -3658,24 +3658,24 @@ int pn53x_InJumpForDEP(struct nfc_device *pnd,
     }
     return res;
   }
-  
+
   size_t cmd_len = (size_t)res;
-  
+
   // Send command and receive response
   uint8_t abtRx[PN53x_EXTENDED_FRAME__DATA_MAX_LEN];
   size_t szRx = sizeof(abtRx);
-  
+
   if ((res = pn53x_transceive(pnd, abtCmd, cmd_len, abtRx, szRx, timeout)) < 0)
     return res;
   szRx = (size_t)res;
-  
+
   // Check if target was found (PN53X returns 0x00 if none available)
   if (abtRx[1] >= 1) {
     // Parse response into target structure if provided
     if ((res = pn53x_parse_injumpfordep_response(pnt, abtRx, szRx, ndm, nbr)) < 0)
       return res;
   }
-  
+
   return abtRx[1];
 }
 
@@ -3872,7 +3872,7 @@ typedef struct {
 static const nm_to_pm_map_t nm_to_pm_table[] = {
   // ISO14443A always maps to 106 kbps regardless of nbr
   { NMT_ISO14443A,        NBR_UNDEFINED, PM_ISO14443A_106 },
-  
+
   // ISO14443B and BICLASS support multiple baud rates
   { NMT_ISO14443B,        NBR_106,       PM_ISO14443B_106 },
   { NMT_ISO14443B,        NBR_212,       PM_ISO14443B_212 },
@@ -3882,11 +3882,11 @@ static const nm_to_pm_map_t nm_to_pm_table[] = {
   { NMT_ISO14443BICLASS,  NBR_212,       PM_ISO14443B_212 },
   { NMT_ISO14443BICLASS,  NBR_424,       PM_ISO14443B_424 },
   { NMT_ISO14443BICLASS,  NBR_847,       PM_ISO14443B_847 },
-  
+
   // JEWEL and BARCODE always 106 kbps
   { NMT_JEWEL,            NBR_UNDEFINED, PM_JEWEL_106 },
   { NMT_BARCODE,          NBR_UNDEFINED, PM_BARCODE_106 },
-  
+
   // FELICA supports 212 and 424 kbps
   { NMT_FELICA,           NBR_212,       PM_FELICA_212 },
   { NMT_FELICA,           NBR_424,       PM_FELICA_424 },
@@ -3916,18 +3916,18 @@ static const ptt_to_nm_map_t ptt_to_nm_table[] = {
   // ISO14443A types
   { PTT_MIFARE,            { .nmt = NMT_ISO14443A, .nbr = NBR_106 } },
   { PTT_ISO14443_4A_106,   { .nmt = NMT_ISO14443A, .nbr = NBR_106 } },
-  
+
   // ISO14443B types
   { PTT_ISO14443_4B_106,     { .nmt = NMT_ISO14443B, .nbr = NBR_106 } },
   { PTT_ISO14443_4B_TCL_106, { .nmt = NMT_ISO14443B, .nbr = NBR_106 } },
-  
+
   // JEWEL type
   { PTT_JEWEL_106,         { .nmt = NMT_JEWEL,     .nbr = NBR_106 } },
-  
+
   // FELICA types
   { PTT_FELICA_212,        { .nmt = NMT_FELICA,    .nbr = NBR_212 } },
   { PTT_FELICA_424,        { .nmt = NMT_FELICA,    .nbr = NBR_424 } },
-  
+
   // DEP types (passive and active)
   { PTT_DEP_PASSIVE_106,   { .nmt = NMT_DEP,       .nbr = NBR_106 } },
   { PTT_DEP_ACTIVE_106,    { .nmt = NMT_DEP,       .nbr = NBR_106 } },
@@ -3959,14 +3959,14 @@ typedef struct {
 static const nm_to_ptt_map_t nm_to_ptt_table[] = {
   // ISO14443A always maps to MIFARE (106 kbps)
   { NMT_ISO14443A,        NBR_UNDEFINED, PTT_MIFARE },
-  
+
   // ISO14443B and BICLASS only support 106 kbps for target type
   { NMT_ISO14443B,        NBR_106,       PTT_ISO14443_4B_106 },
   { NMT_ISO14443BICLASS,  NBR_106,       PTT_ISO14443_4B_106 },
-  
+
   // JEWEL always 106 kbps
   { NMT_JEWEL,            NBR_UNDEFINED, PTT_JEWEL_106 },
-  
+
   // FELICA supports 212 and 424 kbps
   { NMT_FELICA,           NBR_212,       PTT_FELICA_212 },
   { NMT_FELICA,           NBR_424,       PTT_FELICA_424 },
@@ -4046,10 +4046,10 @@ int pn53x_get_supported_baud_rate(nfc_device *pnd, const nfc_mode mode, const nf
 
 /**
  * @brief Safe string append with automatic error handling
- * 
+ *
  * Appends formatted string to buffer with bounds checking and automatic
  * cleanup on error. Updates buffer pointer and remaining length.
- * 
+ *
  * @param buf Pointer to current buffer position (will be updated)
  * @param buflen Pointer to remaining buffer length (will be updated)
  * @param pbuf Pointer to original buffer (for cleanup on error)
@@ -4064,19 +4064,19 @@ pn53x_safe_append(char **buf, size_t *buflen, char **pbuf, const char *fmt, ...)
   va_start(args, fmt);
   int res = vsnprintf(*buf, *buflen, fmt, args);
   va_end(args);
-  
+
   if (res < 0) {
     free(*pbuf);
     *pbuf = NULL;
     return NFC_ESOFT;
   }
-  
+
   if (*buflen <= (size_t)res) {
     free(*pbuf);
     *pbuf = NULL;
     return NFC_EOVFLOW;
   }
-  
+
   *buf += res;
   *buflen -= res;
   return NFC_SUCCESS;
@@ -4084,9 +4084,9 @@ pn53x_safe_append(char **buf, size_t *buflen, char **pbuf, const char *fmt, ...)
 
 /**
  * @brief Format modulation information for a specific mode
- * 
+ *
  * Formats supported modulation types and baud rates for initiator or target mode.
- * 
+ *
  * @param pnd NFC device
  * @param mode Device mode (N_INITIATOR or N_TARGET)
  * @param buf Pointer to current buffer position (will be updated)
@@ -4095,26 +4095,26 @@ pn53x_safe_append(char **buf, size_t *buflen, char **pbuf, const char *fmt, ...)
  * @return NFC_SUCCESS on success, error code on failure
  */
 static int
-pn53x_format_mode_info(nfc_device *pnd, nfc_mode mode, 
+pn53x_format_mode_info(nfc_device *pnd, nfc_mode mode,
                        char **buf, size_t *buflen, char **pbuf)
 {
   const nfc_modulation_type *nmt;
   int res;
-  
+
   if ((res = nfc_device_get_supported_modulation(pnd, mode, &nmt)) < 0) {
     free(*pbuf);
     *pbuf = NULL;
     return res;
   }
-  
+
   for (int i = 0; nmt[i]; i++) {
     // Append modulation type name
-    if ((res = pn53x_safe_append(buf, buflen, pbuf, "%s%s (", 
-                                  (i == 0) ? "" : ", ",
-                                  str_nfc_modulation_type(nmt[i]))) < 0) {
+    if ((res = pn53x_safe_append(buf, buflen, pbuf, "%s%s (",
+                                 (i == 0) ? "" : ", ",
+                                 str_nfc_modulation_type(nmt[i]))) < 0) {
       return res;
     }
-    
+
     // Get supported baud rates
     const nfc_baud_rate *nbr;
     if (mode == N_INITIATOR) {
@@ -4130,22 +4130,22 @@ pn53x_format_mode_info(nfc_device *pnd, nfc_mode mode,
         return res;
       }
     }
-    
+
     // Append baud rates
     for (int j = 0; nbr[j]; j++) {
       if ((res = pn53x_safe_append(buf, buflen, pbuf, "%s%s",
-                                    (j == 0) ? "" : ", ",
-                                    str_nfc_baud_rate(nbr[j]))) < 0) {
+                                   (j == 0) ? "" : ", ",
+                                   str_nfc_baud_rate(nbr[j]))) < 0) {
         return res;
       }
     }
-    
+
     // Close parenthesis
     if ((res = pn53x_safe_append(buf, buflen, pbuf, ")")) < 0) {
       return res;
     }
   }
-  
+
   return NFC_SUCCESS;
 }
 
@@ -4160,8 +4160,8 @@ int pn53x_get_information_about(nfc_device *pnd, char **pbuf)
   int res;
 
   // Append chip information
-  if ((res = pn53x_safe_append(&buf, &buflen, pbuf, "chip: %s\n", 
-                                CHIP_DATA(pnd)->firmware_text)) < 0) {
+  if ((res = pn53x_safe_append(&buf, &buflen, pbuf, "chip: %s\n",
+                               CHIP_DATA(pnd)->firmware_text)) < 0) {
     return res;
   }
 
@@ -4169,7 +4169,7 @@ int pn53x_get_information_about(nfc_device *pnd, char **pbuf)
   if ((res = pn53x_safe_append(&buf, &buflen, pbuf, "initator mode modulations: ")) < 0) {
     return res;
   }
-  
+
   if ((res = pn53x_format_mode_info(pnd, N_INITIATOR, &buf, &buflen, pbuf)) < 0) {
     return res;
   }
@@ -4183,7 +4183,7 @@ int pn53x_get_information_about(nfc_device *pnd, char **pbuf)
   if ((res = pn53x_safe_append(&buf, &buflen, pbuf, "target mode modulations: ")) < 0) {
     return res;
   }
-  
+
   if ((res = pn53x_format_mode_info(pnd, N_TARGET, &buf, &buflen, pbuf)) < 0) {
     return res;
   }

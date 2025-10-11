@@ -639,10 +639,10 @@ acr122_usb_send(nfc_device *pnd, const uint8_t *pbtData, const size_t szData, co
 
 /**
  * @brief Compute timeout for USB bulk read operation
- * 
+ *
  * Implements interruptible blocking with USB_TIMEOUT_PER_PASS chunks
  * to allow abort_flag checking even with infinite timeout.
- * 
+ *
  * @param timeout User-provided timeout or USB_INFINITE_TIMEOUT
  * @param remaining_time Pointer to remaining time counter
  * @param pnd NFC device pointer for error reporting
@@ -654,22 +654,22 @@ acr122_usb_compute_timeout(int timeout, int *remaining_time, nfc_device *pnd)
   if (timeout == USB_INFINITE_TIMEOUT) {
     return USB_TIMEOUT_PER_PASS;
   }
-  
+
   // User-provided timeout: cut into chunks for abort checking
   *remaining_time -= USB_TIMEOUT_PER_PASS;
   if (*remaining_time <= 0) {
     pnd->last_error = NFC_ETIMEOUT;
     return -1; // Timeout expired
   }
-  
+
   return MIN(*remaining_time, USB_TIMEOUT_PER_PASS);
 }
 
 /**
  * @brief Handle abort flag during receive operation
- * 
+ *
  * Checks abort flag and performs acknowledgment if needed.
- * 
+ *
  * @param pnd NFC device pointer
  * @return NFC_EOPABORTED if aborted, 0 otherwise
  */
