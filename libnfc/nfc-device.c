@@ -37,6 +37,10 @@
 #endif // HAVE_CONFIG_H
 
 #include "nfc-internal.h"
+#include "nfc-secure.h"
+
+#define LOG_GROUP NFC_LOG_GROUP_GENERAL
+#define LOG_CATEGORY "libnfc.general"
 
 nfc_device *
 nfc_device_new(const nfc_context *context, const nfc_connstring connstring)
@@ -60,7 +64,11 @@ nfc_device_new(const nfc_context *context, const nfc_connstring connstring)
   res->bInfiniteSelect = false;
   res->bAutoIso14443_4 = false;
   res->last_error  = 0;
-  memcpy(res->connstring, connstring, sizeof(res->connstring));
+  if (nfc_safe_memcpy(res->connstring, sizeof(res->connstring), connstring, sizeof(nfc_connstring)) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy connection string");
+    free(res);
+    return NULL;
+  }
   res->driver_data = NULL;
   res->chip_data   = NULL;
 

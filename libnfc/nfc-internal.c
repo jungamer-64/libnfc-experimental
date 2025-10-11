@@ -98,8 +98,8 @@ nfc_context_new(void)
   // Clear user defined devices array
   for (int i = 0; i < MAX_USER_DEFINED_DEVICES; i++)
   {
-    strcpy(res->user_defined_devices[i].name, "");
-    strcpy(res->user_defined_devices[i].connstring, "");
+    res->user_defined_devices[i].name[0] = '\0';
+    res->user_defined_devices[i].connstring[0] = '\0';
     res->user_defined_devices[i].optional = false;
   }
   res->user_defined_device_count = 0;
@@ -109,7 +109,15 @@ nfc_context_new(void)
   char *envvar = getenv("LIBNFC_DEFAULT_DEVICE");
   if (envvar)
   {
-    strcpy(res->user_defined_devices[0].name, "user defined default device");
+    const char *device_name = "user defined default device";
+    if (nfc_safe_memcpy(res->user_defined_devices[0].name, DEVICE_NAME_LENGTH,
+                        device_name, strlen(device_name)) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, 
+              "Failed to copy device name");
+      nfc_exit(res);
+      return NULL;
+    }
+    res->user_defined_devices[0].name[DEVICE_NAME_LENGTH - 1] = '\0';
     size_t envvar_len = strnlen(envvar, NFC_BUFSIZE_CONNSTRING);
     if (nfc_safe_memcpy(res->user_defined_devices[0].connstring, NFC_BUFSIZE_CONNSTRING,
                         envvar, envvar_len) < 0) {
@@ -136,7 +144,15 @@ nfc_context_new(void)
   envvar = getenv("LIBNFC_DEVICE");
   if (envvar)
   {
-    strcpy(res->user_defined_devices[0].name, "user defined device");
+    const char *device_name = "user defined device";
+    if (nfc_safe_memcpy(res->user_defined_devices[0].name, DEVICE_NAME_LENGTH,
+                        device_name, strlen(device_name)) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+              "Failed to copy device name");
+      nfc_exit(res);
+      return NULL;
+    }
+    res->user_defined_devices[0].name[DEVICE_NAME_LENGTH - 1] = '\0';
     size_t envvar_len = strnlen(envvar, NFC_BUFSIZE_CONNSTRING);
     if (nfc_safe_memcpy(res->user_defined_devices[0].connstring, NFC_BUFSIZE_CONNSTRING,
                         envvar, envvar_len) < 0) {

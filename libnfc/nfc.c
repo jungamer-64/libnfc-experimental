@@ -322,7 +322,14 @@ nfc_open(nfc_context *context, const nfc_connstring connstring)
     for (uint32_t i = 0; i < context->user_defined_device_count; i++) {
       if (strcmp(ncs, context->user_defined_devices[i].connstring) == 0) {
         // This is a device sets by user, we use the device name given by user
-        strcpy(pnd->name, context->user_defined_devices[i].name);
+        size_t name_len = strnlen(context->user_defined_devices[i].name, DEVICE_NAME_LENGTH);
+        if (nfc_safe_memcpy(pnd->name, DEVICE_NAME_LENGTH, 
+                            context->user_defined_devices[i].name, name_len) < 0) {
+          log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy device name");
+          nfc_close(pnd);
+          return NULL;
+        }
+        pnd->name[name_len] = '\0';
         break;
       }
     }
@@ -376,11 +383,17 @@ nfc_list_devices(nfc_context *context, nfc_connstring connstrings[], const size_
       char *old_env_log_level = NULL;
       // do it silently
       if (env_log_level) {
-        if ((old_env_log_level = malloc(strlen(env_log_level) + 1)) == NULL) {
+        size_t env_len = strlen(env_log_level);
+        if ((old_env_log_level = malloc(env_len + 1)) == NULL) {
           log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Unable to malloc()");
           return 0;
         }
-        strcpy(old_env_log_level, env_log_level);
+        if (nfc_safe_memcpy(old_env_log_level, env_len + 1, env_log_level, env_len) < 0) {
+          log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy log level");
+          free(old_env_log_level);
+          return 0;
+        }
+        old_env_log_level[env_len] = '\0';
       }
       setenv("LIBNFC_LOG_LEVEL", "0", 1);
 #endif // ENVVARS
@@ -399,14 +412,22 @@ nfc_list_devices(nfc_context *context, nfc_connstring connstrings[], const size_
       if (pnd) {
         nfc_close(pnd);
         log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "User device %s found", context->user_defined_devices[i].name);
-        strcpy((char *)(connstrings + device_found), context->user_defined_devices[i].connstring);
+        if (nfc_safe_memcpy(connstrings + device_found, sizeof(nfc_connstring),
+                            context->user_defined_devices[i].connstring, sizeof(nfc_connstring)) < 0) {
+          log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy connection string");
+          continue;
+        }
         device_found ++;
         if (device_found == connstrings_len)
           break;
       }
     } else {
       // manual choice is not marked as optional so let's take it blindly
-      strcpy((char *)(connstrings + device_found), context->user_defined_devices[i].connstring);
+      if (nfc_safe_memcpy(connstrings + device_found, sizeof(nfc_connstring),
+                          context->user_defined_devices[i].connstring, sizeof(nfc_connstring)) < 0) {
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy connection string");
+        continue;
+      }
       device_found++;
       if (device_found >= connstrings_len)
         return device_found;
