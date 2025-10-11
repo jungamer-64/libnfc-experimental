@@ -42,7 +42,7 @@ const char* nfc_secure_strerror(int error_code)
         case NFC_SECURE_ERROR_RANGE:
             return "Size parameter out of valid range";
         case NFC_SECURE_ERROR_ZERO_SIZE:
-            return "Zero-size operation (suspicious usage)";
+            return "Zero-size operation (deprecated, now treated as success)";
         default:
             return "Unknown error code";
     }
@@ -53,15 +53,52 @@ const char* nfc_secure_strerror(int error_code)
 #include <windows.h>  /* For SecureZeroMemory */
 #endif
 
-/* explicit_bzero detection (now with proper feature test macros) */
-#if (defined(__GLIBC__) && __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 25) || \
+/* C23 memset_explicit support (requires <string.h>) */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+#define HAVE_MEMSET_EXPLICIT 1
+#endif
+
+/* C11 Annex K memset_s support (requires <errno.h> for errno_t) */
+#if defined(__STDC_LIB_EXT1__) && defined(__STDC_WANT_LIB_EXT1__)
+#include <errno.h>  /* For errno_t */
+#define HAVE_MEMSET_S 1
+#endif
+
+/*
+ * explicit_bzero detection with proper glibc version checking
+ * 
+ * Correct logic: (__GLIBC__ > 2) OR (__GLIBC__ == 2 AND __GLIBC_MINOR__ >= 25)
+ * This handles glibc 3.x correctly (where __GLIBC_MINOR__ comparison is irrelevant)
+ */
+#if (defined(__GLIBC__) && \
+     ((__GLIBC__ > 2) || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 25))) || \
     defined(__OpenBSD__) || defined(__FreeBSD__)
 /* Feature test macros defined above should expose explicit_bzero */
 #define HAVE_EXPLICIT_BZERO 1
 #endif
 
-/* Maximum reasonable buffer size: half of SIZE_MAX to prevent integer overflow */
+/**
+ * Maximum reasonable buffer size: half of SIZE_MAX to prevent integer overflow
+ * 
+ * Rationale:
+ * - Prevents dst_size + src_size overflow when checking buffer operations
+ * - Leaves room for internal calculations without wraparound
+ * - Any buffer > SIZE_MAX/2 is likely a bug (e.g., negative value cast to size_t)
+ * 
+ * Example vulnerability without this limit:
+ *   size_t dst_size = SIZE_MAX;
+ *   size_t src_size = 100;
+ *   if (dst_size >= src_size) { // ✓ passes
+ *       if (dst_size + 100 < dst_size) { // ✗ overflow! wraps to 99
+ * 
+ * With SIZE_MAX/2 limit, such overflow scenarios are prevented.
+ */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+/* C23: Use constexpr for better type safety */
+constexpr size_t MAX_BUFFER_SIZE = SIZE_MAX / 2;
+#else
 #define MAX_BUFFER_SIZE (SIZE_MAX / 2)
+#endif
 
 /**
  * @brief Runtime size validation for macro usage (debug mode only)
@@ -127,6 +164,40 @@ static inline void check_suspicious_size(size_t dst_size, const char *func_name)
 #endif
 
 /**
+ * @brief Internal helper: Check if buffers overlap
+ *
+ * Note: Standard memcpy() has undefined behavior if source and destination overlap.
+ * This check is enabled in debug builds (NFC_SECURE_CHECK_OVERLAP) to detect
+ * programming errors. For production, prefer using memmove() when overlap is possible.
+ *
+ * @param dst Destination pointer
+ * @param dst_size Destination size
+ * @param src Source pointer
+ * @param src_size Source size
+ * @return true if buffers overlap
+ */
+#ifdef NFC_SECURE_CHECK_OVERLAP
+static bool buffers_overlap(const void *dst, size_t dst_size,
+                            const void *src, size_t src_size)
+{
+    const uint8_t *dst_ptr = (const uint8_t *)dst;
+    const uint8_t *src_ptr = (const uint8_t *)src;
+
+    /* Check if dst overlaps with src */
+    if (dst_ptr >= src_ptr && dst_ptr < (src_ptr + src_size)) {
+        return true;
+    }
+
+    /* Check if src overlaps with dst */
+    if (src_ptr >= dst_ptr && src_ptr < (dst_ptr + dst_size)) {
+        return true;
+    }
+
+    return false;
+}
+#endif /* NFC_SECURE_CHECK_OVERLAP */
+
+/**
  * @brief Safe memory copy with buffer size validation
  *
  * Implementation follows memory safety best practices:
@@ -158,11 +229,17 @@ int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size
     /* Validation 2: Size range checks (prevent integer overflow) */
     if (src_size == 0)
     {
-        /* Zero-size copy is technically valid but suspicious */
-#ifdef LOG
-        log_put_internal("nfc_safe_memcpy: WARNING - zero-size copy (suspicious usage)");
+        /*
+         * Zero-size copy is technically valid (memcpy(dst, src, 0) is safe)
+         * but may indicate a logic error in caller code.
+         * 
+         * We return success but log a warning in debug builds to help
+         * developers catch potential bugs (e.g., sizeof() misuse).
+         */
+#if defined(NFC_SECURE_DEBUG) && defined(LOG)
+        log_put_internal("nfc_safe_memcpy: INFO - zero-size copy (may indicate logic error)");
 #endif
-        return NFC_SECURE_ERROR_ZERO_SIZE;
+        return NFC_SECURE_SUCCESS;  /* Not an error, just a no-op */
     }
 
     if (src_size > MAX_BUFFER_SIZE)
@@ -244,11 +321,11 @@ int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_siz
     /* Validation 2: Size range checks (prevent integer overflow) */
     if (src_size == 0)
     {
-        /* Zero-size move is technically valid but suspicious */
-#ifdef LOG
-        log_put_internal("nfc_safe_memmove: WARNING - zero-size move (suspicious usage)");
+        /* Zero-size move is technically valid (memmove(dst, src, 0) is safe) */
+#if defined(NFC_SECURE_DEBUG) && defined(LOG)
+        log_put_internal("nfc_safe_memmove: INFO - zero-size move (may indicate logic error)");
 #endif
-        return NFC_SECURE_ERROR_ZERO_SIZE;
+        return NFC_SECURE_SUCCESS;  /* Not an error, just a no-op */
     }
 
     if (src_size > MAX_BUFFER_SIZE)
@@ -327,12 +404,11 @@ int nfc_secure_memset(void *ptr, int val, size_t size)
     /* Validation 2: Size range check */
     if (size == 0)
     {
-        /* Zero-size memset is technically valid but suspicious */
-#ifdef LOG
-        log_put_internal("nfc_secure_memset: WARNING - zero-size memset (suspicious usage)");
+        /* Zero-size memset is technically valid (memset(ptr, val, 0) is safe) */
+#if defined(NFC_SECURE_DEBUG) && defined(LOG)
+        log_put_internal("nfc_secure_memset: INFO - zero-size memset (may indicate logic error)");
 #endif
-        /* Return success for backward compatibility, but log warning */
-        return NFC_SECURE_SUCCESS;
+        return NFC_SECURE_SUCCESS;  /* Not an error, just a no-op */
     }
 
     if (size > MAX_BUFFER_SIZE)
@@ -343,11 +419,21 @@ int nfc_secure_memset(void *ptr, int val, size_t size)
         return NFC_SECURE_ERROR_RANGE;
     }
 
-    /* Use platform-specific secure memset implementations when available */
+    /*
+     * Use platform-specific secure memset implementations in priority order:
+     * 1. C23 memset_explicit (future-proof, standardized)
+     * 2. C11 Annex K memset_s (portable but rarely implemented)
+     * 3. POSIX/BSD explicit_bzero (widely available on Unix)
+     * 4. Windows SecureZeroMemory (Windows-specific)
+     * 5. Volatile fallback (universal but slowest)
+     */
     bool use_volatile_fallback = false;
 
-#if defined(__STDC_LIB_EXT1__) && defined(__STDC_WANT_LIB_EXT1__)
-    /* C11 Annex K: memset_s - safest and most portable when available */
+#if defined(HAVE_MEMSET_EXPLICIT)
+    /* C23: memset_explicit - standardized secure memset */
+    memset_explicit(ptr, val, size);
+#elif defined(HAVE_MEMSET_S)
+    /* C11 Annex K: memset_s - portable when available (rare) */
     errno_t result = memset_s(ptr, size, val, size);
     if (result != 0)
     {
@@ -356,18 +442,9 @@ int nfc_secure_memset(void *ptr, int val, size_t size)
 #endif
         return NFC_SECURE_ERROR_INVALID;
     }
-#elif defined(__unix__) || defined(__linux__) || defined(__APPLE__)
-    /* BSD/Linux: explicit_bzero - guaranteed not to be optimized away */
-#if defined(__GLIBC__) && __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 25
-    /* glibc 2.25+ provides explicit_bzero */
+#elif defined(HAVE_EXPLICIT_BZERO)
+    /* POSIX/BSD: explicit_bzero - guaranteed not to be optimized away */
     explicit_bzero(ptr, size);
-#elif defined(__OpenBSD__) || defined(__FreeBSD__)
-    /* BSD systems have explicit_bzero */
-    explicit_bzero(ptr, size);
-#else
-    /* Fallback for older glibc or other Unix systems */
-    use_volatile_fallback = true;
-#endif
 #elif defined(_WIN32) || defined(_WIN64)
     /* Windows: SecureZeroMemory */
     SecureZeroMemory(ptr, size);
@@ -428,37 +505,3 @@ int nfc_secure_memset(void *ptr, int val, size_t size)
 
     return NFC_SECURE_SUCCESS;
 }
-
-/**
- * @brief Internal helper: Check if buffers overlap
- *
- * Note: Standard memcpy() has undefined behavior if source and destination overlap.
- * This check is enabled in debug builds (NFC_SECURE_CHECK_OVERLAP) to detect
- * programming errors. For production, prefer using memmove() when overlap is possible.
- *
- * @param dst Destination pointer
- * @param dst_size Destination size
- * @param src Source pointer
- * @param src_size Source size
- * @return true if buffers overlap
- */
-#ifdef NFC_SECURE_CHECK_OVERLAP
-static bool buffers_overlap(const void *dst, size_t dst_size,
-                            const void *src, size_t src_size)
-{
-    const uint8_t *dst_ptr = (const uint8_t *)dst;
-    const uint8_t *src_ptr = (const uint8_t *)src;
-
-    /* Check if dst overlaps with src */
-    if (dst_ptr >= src_ptr && dst_ptr < (src_ptr + src_size)) {
-        return true;
-    }
-
-    /* Check if src overlaps with dst */
-    if (src_ptr >= dst_ptr && src_ptr < (dst_ptr + dst_size)) {
-        return true;
-    }
-
-    return false;
-}
-#endif /* NFC_SECURE_CHECK_OVERLAP */

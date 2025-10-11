@@ -313,44 +313,74 @@ int pn532_uart_wakeup(nfc_device *pnd)
   return res;
 }
 
+// Helper function: Handle power mode transitions before sending data
+static int
+pn532_uart_handle_power_mode(nfc_device *pnd)
+{
+  int res = 0;
+  
+  switch (CHIP_DATA(pnd)->power_mode)
+  {
+  case LOWVBAT:
+    // PN532C106 wakeup and SAMConfiguration
+    if ((res = pn532_uart_wakeup(pnd)) < 0)
+      return res;
+    // According to PN532 application note, C106 appendix: exit Low Vbat mode
+    if ((res = pn532_SAMConfiguration(pnd, PSM_NORMAL, 1000)) < 0)
+      return res;
+    break;
+    
+  case POWERDOWN:
+    // Simple wakeup
+    if ((res = pn532_uart_wakeup(pnd)) < 0)
+      return res;
+    break;
+    
+  case NORMAL:
+    // Nothing to do
+    break;
+  }
+  
+  return NFC_SUCCESS;
+}
+
+// Helper function: Wait for ACK frame from PN532
+static int
+pn532_uart_wait_for_ack(nfc_device *pnd, int timeout)
+{
+  uint8_t abtRxBuf[PN53x_ACK_FRAME__LEN];
+  int res = uart_receive(DRIVER_DATA(pnd)->port, abtRxBuf, sizeof(abtRxBuf), 0, timeout);
+  
+  if (res != 0)
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "Unable to read ACK");
+    pnd->last_error = res;
+    return pnd->last_error;
+  }
+
+  if (pn53x_check_ack_frame(pnd, abtRxBuf, sizeof(abtRxBuf)) != 0)
+  {
+    return pnd->last_error;
+  }
+  
+  return NFC_SUCCESS;
+}
+
 #define PN532_BUFFER_LEN (PN53x_EXTENDED_FRAME__DATA_MAX_LEN + PN53x_EXTENDED_FRAME__OVERHEAD)
 static int
 pn532_uart_send(nfc_device *pnd, const uint8_t *pbtData, const size_t szData, int timeout)
 {
   int res = 0;
-  // Before sending anything, we need to discard from any junk bytes
+  
+  // Discard any junk bytes before sending
   uart_flush_input(DRIVER_DATA(pnd)->port, false);
 
-  switch (CHIP_DATA(pnd)->power_mode)
-  {
-  case LOWVBAT:
-  {
-    /** PN532C106 wakeup. */
-    if ((res = pn532_uart_wakeup(pnd)) < 0)
-    {
-      return res;
-    }
-    // According to PN532 application note, C106 appendix: to go out Low Vbat mode and enter in normal mode we need to send a SAMConfiguration command
-    if ((res = pn532_SAMConfiguration(pnd, PSM_NORMAL, 1000)) < 0)
-    {
-      return res;
-    }
-  }
-  break;
-  case POWERDOWN:
-  {
-    if ((res = pn532_uart_wakeup(pnd)) < 0)
-    {
-      return res;
-    }
-  }
-  break;
-  case NORMAL:
-    // Nothing to do :)
-    break;
-  };
+  // Handle power mode transitions
+  if ((res = pn532_uart_handle_power_mode(pnd)) < 0)
+    return res;
 
-  uint8_t abtFrame[PN532_BUFFER_LEN] = {0x00, 0x00, 0xff}; // Every packet must start with "00 00 ff"
+  // Build frame with PN532 protocol preamble
+  uint8_t abtFrame[PN532_BUFFER_LEN] = {0x00, 0x00, 0xff};
   size_t szFrame = 0;
 
   if ((res = pn53x_build_frame(abtFrame, &szFrame, pbtData, szData)) < 0)
@@ -359,6 +389,7 @@ pn532_uart_send(nfc_device *pnd, const uint8_t *pbtData, const size_t szData, in
     return pnd->last_error;
   }
 
+  // Transmit frame
   res = uart_send(DRIVER_DATA(pnd)->port, abtFrame, szFrame, timeout);
   if (res != 0)
   {
@@ -367,24 +398,8 @@ pn532_uart_send(nfc_device *pnd, const uint8_t *pbtData, const size_t szData, in
     return pnd->last_error;
   }
 
-  uint8_t abtRxBuf[PN53x_ACK_FRAME__LEN];
-  res = uart_receive(DRIVER_DATA(pnd)->port, abtRxBuf, sizeof(abtRxBuf), 0, timeout);
-  if (res != 0)
-  {
-    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "Unable to read ACK");
-    pnd->last_error = res;
-    return pnd->last_error;
-  }
-
-  if (pn53x_check_ack_frame(pnd, abtRxBuf, sizeof(abtRxBuf)) == 0)
-  {
-    // The PN53x is running the sent command
-  }
-  else
-  {
-    return pnd->last_error;
-  }
-  return NFC_SUCCESS;
+  // Wait for ACK response
+  return pn532_uart_wait_for_ack(pnd, timeout);
 }
 
 static int
