@@ -114,13 +114,17 @@ const char *nfc_secure_strerror(int error_code)
  * This handles glibc 3.x correctly (where __GLIBC_MINOR__ is irrelevant).
  *
  * Safety Enhancement:
- * - Verify <string.h> or <strings.h> availability before enabling
+ * - Verify <string.h> availability before enabling
  * - Prevents link errors if headers are missing
  * - Graceful degradation to fallback implementation
  *
- * Header locations:
- * - Linux/glibc: <string.h>
- * - BSD (OpenBSD/FreeBSD): <string.h> or <strings.h>
+ * Header Declaration Location:
+ * - Linux/glibc: <string.h> (glibc 2.25+)
+ * - BSD (OpenBSD/FreeBSD): <string.h> (all modern versions)
+ * 
+ * IMPORTANT: Do NOT confuse with <strings.h>:
+ * - <strings.h> is for legacy BSD functions (bcopy, bzero, etc.)
+ * - explicit_bzero() is declared in <string.h>, NOT <strings.h>
  */
 #if ((defined(__GLIBC__) && \
       ((__GLIBC__ > 2) || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 25))) || \

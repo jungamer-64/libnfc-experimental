@@ -31,7 +31,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include "pn532_i2c.h"
@@ -55,7 +55,7 @@
 #define PN532_I2C_DRIVER_NAME "pn532_i2c"
 
 #define LOG_CATEGORY "libnfc.driver.pn532_i2c"
-#define LOG_GROUP    NFC_LOG_GROUP_DRIVER
+#define LOG_GROUP NFC_LOG_GROUP_DRIVER
 
 // I2C address of the PN532 chip.
 #define PN532_I2C_ADDR 0x24
@@ -76,8 +76,8 @@ struct pn532_i2c_data {
 };
 
 /* preamble and start bytes, see pn532-internal.h for details */
-const uint8_t pn53x_preamble_and_start[] = { 0x00, 0x00, 0xff };
-#define PN53X_PREAMBLE_AND_START_LEN	(sizeof(pn53x_preamble_and_start) / sizeof(pn53x_preamble_and_start[0]))
+const uint8_t pn53x_preamble_and_start[] = {0x00, 0x00, 0xff};
+#define PN53X_PREAMBLE_AND_START_LEN (sizeof(pn53x_preamble_and_start) / sizeof(pn53x_preamble_and_start[0]))
 
 /* Private Functions Prototypes */
 
@@ -97,8 +97,7 @@ static int pn532_i2c_wait_rdyframe(nfc_device *pnd, uint8_t *pbtData, const size
 
 static size_t pn532_i2c_scan(const nfc_context *context, nfc_connstring connstrings[], const size_t connstrings_len);
 
-
-#define DRIVER_DATA(pnd) ((struct pn532_i2c_data*)(pnd->driver_data))
+#define DRIVER_DATA(pnd) ((struct pn532_i2c_data *)(pnd->driver_data))
 
 /*
  * Bus free time (in ms) between a STOP condition and START condition. See
@@ -123,7 +122,7 @@ static struct timespec __transaction_stop;
 static ssize_t pn532_i2c_read(const i2c_device id,
                               uint8_t *buf, const size_t len)
 {
-  struct timespec transaction_start, bus_free_time = { 0, 0 };
+  struct timespec transaction_start, bus_free_time = {0, 0};
   ssize_t ret;
 
   clock_gettime(CLOCK_MONOTONIC, &transaction_start);
@@ -151,7 +150,7 @@ static ssize_t pn532_i2c_read(const i2c_device id,
 static ssize_t pn532_i2c_write(const i2c_device id,
                                const uint8_t *buf, const size_t len)
 {
-  struct timespec transaction_start, bus_free_time = { 0, 0 };
+  struct timespec transaction_start, bus_free_time = {0, 0};
   ssize_t ret;
 
   clock_gettime(CLOCK_MONOTONIC, &transaction_start);
@@ -515,8 +514,7 @@ pn532_i2c_wait_rdyframe(nfc_device *pnd, uint8_t *pbtData, const size_t szDataLe
 
         if (timeout > 0) {
           gettimeofday(&cur_tv, NULL);
-          duration = (cur_tv.tv_sec - start_tv.tv_sec) * 1000000L
-                     + (cur_tv.tv_usec - start_tv.tv_usec);
+          duration = (cur_tv.tv_sec - start_tv.tv_sec) * 1000000L + (cur_tv.tv_usec - start_tv.tv_usec);
 
           if (duration / 1000 > timeout) {
             res = NFC_ETIMEOUT;
@@ -655,8 +653,7 @@ error:
  * @param pnd pointer on the NFC device.
  * @return NFC_SUCCESS on success, otherwise an error code
  */
-int
-pn532_i2c_ack(nfc_device *pnd)
+int pn532_i2c_ack(nfc_device *pnd)
 {
   return pn532_i2c_write(DRIVER_DATA(pnd)->dev, pn53x_ack_frame, sizeof(pn53x_ack_frame));
 }
@@ -677,44 +674,43 @@ pn532_i2c_abort_command(nfc_device *pnd)
 }
 
 const struct pn53x_io pn532_i2c_io = {
-  .send       = pn532_i2c_send,
-  .receive    = pn532_i2c_receive,
+  .send = pn532_i2c_send,
+  .receive = pn532_i2c_receive,
 };
 
 const struct nfc_driver pn532_i2c_driver = {
-  .name                             = PN532_I2C_DRIVER_NAME,
-  .scan_type                        = INTRUSIVE,
-  .scan                             = pn532_i2c_scan,
-  .open                             = pn532_i2c_open,
-  .close                            = pn532_i2c_close,
-  .strerror                         = pn53x_strerror,
+  .name = PN532_I2C_DRIVER_NAME,
+  .scan_type = INTRUSIVE,
+  .scan = pn532_i2c_scan,
+  .open = pn532_i2c_open,
+  .close = pn532_i2c_close,
+  .strerror = pn53x_strerror,
 
-  .initiator_init                   = pn53x_initiator_init,
-  .initiator_init_secure_element    = pn532_initiator_init_secure_element,
-  .initiator_select_passive_target  = pn53x_initiator_select_passive_target,
-  .initiator_poll_target            = pn53x_initiator_poll_target,
-  .initiator_select_dep_target      = pn53x_initiator_select_dep_target,
-  .initiator_deselect_target        = pn53x_initiator_deselect_target,
-  .initiator_transceive_bytes       = pn53x_initiator_transceive_bytes,
-  .initiator_transceive_bits        = pn53x_initiator_transceive_bits,
+  .initiator_init = pn53x_initiator_init,
+  .initiator_init_secure_element = pn532_initiator_init_secure_element,
+  .initiator_select_passive_target = pn53x_initiator_select_passive_target,
+  .initiator_poll_target = pn53x_initiator_poll_target,
+  .initiator_select_dep_target = pn53x_initiator_select_dep_target,
+  .initiator_deselect_target = pn53x_initiator_deselect_target,
+  .initiator_transceive_bytes = pn53x_initiator_transceive_bytes,
+  .initiator_transceive_bits = pn53x_initiator_transceive_bits,
   .initiator_transceive_bytes_timed = pn53x_initiator_transceive_bytes_timed,
-  .initiator_transceive_bits_timed  = pn53x_initiator_transceive_bits_timed,
-  .initiator_target_is_present      = pn53x_initiator_target_is_present,
+  .initiator_transceive_bits_timed = pn53x_initiator_transceive_bits_timed,
+  .initiator_target_is_present = pn53x_initiator_target_is_present,
 
-  .target_init           = pn53x_target_init,
-  .target_send_bytes     = pn53x_target_send_bytes,
-  .target_receive_bytes  = pn53x_target_receive_bytes,
-  .target_send_bits      = pn53x_target_send_bits,
-  .target_receive_bits   = pn53x_target_receive_bits,
+  .target_init = pn53x_target_init,
+  .target_send_bytes = pn53x_target_send_bytes,
+  .target_receive_bytes = pn53x_target_receive_bytes,
+  .target_send_bits = pn53x_target_send_bits,
+  .target_receive_bits = pn53x_target_receive_bits,
 
-  .device_set_property_bool     = pn53x_set_property_bool,
-  .device_set_property_int      = pn53x_set_property_int,
-  .get_supported_modulation     = pn53x_get_supported_modulation,
-  .get_supported_baud_rate      = pn53x_get_supported_baud_rate,
+  .device_set_property_bool = pn53x_set_property_bool,
+  .device_set_property_int = pn53x_set_property_int,
+  .get_supported_modulation = pn53x_get_supported_modulation,
+  .get_supported_baud_rate = pn53x_get_supported_baud_rate,
   .device_get_information_about = pn53x_get_information_about,
 
-  .abort_command  = pn532_i2c_abort_command,
-  .idle           = pn53x_idle,
-  .powerdown      = pn53x_PowerDown,
+  .abort_command = pn532_i2c_abort_command,
+  .idle = pn53x_idle,
+  .powerdown = pn53x_PowerDown,
 };
-

@@ -30,7 +30,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 /*
@@ -58,11 +58,11 @@ Thanks to d18c7db and Okko for example code
 
 #define PN53X_USB_DRIVER_NAME "pn53x_usb"
 #define LOG_CATEGORY "libnfc.driver.pn53x_usb"
-#define LOG_GROUP    NFC_LOG_GROUP_DRIVER
+#define LOG_GROUP NFC_LOG_GROUP_DRIVER
 
-#define USB_INFINITE_TIMEOUT   0
+#define USB_INFINITE_TIMEOUT 0
 
-#define DRIVER_DATA(pnd) ((struct pn53x_usb_data*)(pnd->driver_data))
+#define DRIVER_DATA(pnd) ((struct pn53x_usb_data *)(pnd->driver_data))
 
 const nfc_modulation_type no_target_support[] = {0};
 
@@ -98,7 +98,7 @@ int pn53x_usb_init(nfc_device *pnd);
 static int
 pn53x_usb_bulk_read(struct pn53x_usb_data *data, uint8_t abtRx[], const size_t szRx, const int timeout)
 {
-  int res = usb_bulk_read(data->pudh, data->uiEndPointIn, (char *) abtRx, szRx, timeout);
+  int res = usb_bulk_read(data->pudh, data->uiEndPointIn, (char *)abtRx, szRx, timeout);
   if (res > 0) {
     LOG_HEX(NFC_LOG_GROUP_COM, "RX", abtRx, res);
   } else if (res < 0) {
@@ -112,7 +112,7 @@ static int
 pn53x_usb_bulk_write(struct pn53x_usb_data *data, uint8_t abtTx[], const size_t szTx, const int timeout)
 {
   LOG_HEX(NFC_LOG_GROUP_COM, "TX", abtTx, szTx);
-  int res = usb_bulk_write(data->pudh, data->uiEndPointOut, (char *) abtTx, szTx, timeout);
+  int res = usb_bulk_write(data->pudh, data->uiEndPointOut, (char *)abtTx, szTx, timeout);
   if (res > 0) {
     // HACK This little hack is a well know problem of USB, see http://www.libusb.org/ticket/6 for more details
     if ((res % data->uiMaxPacketSize) == 0) {
@@ -136,39 +136,204 @@ struct pn53x_usb_supported_device {
 };
 
 const struct pn53x_usb_supported_device pn53x_usb_supported_devices[] = {
-  { 0x04CC, 0x0531, NXP_PN531,   "Philips / PN531",             0x84, 0x04, 0x40 },
-  { 0x04CC, 0x2533, NXP_PN533,   "NXP / PN533",                 0x84, 0x04, 0x40 },
-  { 0x04E6, 0x5591, SCM_SCL3711, "SCM Micro / SCL3711-NFC&RW",  0x84, 0x04, 0x40 },
-  { 0x04E6, 0x5594, SCM_SCL3712, "SCM Micro / SCL3712-NFC&RW",  0, 0, 0 }, // to check on real device
-  { 0x054c, 0x0193, SONY_PN531,  "Sony / PN531",                0x84, 0x04, 0x40 },
-  { 0x1FD3, 0x0608, ASK_LOGO,    "ASK / LoGO",                  0x84, 0x04, 0x40 },
-  { 0x054C, 0x02E1, SONY_RCS360, "Sony / FeliCa S360 [PaSoRi]", 0x84, 0x04, 0x40 }
+  {0x04CC, 0x0531, NXP_PN531, "Philips / PN531", 0x84, 0x04, 0x40},
+  {0x04CC, 0x2533, NXP_PN533, "NXP / PN533", 0x84, 0x04, 0x40},
+  {0x04E6, 0x5591, SCM_SCL3711, "SCM Micro / SCL3711-NFC&RW", 0x84, 0x04, 0x40},
+  {0x04E6, 0x5594, SCM_SCL3712, "SCM Micro / SCL3712-NFC&RW", 0, 0, 0}, // to check on real device
+  {0x054c, 0x0193, SONY_PN531, "Sony / PN531", 0x84, 0x04, 0x40},
+  {0x1FD3, 0x0608, ASK_LOGO, "ASK / LoGO", 0x84, 0x04, 0x40},
+  {0x054C, 0x02E1, SONY_RCS360, "Sony / FeliCa S360 [PaSoRi]", 0x84, 0x04, 0x40}
 };
 
 // PN533 USB descriptors backup buffers
 
 const uint8_t btXramUsbDesc_scl3711[] = {
-  0x09, 0x02, 0x20, 0x00, 0x01, 0x01, 0x00, 0x80, 0x32, 0x09, 0x04, 0x00,
-  0x00, 0x02, 0xff, 0xff, 0xff, 0x00, 0x07, 0x05, 0x04, 0x02, 0x40, 0x00,
-  0x04, 0x07, 0x05, 0x84, 0x02, 0x40, 0x00, 0x04, 0x1e, 0x03, 0x53, 0x00,
-  0x43, 0x00, 0x4c, 0x00, 0x33, 0x00, 0x37, 0x00, 0x31, 0x00, 0x31, 0x00,
-  0x2d, 0x00, 0x4e, 0x00, 0x46, 0x00, 0x43, 0x00, 0x26, 0x00, 0x52, 0x00,
+  0x09,
+  0x02,
+  0x20,
+  0x00,
+  0x01,
+  0x01,
+  0x00,
+  0x80,
+  0x32,
+  0x09,
+  0x04,
+  0x00,
+  0x00,
+  0x02,
+  0xff,
+  0xff,
+  0xff,
+  0x00,
+  0x07,
+  0x05,
+  0x04,
+  0x02,
+  0x40,
+  0x00,
+  0x04,
+  0x07,
+  0x05,
+  0x84,
+  0x02,
+  0x40,
+  0x00,
+  0x04,
+  0x1e,
+  0x03,
+  0x53,
+  0x00,
+  0x43,
+  0x00,
+  0x4c,
+  0x00,
+  0x33,
+  0x00,
+  0x37,
+  0x00,
+  0x31,
+  0x00,
+  0x31,
+  0x00,
+  0x2d,
+  0x00,
+  0x4e,
+  0x00,
+  0x46,
+  0x00,
+  0x43,
+  0x00,
+  0x26,
+  0x00,
+  0x52,
+  0x00,
   0x57,
 };
 const uint8_t btXramUsbDesc_nxppn533[] = {
-  0x09, 0x02, 0x20, 0x00, 0x01, 0x01, 0x00, 0x80, 0x32, 0x09, 0x04, 0x00,
-  0x00, 0x02, 0xff, 0xff, 0xff, 0x00, 0x07, 0x05, 0x04, 0x02, 0x40, 0x00,
-  0x04, 0x07, 0x05, 0x84, 0x02, 0x40, 0x00, 0x04, 0x0c, 0x03, 0x50, 0x00,
-  0x4e, 0x00, 0x35, 0x00, 0x33, 0x00, 0x33, 0x00, 0x04, 0x03, 0x09, 0x04,
-  0x08, 0x03, 0x4e, 0x00, 0x58, 0x00, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x09,
+  0x02,
+  0x20,
+  0x00,
+  0x01,
+  0x01,
+  0x00,
+  0x80,
+  0x32,
+  0x09,
+  0x04,
+  0x00,
+  0x00,
+  0x02,
+  0xff,
+  0xff,
+  0xff,
+  0x00,
+  0x07,
+  0x05,
+  0x04,
+  0x02,
+  0x40,
+  0x00,
+  0x04,
+  0x07,
+  0x05,
+  0x84,
+  0x02,
+  0x40,
+  0x00,
+  0x04,
+  0x0c,
+  0x03,
+  0x50,
+  0x00,
+  0x4e,
+  0x00,
+  0x35,
+  0x00,
+  0x33,
+  0x00,
+  0x33,
+  0x00,
+  0x04,
+  0x03,
+  0x09,
+  0x04,
+  0x08,
+  0x03,
+  0x4e,
+  0x00,
+  0x58,
+  0x00,
+  0x50,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
   0x00,
 };
 const uint8_t btXramUsbDesc_asklogo[] = {
-  0x09, 0x02, 0x20, 0x00, 0x01, 0x01, 0x00, 0x80, 0x96, 0x09, 0x04, 0x00,
-  0x00, 0x02, 0xff, 0xff, 0xff, 0x00, 0x07, 0x05, 0x04, 0x02, 0x40, 0x00,
-  0x04, 0x07, 0x05, 0x84, 0x02, 0x40, 0x00, 0x04, 0x0a, 0x03, 0x4c, 0x00,
-  0x6f, 0x00, 0x47, 0x00, 0x4f, 0x00, 0x04, 0x03, 0x09, 0x04, 0x08, 0x03,
-  0x41, 0x00, 0x53, 0x00, 0x4b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x09,
+  0x02,
+  0x20,
+  0x00,
+  0x01,
+  0x01,
+  0x00,
+  0x80,
+  0x96,
+  0x09,
+  0x04,
+  0x00,
+  0x00,
+  0x02,
+  0xff,
+  0xff,
+  0xff,
+  0x00,
+  0x07,
+  0x05,
+  0x04,
+  0x02,
+  0x40,
+  0x00,
+  0x04,
+  0x07,
+  0x05,
+  0x84,
+  0x02,
+  0x40,
+  0x00,
+  0x04,
+  0x0a,
+  0x03,
+  0x4c,
+  0x00,
+  0x6f,
+  0x00,
+  0x47,
+  0x00,
+  0x4f,
+  0x00,
+  0x04,
+  0x03,
+  0x09,
+  0x04,
+  0x08,
+  0x03,
+  0x41,
+  0x00,
+  0x53,
+  0x00,
+  0x4b,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
   0x00,
 };
 
@@ -216,7 +381,7 @@ static void pn533_fix_usbdesc(nfc_device *pnd)
 #endif
   // Abuse the overflow bug to restore USB descriptors in one go
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_INFO, "%s", "Fixing USB descriptors corruption");
-  uint8_t abtCmdWR[19 + MAXSZXRAMUSBDESC] = { GetFirmwareVersion };
+  uint8_t abtCmdWR[19 + MAXSZXRAMUSBDESC] = {GetFirmwareVersion};
   for (uint8_t i = 0; i < szXramUsbDesc; i++) {
     abtCmdWR[i + 19] = btXramUsbDesc[i];
   }
@@ -259,7 +424,7 @@ pn53x_usb_get_end_points_default(struct usb_device *dev, struct pn53x_usb_data *
   return false;
 }
 
-int  pn53x_usb_ack(nfc_device *pnd);
+int pn53x_usb_ack(nfc_device *pnd);
 
 // Find transfer endpoints for bulk transfers
 static void
@@ -363,8 +528,7 @@ struct pn53x_usb_descriptor {
   char *filename;
 };
 
-bool
-pn53x_usb_get_usb_device_name(struct usb_device *dev, usb_dev_handle *udev, char *buffer, size_t len)
+bool pn53x_usb_get_usb_device_name(struct usb_device *dev, usb_dev_handle *udev, char *buffer, size_t len)
 {
   *buffer = '\0';
 
@@ -410,7 +574,7 @@ static nfc_device *
 pn53x_usb_open(const nfc_context *context, const nfc_connstring connstring)
 {
   nfc_device *pnd = NULL;
-  struct pn53x_usb_descriptor desc = { NULL, NULL };
+  struct pn53x_usb_descriptor desc = {NULL, NULL};
   int connstring_decode_level = connstring_decode(connstring, PN53X_USB_DRIVER_NAME, "usb", &desc.dirname, &desc.filename);
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%d element(s) have been decoded from \"%s\"", connstring_decode_level, connstring);
   if (connstring_decode_level < 1) {
@@ -429,13 +593,13 @@ pn53x_usb_open(const nfc_context *context, const nfc_connstring connstring)
   usb_prepare();
 
   for (bus = usb_get_busses(); bus; bus = bus->next) {
-    if (connstring_decode_level > 1)  {
+    if (connstring_decode_level > 1) {
       // A specific bus have been specified
       if (0 != strcmp(bus->dirname, desc.dirname))
         continue;
     }
     for (dev = bus->devices; dev; dev = dev->next) {
-      if (connstring_decode_level > 2)  {
+      if (connstring_decode_level > 2) {
         // A specific dev have been specified
         if (0 != strcmp(dev->filename, desc.filename))
           continue;
@@ -444,9 +608,9 @@ pn53x_usb_open(const nfc_context *context, const nfc_connstring connstring)
       if ((data.pudh = usb_open(dev)) == NULL)
         continue;
 
-      //To retrieve real USB endpoints configuration:
-      //pn53x_usb_get_end_points(dev, &data);
-      //printf("DEBUG ENDPOINTS    In:0x%x  Out:0x%x  Size:0x%x\n", data.uiEndPointIn, data.uiEndPointOut, data.uiMaxPacketSize);
+      // To retrieve real USB endpoints configuration:
+      // pn53x_usb_get_end_points(dev, &data);
+      // printf("DEBUG ENDPOINTS    In:0x%x  Out:0x%x  Size:0x%x\n", data.uiEndPointIn, data.uiEndPointOut, data.uiMaxPacketSize);
 
       // Retrieve end points, using hardcoded defaults if available
       // or using the descriptors otherwise.
@@ -513,7 +677,7 @@ pn53x_usb_open(const nfc_context *context, const nfc_connstring connstring)
           break;
         case SONY_RCS360:
         case UNKNOWN:
-          CHIP_DATA(pnd)->timer_correction = 0;   // TODO: allow user to know if timed functions are available
+          CHIP_DATA(pnd)->timer_correction = 0; // TODO: allow user to know if timed functions are available
           break;
       }
       pnd->driver = &pn53x_usb_driver;
@@ -577,7 +741,7 @@ pn53x_usb_close(nfc_device *pnd)
 static int
 pn53x_usb_send(nfc_device *pnd, const uint8_t *pbtData, const size_t szData, const int timeout)
 {
-  uint8_t  abtFrame[PN53X_USB_BUFFER_LEN] = { 0x00, 0x00, 0xff };  // Every packet must start with "00 00 ff"
+  uint8_t abtFrame[PN53X_USB_BUFFER_LEN] = {0x00, 0x00, 0xff}; // Every packet must start with "00 00 ff"
   size_t szFrame = 0;
   int res = 0;
 
@@ -627,7 +791,7 @@ pn53x_usb_receive(nfc_device *pnd, uint8_t *pbtData, const size_t szDataLen, con
   size_t len;
   off_t offset = 0;
 
-  uint8_t  abtRxBuf[PN53X_USB_BUFFER_LEN];
+  uint8_t abtRxBuf[PN53X_USB_BUFFER_LEN];
   int res;
 
   /*
@@ -670,7 +834,7 @@ read:
     return pnd->last_error;
   }
 
-  const uint8_t pn53x_preamble[3] = { 0x00, 0x00, 0xff };
+  const uint8_t pn53x_preamble[3] = {0x00, 0x00, 0xff};
   if (0 != (memcmp(abtRxBuf, pn53x_preamble, 3))) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Frame preamble+start code mismatch");
     pnd->last_error = NFC_EIO;
@@ -762,25 +926,23 @@ read:
   return len;
 }
 
-int
-pn53x_usb_ack(nfc_device *pnd)
+int pn53x_usb_ack(nfc_device *pnd)
 {
-  return pn53x_usb_bulk_write(DRIVER_DATA(pnd), (uint8_t *) pn53x_ack_frame, sizeof(pn53x_ack_frame), 1000);
+  return pn53x_usb_bulk_write(DRIVER_DATA(pnd), (uint8_t *)pn53x_ack_frame, sizeof(pn53x_ack_frame), 1000);
 }
 
-int
-pn53x_usb_init(nfc_device *pnd)
+int pn53x_usb_init(nfc_device *pnd)
 {
   int res = 0;
   // Sometimes PN53x USB doesn't reply ACK one the first frame, so we need to send a dummy one...
-  //pn53x_check_communication (pnd); // Sony RC-S360 doesn't support this command for now so let's use a get_firmware_version instead:
-  const uint8_t abtCmd[] = { GetFirmwareVersion };
+  // pn53x_check_communication (pnd); // Sony RC-S360 doesn't support this command for now so let's use a get_firmware_version instead:
+  const uint8_t abtCmd[] = {GetFirmwareVersion};
   pn53x_transceive(pnd, abtCmd, sizeof(abtCmd), NULL, 0, -1);
   // ...and we don't care about error
   pnd->last_error = 0;
   if (SONY_RCS360 == DRIVER_DATA(pnd)->model) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "SONY RC-S360 initialization.");
-    const uint8_t abtCmd2[] = { 0x18, 0x01 };
+    const uint8_t abtCmd2[] = {0x18, 0x01};
     pn53x_transceive(pnd, abtCmd2, sizeof(abtCmd2), NULL, 0, -1);
     pn53x_usb_ack(pnd);
   }
@@ -887,43 +1049,43 @@ pn53x_usb_get_supported_modulation(nfc_device *pnd, const nfc_mode mode, const n
 }
 
 const struct pn53x_io pn53x_usb_io = {
-  .send       = pn53x_usb_send,
-  .receive    = pn53x_usb_receive,
+  .send = pn53x_usb_send,
+  .receive = pn53x_usb_receive,
 };
 
 const struct nfc_driver pn53x_usb_driver = {
-  .name                             = PN53X_USB_DRIVER_NAME,
-  .scan_type                        = NOT_INTRUSIVE,
-  .scan                             = pn53x_usb_scan,
-  .open                             = pn53x_usb_open,
-  .close                            = pn53x_usb_close,
-  .strerror                         = pn53x_strerror,
+  .name = PN53X_USB_DRIVER_NAME,
+  .scan_type = NOT_INTRUSIVE,
+  .scan = pn53x_usb_scan,
+  .open = pn53x_usb_open,
+  .close = pn53x_usb_close,
+  .strerror = pn53x_strerror,
 
-  .initiator_init                   = pn53x_initiator_init,
-  .initiator_init_secure_element    = NULL, // No secure-element support
-  .initiator_select_passive_target  = pn53x_initiator_select_passive_target,
-  .initiator_poll_target            = pn53x_initiator_poll_target,
-  .initiator_select_dep_target      = pn53x_initiator_select_dep_target,
-  .initiator_deselect_target        = pn53x_initiator_deselect_target,
-  .initiator_transceive_bytes       = pn53x_initiator_transceive_bytes,
-  .initiator_transceive_bits        = pn53x_initiator_transceive_bits,
+  .initiator_init = pn53x_initiator_init,
+  .initiator_init_secure_element = NULL, // No secure-element support
+  .initiator_select_passive_target = pn53x_initiator_select_passive_target,
+  .initiator_poll_target = pn53x_initiator_poll_target,
+  .initiator_select_dep_target = pn53x_initiator_select_dep_target,
+  .initiator_deselect_target = pn53x_initiator_deselect_target,
+  .initiator_transceive_bytes = pn53x_initiator_transceive_bytes,
+  .initiator_transceive_bits = pn53x_initiator_transceive_bits,
   .initiator_transceive_bytes_timed = pn53x_initiator_transceive_bytes_timed,
-  .initiator_transceive_bits_timed  = pn53x_initiator_transceive_bits_timed,
-  .initiator_target_is_present      = pn53x_initiator_target_is_present,
+  .initiator_transceive_bits_timed = pn53x_initiator_transceive_bits_timed,
+  .initiator_target_is_present = pn53x_initiator_target_is_present,
 
-  .target_init           = pn53x_target_init,
-  .target_send_bytes     = pn53x_target_send_bytes,
-  .target_receive_bytes  = pn53x_target_receive_bytes,
-  .target_send_bits      = pn53x_target_send_bits,
-  .target_receive_bits   = pn53x_target_receive_bits,
+  .target_init = pn53x_target_init,
+  .target_send_bytes = pn53x_target_send_bytes,
+  .target_receive_bytes = pn53x_target_receive_bytes,
+  .target_send_bits = pn53x_target_send_bits,
+  .target_receive_bits = pn53x_target_receive_bits,
 
-  .device_set_property_bool     = pn53x_usb_set_property_bool,
-  .device_set_property_int      = pn53x_set_property_int,
-  .get_supported_modulation     = pn53x_usb_get_supported_modulation,
-  .get_supported_baud_rate      = pn53x_get_supported_baud_rate,
+  .device_set_property_bool = pn53x_usb_set_property_bool,
+  .device_set_property_int = pn53x_set_property_int,
+  .get_supported_modulation = pn53x_usb_get_supported_modulation,
+  .get_supported_baud_rate = pn53x_get_supported_baud_rate,
   .device_get_information_about = pn53x_get_information_about,
 
-  .abort_command  = pn53x_usb_abort_command,
-  .idle           = pn53x_idle,
-  .powerdown      = pn53x_PowerDown,
+  .abort_command = pn53x_usb_abort_command,
+  .idle = pn53x_idle,
+  .powerdown = pn53x_PowerDown,
 };

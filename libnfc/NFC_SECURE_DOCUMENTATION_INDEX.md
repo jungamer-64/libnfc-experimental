@@ -236,7 +236,7 @@
 
 ### 参照規格
 
-- **CERT C**: https://wiki.sei.cmu.edu/confluence/display/c/SEI+CERT+C+Coding+Standard
+- **CERT C**: <https://wiki.sei.cmu.edu/confluence/display/c/SEI+CERT+C+Coding+Standard>
 - **ISO/IEC TR 24772**: Guidance to avoiding vulnerabilities in programming languages
 - **CWE-120**: Buffer Copy without Checking Size of Input
 - **CWE-14**: Compiler Removal of Code to Clear Buffers
@@ -265,6 +265,6 @@ libnfc と同じライセンス (詳細は [../COPYING](../COPYING) を参照)
 
 ---
 
-**最終更新**: 2025年10月12日  
-**バージョン**: V5 (Critical Fixes + C23 Support)  
+**最終更新**: 2025年10月12日
+**バージョン**: V5 (Critical Fixes + C23 Support)
 **推奨用途**: 業務用途、セキュリティ重視プロジェクト、組み込みシステム

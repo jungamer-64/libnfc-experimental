@@ -5,13 +5,14 @@
 `nfc-secure.h/c` は**業務用途にも耐えうる**Cメモリ安全ライブラリです。
 
 **主な特徴**:
+
 - ✅ バッファオーバーフロー防止(サイズチェック必須)
 - ✅ コンパイラ最適化耐性(セキュア消去が消されない)
 - ✅ プラットフォーム最適化(OS/標準ライブラリの安全関数を優先利用)
 - ✅ コンパイル時型チェック(C11+で配列 vs ポインタを区別)
 - ✅ デバッグ支援(重複バッファ検出、詳細ログ)
 
-**対応標準**: C89/C99/C11/C23  
+**対応標準**: C89/C99/C11/C23
 **対応プラットフォーム**: Linux, BSD, Windows, 組み込み系
 
 ---
@@ -40,12 +41,14 @@ if (ret != NFC_SECURE_SUCCESS) {
 ```
 
 **引数**:
+
 1. `dst` - コピー先ポインタ
 2. `dst_size` - コピー先バッファの**実際のサイズ** (重要!)
 3. `src` - コピー元ポインタ
 4. `src_size` - コピーするバイト数
 
 **返り値**:
+
 - `NFC_SECURE_SUCCESS` (0) - 成功
 - `NFC_SECURE_ERROR_INVALID` - NULLポインタ
 - `NFC_SECURE_ERROR_OVERFLOW` - dst_size < src_size
@@ -70,11 +73,13 @@ NFC_SAFE_MEMCPY(buf, data, sizeof(data));  // コンパイルエラー(C11+)
 ```
 
 **仕組み**:
+
 - `sizeof(dst)` で配列サイズを自動計算
 - C11+では `NFC_IS_ARRAY()` で配列チェック(ポインタだとコンパイルエラー)
 - C89/C99ではチェックなし(**注意**: ポインタに使うと危険)
 
 **メリット**:
+
 - `dst_size` を書かなくて良い
 - タイプミス防止
 - コンパイル時安全性(C11+)
@@ -95,6 +100,7 @@ nfc_safe_memmove(buffer + 8, 56, buffer, 32);  // 先頭32Bを8バイト後ろ�
 ```
 
 **memcpy との違い**:
+
 - `memcpy`: 重複バッファは**未定義動作**(UB)
 - `memmove`: 重複バッファでも**正しく動作**
 
@@ -123,6 +129,7 @@ make
 ```
 
 **デバッグビルドでの挙動**:
+
 ```c
 uint8_t buffer[64];
 
@@ -271,7 +278,8 @@ nfc_safe_memcpy(dst, huge, src, 16);
 // → NFC_SECURE_ERROR_RANGE
 ```
 
-**実用上の影響**: 
+**実用上の影響**:
+
 - 32bit: 最大 2GB
 - 64bit: 最大 8EB (事実上制限なし)
 
@@ -317,7 +325,7 @@ nfc_safe_memcpy(dst, 100, src, 0);  // → NFC_SECURE_SUCCESS
 
 int send_apdu(nfc_device *pnd, const uint8_t *apdu, size_t apdu_len) {
     uint8_t tx_buffer[MAX_FRAME_LEN];
-    
+
     // ✅ バッファオーバーフロー防止
     int ret = nfc_safe_memcpy(tx_buffer, sizeof(tx_buffer), apdu, apdu_len);
     if (ret != NFC_SECURE_SUCCESS) {
@@ -325,9 +333,9 @@ int send_apdu(nfc_device *pnd, const uint8_t *apdu, size_t apdu_len) {
                 "APDU too large: %s", nfc_secure_strerror(ret));
         return NFC_EINVARG;
     }
-    
+
     // ... 送信処理 ...
-    
+
     // ✅ セキュア消去(機密データ削除)
     nfc_secure_memset(tx_buffer, 0x00, sizeof(tx_buffer));
     return NFC_SUCCESS;
@@ -343,12 +351,12 @@ uint8_t *allocate_and_copy(const uint8_t *data, size_t size) {
     if (size > MAX_BUFFER_SIZE) {
         return NULL;
     }
-    
+
     uint8_t *buffer = malloc(size);
     if (!buffer) {
         return NULL;
     }
-    
+
     // ✅ 動的メモリは関数版を使用
     int ret = nfc_safe_memcpy(buffer, size, data, size);
     if (ret != NFC_SECURE_SUCCESS) {
@@ -356,7 +364,7 @@ uint8_t *allocate_and_copy(const uint8_t *data, size_t size) {
         free(buffer);
         return NULL;
     }
-    
+
     return buffer;
 }
 
@@ -382,7 +390,7 @@ typedef struct {
 
 void ring_compact(ring_buffer_t *rb) {
     size_t used = rb->tail - rb->head;
-    
+
     if (rb->head > 0 && used > 0) {
         // ✅ 重複バッファなので memmove
         nfc_safe_memmove(rb->buffer, sizeof(rb->buffer),
@@ -402,20 +410,20 @@ void ring_compact(ring_buffer_t *rb) {
 
 int authenticate_with_key(nfc_device *pnd, const uint8_t *key, size_t key_len) {
     uint8_t local_key[32];
-    
+
     if (key_len > sizeof(local_key)) {
         return NFC_EINVARG;
     }
-    
+
     // ✅ 鍵をローカルバッファにコピー
     NFC_SAFE_MEMCPY(local_key, key, key_len);
-    
+
     // ... 認証処理 ...
     int result = perform_auth(pnd, local_key, key_len);
-    
+
     // ✅ 関数終了前に必ず消去
     NFC_SECURE_MEMSET(local_key, 0x00);
-    
+
     return result;
 }
 ```
@@ -425,27 +433,27 @@ int authenticate_with_key(nfc_device *pnd, const uint8_t *key, size_t key_len) {
 ### 4.5 エラーハンドリング
 
 ```c
-int safe_operation(uint8_t *dst, size_t dst_size, 
+int safe_operation(uint8_t *dst, size_t dst_size,
                    const uint8_t *src, size_t src_size) {
     int ret = nfc_safe_memcpy(dst, dst_size, src, src_size);
-    
+
     switch (ret) {
         case NFC_SECURE_SUCCESS:
             return 0;
-            
+
         case NFC_SECURE_ERROR_INVALID:
             fprintf(stderr, "Invalid pointer: %s\n", nfc_secure_strerror(ret));
             return -1;
-            
+
         case NFC_SECURE_ERROR_OVERFLOW:
             fprintf(stderr, "Buffer too small: need %zu, have %zu\n",
                     src_size, dst_size);
             return -2;
-            
+
         case NFC_SECURE_ERROR_RANGE:
             fprintf(stderr, "Size exceeds MAX_BUFFER_SIZE\n");
             return -3;
-            
+
         default:
             fprintf(stderr, "Unknown error: %d\n", ret);
             return -4;
@@ -460,28 +468,33 @@ int safe_operation(uint8_t *dst, size_t dst_size,
 ### ✅ DO (推奨)
 
 1. **配列にはマクロを使う** (C11+)
+
    ```c
    uint8_t buf[64];
    NFC_SAFE_MEMCPY(buf, data, size);
    ```
 
 2. **動的メモリには関数を使う**
+
    ```c
    uint8_t *buf = malloc(64);
    nfc_safe_memcpy(buf, 64, data, size);
    ```
 
 3. **重複の可能性があれば memmove**
+
    ```c
    nfc_safe_memmove(buf + 8, 56, buf, 32);
    ```
 
 4. **機密データは必ず消去**
+
    ```c
    nfc_secure_memset(password, 0, sizeof(password));
    ```
 
 5. **エラーチェックを忘れない**
+
    ```c
    if (nfc_safe_memcpy(...) != NFC_SECURE_SUCCESS) {
        // エラー処理
@@ -493,27 +506,32 @@ int safe_operation(uint8_t *dst, size_t dst_size,
 ### ❌ DON'T (非推奨)
 
 1. **ポインタにマクロを使わない**
+
    ```c
    uint8_t *buf = malloc(64);
    NFC_SAFE_MEMCPY(buf, data, size);  // ❌ NG
    ```
 
 2. **通常の memset で機密データを消去しない**
+
    ```c
    memset(password, 0, sizeof(password));  // ❌ 最適化で消される
    ```
 
 3. **サイズを間違えない**
+
    ```c
    nfc_safe_memcpy(dst, sizeof(dst), src, sizeof(dst));  // ❌ src_size が間違い
    ```
 
 4. **未整列アクセスを避ける**
+
    ```c
    uint32_t *p = (uint32_t *)(buf + 1);  // ❌ ARM/SPARC で危険
    ```
 
 5. **重複バッファで memcpy を使わない**
+
    ```c
    nfc_safe_memcpy(buf + 8, 56, buf, 32);  // ❌ 重複 → UB
    ```
@@ -535,6 +553,7 @@ export NFC_LOG_LEVEL=3  # LOG_PRIORITY_DEBUG
 ```
 
 **ログ出力例**:
+
 ```
 [DEBUG] nfc-secure: memcpy dst=0x7ffd12340000 src=0x7ffd12340100 size=64
 [INFO] nfc-secure: using explicit_bzero for secure memset
@@ -601,6 +620,7 @@ for (int i = 0; i < 10000; i++) {
 ```
 
 **解決策**:
+
 ```c
 // 大きいバッファにまとめる
 uint8_t large_buf[16 * 10000];
@@ -624,7 +644,7 @@ nfc_secure_memset(large_buf, 0, sizeof(large_buf));  // 1回で済む
 | **constexpr** | ❌ | ❌ | ❌ | ✅ |
 | **typeof** | ❌ | ❌ | ✅** | ✅ |
 
-\* C11 Annex K (オプション、実装少ない)  
+\* C11 Annex K (オプション、実装少ない)
 \** GNU/Clang 拡張 (`__typeof__`)
 
 ---
@@ -686,6 +706,7 @@ if (ret != NFC_SECURE_SUCCESS) {
 `nfc-secure` は**C言語での安全なメモリ操作のベストプラクティス**を実装したライブラリです。
 
 **主な利点**:
+
 - 🛡️ バッファオーバーフロー防止
 - 🔒 コンパイラ最適化耐性
 - 🚀 プラットフォーム最適化
@@ -693,6 +714,7 @@ if (ret != NFC_SECURE_SUCCESS) {
 - 📏 C標準準拠(C89~C23)
 
 **推奨用途**:
+
 - NFCカード通信
 - 暗号鍵の取り扱い
 - 機密データ処理
@@ -703,6 +725,6 @@ if (ret != NFC_SECURE_SUCCESS) {
 
 ---
 
-**著者**: libnfc team  
-**最終更新**: 2025年10月12日  
+**著者**: libnfc team
+**最終更新**: 2025年10月12日
 **バージョン**: V5 (Critical Fixes + C23 Support)

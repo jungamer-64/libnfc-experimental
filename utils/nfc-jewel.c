@@ -41,7 +41,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include <stdio.h>
@@ -79,12 +79,12 @@ print_success_or_failure(bool bFailure, uint32_t *uiCounter)
     *uiCounter += (bFailure) ? 0 : 1;
 }
 
-static  bool
+static bool
 read_card(void)
 {
-  uint32_t   block;
-  uint32_t   byte;
-  bool      bFailure = false;
+  uint32_t block;
+  uint32_t byte;
+  bool bFailure = false;
   uint32_t uiReadBlocks = 0;
 
   printf("Reading %d blocks |", uiBlocks + 1);
@@ -112,19 +112,19 @@ read_card(void)
   return (!bFailure);
 }
 
-static  bool
+static bool
 write_card(void)
 {
   uint32_t block;
   uint32_t byte;
-  bool     bFailure = false;
+  bool bFailure = false;
   uint32_t uiWrittenBlocks = 0;
   uint32_t uiSkippedBlocks = 0;
   uint32_t uiPartialBlocks = 0;
 
-  char    buffer[BUFSIZ];
-  bool    write_otp;
-  bool    write_lock;
+  char buffer[BUFSIZ];
+  bool write_otp;
+  bool write_lock;
 
   printf("Write Lock bytes ? [yN] ");
   if (!fgets(buffer, BUFSIZ, stdin)) {
@@ -197,11 +197,10 @@ write_card(void)
   return true;
 }
 
-int
-main(int argc, const char *argv[])
+int main(int argc, const char *argv[])
 {
-  bool    bReadAction;
-  FILE   *pfDump;
+  bool bReadAction;
+  FILE *pfDump;
 
   if (argc < 3) {
     printf("\n");
@@ -281,7 +280,7 @@ main(int argc, const char *argv[])
 
   // Get the info from the current tag
   printf("Found Jewel card with UID: ");
-  size_t  szPos;
+  size_t szPos;
   for (szPos = 0; szPos < 4; szPos++) {
     printf("%02x", nt.nti.nji.btId[szPos]);
   }

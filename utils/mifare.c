@@ -57,16 +57,15 @@
  * After a successful authentication it will be possible to execute other commands (e.g. Read/Write).
  * The MIFARE Classic Specification (http://www.nxp.com/acrobat/other/identification/M001053_MF1ICS50_rev5_3.pdf) explains more about this process.
  */
-bool
-nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_t ui8Block, mifare_param *pmp)
+bool nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_t ui8Block, mifare_param *pmp)
 {
-  uint8_t  abtRx[265];
-  size_t  szParamLen;
-  uint8_t  abtCmd[265];
-  //bool    bEasyFraming;
+  uint8_t abtRx[265];
+  size_t szParamLen;
+  uint8_t abtCmd[265];
+  // bool    bEasyFraming;
 
-  abtCmd[0] = mc;               // The MIFARE Classic command
-  abtCmd[1] = ui8Block;         // The block address (1K=0x00..0x39, 4K=0x00..0xff)
+  abtCmd[0] = mc;       // The MIFARE Classic command
+  abtCmd[1] = ui8Block; // The block address (1K=0x00..0x39, 4K=0x00..0xff)
 
   switch (mc) {
     // Read and store command have no parameter
@@ -100,7 +99,7 @@ nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_t ui8
 
   // When available, copy the parameter bytes
   if (szParamLen) {
-    if (nfc_safe_memcpy(abtCmd + 2, sizeof(abtCmd) - 2, (uint8_t *) pmp, szParamLen) < 0) {
+    if (nfc_safe_memcpy(abtCmd + 2, sizeof(abtCmd) - 2, (uint8_t *)pmp, szParamLen) < 0) {
       return false;
     }
   }
@@ -113,7 +112,7 @@ nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_t ui8
   }
   // Fire the mifare command
   int res;
-  if ((res = nfc_initiator_transceive_bytes(pnd, abtCmd, 2 + szParamLen, abtRx, sizeof(abtRx), -1))  < 0) {
+  if ((res = nfc_initiator_transceive_bytes(pnd, abtCmd, 2 + szParamLen, abtRx, sizeof(abtRx), -1)) < 0) {
     if (res == NFC_ERFTRANS) {
       // "Invalid received frame",  usual means we are
       // authenticated on a sector but the requested MIFARE cmd (read, write)
@@ -135,7 +134,7 @@ nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_t ui8
   // When we have executed a read command, copy the received bytes into the param
   if (mc == MC_READ) {
 
-    //Check the length of response data, with PCSC reader, there have 2 bytes for SW value
+    // Check the length of response data, with PCSC reader, there have 2 bytes for SW value
     if (res == 16 || res == (16 + 2)) {
       if (nfc_safe_memcpy(pmp->mpd.abtData, sizeof(pmp->mpd.abtData), abtRx, 16) < 0) {
         return false;

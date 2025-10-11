@@ -26,7 +26,7 @@ The official web site is gone, browse a copy via the [WayBackMachine](https://we
 The official forum site is gone, browse a copy via the [WayBackMachine](https://web.archive.org/web/20210225042232/http://forums.nfc-tools.org/).
 
 The official development site is:
-  https://github.com/nfc-tools/libnfc
+  <https://github.com/nfc-tools/libnfc>
 
 Important note: this file covers POSIX systems, for Windows please read README-Windows.md
 
@@ -36,18 +36,19 @@ Requirements
 Some NFC drivers depend on third party software:
 
 * pn53x_usb & acr122_usb:
-  
-  - libusb-0.1 http://libusb.sf.net
+
+  * libusb-0.1 <http://libusb.sf.net>
 
 * acr122_pcsc:
-  
-  - pcsc-lite https://pcsclite.apdu.fr/
+
+  * pcsc-lite <https://pcsclite.apdu.fr/>
+
 - pcsc:
-  
-  - Support build with pcsc driver, which can be using all compatible readers, Feitian R502 and bR500 already passed the test.
+
+  * Support build with pcsc driver, which can be using all compatible readers, Feitian R502 and bR500 already passed the test.
 
 The regression test suite depends on the cutter framework:
-http://cutter.sf.net
+<http://cutter.sf.net>
 
 ## Code Quality
 
@@ -58,6 +59,7 @@ The project includes the following quality measures:
 * **Build System**: Automated compilation checks
 
 **Recent Changes**:
+
 * Driver refactoring with unified error handling
 * Memory safety improvements (nfc-secure layer)
 * Code duplication reduction
@@ -78,6 +80,7 @@ libnfc includes a memory safety layer (`libnfc/nfc-secure.h/c`):
 * Debug mode overlap detection
 
 **Example**:
+
 ```c
 #include <nfc/nfc-secure.h>
 
@@ -111,19 +114,18 @@ Note: If working directly from a git clone of the repository, some of the files 
 `autoreconf -vis`
 
 Alternatively use a .tar.bz2 version of a packaged release (which already contains ./configure):
-https://github.com/nfc-tools/libnfc/releases/
+<https://github.com/nfc-tools/libnfc/releases/>
 
 The build should be as simple as running these commands:
 
     ./configure
     make
 
-
 To build with specific driver(s), see option `--with-drivers=...` detailed in `./configure --help`.
 
 Installation
 ============
-    
+
     make install
 
 You may need to grant permissions to your user to drive your device.
@@ -160,66 +162,67 @@ file per device in a nfc/devices.d directory:
 
 Environment Variables
 =====================
+
 You can override certain configuration options at runtime using the following environment variables:
-+ `LIBNFC_DEFAULT_DEVICE=<connstring>`:  `LIBNFC_DEFAULT_DEVICE=pn532_uart:/dev/ttyACM0` will use pn532 on /dev/ttyACM0 as default device
-+ `LIBNFC_DEVICE=<connstring>` will ignore all devices in the config files and use only the one defined in the variable
-+ `LIBNFC_AUTO_SCAN=<true|false>` overrides `allow_autoscan` option in the config file
-+ `LIBNFC_INTRUSIVE_SCAN=<true|false>` overrides `allow_intrusive_scan` option in the config file
-+ `LIBNFC_LOG_LEVEL=<0|1|2|3>` overrides `log_level` option in the config file
+* `LIBNFC_DEFAULT_DEVICE=<connstring>`:  `LIBNFC_DEFAULT_DEVICE=pn532_uart:/dev/ttyACM0` will use pn532 on /dev/ttyACM0 as default device
+* `LIBNFC_DEVICE=<connstring>` will ignore all devices in the config files and use only the one defined in the variable
+* `LIBNFC_AUTO_SCAN=<true|false>` overrides `allow_autoscan` option in the config file
+* `LIBNFC_INTRUSIVE_SCAN=<true|false>` overrides `allow_intrusive_scan` option in the config file
+* `LIBNFC_LOG_LEVEL=<0|1|2|3>` overrides `log_level` option in the config file
 
 To obtain the connstring of a recognized device, you can use `nfc-scan-device`: `LIBNFC_AUTO_SCAN=true nfc-scan-device` will show the names & connstrings of all found devices.
 
 How to report bugs
 ==================
 
-To report a bug, visit https://github.com/nfc-tools/libnfc/issues and fill
+To report a bug, visit <https://github.com/nfc-tools/libnfc/issues> and fill
 out a bug report form.
 
 If you have questions, remarks, we encourage you to post this in the developers
 community:
-http://www.libnfc.org/community
+<http://www.libnfc.org/community>
 
 Please make sure to include:
 
 * The version of libnfc
 
 * Information about your system. For instance:
-  
-  - What operating system and version
-  - For Linux, what version of the C library
-  
+
+  * What operating system and version
+  * For Linux, what version of the C library
+
   And anything else you think is relevant.
 
 * A trace with debug activated.
-  
+
   Reproduce the bug with debug, e.g. if it was:
-  
-        $ nfc-list -v
-  
+
+        nfc-list -v
+
   run it as:
-  
-        $ LIBNFC_LOG_LEVEL=3 nfc-list -v
+
+        LIBNFC_LOG_LEVEL=3 nfc-list -v
 
 * How to reproduce the bug.
-  
+
   Please include a short test program that exhibits the behavior.
-  
+
   As a last resort, you can also provide a pointer to a larger piece
-  
+
   of software that can be downloaded.
 
 * If the bug was a crash, the exact text that was printed out
-  
+
   when the crash occured.
 
 * Further information such as stack traces may be useful, but
-  
+
   is not necessary.
 
 Patches
 =======
 
-Patches can be posted to https://github.com/nfc-tools/libnfc/issues
+Patches can be posted to <https://github.com/nfc-tools/libnfc/issues>
 
 If the patch fixes a bug, it is usually a good idea to include
 all the information described in "How to Report Bugs".
@@ -227,7 +230,7 @@ all the information described in "How to Report Bugs".
 Troubleshooting
 ===============
 
-Touchatag/ACR122:
+Touchatag/ACR122
 -----------------
 
 If your Touchatag or ACR122 device fails being detected by libnfc, make sure
@@ -240,7 +243,7 @@ of libccid: edit libccid_Info.plist configuration file (usually
 `<string>0x0000</string>` value into `0x0004` to allow bogus devices and restart
 pcscd daemon.
 
-ACR122:
+ACR122
 -------
 
 Using an ACR122 device with libnfc and without tag (e.g. to use NFCIP modes or
@@ -254,7 +257,7 @@ restart pcscd daemon.
 Warning: if you use ACS CCID drivers (acsccid), configuration file is located
 in something like: `/usr/lib/pcsc/drivers/ifd-acsccid.bundle/Contents/Info.plist`
 
-SCL3711:
+SCL3711
 --------
 
 Libnfc cannot be used concurrently with the PCSC proprietary driver of SCL3711.
@@ -263,7 +266,7 @@ Two possible solutions:
 * Either you don't install SCL3711 driver at all
 * Or you stop the PCSC daemon when you want to use libnfc-based tools
 
-PN533 USB device on Linux >= 3.1:
+PN533 USB device on Linux >= 3.1
 ---------------------------------
 
 Since Linux kernel version 3.1, a few kernel-modules must not be loaded in order
@@ -273,16 +276,16 @@ them in a modprobe conf file. This file is provided within libnfc archive:
 
     sudo cp contrib/linux/blacklist-libnfc.conf /etc/modprobe.d/blacklist-libnfc.conf
 
-FEITIAN bR500 and R502:
+FEITIAN bR500 and R502
 -----------------------
 
 Libnfc can work with PCSC proprietary driver of bR500 and R502, which is already available on most Linux setups.
 To activate the PCSC support: `./configure --with-drivers=pcsc`.
 Readers known to work:
 
-- Feitian bR500
-- Feitian R502 Dual interface reader
-- Feitian R502 CL(Contactless) reader
+* Feitian bR500
+* Feitian R502 Dual interface reader
+* Feitian R502 CL(Contactless) reader
 
 These readers are support by CCID since v1.4.25, make sure your CCID driver version higher or equal to 1.4.25.
 
@@ -300,6 +303,7 @@ grep -A 1 CFBundleShortVersionString /usr/lib/pcsc/drivers/ifd-ccid.bundle/Conte
 
 Proprietary Notes
 =================
+
 FeliCa is a registered trademark of the Sony Corporation.
 MIFARE is a trademark of NXP Semiconductors.
 Jewel Topaz is a trademark of Innovision Research & Technology.

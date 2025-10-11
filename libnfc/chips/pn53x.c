@@ -1585,12 +1585,11 @@ pn53x_select_barcode_target(struct nfc_device *pnd,
   return found ? res : 0;
 }
 
-int
-pn53x_initiator_select_passive_target_ext(struct nfc_device *pnd,
-                                          const nfc_modulation nm,
-                                          const uint8_t *pbtInitData, const size_t szInitData,
-                                          nfc_target *pnt,
-                                          int timeout)
+int pn53x_initiator_select_passive_target_ext(struct nfc_device *pnd,
+                                              const nfc_modulation nm,
+                                              const uint8_t *pbtInitData, const size_t szInitData,
+                                              nfc_target *pnt,
+                                              int timeout)
 {
   uint8_t abtTargetsData[PN53x_EXTENDED_FRAME__DATA_MAX_LEN];
   size_t szTargetsData = sizeof(abtTargetsData);
@@ -2108,19 +2107,141 @@ int pn53x_initiator_transceive_bits_timed(struct nfc_device *pnd, const uint8_t 
   return szRxBits;
 }
 
-int pn53x_initiator_transceive_bytes_timed(struct nfc_device *pnd, const uint8_t *pbtTx, const size_t szTx, uint8_t *pbtRx, const size_t szRx, uint32_t *cycles)
+// Helper: Prepare and send FIFO buffer for timed transceive
+static int
+pn53x_timed_send_buffer(struct nfc_device *pnd, const uint8_t *pbtTx, size_t szTx)
+{
+  uint16_t i;
+  int res;
+  
+  BUFFER_INIT(abtWriteRegisterCmd, PN53x_EXTENDED_FRAME__DATA_MAX_LEN);
+  BUFFER_APPEND(abtWriteRegisterCmd, WriteRegister);
+  
+  // Set command and flush FIFO
+  BUFFER_APPEND(abtWriteRegisterCmd, PN53X_REG_CIU_Command >> 8);
+  BUFFER_APPEND(abtWriteRegisterCmd, PN53X_REG_CIU_Command & 0xff);
+  BUFFER_APPEND(abtWriteRegisterCmd, SYMBOL_COMMAND & SYMBOL_COMMAND_TRANSCEIVE);
+  BUFFER_APPEND(abtWriteRegisterCmd, PN53X_REG_CIU_FIFOLevel >> 8);
+  BUFFER_APPEND(abtWriteRegisterCmd, PN53X_REG_CIU_FIFOLevel & 0xff);
+  BUFFER_APPEND(abtWriteRegisterCmd, SYMBOL_FLUSH_BUFFER);
+  
+  // Append data to FIFO
+  for (i = 0; i < szTx; i++) {
+    BUFFER_APPEND(abtWriteRegisterCmd, PN53X_REG_CIU_FIFOData >> 8);
+    BUFFER_APPEND(abtWriteRegisterCmd, PN53X_REG_CIU_FIFOData & 0xff);
+    BUFFER_APPEND(abtWriteRegisterCmd, pbtTx[i]);
+  }
+  
+  // Start transmission
+  BUFFER_APPEND(abtWriteRegisterCmd, PN53X_REG_CIU_BitFraming >> 8);
+  BUFFER_APPEND(abtWriteRegisterCmd, PN53X_REG_CIU_BitFraming & 0xff);
+  BUFFER_APPEND(abtWriteRegisterCmd, SYMBOL_START_SEND);
+  
+  if ((res = pn53x_transceive(pnd, abtWriteRegisterCmd, BUFFER_SIZE(abtWriteRegisterCmd), NULL, 0, -1)) < 0) {
+    return res;
+  }
+  
+  return NFC_SUCCESS;
+}
+
+// Helper: Wait for and receive data in timed transceive
+static int
+pn53x_timed_receive_data(struct nfc_device *pnd, uint8_t *pbtRx, size_t szRx, size_t *pszRxLen)
 {
   uint16_t i;
   uint8_t sz = 0;
-  int res = 0;
+  int res;
+  size_t szRxLen = 0;
+  
+  // Wait for data with timeout loop
+  for (i = 0; i < (3 * (CHIP_DATA(pnd)->timer_prescaler * 2 + 1)); i++) {
+    pn53x_read_register(pnd, PN53X_REG_CIU_FIFOLevel, &sz);
+    if (sz > 0)
+      break;
+  }
+  
+  // PN533 prepends status byte
+  size_t off = (CHIP_DATA(pnd)->type == PN533) ? 1 : 0;
+  
+  // Read data loop
+  while (1) {
+    BUFFER_INIT(abtReadRegisterCmd, PN53x_EXTENDED_FRAME__DATA_MAX_LEN);
+    BUFFER_APPEND(abtReadRegisterCmd, ReadRegister);
+    
+    for (i = 0; i < sz; i++) {
+      BUFFER_APPEND(abtReadRegisterCmd, PN53X_REG_CIU_FIFOData >> 8);
+      BUFFER_APPEND(abtReadRegisterCmd, PN53X_REG_CIU_FIFOData & 0xff);
+    }
+    BUFFER_APPEND(abtReadRegisterCmd, PN53X_REG_CIU_FIFOLevel >> 8);
+    BUFFER_APPEND(abtReadRegisterCmd, PN53X_REG_CIU_FIFOLevel & 0xff);
+    
+    uint8_t abtRes[PN53x_EXTENDED_FRAME__DATA_MAX_LEN];
+    size_t szRes = sizeof(abtRes);
+    
+    if ((res = pn53x_transceive(pnd, abtReadRegisterCmd, BUFFER_SIZE(abtReadRegisterCmd), abtRes, szRes, -1)) < 0) {
+      return res;
+    }
+    
+    if (pbtRx != NULL) {
+      if ((szRxLen + sz) > szRx) {
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, 
+                "Buffer size is too short: %" PRIuPTR " available(s), %" PRIuPTR " needed", szRx, szRxLen + sz);
+        return NFC_EOVFLOW;
+      }
+      for (i = 0; i < sz; i++) {
+        pbtRx[i + szRxLen] = abtRes[i + off];
+      }
+    }
+    
+    szRxLen += (size_t)(sz & SYMBOL_FIFO_LEVEL);
+    sz = abtRes[sz + off];
+    if (sz == 0)
+      break;
+  }
+  
+  *pszRxLen = szRxLen;
+  return NFC_SUCCESS;
+}
 
-  // We can not just send bytes without parity while the PN53X expects we handled them
+// Helper: Compute timer cycles with CRC adjustment
+static int
+pn53x_timed_compute_cycles(struct nfc_device *pnd, const uint8_t *pbtTx, size_t szTx, 
+                           uint8_t txmode, uint32_t *cycles)
+{
+  uint8_t *pbtTxRaw = (uint8_t *)calloc(szTx + 2, 1);
+  if (!pbtTxRaw)
+    return NFC_ESOFT;
+  
+  if (nfc_safe_memcpy(pbtTxRaw, szTx + 2, pbtTx, szTx) < 0) {
+    free(pbtTxRaw);
+    return NFC_ECHIP;
+  }
+  
+  // Append CRC based on framing type
+  if ((txmode & SYMBOL_TX_FRAMING) == 0x00)
+    iso14443a_crc_append(pbtTxRaw, szTx);
+  else if ((txmode & SYMBOL_TX_FRAMING) == 0x03)
+    iso14443b_crc_append(pbtTxRaw, szTx);
+  else
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, 
+            "Unsupported framing type %02X, cannot adjust CRC cycles", txmode & SYMBOL_TX_FRAMING);
+  
+  *cycles = __pn53x_get_timer(pnd, pbtTxRaw[szTx + 1]);
+  free(pbtTxRaw);
+  
+  return NFC_SUCCESS;
+}
+
+int pn53x_initiator_transceive_bytes_timed(struct nfc_device *pnd, const uint8_t *pbtTx, const size_t szTx, uint8_t *pbtRx, const size_t szRx, uint32_t *cycles)
+{
+  int res;
+  size_t szRxLen = 0;
+
+  // Validate parameters
   if (!pnd->bPar) {
     pnd->last_error = NFC_EINVARG;
     return pnd->last_error;
   }
-  // Easy framing not supported in timed transmission mode
-  // Timing measurements are incompatible with automatic framing overhead
   if (pnd->bEasyFraming) {
     pnd->last_error = NFC_ENOTIMPL;
     return pnd->last_error;
@@ -3871,25 +3992,25 @@ typedef struct {
 
 static const nm_to_pm_map_t nm_to_pm_table[] = {
   // ISO14443A always maps to 106 kbps regardless of nbr
-  { NMT_ISO14443A,        NBR_UNDEFINED, PM_ISO14443A_106 },
+  {NMT_ISO14443A, NBR_UNDEFINED, PM_ISO14443A_106},
 
   // ISO14443B and BICLASS support multiple baud rates
-  { NMT_ISO14443B,        NBR_106,       PM_ISO14443B_106 },
-  { NMT_ISO14443B,        NBR_212,       PM_ISO14443B_212 },
-  { NMT_ISO14443B,        NBR_424,       PM_ISO14443B_424 },
-  { NMT_ISO14443B,        NBR_847,       PM_ISO14443B_847 },
-  { NMT_ISO14443BICLASS,  NBR_106,       PM_ISO14443B_106 },
-  { NMT_ISO14443BICLASS,  NBR_212,       PM_ISO14443B_212 },
-  { NMT_ISO14443BICLASS,  NBR_424,       PM_ISO14443B_424 },
-  { NMT_ISO14443BICLASS,  NBR_847,       PM_ISO14443B_847 },
+  {NMT_ISO14443B, NBR_106, PM_ISO14443B_106},
+  {NMT_ISO14443B, NBR_212, PM_ISO14443B_212},
+  {NMT_ISO14443B, NBR_424, PM_ISO14443B_424},
+  {NMT_ISO14443B, NBR_847, PM_ISO14443B_847},
+  {NMT_ISO14443BICLASS, NBR_106, PM_ISO14443B_106},
+  {NMT_ISO14443BICLASS, NBR_212, PM_ISO14443B_212},
+  {NMT_ISO14443BICLASS, NBR_424, PM_ISO14443B_424},
+  {NMT_ISO14443BICLASS, NBR_847, PM_ISO14443B_847},
 
   // JEWEL and BARCODE always 106 kbps
-  { NMT_JEWEL,            NBR_UNDEFINED, PM_JEWEL_106 },
-  { NMT_BARCODE,          NBR_UNDEFINED, PM_BARCODE_106 },
+  {NMT_JEWEL, NBR_UNDEFINED, PM_JEWEL_106},
+  {NMT_BARCODE, NBR_UNDEFINED, PM_BARCODE_106},
 
   // FELICA supports 212 and 424 kbps
-  { NMT_FELICA,           NBR_212,       PM_FELICA_212 },
-  { NMT_FELICA,           NBR_424,       PM_FELICA_424 },
+  {NMT_FELICA, NBR_212, PM_FELICA_212},
+  {NMT_FELICA, NBR_424, PM_FELICA_424},
 };
 
 pn53x_modulation
@@ -3914,27 +4035,27 @@ typedef struct {
 
 static const ptt_to_nm_map_t ptt_to_nm_table[] = {
   // ISO14443A types
-  { PTT_MIFARE,            { .nmt = NMT_ISO14443A, .nbr = NBR_106 } },
-  { PTT_ISO14443_4A_106,   { .nmt = NMT_ISO14443A, .nbr = NBR_106 } },
+  {PTT_MIFARE, {.nmt = NMT_ISO14443A, .nbr = NBR_106}},
+  {PTT_ISO14443_4A_106, {.nmt = NMT_ISO14443A, .nbr = NBR_106}},
 
   // ISO14443B types
-  { PTT_ISO14443_4B_106,     { .nmt = NMT_ISO14443B, .nbr = NBR_106 } },
-  { PTT_ISO14443_4B_TCL_106, { .nmt = NMT_ISO14443B, .nbr = NBR_106 } },
+  {PTT_ISO14443_4B_106, {.nmt = NMT_ISO14443B, .nbr = NBR_106}},
+  {PTT_ISO14443_4B_TCL_106, {.nmt = NMT_ISO14443B, .nbr = NBR_106}},
 
   // JEWEL type
-  { PTT_JEWEL_106,         { .nmt = NMT_JEWEL,     .nbr = NBR_106 } },
+  {PTT_JEWEL_106, {.nmt = NMT_JEWEL, .nbr = NBR_106}},
 
   // FELICA types
-  { PTT_FELICA_212,        { .nmt = NMT_FELICA,    .nbr = NBR_212 } },
-  { PTT_FELICA_424,        { .nmt = NMT_FELICA,    .nbr = NBR_424 } },
+  {PTT_FELICA_212, {.nmt = NMT_FELICA, .nbr = NBR_212}},
+  {PTT_FELICA_424, {.nmt = NMT_FELICA, .nbr = NBR_424}},
 
   // DEP types (passive and active)
-  { PTT_DEP_PASSIVE_106,   { .nmt = NMT_DEP,       .nbr = NBR_106 } },
-  { PTT_DEP_ACTIVE_106,    { .nmt = NMT_DEP,       .nbr = NBR_106 } },
-  { PTT_DEP_PASSIVE_212,   { .nmt = NMT_DEP,       .nbr = NBR_212 } },
-  { PTT_DEP_ACTIVE_212,    { .nmt = NMT_DEP,       .nbr = NBR_212 } },
-  { PTT_DEP_PASSIVE_424,   { .nmt = NMT_DEP,       .nbr = NBR_424 } },
-  { PTT_DEP_ACTIVE_424,    { .nmt = NMT_DEP,       .nbr = NBR_424 } },
+  {PTT_DEP_PASSIVE_106, {.nmt = NMT_DEP, .nbr = NBR_106}},
+  {PTT_DEP_ACTIVE_106, {.nmt = NMT_DEP, .nbr = NBR_106}},
+  {PTT_DEP_PASSIVE_212, {.nmt = NMT_DEP, .nbr = NBR_212}},
+  {PTT_DEP_ACTIVE_212, {.nmt = NMT_DEP, .nbr = NBR_212}},
+  {PTT_DEP_PASSIVE_424, {.nmt = NMT_DEP, .nbr = NBR_424}},
+  {PTT_DEP_ACTIVE_424, {.nmt = NMT_DEP, .nbr = NBR_424}},
 };
 
 nfc_modulation
@@ -3958,18 +4079,18 @@ typedef struct {
 
 static const nm_to_ptt_map_t nm_to_ptt_table[] = {
   // ISO14443A always maps to MIFARE (106 kbps)
-  { NMT_ISO14443A,        NBR_UNDEFINED, PTT_MIFARE },
+  {NMT_ISO14443A, NBR_UNDEFINED, PTT_MIFARE},
 
   // ISO14443B and BICLASS only support 106 kbps for target type
-  { NMT_ISO14443B,        NBR_106,       PTT_ISO14443_4B_106 },
-  { NMT_ISO14443BICLASS,  NBR_106,       PTT_ISO14443_4B_106 },
+  {NMT_ISO14443B, NBR_106, PTT_ISO14443_4B_106},
+  {NMT_ISO14443BICLASS, NBR_106, PTT_ISO14443_4B_106},
 
   // JEWEL always 106 kbps
-  { NMT_JEWEL,            NBR_UNDEFINED, PTT_JEWEL_106 },
+  {NMT_JEWEL, NBR_UNDEFINED, PTT_JEWEL_106},
 
   // FELICA supports 212 and 424 kbps
-  { NMT_FELICA,           NBR_212,       PTT_FELICA_212 },
-  { NMT_FELICA,           NBR_424,       PTT_FELICA_424 },
+  {NMT_FELICA, NBR_212, PTT_FELICA_212},
+  {NMT_FELICA, NBR_424, PTT_FELICA_424},
 };
 
 pn53x_target_type

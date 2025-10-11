@@ -1,6 +1,6 @@
 # Phase 11 Week 2: High-Complexity Function Refactoring Progress
 
-**Date**: 2025年10月12日  
+**Date**: 2025年10月12日
 **Session**: Refactoring with Codacy MCP Integration
 
 ## Executive Summary
@@ -22,15 +22,18 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 **File**: `libnfc/chips/pn53x.c`
 
 ### Before Refactoring
+
 - **Cyclomatic Complexity**: 59 (HIGHEST in codebase)
 - **Lines of Code**: 207
 - **Issues**: Massive switch statements, 6 different target types
 
 ### Refactoring Strategy
+
 - **Pattern**: Extract Method
 - **Helper Functions Created**: 2
 
 #### Helper 1: `pn53x_select_iso14443b_target` (174 lines)
+
 - Handles 4 ISO14443B variants:
   - NMT_ISO14443B2SR (ST SRx)
   - NMT_ISO14443B2CT (Calypso)
@@ -40,27 +43,32 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 - Device property configuration
 
 #### Helper 2: `pn53x_select_barcode_target` (109 lines)
+
 - Handles NFC Forum Barcode Type (Thinfilm)
 - RF field manipulation
 - Bit-level reception and shuffling
 - CRC validation
 
 #### Main Function: Simplified Dispatcher (71 lines)
+
 - 3 simple branches: B-series, Barcode, Standard
 - Clean orchestration logic
 - Estimated **CC: < 10**
 
 ### After Refactoring
+
 - **Estimated CC**: < 10 (from 59)
 - **Main Function LoC**: 71 (from 207)
 - **Total Code**: 354 lines (with documentation)
 - **Net File Reduction**: -163 lines (310 lines of duplicate code removed)
 
 ### Commits
+
 1. `2b87b1c` - Initial refactoring with helper functions
 2. `f79265e` - Fixed compiler warnings
 
 ### Verification
+
 - ✅ Build successful
 - ✅ No Codacy complexity warnings
 - ⚠️ Codacy re-analysis pending (requires server-side processing)
@@ -72,18 +80,21 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 **File**: `libnfc/chips/pn53x.c`
 
 ### Before Refactoring
+
 - **Cyclomatic Complexity**: 49 (SECOND HIGHEST)
 - **Lines of Code**: 206
-- **Issues**: 
+- **Issues**:
   - 2 large switch statements (5 branches each)
   - Complex activation mode decoding
   - Multiple nested conditionals
 
 ### Refactoring Strategy
+
 - **Pattern**: Extract Method
 - **Helper Functions Created**: 2
 
 #### Helper 1: `pn53x_setup_target_mode` (67 lines)
+
 - Purpose: Configure PTM (PN53x Target Mode) flags
 - Validates UID constraints for ISO14443A
 - Sets device parameters (AUTO_ATR_RES, 14443_4_PICC)
@@ -92,6 +103,7 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 - **CC**: ~12
 
 #### Helper 2: `pn53x_decode_activation_mode` (52 lines)
+
 - Purpose: Decode btActivatedMode byte from TgInitAsTarget
 - Determines modulation type (ISO14443A/FeliCa/DEP)
 - Determines baud rate (106/212/424 kbps)
@@ -99,21 +111,25 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 - **CC**: ~8
 
 #### Main Function: Simplified (estimated ~90 lines after full refactoring)
+
 - Orchestration role
 - Helper function calls
 - Activation loop with validation
 - Estimated **CC: ~15-20**
 
 ### After Refactoring (Partial)
+
 - **Estimated CC**: ~22 (from 49)
 - **CC Reduction**: 27 (55%)
 - **Status**: Intermediate state - further reduction possible
 
 ### Commits
+
 1. `2056648` - Extract `pn53x_decode_activation_mode` helper (CC: 49 → ~34)
 2. `e4282a9` - Extract `pn53x_setup_target_mode` helper (CC: ~34 → ~22)
 
 ### Verification
+
 - ✅ Build successful
 - ✅ No Codacy complexity warnings
 - ⚠️ Can be further reduced by extracting parameter setup logic
@@ -127,6 +143,7 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 ### Fixed Warnings
 
 1. **Unused Parameter** (`pn53x_select_barcode_target`):
+
    ```c
    (void)timeout; // Unused parameter
    ```
@@ -135,6 +152,7 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
    - Added function declaration to `pn53x.h`
 
 3. **Unused Variable** (`acr122_usb_receive`):
+
    ```c
    (void)status; // Reserved for future status checking
    ```
@@ -143,6 +161,7 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
    - Added `extern strnlen` declaration in `nfc.c` and `nfc-internal.c`
 
 ### Verification
+
 - ✅ All warnings resolved per HACKING.md guidelines
 - ✅ Build succeeds with only harmless shadow warnings remaining
 
@@ -286,17 +305,17 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 
 ## Repository State
 
-**Branch**: master  
-**Last Commit**: `e4282a9` - Extract `pn53x_setup_target_mode` helper  
-**Build Status**: ✅ Passing  
-**Codacy Grade**: B (76%) - Server analysis pending  
+**Branch**: master
+**Last Commit**: `e4282a9` - Extract `pn53x_setup_target_mode` helper
+**Build Status**: ✅ Passing
+**Codacy Grade**: B (76%) - Server analysis pending
 
-**Files Modified**: 5  
-**Lines Added**: +295  
-**Lines Deleted**: -167  
+**Files Modified**: 5
+**Lines Added**: +295
+**Lines Deleted**: -167
 **Net Change**: +128 (including documentation)
 
 ---
 
-*Generated: 2025年10月12日*  
+*Generated: 2025年10月12日*
 *Session: Phase 11 Week 2 - Complexity Reduction Campaign*

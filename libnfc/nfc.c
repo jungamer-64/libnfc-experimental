@@ -72,7 +72,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include <fcntl.h>
@@ -94,49 +94,48 @@ extern size_t strnlen(const char *s, size_t maxlen);
 #include "target-subr.h"
 #include "drivers.h"
 
-#if defined (DRIVER_PCSC_ENABLED)
-#  include "drivers/pcsc.h"
+#if defined(DRIVER_PCSC_ENABLED)
+#include "drivers/pcsc.h"
 #endif /* DRIVER_PCSC_ENABLED */
 
-#if defined (DRIVER_ACR122_PCSC_ENABLED)
-#  include "drivers/acr122_pcsc.h"
+#if defined(DRIVER_ACR122_PCSC_ENABLED)
+#include "drivers/acr122_pcsc.h"
 #endif /* DRIVER_ACR122_PCSC_ENABLED */
 
-#if defined (DRIVER_ACR122_USB_ENABLED)
-#  include "drivers/acr122_usb.h"
+#if defined(DRIVER_ACR122_USB_ENABLED)
+#include "drivers/acr122_usb.h"
 #endif /* DRIVER_ACR122_USB_ENABLED */
 
-#if defined (DRIVER_ACR122S_ENABLED)
-#  include "drivers/acr122s.h"
+#if defined(DRIVER_ACR122S_ENABLED)
+#include "drivers/acr122s.h"
 #endif /* DRIVER_ACR122S_ENABLED */
 
-#if defined (DRIVER_PN53X_USB_ENABLED)
-#  include "drivers/pn53x_usb.h"
+#if defined(DRIVER_PN53X_USB_ENABLED)
+#include "drivers/pn53x_usb.h"
 #endif /* DRIVER_PN53X_USB_ENABLED */
 
-#if defined (DRIVER_ARYGON_ENABLED)
-#  include "drivers/arygon.h"
+#if defined(DRIVER_ARYGON_ENABLED)
+#include "drivers/arygon.h"
 #endif /* DRIVER_ARYGON_ENABLED */
 
-#if defined (DRIVER_PN532_UART_ENABLED)
-#  include "drivers/pn532_uart.h"
+#if defined(DRIVER_PN532_UART_ENABLED)
+#include "drivers/pn532_uart.h"
 #endif /* DRIVER_PN532_UART_ENABLED */
 
-#if defined (DRIVER_PN532_SPI_ENABLED)
-#  include "drivers/pn532_spi.h"
+#if defined(DRIVER_PN532_SPI_ENABLED)
+#include "drivers/pn532_spi.h"
 #endif /* DRIVER_PN532_SPI_ENABLED */
 
-#if defined (DRIVER_PN532_I2C_ENABLED)
-#  include "drivers/pn532_i2c.h"
+#if defined(DRIVER_PN532_I2C_ENABLED)
+#include "drivers/pn532_i2c.h"
 #endif /* DRIVER_PN532_I2C_ENABLED */
 
-#if defined (DRIVER_PN71XX_ENABLED)
-#  include "drivers/pn71xx.h"
+#if defined(DRIVER_PN71XX_ENABLED)
+#include "drivers/pn71xx.h"
 #endif /* DRIVER_PN71XX_ENABLED */
 
-
 #define LOG_CATEGORY "libnfc.general"
-#define LOG_GROUP    NFC_LOG_GROUP_GENERAL
+#define LOG_GROUP NFC_LOG_GROUP_GENERAL
 
 struct nfc_driver_list {
   const struct nfc_driver_list *next;
@@ -167,34 +166,34 @@ const char *nfc_property_name[] = {
 static void
 nfc_drivers_init(void)
 {
-#if defined (DRIVER_PN53X_USB_ENABLED)
+#if defined(DRIVER_PN53X_USB_ENABLED)
   nfc_register_driver(&pn53x_usb_driver);
 #endif /* DRIVER_PN53X_USB_ENABLED */
-#if defined (DRIVER_PCSC_ENABLED)
+#if defined(DRIVER_PCSC_ENABLED)
   nfc_register_driver(&pcsc_driver);
 #endif /* DRIVER_ACR122_PCSC_ENABLED */
-#if defined (DRIVER_ACR122_PCSC_ENABLED)
+#if defined(DRIVER_ACR122_PCSC_ENABLED)
   nfc_register_driver(&acr122_pcsc_driver);
 #endif /* DRIVER_ACR122_PCSC_ENABLED */
-#if defined (DRIVER_ACR122_USB_ENABLED)
+#if defined(DRIVER_ACR122_USB_ENABLED)
   nfc_register_driver(&acr122_usb_driver);
 #endif /* DRIVER_ACR122_USB_ENABLED */
-#if defined (DRIVER_ACR122S_ENABLED)
+#if defined(DRIVER_ACR122S_ENABLED)
   nfc_register_driver(&acr122s_driver);
 #endif /* DRIVER_ACR122S_ENABLED */
-#if defined (DRIVER_PN532_UART_ENABLED)
+#if defined(DRIVER_PN532_UART_ENABLED)
   nfc_register_driver(&pn532_uart_driver);
 #endif /* DRIVER_PN532_UART_ENABLED */
-#if defined (DRIVER_PN532_SPI_ENABLED)
+#if defined(DRIVER_PN532_SPI_ENABLED)
   nfc_register_driver(&pn532_spi_driver);
 #endif /* DRIVER_PN532_SPI_ENABLED */
-#if defined (DRIVER_PN532_I2C_ENABLED)
+#if defined(DRIVER_PN532_I2C_ENABLED)
   nfc_register_driver(&pn532_i2c_driver);
 #endif /* DRIVER_PN532_I2C_ENABLED */
-#if defined (DRIVER_ARYGON_ENABLED)
+#if defined(DRIVER_ARYGON_ENABLED)
   nfc_register_driver(&arygon_driver);
 #endif /* DRIVER_ARYGON_ENABLED */
-#if defined (DRIVER_PN71XX_ENABLED)
+#if defined(DRIVER_PN71XX_ENABLED)
   nfc_register_driver(&pn71xx_driver);
 #endif /* DRIVER_PN71XX_ENABLED */
 }
@@ -209,8 +208,7 @@ nfc_device_validate_modulation(nfc_device *pnd, const nfc_mode mode, const nfc_m
  * @param pnd Pointer to an NFC device driver to be registered.
  * @retval NFC_SUCCESS If the driver registration succeeds.
  */
-int
-nfc_register_driver(const struct nfc_driver *ndr)
+int nfc_register_driver(const struct nfc_driver *ndr)
 {
   if (!ndr) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "nfc_register_driver returning NFC_EINVARG");
@@ -233,8 +231,7 @@ nfc_register_driver(const struct nfc_driver *ndr)
  * This function must be called before calling any other libnfc function
  * @param context Output location for nfc_context
  */
-void
-nfc_init(nfc_context **context)
+void nfc_init(nfc_context **context)
 {
   *context = nfc_context_new();
   if (!*context) {
@@ -250,11 +247,10 @@ nfc_init(nfc_context **context)
  * Should be called after closing all open devices and before your application terminates.
  * @param context The context to deinitialize
  */
-void
-nfc_exit(nfc_context *context)
+void nfc_exit(nfc_context *context)
 {
   while (nfc_drivers) {
-    struct nfc_driver_list *pndl = (struct nfc_driver_list *) nfc_drivers;
+    struct nfc_driver_list *pndl = (struct nfc_driver_list *)nfc_drivers;
     nfc_drivers = pndl->next;
     free(pndl);
   }
@@ -353,8 +349,7 @@ nfc_open(nfc_context *context, const nfc_connstring connstring)
  *
  * Initiator's selected tag is closed and the device, including allocated \a nfc_device struct, is released.
  */
-void
-nfc_close(nfc_device *pnd)
+void nfc_close(nfc_device *pnd)
 {
   if (pnd) {
     // Close, clean up and release the device
@@ -422,7 +417,7 @@ nfc_list_devices(nfc_context *context, nfc_connstring connstrings[], const size_
           log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy connection string");
           continue;
         }
-        device_found ++;
+        device_found++;
         if (device_found == connstrings_len)
           break;
       }
@@ -447,7 +442,7 @@ nfc_list_devices(nfc_context *context, nfc_connstring connstrings[], const size_
       const struct nfc_driver *ndr = pndl->driver;
       if ((ndr->scan_type == NOT_INTRUSIVE) || ((context->allow_intrusive_scan) && (ndr->scan_type == INTRUSIVE))) {
         size_t _device_found = ndr->scan(context, connstrings + (device_found), connstrings_len - (device_found));
-        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%ld device(s) found using %s driver", (unsigned long) _device_found, ndr->name);
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%ld device(s) found using %s driver", (unsigned long)_device_found, ndr->name);
         if (_device_found > 0) {
           device_found += _device_found;
           if (device_found == connstrings_len)
@@ -474,13 +469,11 @@ nfc_list_devices(nfc_context *context, nfc_connstring connstrings[], const size_
  *
  * @see nfc_property enum values
  */
-int
-nfc_device_set_property_int(nfc_device *pnd, const nfc_property property, const int value)
+int nfc_device_set_property_int(nfc_device *pnd, const nfc_property property, const int value)
 {
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "set_property_int %s %s", nfc_property_name[property], value ? "True" : "False");
   return HAL(device_set_property_int, pnd, property, value);
 }
-
 
 /** @ingroup properties
  * @brief Set a device's boolean-property value
@@ -494,8 +487,7 @@ nfc_device_set_property_int(nfc_device *pnd, const nfc_property property, const 
  * configuring the \e PN53X chip features (handle, activate, infinite and
  * accept).
  */
-int
-nfc_device_set_property_bool(nfc_device *pnd, const nfc_property property, const bool bEnable)
+int nfc_device_set_property_bool(nfc_device *pnd, const nfc_property property, const bool bEnable)
 {
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "set_property_bool %s %s", nfc_property_name[property], bEnable ? "True" : "False");
   return HAL(device_set_property_bool, pnd, property, bEnable);
@@ -521,8 +513,7 @@ nfc_device_set_property_bool(nfc_device *pnd, const nfc_property property, const
  * - Let the device try forever to find a target (NP_INFINITE_SELECT = true)
  * - RF field is shortly dropped (if it was enabled) then activated again
  */
-int
-nfc_initiator_init(nfc_device *pnd)
+int nfc_initiator_init(nfc_device *pnd)
 {
   int res = 0;
   // Drop the field for a while
@@ -561,8 +552,7 @@ nfc_initiator_init(nfc_device *pnd)
  * After initialization it can be used to communicate with the secure element.
  * @note RF field is deactivated in order to save some power
  */
-int
-nfc_initiator_init_secure_element(nfc_device *pnd)
+int nfc_initiator_init_secure_element(nfc_device *pnd)
 {
   return HAL(initiator_init_secure_element, pnd);
 }
@@ -590,15 +580,14 @@ nfc_initiator_init_secure_element(nfc_device *pnd)
  * The chip needs to know with what kind of tag it is dealing with, therefore
  * the initial modulation and speed (106, 212 or 424 kbps) should be supplied.
  */
-int
-nfc_initiator_select_passive_target(nfc_device *pnd,
-                                    const nfc_modulation nm,
-                                    const uint8_t *pbtInitData, const size_t szInitData,
-                                    nfc_target *pnt)
+int nfc_initiator_select_passive_target(nfc_device *pnd,
+                                        const nfc_modulation nm,
+                                        const uint8_t *pbtInitData, const size_t szInitData,
+                                        nfc_target *pnt)
 {
   uint8_t *abtInit = NULL;
   uint8_t maxAbt = MAX(12, szInitData);
-  size_t  szInit = 0;
+  size_t szInit = 0;
   int res;
   if ((res = nfc_device_validate_modulation(pnd, N_INITIATOR, &nm)) != NFC_SUCCESS) {
     return res;
@@ -641,15 +630,14 @@ nfc_initiator_select_passive_target(nfc_device *pnd,
  * with, therefore the initial modulation and speed (106, 212 or 424 kbps)
  * should be supplied.
  */
-int
-nfc_initiator_list_passive_targets(nfc_device *pnd,
-                                   const nfc_modulation nm,
-                                   nfc_target ant[], const size_t szTargets)
+int nfc_initiator_list_passive_targets(nfc_device *pnd,
+                                       const nfc_modulation nm,
+                                       nfc_target ant[], const size_t szTargets)
 {
   nfc_target nt;
-  size_t  szTargetFound = 0;
+  size_t szTargetFound = 0;
   uint8_t *pbtInitData = NULL;
-  size_t  szInitDataLen = 0;
+  size_t szInitDataLen = 0;
   int res = 0;
 
   pnd->last_error = 0;
@@ -711,15 +699,13 @@ nfc_initiator_list_passive_targets(nfc_device *pnd,
  * @note e.g. if uiPeriod=10, it will poll each desired target type during 1.5s
  * @param[out] pnt pointer on \a nfc_target (over)writable struct
  */
-int
-nfc_initiator_poll_target(nfc_device *pnd,
-                          const nfc_modulation *pnmModulations, const size_t szModulations,
-                          const uint8_t uiPollNr, const uint8_t uiPeriod,
-                          nfc_target *pnt)
+int nfc_initiator_poll_target(nfc_device *pnd,
+                              const nfc_modulation *pnmModulations, const size_t szModulations,
+                              const uint8_t uiPollNr, const uint8_t uiPeriod,
+                              nfc_target *pnt)
 {
   return HAL(initiator_poll_target, pnd, pnmModulations, szModulations, uiPollNr, uiPeriod, pnt);
 }
-
 
 /** @ingroup initiator
  * @brief Select a target and request active or passive mode for D.E.P. (Data Exchange Protocol)
@@ -741,10 +727,9 @@ nfc_initiator_poll_target(nfc_device *pnd,
  * If timeout equals to 0, the function blocks indefinitely (until an error is raised or function is completed)
  * If timeout equals to -1, the default timeout will be used
  */
-int
-nfc_initiator_select_dep_target(nfc_device *pnd,
-                                const nfc_dep_mode ndm, const nfc_baud_rate nbr,
-                                const nfc_dep_info *pndiInitiator, nfc_target *pnt, const int timeout)
+int nfc_initiator_select_dep_target(nfc_device *pnd,
+                                    const nfc_dep_mode ndm, const nfc_baud_rate nbr,
+                                    const nfc_dep_info *pndiInitiator, nfc_target *pnt, const int timeout)
 {
   return HAL(initiator_select_dep_target, pnd, ndm, nbr, pndiInitiator, pnt, timeout);
 }
@@ -766,12 +751,11 @@ nfc_initiator_select_dep_target(nfc_device *pnd,
  *
  * @note \a nfc_dep_info will be returned when the target was acquired successfully.
  */
-int
-nfc_initiator_poll_dep_target(struct nfc_device *pnd,
-                              const nfc_dep_mode ndm, const nfc_baud_rate nbr,
-                              const nfc_dep_info *pndiInitiator,
-                              nfc_target *pnt,
-                              const int timeout)
+int nfc_initiator_poll_dep_target(struct nfc_device *pnd,
+                                  const nfc_dep_mode ndm, const nfc_baud_rate nbr,
+                                  const nfc_dep_info *pndiInitiator,
+                                  nfc_target *pnt,
+                                  const int timeout)
 {
   const int period = 300;
   int remaining_time = timeout;
@@ -794,7 +778,7 @@ nfc_initiator_poll_dep_target(struct nfc_device *pnd,
     remaining_time -= period;
   }
 end:
-  if (! bInfiniteSelect) {
+  if (!bInfiniteSelect) {
     if ((res = nfc_device_set_property_bool(pnd, NP_INFINITE_SELECT, false)) < 0) {
       return res;
     }
@@ -814,8 +798,7 @@ end:
  * tag, test it for the available features and support, deselect it and skip to
  * the next tag until the correct tag is found.
  */
-int
-nfc_initiator_deselect_target(nfc_device *pnd)
+int nfc_initiator_deselect_target(nfc_device *pnd)
 {
   return HAL(initiator_deselect_target, pnd);
 }
@@ -848,9 +831,8 @@ nfc_initiator_deselect_target(nfc_device *pnd)
  * If timeout equals to 0, the function blocks indefinitely (until an error is raised or function is completed)
  * If timeout equals to -1, the default timeout will be used
  */
-int
-nfc_initiator_transceive_bytes(nfc_device *pnd, const uint8_t *pbtTx, const size_t szTx, uint8_t *pbtRx,
-                               const size_t szRx, int timeout)
+int nfc_initiator_transceive_bytes(nfc_device *pnd, const uint8_t *pbtTx, const size_t szTx, uint8_t *pbtRx,
+                                   const size_t szRx, int timeout)
 {
   return HAL(initiator_transceive_bytes, pnd, pbtTx, szTx, pbtRx, szRx, timeout);
 }
@@ -891,11 +873,10 @@ nfc_initiator_transceive_bytes(nfc_device *pnd, const uint8_t *pbtTx, const size
  * require to violate the ISO14443-A standard by sending incorrect parity and
  * CRC bytes. Using this feature you are able to simulate these frames.
  */
-int
-nfc_initiator_transceive_bits(nfc_device *pnd,
-                              const uint8_t *pbtTx, const size_t szTxBits, const uint8_t *pbtTxPar,
-                              uint8_t *pbtRx, const size_t szRx,
-                              uint8_t *pbtRxPar)
+int nfc_initiator_transceive_bits(nfc_device *pnd,
+                                  const uint8_t *pbtTx, const size_t szTxBits, const uint8_t *pbtTxPar,
+                                  uint8_t *pbtRx, const size_t szRx,
+                                  uint8_t *pbtRxPar)
 {
   (void)szRx;
   return HAL(initiator_transceive_bits, pnd, pbtTx, szTxBits, pbtTxPar, pbtRx, pbtRxPar);
@@ -927,11 +908,10 @@ nfc_initiator_transceive_bits(nfc_device *pnd,
  * @warning The configuration option \a NP_EASY_FRAMING must be set to \c false.
  * @warning The configuration option \a NP_HANDLE_PARITY must be set to \c true (the default value).
  */
-int
-nfc_initiator_transceive_bytes_timed(nfc_device *pnd,
-                                     const uint8_t *pbtTx, const size_t szTx,
-                                     uint8_t *pbtRx, const size_t szRx,
-                                     uint32_t *cycles)
+int nfc_initiator_transceive_bytes_timed(nfc_device *pnd,
+                                         const uint8_t *pbtTx, const size_t szTx,
+                                         uint8_t *pbtRx, const size_t szRx,
+                                         uint32_t *cycles)
 {
   return HAL(initiator_transceive_bytes_timed, pnd, pbtTx, szTx, pbtRx, szRx, cycles);
 }
@@ -945,9 +925,8 @@ nfc_initiator_transceive_bytes_timed(nfc_device *pnd,
  * This function tests if \a nfc_target (or last selected tag if \e NULL) is currently present on NFC device.
  * @warning The target have to be selected before check its presence
  * @warning To run the test, one or more commands will be sent to target
-*/
-int
-nfc_initiator_target_is_present(nfc_device *pnd, const nfc_target *pnt)
+ */
+int nfc_initiator_target_is_present(nfc_device *pnd, const nfc_target *pnt)
 {
   return HAL(initiator_target_is_present, pnd, pnt);
 }
@@ -973,12 +952,11 @@ nfc_initiator_target_is_present(nfc_device *pnd, const nfc_target *pnt)
  * @warning The configuration option \a NP_HANDLE_CRC must be set to \c false.
  * @warning The configuration option \a NP_HANDLE_PARITY must be set to \c true (the default value).
  */
-int
-nfc_initiator_transceive_bits_timed(nfc_device *pnd,
-                                    const uint8_t *pbtTx, const size_t szTxBits, const uint8_t *pbtTxPar,
-                                    uint8_t *pbtRx, const size_t szRx,
-                                    uint8_t *pbtRxPar,
-                                    uint32_t *cycles)
+int nfc_initiator_transceive_bits_timed(nfc_device *pnd,
+                                        const uint8_t *pbtTx, const size_t szTxBits, const uint8_t *pbtTxPar,
+                                        uint8_t *pbtRx, const size_t szRx,
+                                        uint8_t *pbtRxPar,
+                                        uint32_t *cycles)
 {
   (void)szRx;
   return HAL(initiator_transceive_bits_timed, pnd, pbtTx, szTxBits, pbtTxPar, pbtRx, pbtRxPar, cycles);
@@ -1017,8 +995,7 @@ nfc_initiator_transceive_bits_timed(nfc_device *pnd,
  * If timeout equals to 0, the function blocks indefinitely (until an error is raised or function is completed)
  * If timeout equals to -1, the default timeout will be used
  */
-int
-nfc_target_init(nfc_device *pnd, nfc_target *pnt, uint8_t *pbtRx, const size_t szRx, int timeout)
+int nfc_target_init(nfc_device *pnd, nfc_target *pnt, uint8_t *pbtRx, const size_t szRx, int timeout)
 {
   int res = 0;
   // Disallow invalid frame
@@ -1058,8 +1035,7 @@ nfc_target_init(nfc_device *pnd, nfc_target *pnt, uint8_t *pbtRx, const size_t s
  * In initiator mode, the RF field is turned off and the device is set to low power mode (if available);
  * In target mode, the emulation is stoped (no target available from external initiator) and the device is set to low power mode (if avaible).
  */
-int
-nfc_idle(nfc_device *pnd)
+int nfc_idle(nfc_device *pnd)
 {
   return HAL(idle, pnd);
 }
@@ -1075,8 +1051,7 @@ nfc_idle(nfc_device *pnd)
  *
  * @note The blocking function (ie. nfc_target_init()) will failed with DEABORT error.
  */
-int
-nfc_abort_command(nfc_device *pnd)
+int nfc_abort_command(nfc_device *pnd)
 {
   return HAL(abort_command, pnd);
 }
@@ -1096,8 +1071,7 @@ nfc_abort_command(nfc_device *pnd)
  * If timeout equals to 0, the function blocks indefinitely (until an error is raised or function is completed)
  * If timeout equals to -1, the default timeout will be used
  */
-int
-nfc_target_send_bytes(nfc_device *pnd, const uint8_t *pbtTx, const size_t szTx, int timeout)
+int nfc_target_send_bytes(nfc_device *pnd, const uint8_t *pbtTx, const size_t szTx, int timeout)
 {
   return HAL(target_send_bytes, pnd, pbtTx, szTx, timeout);
 }
@@ -1116,8 +1090,7 @@ nfc_target_send_bytes(nfc_device *pnd, const uint8_t *pbtTx, const size_t szTx, 
  * If timeout equals to 0, the function blocks indefinitely (until an error is raised or function is completed)
  * If timeout equals to -1, the default timeout will be used
  */
-int
-nfc_target_receive_bytes(nfc_device *pnd, uint8_t *pbtRx, const size_t szRx, int timeout)
+int nfc_target_receive_bytes(nfc_device *pnd, uint8_t *pbtRx, const size_t szRx, int timeout)
 {
   return HAL(target_receive_bytes, pnd, pbtRx, szRx, timeout);
 }
@@ -1133,8 +1106,7 @@ nfc_target_receive_bytes(nfc_device *pnd, uint8_t *pbtRx, const size_t szRx, int
  * This function can be used to transmit (raw) bit-frames to the \e initiator
  * using the specified NFC device (configured as \e target).
  */
-int
-nfc_target_send_bits(nfc_device *pnd, const uint8_t *pbtTx, const size_t szTxBits, const uint8_t *pbtTxPar)
+int nfc_target_send_bits(nfc_device *pnd, const uint8_t *pbtTx, const size_t szTxBits, const uint8_t *pbtTxPar)
 {
   return HAL(target_send_bits, pnd, pbtTx, szTxBits, pbtTxPar);
 }
@@ -1155,30 +1127,29 @@ nfc_target_send_bits(nfc_device *pnd, const uint8_t *pbtTx, const size_t szTxBit
  * NP_ACCEPT_MULTIPLE_FRAMES configuration option to avoid losing transmitted
  * frames.
  */
-int
-nfc_target_receive_bits(nfc_device *pnd, uint8_t *pbtRx, const size_t szRx, uint8_t *pbtRxPar)
+int nfc_target_receive_bits(nfc_device *pnd, uint8_t *pbtRx, const size_t szRx, uint8_t *pbtRxPar)
 {
   return HAL(target_receive_bits, pnd, pbtRx, szRx, pbtRxPar);
 }
 
 static struct sErrorMessage {
-  int     iErrorCode;
+  int iErrorCode;
   const char *pcErrorMsg;
 } sErrorMessages[] = {
   /* Chip-level errors (internal errors, RF errors, etc.) */
-  { NFC_SUCCESS, "Success" },
-  { NFC_EIO, "Input / Output Error" },
-  { NFC_EINVARG, "Invalid argument(s)" },
-  { NFC_EDEVNOTSUPP, "Not Supported by Device" },
-  { NFC_ENOTSUCHDEV, "No Such Device" },
-  { NFC_EOVFLOW, "Buffer Overflow" },
-  { NFC_ETIMEOUT, "Timeout" },
-  { NFC_EOPABORTED, "Operation Aborted" },
-  { NFC_ENOTIMPL, "Not (yet) Implemented" },
-  { NFC_ETGRELEASED, "Target Released" },
-  { NFC_EMFCAUTHFAIL, "Mifare Authentication Failed" },
-  { NFC_ERFTRANS, "RF Transmission Error" },
-  { NFC_ECHIP, "Device's Internal Chip Error" },
+  {NFC_SUCCESS, "Success"},
+  {NFC_EIO, "Input / Output Error"},
+  {NFC_EINVARG, "Invalid argument(s)"},
+  {NFC_EDEVNOTSUPP, "Not Supported by Device"},
+  {NFC_ENOTSUCHDEV, "No Such Device"},
+  {NFC_EOVFLOW, "Buffer Overflow"},
+  {NFC_ETIMEOUT, "Timeout"},
+  {NFC_EOPABORTED, "Operation Aborted"},
+  {NFC_ENOTIMPL, "Not (yet) Implemented"},
+  {NFC_ETGRELEASED, "Target Released"},
+  {NFC_EMFCAUTHFAIL, "Mifare Authentication Failed"},
+  {NFC_ERFTRANS, "RF Transmission Error"},
+  {NFC_ECHIP, "Device's Internal Chip Error"},
 };
 
 /** @ingroup error
@@ -1191,7 +1162,7 @@ const char *
 nfc_strerror(const nfc_device *pnd)
 {
   const char *pcRes = "Unknown error";
-  size_t  i;
+  size_t i;
   for (i = 0; i < (sizeof(sErrorMessages) / sizeof(struct sErrorMessage)); i++) {
     if (sErrorMessages[i].iErrorCode == pnd->last_error) {
       pcRes = sErrorMessages[i].pcErrorMsg;
@@ -1210,8 +1181,7 @@ nfc_strerror(const nfc_device *pnd)
  * @param pcStrErrBuf a string that contains the last error.
  * @param szBufLen size of buffer
  */
-int
-nfc_strerror_r(const nfc_device *pnd, char *pcStrErrBuf, size_t szBufLen)
+int nfc_strerror_r(const nfc_device *pnd, char *pcStrErrBuf, size_t szBufLen)
 {
   return (snprintf(pcStrErrBuf, szBufLen, "%s", nfc_strerror(pnd)) < 0) ? -1 : 0;
 }
@@ -1222,8 +1192,7 @@ nfc_strerror_r(const nfc_device *pnd, char *pcStrErrBuf, size_t szBufLen)
  * @param pnd \a nfc_device struct pointer that represent currently used device
  * @param pcString a string
  */
-void
-nfc_perror(const nfc_device *pnd, const char *pcString)
+void nfc_perror(const nfc_device *pnd, const char *pcString)
 {
   fprintf(stderr, "%s: %s\n", pcString, nfc_strerror(pnd));
 }
@@ -1234,8 +1203,7 @@ nfc_perror(const nfc_device *pnd, const char *pcString)
  *
  * @param pnd \a nfc_device struct pointer that represent currently used device
  */
-int
-nfc_device_get_last_error(const nfc_device *pnd)
+int nfc_device_get_last_error(const nfc_device *pnd)
 {
   return pnd->last_error;
 }
@@ -1274,8 +1242,7 @@ nfc_device_get_connstring(nfc_device *pnd)
  * @param supported_mt pointer of \a nfc_modulation_type array.
  *
  */
-int
-nfc_device_get_supported_modulation(nfc_device *pnd, const nfc_mode mode, const nfc_modulation_type **const supported_mt)
+int nfc_device_get_supported_modulation(nfc_device *pnd, const nfc_mode mode, const nfc_modulation_type **const supported_mt)
 {
   return HAL(get_supported_modulation, pnd, mode, supported_mt);
 }
@@ -1288,8 +1255,7 @@ nfc_device_get_supported_modulation(nfc_device *pnd, const nfc_mode mode, const 
  * @param supported_br pointer of \a nfc_baud_rate array.
  *
  */
-int
-nfc_device_get_supported_baud_rate(nfc_device *pnd, const nfc_modulation_type nmt, const nfc_baud_rate **const supported_br)
+int nfc_device_get_supported_baud_rate(nfc_device *pnd, const nfc_modulation_type nmt, const nfc_baud_rate **const supported_br)
 {
   return HAL(get_supported_baud_rate, pnd, N_INITIATOR, nmt, supported_br);
 }
@@ -1302,8 +1268,7 @@ nfc_device_get_supported_baud_rate(nfc_device *pnd, const nfc_modulation_type nm
  * @param supported_br pointer of \a nfc_baud_rate array.
  *
  */
-int
-nfc_device_get_supported_baud_rate_target_mode(nfc_device *pnd, const nfc_modulation_type nmt, const nfc_baud_rate **const supported_br)
+int nfc_device_get_supported_baud_rate_target_mode(nfc_device *pnd, const nfc_modulation_type nmt, const nfc_baud_rate **const supported_br)
 {
   return HAL(get_supported_baud_rate, pnd, N_TARGET, nmt, supported_br);
 }
@@ -1373,8 +1338,7 @@ nfc_version(void)
  *
  * @param pointer on buffer that needs to be freed
  */
-void
-nfc_free(void *p)
+void nfc_free(void *p)
 {
   free(p);
 }
@@ -1387,8 +1351,7 @@ nfc_free(void *p)
  *
  * @warning *buf must be freed using nfc_free()
  */
-int
-nfc_device_get_information_about(nfc_device *pnd, char **buf)
+int nfc_device_get_information_about(nfc_device *pnd, char **buf)
 {
   return HAL(device_get_information_about, pnd, buf);
 }
@@ -1397,7 +1360,7 @@ nfc_device_get_information_about(nfc_device *pnd, char **buf)
  * @brief Convert \a nfc_baud_rate value to string
  * @return Returns nfc baud rate
  * @param nbr \a nfc_baud_rate to convert
-*/
+ */
 const char *
 str_nfc_baud_rate(const nfc_baud_rate nbr)
 {
@@ -1421,7 +1384,7 @@ str_nfc_baud_rate(const nfc_baud_rate nbr)
  * @brief Convert \a nfc_modulation_type value to string
  * @return Returns nfc modulation type
  * @param nmt \a nfc_modulation_type to convert
-*/
+ */
 const char *
 str_nfc_modulation_type(const nfc_modulation_type nmt)
 {
@@ -1459,12 +1422,11 @@ str_nfc_modulation_type(const nfc_modulation_type nmt)
  * @param verbose false for essential, true for detailed, human-readable, information
  *
  * @warning *buf must be freed using nfc_free()
-*/
-int
-str_nfc_target(char **buf, const nfc_target *pnt, bool verbose)
+ */
+int str_nfc_target(char **buf, const nfc_target *pnt, bool verbose)
 {
   *buf = malloc(4096);
-  if (! *buf)
+  if (!*buf)
     return NFC_ESOFT;
   (*buf)[0] = '\0';
   snprint_nfc_target(*buf, 4096, pnt, verbose);

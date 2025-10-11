@@ -186,6 +186,7 @@ Target: Reduce cyclomatic complexity (CC) of complex functions
 * `arygon_tama_receive` (CC: 20 → 10)
 
 **Strategy**: Extract Method refactoring
+
 ```c
 // Before: Complex function (CC: 26)
 int acr122_usb_receive(nfc_device *pnd, ...) {

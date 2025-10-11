@@ -55,7 +55,7 @@
  * - SRI512 - legacy - (anonymous vending machine)
  */
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include <unistd.h>
@@ -69,8 +69,8 @@
 #include <getopt.h>
 #endif
 
-#define ST25TB_SR_BLOCK_MAX_SIZE	((uint8_t) 4) // for static arrays
-typedef void(*get_info_specific)(uint8_t *systemArea);
+#define ST25TB_SR_BLOCK_MAX_SIZE ((uint8_t)4) // for static arrays
+typedef void (*get_info_specific)(uint8_t *systemArea);
 
 typedef struct _st_data {
   uint8_t chipId;
@@ -112,7 +112,8 @@ int main(int argc, char *argv[])
         if (optarg) {
           bIsBlock = true;
           blockNumber = strtoul(optarg, NULL, 0);
-        } else bIsBadCli = true;
+        } else
+          bIsBadCli = true;
 
         break;
 
@@ -126,13 +127,15 @@ int main(int argc, char *argv[])
           cbData = strlen(optarg);
           if ((cbData == (2 * 2)) || ((cbData == (4 * 2)))) {
             cbData >>= 1;
-            if (cbData == 2) { // sr176
+            if (cbData == 2) {
+              // sr176
               res = sscanf(optarg, "%02hhx%02hhx", data, data + 1);
-            } else { // all others
+            } else {
+              // all others
               res = sscanf(optarg, "%02hhx%02hhx%02hhx%02hhx", data, data + 1, data + 2, data + 3);
             }
 
-            if (res == (int) cbData) {
+            if (res == (int)cbData) {
               bIsWrite = true;
             }
           }
@@ -146,7 +149,6 @@ int main(int argc, char *argv[])
 
       default: // includes -h
         bIsBadCli = true;
-
     }
   }
 
@@ -168,7 +170,8 @@ int main(int argc, char *argv[])
       }
     } else if (!bIsRead && !bIsWrite && !bIsBlock) {
       printf("|mode   : info\n");
-    } else bIsBadCli = true;
+    } else
+      bIsBadCli = true;
   }
 
   if (!bIsBadCli) {
@@ -201,14 +204,18 @@ int main(int argc, char *argv[])
                 display_system_info(pnd, stcurrent);
               }
             }
-          } else printf("ERROR - nfc_initiator_select_passive_target: %i\n", res);
-        } else printf("ERROR - nfc_initiator_init: %i\n", res);
+          } else
+            printf("ERROR - nfc_initiator_select_passive_target: %i\n", res);
+        } else
+          printf("ERROR - nfc_initiator_init: %i\n", res);
 
         nfc_close(pnd);
-      } else printf("ERROR - nfc_open\n");
+      } else
+        printf("ERROR - nfc_open\n");
 
       nfc_exit(context);
-    } else printf("ERROR - nfc_init\n");
+    } else
+      printf("ERROR - nfc_init\n");
   } else {
     printf(
       "Usage:\n"
@@ -231,8 +238,8 @@ int main(int argc, char *argv[])
       "  %s -b 0x0c -r -w 0123abcd\n"
       "        Read, then write block 0x0c (12) of the tag with hexadecimal value '01 23 ab cd'\n"
       "Warnings:\n"
-      "  Be careful with: system area, counters & otp, bytes order.\n"
-      , argv[0], argv[0], argv[0], argv[0], argv[0], argv[0], argv[0], argv[0]);
+      "  Be careful with: system area, counters & otp, bytes order.\n",
+      argv[0], argv[0], argv[0], argv[0], argv[0], argv[0], argv[0], argv[0]);
   }
 
   return 0;
@@ -253,8 +260,10 @@ bool get_block_at(nfc_device *pnd, uint8_t block, uint8_t *data, uint8_t cbData,
           return false;
         }
         bRet = true;
-      } else printf("ERROR - We got %i bytes for a %hhu buffer size?\n", res, cbData);
-    } else bRet = true;
+      } else
+        printf("ERROR - We got %i bytes for a %hhu buffer size?\n", res, cbData);
+    } else
+      bRet = true;
 
     if (bPrintIt) {
       printf("[0x%02hhx] ", block);
@@ -263,7 +272,8 @@ bool get_block_at(nfc_device *pnd, uint8_t block, uint8_t *data, uint8_t cbData,
     }
   } else if (res > 0) {
     printf("ERROR - We got %i bytes?\n", res);
-  } else printf("ERROR - nfc_initiator_transceive_bytes(get): %i\n", res);
+  } else
+    printf("ERROR - nfc_initiator_transceive_bytes(get): %i\n", res);
 
   return bRet;
 }
@@ -287,10 +297,13 @@ bool set_block_at(nfc_device *pnd, uint8_t block, uint8_t *data, uint8_t cbData,
     }
 
     res = nfc_initiator_transceive_bytes(pnd, tx, 2 + cbData, NULL, 0, 0);
-    if (res == NFC_ERFTRANS) { // ? :')
+    if (res == NFC_ERFTRANS) {
+      // ? :')
       bRet = true;
-    } else printf("ERROR - nfc_initiator_transceive_bytes(set): %i\n", res);
-  } else printf("ERROR - Wanted to write %hhu bytes, but maximum is %hhu\n", cbData, ST25TB_SR_BLOCK_MAX_SIZE);
+    } else
+      printf("ERROR - nfc_initiator_transceive_bytes(set): %i\n", res);
+  } else
+    printf("ERROR - Wanted to write %hhu bytes, but maximum is %hhu\n", cbData, ST25TB_SR_BLOCK_MAX_SIZE);
 
   return bRet;
 }
@@ -317,19 +330,19 @@ void get_info_st25tb512(uint8_t *systemArea)
 {
   uint8_t b, i;
 
-  b = ((*(uint32_t *) systemArea) >> 15) & 1;
+  b = ((*(uint32_t *)systemArea) >> 15) & 1;
 
   printf("  | ST reserved  : ");
   for (i = 0; i < 15; i++) {
-    printf("%hhu", (uint8_t)(((*(uint32_t *) systemArea) >> i) & 1));
+    printf("%hhu", (uint8_t)(((*(uint32_t *)systemArea) >> i) & 1));
   }
   printf("\n  | b15          : %hhu - %sOTP (?)\n  | OTP_Lock_Reg : ", b, b ? "not " : "");
   for (i = 16; i < 32; i++) {
-    printf("%hhu", (uint8_t)(((*(uint32_t *) systemArea) >> i) & 1));
+    printf("%hhu", (uint8_t)(((*(uint32_t *)systemArea) >> i) & 1));
   }
   printf("\n");
   for (i = 16; i < 32; i++) {
-    if (!(((*(uint32_t *) systemArea) >> i) & 1)) {
+    if (!(((*(uint32_t *)systemArea) >> i) & 1)) {
       printf("     block 0x%02hhx is write protected\n", ((uint8_t)(i - 16)));
     }
   }
@@ -339,26 +352,26 @@ void get_info_st25tb2k_4k(uint8_t *systemArea)
 {
   uint8_t b, i;
 
-  b = ((*(uint32_t *) systemArea) >> 15) & 1;
+  b = ((*(uint32_t *)systemArea) >> 15) & 1;
 
   printf("  | ST reserved  : ");
   for (i = 0; i < 15; i++) {
-    printf("%hhu", (uint8_t)(((*(uint32_t *) systemArea) >> i) & 1));
+    printf("%hhu", (uint8_t)(((*(uint32_t *)systemArea) >> i) & 1));
   }
   printf("\n  | b15          : %hhu - %sOTP (?)\n  | OTP_Lock_RegU: ", b, b ? "not " : "");
   for (i = 16; i < 24; i++) {
-    printf("%hhu", (uint8_t)(((*(uint32_t *) systemArea) >> i) & 1));
+    printf("%hhu", (uint8_t)(((*(uint32_t *)systemArea) >> i) & 1));
   }
   printf("\n  | OTP_Lock_Reg : ");
   for (i = 24; i < 32; i++) {
-    printf("%hhu", (uint8_t)(((*(uint32_t *) systemArea) >> i) & 1));
+    printf("%hhu", (uint8_t)(((*(uint32_t *)systemArea) >> i) & 1));
   }
   printf("\n");
-  if (!(((*(uint32_t *) systemArea) >> 24) & 1)) {
+  if (!(((*(uint32_t *)systemArea) >> 24) & 1)) {
     printf("     blocks 0x07 and 0x08 are write protected\n");
   }
   for (i = 25; i < 32; i++) {
-    if (!(((*(uint32_t *) systemArea) >> i) & 1)) {
+    if (!(((*(uint32_t *)systemArea) >> i) & 1)) {
       printf("     block 0x%02hhx is write protected\n", ((uint8_t)(i - 16)));
     }
   }
@@ -370,15 +383,15 @@ void get_info_sr176_legacy(uint8_t *systemArea)
 
   printf("  | Fixed Chip_ID: 0x%1x\n  | ST reserved  : ", systemArea[0] & 0x0f);
   for (i = 4; i < 8; i++) {
-    printf("%hhu", (uint8_t)(((*(uint16_t *) systemArea) >> i) & 1));
+    printf("%hhu", (uint8_t)(((*(uint16_t *)systemArea) >> i) & 1));
   }
   printf("\n  | OTP_Lock_Reg : ");
   for (i = 8; i < 16; i++) {
-    printf("%hhu", (uint8_t)(((*(uint16_t *) systemArea) >> i) & 1));
+    printf("%hhu", (uint8_t)(((*(uint16_t *)systemArea) >> i) & 1));
   }
   printf("\n");
   for (i = 8; i < 16; i++) {
-    if (((*(uint16_t *) systemArea) >> i) & 1) {
+    if (((*(uint16_t *)systemArea) >> i) & 1) {
       printf("     blocks 0x%02hhx and 0x%02hhx are write protected\n", (uint8_t)((i - 8) * 2), (uint8_t)(((i - 8) * 2) + 1));
     }
   }
@@ -388,19 +401,19 @@ void get_info_sri_srt_512_legacy(uint8_t *systemArea)
 {
   uint8_t b, i;
 
-  b = ((*(uint32_t *) systemArea) >> 15) & 1;
+  b = ((*(uint32_t *)systemArea) >> 15) & 1;
 
   printf("  | Fixed Chip_ID: 0x%02hhx\n  | ST reserved  : ", systemArea[0]);
   for (i = 8; i < 15; i++) {
-    printf("%hhu", (uint8_t)(((*(uint32_t *) systemArea) >> i) & 1));
+    printf("%hhu", (uint8_t)(((*(uint32_t *)systemArea) >> i) & 1));
   }
   printf("\n  | b15          : %hhu - %sOTP (?)\n  | OTP_Lock_Reg : ", b, b ? "not " : "");
   for (i = 16; i < 32; i++) {
-    printf("%hhu", (uint8_t)(((*(uint32_t *) systemArea) >> i) & 1));
+    printf("%hhu", (uint8_t)(((*(uint32_t *)systemArea) >> i) & 1));
   }
   printf("\n");
   for (i = 16; i < 32; i++) {
-    if (!(((*(uint32_t *) systemArea) >> i) & 1)) {
+    if (!(((*(uint32_t *)systemArea) >> i) & 1)) {
       printf("     block 0x%02hhx is write protected\n", (uint8_t)(i - 16));
     }
   }
@@ -412,38 +425,38 @@ void get_info_sri2k_4k_srix4k_srix512_legacy(uint8_t *systemArea)
 
   printf("  | Fixed Chip_ID: 0x%02hhx\n  | ST reserved  : ", systemArea[0]);
   for (i = 8; i < 24; i++) {
-    printf("%hhu", (uint8_t)(((*(uint32_t *) systemArea) >> i) & 1));
+    printf("%hhu", (uint8_t)(((*(uint32_t *)systemArea) >> i) & 1));
   }
   printf("\n  | OTP_Lock_Reg : ");
   for (i = 24; i < 32; i++) {
-    printf("%hhu", (uint8_t)(((*(uint32_t *) systemArea) >> i) & 1));
+    printf("%hhu", (uint8_t)(((*(uint32_t *)systemArea) >> i) & 1));
   }
   printf("\n");
-  if (!(((*(uint32_t *) systemArea) >> 24) & 1)) {
+  if (!(((*(uint32_t *)systemArea) >> 24) & 1)) {
     printf("     blocks 0x07 and 0x08 are write protected\n");
   }
   for (i = 25; i < 32; i++) {
-    if (!(((*(uint32_t *) systemArea) >> i) & 1)) {
+    if (!(((*(uint32_t *)systemArea) >> i) & 1)) {
       printf("     block 0x%02hhx is write protected\n", (uint8_t)(i - 16));
     }
   }
 }
 
 const st_data STRefs[] = {
-  {0x1b, false, "ST25TB512-AC", "https://www.st.com/resource/en/datasheet/st25tb512-ac.pdf", 4, 16,  255,  get_info_st25tb512},
-  {0x33, false, "ST25TB512-AT", "https://www.st.com/resource/en/datasheet/st25tb512-at.pdf", 4, 16,  255,  get_info_st25tb512},
-  {0x3f, false, "ST25TB02K",    "https://www.st.com/resource/en/datasheet/st25tb02k.pdf",    4, 64,  255,  get_info_st25tb2k_4k},
-  {0x1f, false, "ST25TB04K",    "https://www.st.com/resource/en/datasheet/st25tb04k.pdf",    4, 128, 255,  get_info_st25tb2k_4k},
+  {0x1b, false, "ST25TB512-AC", "https://www.st.com/resource/en/datasheet/st25tb512-ac.pdf", 4, 16, 255, get_info_st25tb512},
+  {0x33, false, "ST25TB512-AT", "https://www.st.com/resource/en/datasheet/st25tb512-at.pdf", 4, 16, 255, get_info_st25tb512},
+  {0x3f, false, "ST25TB02K", "https://www.st.com/resource/en/datasheet/st25tb02k.pdf", 4, 64, 255, get_info_st25tb2k_4k},
+  {0x1f, false, "ST25TB04K", "https://www.st.com/resource/en/datasheet/st25tb04k.pdf", 4, 128, 255, get_info_st25tb2k_4k},
 };
 const st_data STRefs_legacy[] = {
-  { 0, true, "SRI4K(s)", NULL,                                                   4, 128, 255, NULL},
-  { 2, true, "SR176",    "https://www.st.com/resource/en/datasheet/sr176.pdf",   2, 15,  15,  get_info_sr176_legacy},
-  { 3, true, "SRIX4K",   NULL,                                                   4, 128, 255, get_info_sri2k_4k_srix4k_srix512_legacy},
-  { 4, true, "SRIX512",  "https://www.st.com/resource/en/datasheet/srix512.pdf", 4, 16,  255, get_info_sri2k_4k_srix4k_srix512_legacy},
-  { 6, true, "SRI512",   "https://www.st.com/resource/en/datasheet/sri512.pdf",  4, 16,  255, get_info_sri_srt_512_legacy},
-  { 7, true, "SRI4K",    "https://www.st.com/resource/en/datasheet/sri4k.pdf",   4, 128, 255, get_info_sri2k_4k_srix4k_srix512_legacy},
-  {12, true, "SRT512",   "https://www.st.com/resource/en/datasheet/srt512.pdf",  4, 16,  255, get_info_sri_srt_512_legacy},
-  {15, true, "SRI2K",    "https://www.st.com/resource/en/datasheet/sri2k.pdf",   4, 64,  255, get_info_sri2k_4k_srix4k_srix512_legacy},
+  {0, true, "SRI4K(s)", NULL, 4, 128, 255, NULL},
+  {2, true, "SR176", "https://www.st.com/resource/en/datasheet/sr176.pdf", 2, 15, 15, get_info_sr176_legacy},
+  {3, true, "SRIX4K", NULL, 4, 128, 255, get_info_sri2k_4k_srix4k_srix512_legacy},
+  {4, true, "SRIX512", "https://www.st.com/resource/en/datasheet/srix512.pdf", 4, 16, 255, get_info_sri2k_4k_srix4k_srix512_legacy},
+  {6, true, "SRI512", "https://www.st.com/resource/en/datasheet/sri512.pdf", 4, 16, 255, get_info_sri_srt_512_legacy},
+  {7, true, "SRI4K", "https://www.st.com/resource/en/datasheet/sri4k.pdf", 4, 128, 255, get_info_sri2k_4k_srix4k_srix512_legacy},
+  {12, true, "SRT512", "https://www.st.com/resource/en/datasheet/srt512.pdf", 4, 16, 255, get_info_sri_srt_512_legacy},
+  {15, true, "SRI2K", "https://www.st.com/resource/en/datasheet/sri2k.pdf", 4, 64, 255, get_info_sri2k_4k_srix4k_srix512_legacy},
 };
 
 const st_data *get_info(const nfc_target *pnt, bool bPrintIt)
@@ -458,7 +471,8 @@ const st_data *get_info(const nfc_target *pnt, bool bPrintIt)
     printf("\n");
 
     p = pnt->nti.nsi.abtUID;
-    if (p[7] == 0xd0) { // ST25TB* / SR*
+    if (p[7] == 0xd0) {
+      // ST25TB* / SR*
       chipId = p[5];
       printf("Manuf   : 0x%02hhx - %s\n", p[6], (p[6] == 0x02) ? "STMicroelectronics" : "other");
 
@@ -486,8 +500,10 @@ const st_data *get_info(const nfc_target *pnt, bool bPrintIt)
         }
         printf("%02hhx%02hhx%02hhx%02hhx%02hhx\n|blk sz : %hhu bits\n|nb blks: %hhu\n|sys idx: %hhu\n", p[4], p[3], p[2], p[1], p[0], (uint8_t)(currentData->blockSize * 8), currentData->nbNormalBlock, currentData->bnSystem);
       }
-    } else printf("WARNI - Last byte of UID isn\'t 0xd0, but 0x%02hhx (not ST25TB / SR series?)\n", p[7]);
-  } else printf("ERROR - not a NMT_ISO14443B2SR ?\n");
+    } else
+      printf("WARNI - Last byte of UID isn\'t 0xd0, but 0x%02hhx (not ST25TB / SR series?)\n", p[7]);
+  } else
+    printf("ERROR - not a NMT_ISO14443B2SR ?\n");
 
   return currentData;
 }
@@ -510,4 +526,3 @@ void print_hex(const uint8_t *pbtData, const size_t szBytes)
     printf("%02hhx ", pbtData[szPos]);
   }
 }
-

@@ -20,12 +20,14 @@ We take the security of libnfc seriously. If you believe you have found a securi
 **Please do NOT report security vulnerabilities through public GitHub issues.**
 
 Instead, please report them via:
+
 - **Email**: Send details to the maintainers at [security contact to be added]
 - **Private vulnerability disclosure**: Use GitHub's private vulnerability reporting feature
 
 ### What to Include
 
 Please include the following information in your report:
+
 - Type of vulnerability (e.g., buffer overflow, injection, etc.)
 - Full paths of affected source file(s)
 - Location of the affected code (tag/branch/commit or direct URL)
@@ -43,6 +45,7 @@ Please include the following information in your report:
 ## Security Updates
 
 Security updates are released as soon as fixes are available and tested. Users are encouraged to:
+
 - Watch this repository for security advisories
 - Subscribe to release notifications
 - Update to the latest version promptly
@@ -115,6 +118,7 @@ A comprehensive memory safety refactoring effort has been completed:
 ## Best Practices for Users
 
 ### 1. Input Validation
+
 ```c
 // Always validate external input before passing to libnfc
 if (!validate_uid(user_uid)) {
@@ -124,6 +128,7 @@ nfc_initiator_select_passive_target(pnd, nm, user_uid, uidlen, &nt);
 ```
 
 ### 2. Error Handling
+
 ```c
 // Always check return values
 if (nfc_initiator_init(pnd) < 0) {
@@ -134,6 +139,7 @@ if (nfc_initiator_init(pnd) < 0) {
 ```
 
 ### 3. Resource Cleanup
+
 ```c
 // Always clean up resources
 nfc_context *context;
@@ -149,6 +155,7 @@ nfc_exit(context);   // Always exit context
 ```
 
 ### 4. Sensitive Data Handling
+
 ```c
 // Use nfc_secure_memset for sensitive data
 uint8_t mifare_key[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -164,6 +171,7 @@ nfc_secure_memset(mifare_key, 0, sizeof(mifare_key));  // Clear before exit
 - **Frequency**: On every commit
 
 ### Dynamic Analysis (Recommended)
+
 ```bash
 # Memory error detection
 valgrind --leak-check=full --track-origins=yes ./nfc-list
@@ -188,6 +196,7 @@ Fuzzing is planned for:
 ## Vulnerability Disclosure Policy
 
 ### Coordinated Disclosure
+
 We follow a coordinated disclosure process:
 
 1. **Private Report**: Vulnerability reported privately
@@ -195,13 +204,14 @@ We follow a coordinated disclosure process:
 3. **Investigation**: Assess severity and impact (5 business days)
 4. **Fix Development**: Develop and test fix
 5. **Pre-Disclosure**: Notify reporter before public release
-6. **Public Disclosure**: 
+6. **Public Disclosure**:
    - Release fix in new version
    - Publish security advisory
    - Update CVE database (if applicable)
 7. **Credit**: Acknowledge reporter (if desired)
 
 ### Embargo Period
+
 - **Minimum**: 7 days after fix release (allow users to update)
 - **Maximum**: 90 days from initial report
 - **Exceptions**: Active exploitation in the wild
