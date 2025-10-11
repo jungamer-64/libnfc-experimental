@@ -30,10 +30,39 @@ jobs:
           gh-code-scanning-compat: true
           max-allowed-issues: 2147483647
 
+      - name: Filter SARIF to single run
+        if: success() || failure()
+        run: |
+          # Install jq for JSON processing
+          sudo apt-get update && sudo apt-get install -y jq
+          
+          # Check if results.sarif exists
+          if [ ! -f "results.sarif" ]; then
+            echo "⚠️ No SARIF file generated"
+            exit 0
+          fi
+          
+          # Count number of runs
+          run_count=$(jq '.runs | length' results.sarif)
+          echo "Found $run_count run(s) in SARIF file"
+          
+          if [ "$run_count" -le 1 ]; then
+            echo "✅ Single run detected - no filtering needed"
+            exit 0
+          fi
+          
+          # Keep only the first run to avoid multiple category error
+          echo "⚠️ Multiple runs detected - keeping first run only"
+          jq '{version: .version, "$schema": ."$schema", runs: [.runs[0]]}' results.sarif > results-filtered.sarif
+          mv results-filtered.sarif results.sarif
+          echo "✅ Filtered to single run"
+
       - name: Upload SARIF results file
+        if: success() || failure()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results.sarif
+          category: codacy-security-scan
 
   build-and-test:
     name: Build & Test (Ubuntu)
