@@ -65,6 +65,7 @@ Thanks to d18c7db and Okko for example code
 #include <nfc/nfc.h>
 
 #include "nfc-internal.h"
+#include "nfc-secure.h"
 #include "buses/usbbus.h"
 #include "chips/pn53x.h"
 #include "chips/pn53x-internal.h"
@@ -522,8 +523,19 @@ acr122_usb_open(const nfc_context *context, const nfc_connstring connstring)
         goto error;
       }
 
-      memcpy(&(DRIVER_DATA(pnd)->tama_frame), acr122_usb_frame_template, sizeof(acr122_usb_frame_template));
-      memcpy(&(DRIVER_DATA(pnd)->apdu_frame), acr122_usb_frame_template, sizeof(acr122_usb_frame_template));
+      // Safe copy USB frame templates for TAMA and APDU communication
+      if (nfc_safe_memcpy(&(DRIVER_DATA(pnd)->tama_frame), sizeof(DRIVER_DATA(pnd)->tama_frame),
+                          acr122_usb_frame_template, sizeof(acr122_usb_frame_template)) < 0) {
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+                "Failed to initialize TAMA frame template");
+        goto error;
+      }
+      if (nfc_safe_memcpy(&(DRIVER_DATA(pnd)->apdu_frame), sizeof(DRIVER_DATA(pnd)->apdu_frame),
+                          acr122_usb_frame_template, sizeof(acr122_usb_frame_template)) < 0) {
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+                "Failed to initialize APDU frame template");
+        goto error;
+      }
       CHIP_DATA(pnd)->timer_correction = 46; // empirical tuning
       pnd->driver = &acr122_usb_driver;
 
@@ -607,7 +619,14 @@ acr122_build_frame_from_apdu(nfc_device *pnd, const uint8_t ins, const uint8_t p
   {
     // bLen is Lc when data != NULL
     DRIVER_DATA(pnd)->apdu_frame.apdu_header.bLen = data_len;
-    memcpy(DRIVER_DATA(pnd)->apdu_frame.apdu_payload, data, data_len);
+    // Safe copy APDU payload data to USB frame
+    if (nfc_safe_memcpy(DRIVER_DATA(pnd)->apdu_frame.apdu_payload,
+                        sizeof(DRIVER_DATA(pnd)->apdu_frame.apdu_payload),
+                        data, data_len) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+              "Failed to copy APDU payload");
+      return NFC_EIO;
+    }
   }
   else
   {
@@ -625,7 +644,16 @@ acr122_build_frame_from_tama(nfc_device *pnd, const uint8_t *tama, const size_t 
 
   DRIVER_DATA(pnd)->tama_frame.ccid_header.dwLength = htole32(tama_len + sizeof(struct apdu_header) + 1);
   DRIVER_DATA(pnd)->tama_frame.apdu_header.bLen = tama_len + 1;
-  memcpy(DRIVER_DATA(pnd)->tama_frame.tama_payload, tama, tama_len);
+  
+  // Safe copy TAMA payload data to USB frame
+  if (nfc_safe_memcpy(DRIVER_DATA(pnd)->tama_frame.tama_payload,
+                      sizeof(DRIVER_DATA(pnd)->tama_frame.tama_payload),
+                      tama, tama_len) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to copy TAMA payload");
+    return NFC_EIO;
+  }
+  
   return (sizeof(struct ccid_header) + sizeof(struct apdu_header) + 1 + tama_len);
 }
 
@@ -848,7 +876,13 @@ read:
   }
   offset += 1;
 
-  memcpy(pbtData, abtRxBuf + offset, len);
+  // Safe copy received USB data to output buffer
+  if (nfc_safe_memcpy(pbtData, szDataLen, abtRxBuf + offset, len) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to copy received data");
+    pnd->last_error = NFC_EIO;
+    return pnd->last_error;
+  }
 
   return len;
 }
