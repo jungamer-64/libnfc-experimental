@@ -40,6 +40,7 @@
 
 #include <nfc/nfc.h>
 #include "nfc-internal.h"
+#include "nfc-secure.h"
 #include "log.h"
 
 #define LOG_CATEGORY "libnfc.config"
@@ -75,8 +76,10 @@ escaped_value(const char line[BUFSIZ], int i, char **value)
   *value = malloc(c + 1);
   if (!*value)
     goto FAIL;
-  memset(*value, 0, c + 1);
-  memcpy(*value, &line[i - c], c);
+  if (nfc_secure_memset(*value, 0, c + 1) < 0)
+    goto FAIL;
+  if (nfc_safe_memcpy(*value, c + 1, &line[i - c], c) < 0)
+    goto FAIL;
   i++;
   while (line[i] && isspace(line[i]))
     i++;
@@ -102,8 +105,10 @@ non_escaped_value(const char line[BUFSIZ], int i, char **value)
   *value = malloc(c + 1);
   if (!*value)
     goto FAIL;
-  memset(*value, 0, c + 1);
-  memcpy(*value, &line[i - c], c);
+  if (nfc_secure_memset(*value, 0, c + 1) < 0)
+    goto FAIL;
+  if (nfc_safe_memcpy(*value, c + 1, &line[i - c], c) < 0)
+    goto FAIL;
   i++;
   while (line[i] && isspace(line[i]))
     i++;
@@ -142,8 +147,16 @@ parse_line(const char line[BUFSIZ], char **key, char **value)
   *key = malloc(c + 1);
   if (!*key)
     return -1;
-  memset(*key, 0, c + 1);
-  memcpy(*key, &line[i - c], c);
+  if (nfc_secure_memset(*key, 0, c + 1) < 0) {
+    free(*key);
+    *key = NULL;
+    return -1;
+  }
+  if (nfc_safe_memcpy(*key, c + 1, &line[i - c], c) < 0) {
+    free(*key);
+    *key = NULL;
+    return -1;
+  }
 
   // space before '='
   while (isspace(line[i]))
@@ -244,8 +257,14 @@ conf_keyvalue_context(void *data, const char *key, const char *value)
       }
       context->user_defined_device_count++;
     }
-    strncpy(context->user_defined_devices[context->user_defined_device_count - 1].name, value, DEVICE_NAME_LENGTH - 1);
-    context->user_defined_devices[context->user_defined_device_count - 1].name[DEVICE_NAME_LENGTH - 1] = '\0';
+    size_t value_len = strlen(value);
+    size_t copy_len = (value_len < DEVICE_NAME_LENGTH - 1) ? value_len : DEVICE_NAME_LENGTH - 1;
+    if (nfc_safe_memcpy(context->user_defined_devices[context->user_defined_device_count - 1].name, 
+                        DEVICE_NAME_LENGTH, value, copy_len) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy device name");
+      return;
+    }
+    context->user_defined_devices[context->user_defined_device_count - 1].name[copy_len] = '\0';
   }
   else if (strcmp(key, "device.connstring") == 0)
   {
@@ -258,8 +277,14 @@ conf_keyvalue_context(void *data, const char *key, const char *value)
       }
       context->user_defined_device_count++;
     }
-    strncpy(context->user_defined_devices[context->user_defined_device_count - 1].connstring, value, NFC_BUFSIZE_CONNSTRING - 1);
-    context->user_defined_devices[context->user_defined_device_count - 1].connstring[NFC_BUFSIZE_CONNSTRING - 1] = '\0';
+    size_t value_len = strlen(value);
+    size_t copy_len = (value_len < NFC_BUFSIZE_CONNSTRING - 1) ? value_len : NFC_BUFSIZE_CONNSTRING - 1;
+    if (nfc_safe_memcpy(context->user_defined_devices[context->user_defined_device_count - 1].connstring,
+                        NFC_BUFSIZE_CONNSTRING, value, copy_len) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy device connstring");
+      return;
+    }
+    context->user_defined_devices[context->user_defined_device_count - 1].connstring[copy_len] = '\0';
   }
   else if (strcmp(key, "device.optional") == 0)
   {
