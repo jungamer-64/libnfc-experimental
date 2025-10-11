@@ -46,6 +46,7 @@
 
 #include "drivers.h"
 #include "nfc-internal.h"
+#include "nfc-secure.h"
 #include "chips/pn53x.h"
 #include "chips/pn53x-internal.h"
 #include "uart.h"
@@ -331,7 +332,15 @@ acr122s_build_frame(nfc_device *pnd,
   uint8_t *buf = (uint8_t *) &frame[16];
   if (should_prefix)
     *buf++ = 0xD4;
-  memcpy(buf, data, data_size);
+  
+  // Safe copy APDU data to ACR122S frame
+  size_t available = frame_size - (buf - frame);
+  if (nfc_safe_memcpy(buf, available, data, data_size) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to copy APDU data to frame");
+    return false;
+  }
+  
   acr122s_fix_frame(frame);
 
   return true;
@@ -341,7 +350,12 @@ static int
 acr122s_activate_sam(nfc_device *pnd)
 {
   uint8_t cmd[13];
-  memset(cmd, 0, sizeof(cmd));
+  // Secure clear SAM activation command buffer
+  if (nfc_secure_memset(cmd, 0, sizeof(cmd)) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to clear SAM command buffer");
+    return NFC_EIO;
+  }
   cmd[1] = ICC_POWER_ON_REQ_MSG;
   acr122s_fix_frame(cmd);
 
@@ -363,7 +377,12 @@ static int
 acr122s_deactivate_sam(nfc_device *pnd)
 {
   uint8_t cmd[13];
-  memset(cmd, 0, sizeof(cmd));
+  // Secure clear SAM deactivation command buffer
+  if (nfc_secure_memset(cmd, 0, sizeof(cmd)) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to clear SAM command buffer");
+    return NFC_EIO;
+  }
   cmd[1] = ICC_POWER_OFF_REQ_MSG;
   acr122s_fix_frame(cmd);
 
@@ -400,7 +419,13 @@ acr122s_get_firmware_version(nfc_device *pnd, char *version, size_t length)
   size_t len = APDU_SIZE(cmd);
   if (len + 1 > length)
     len = length - 1;
-  memcpy(version, cmd + 11, len);
+  
+  // Safe copy firmware version string
+  if (nfc_safe_memcpy(version, length, cmd + 11, len) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to copy firmware version");
+    return NFC_EIO;
+  }
   version[len] = 0;
 
   return 0;
@@ -501,9 +526,16 @@ acr122s_scan(const nfc_context *context, nfc_connstring connstrings[], const siz
       if (ret != 0)
         continue;
 
-      // ACR122S reader is found
-      memcpy(connstrings[device_found], connstring, sizeof(nfc_connstring));
-      device_found++;
+      // ACR122S reader is found - safe copy connection string
+      if (device_found < connstrings_len) {
+        if (nfc_safe_memcpy(connstrings[device_found], sizeof(nfc_connstring),
+                            connstring, sizeof(nfc_connstring)) < 0) {
+          log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+                  "Failed to copy connection string");
+          continue;
+        }
+        device_found++;
+      }
 
       // Test if we reach the maximum "wanted" devices
       if (device_found >= connstrings_len)
@@ -707,7 +739,14 @@ acr122s_receive(nfc_device *pnd, uint8_t *buf, size_t buf_len, int timeout)
     return pnd->last_error;
   }
 
-  memcpy(buf, tmp + 13, data_len);
+  // Safe copy received ACR122S frame data to output buffer
+  if (nfc_safe_memcpy(buf, buf_len, tmp + 13, data_len) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to copy received frame data");
+    pnd->last_error = NFC_EIO;
+    return pnd->last_error;
+  }
+  
   return data_len;
 }
 
