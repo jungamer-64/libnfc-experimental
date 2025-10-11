@@ -113,19 +113,25 @@
 /*
  * C23 nullptr support for better type safety
  *
+ * ⚠️  INTERNAL USE ONLY: This macro is primarily for internal implementation.
+ * 
+ * External code should continue using NULL (C89-C17) or nullptr (C23) directly.
+ * You are NOT required to use NFC_NULL in your application code.
+ * 
+ * The nfc-secure library uses NFC_NULL internally to maintain consistency
+ * across C standards (C89/C99/C11/C17/C23), but the public API accepts
+ * standard NULL/nullptr values from application code.
+ *
  * C23 introduces nullptr as a distinct null pointer constant with type nullptr_t.
  * For older standards, we continue using NULL for compatibility.
  *
- * This macro provides a consistent way to check for null pointers across all
- * C standards (C89, C99, C11, C17, C23).
- *
- * Usage example:
+ * Internal usage example:
  *   if (ptr == NFC_NULL) { return error; }  // Works in C89-C23
  *
  * Benefits:
  * - C23: Type-safe nullptr (distinct type, better diagnostics)
  * - Pre-C23: Standard NULL (backward compatible)
- * - Consistent API surface across all standards
+ * - Consistent internal implementation across all standards
  */
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
 /* C23: Use standardized nullptr */
