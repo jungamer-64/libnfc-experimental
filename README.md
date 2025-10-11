@@ -1,6 +1,7 @@
 # libnfc
 
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/05e217b260b54682a8ed9f3d347873a0)](https://app.codacy.com/gh/jungamer-64/libnfc/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+[![Codacy Coverage](https://app.codacy.com/project/badge/Coverage/05e217b260b54682a8ed9f3d347873a0)](https://app.codacy.com/gh/jungamer-64/libnfc/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
 [![Build Status](https://github.com/jungamer-64/libnfc/actions/workflows/code-quality.yml/badge.svg)](https://github.com/jungamer-64/libnfc/actions/workflows/code-quality.yml)
 
 **Free/Libre Near Field Communication (NFC) library**
@@ -53,6 +54,7 @@ http://cutter.sf.net
 This project maintains high code quality standards:
 
 * **Grade**: B (75%) on Codacy
+* **Coverage**: 0% (tests planned for Phase 12)
 * **Duplication**: <30% (reduced from 31%)
 * **Security**: Memory-safe operations via [nfc-secure](SECURITY.md)
 * **Continuous Integration**: Automated quality checks on every commit
@@ -62,6 +64,9 @@ This project maintains high code quality standards:
 * ✅ Memory safety improvements (nfc-secure layer)
 * ✅ Code duplication reduction
 * ✅ CI/CD pipeline with automated Codacy scanning
+* ✅ Coverage tracking infrastructure (ready for Phase 12)
+
+**Coverage Status**: The project is currently in the refactoring phase. A comprehensive test suite will be added in Phase 12, with a target of 60%+ coverage for core functionality.
 
 For security information, see [SECURITY.md](SECURITY.md).
 
