@@ -3491,6 +3491,140 @@ int pn53x_InAutoPoll(struct nfc_device *pnd,
 }
 
 /**
+ * @brief Build InJumpForDEP command buffer
+ * 
+ * Constructs the command buffer for InJumpForDEP operation including
+ * baud rate configuration, passive initiator data, NFCID3, and general bytes.
+ * 
+ * @param abtCmd Output command buffer (must be at least 67 bytes)
+ * @param ndm DEP mode (Active or Passive)
+ * @param nbr Baud rate
+ * @param pbtPassiveInitiatorData Passive initiator data (optional)
+ * @param pbtNFCID3i NFCID3 initiator (optional, 10 bytes)
+ * @param pbtGBi General bytes initiator (optional)
+ * @param szGBi Size of general bytes
+ * @return Command size in bytes, or negative error code
+ */
+static int
+pn53x_build_injumpfordep_command(uint8_t *abtCmd,
+                                  const nfc_dep_mode ndm,
+                                  const nfc_baud_rate nbr,
+                                  const uint8_t *pbtPassiveInitiatorData,
+                                  const uint8_t *pbtNFCID3i,
+                                  const uint8_t *pbtGBi,
+                                  const size_t szGBi)
+{
+  abtCmd[0] = InJumpForDEP;
+  abtCmd[1] = (ndm == NDM_ACTIVE) ? 0x01 : 0x00;
+  abtCmd[3] = 0x00; // Following parameters flag
+  
+  size_t offset = 4;
+
+  // Configure baud rate and passive initiator data
+  switch (nbr) {
+    case NBR_106:
+      abtCmd[2] = 0x00;
+      if (pbtPassiveInitiatorData && (ndm == NDM_PASSIVE)) {
+        abtCmd[3] |= 0x01;
+        if (nfc_safe_memcpy(abtCmd + offset, 67 - offset, pbtPassiveInitiatorData, 4) < 0)
+          return NFC_ECHIP;
+        offset += 4;
+      }
+      break;
+    case NBR_212:
+      abtCmd[2] = 0x01;
+      if (pbtPassiveInitiatorData && (ndm == NDM_PASSIVE)) {
+        abtCmd[3] |= 0x01;
+        if (nfc_safe_memcpy(abtCmd + offset, 67 - offset, pbtPassiveInitiatorData, 5) < 0)
+          return NFC_ECHIP;
+        offset += 5;
+      }
+      break;
+    case NBR_424:
+      abtCmd[2] = 0x02;
+      if (pbtPassiveInitiatorData && (ndm == NDM_PASSIVE)) {
+        abtCmd[3] |= 0x01;
+        if (nfc_safe_memcpy(abtCmd + offset, 67 - offset, pbtPassiveInitiatorData, 5) < 0)
+          return NFC_ECHIP;
+        offset += 5;
+      }
+      break;
+    case NBR_847:
+    case NBR_UNDEFINED:
+      return NFC_EINVARG;
+  }
+
+  // Add NFCID3 if provided
+  if (pbtNFCID3i) {
+    abtCmd[3] |= 0x02;
+    if (nfc_safe_memcpy(abtCmd + offset, 67 - offset, pbtNFCID3i, 10) < 0)
+      return NFC_ECHIP;
+    offset += 10;
+  }
+
+  // Add general bytes if provided
+  if (szGBi && pbtGBi) {
+    abtCmd[3] |= 0x04;
+    if (nfc_safe_memcpy(abtCmd + offset, 67 - offset, pbtGBi, szGBi) < 0)
+      return NFC_ECHIP;
+    offset += szGBi;
+  }
+
+  return (int)offset;
+}
+
+/**
+ * @brief Parse InJumpForDEP response into nfc_target structure
+ * 
+ * Extracts target information from InJumpForDEP response including
+ * NFCID3, DID, baudrate, timeout, and general bytes.
+ * 
+ * @param pnt Output target structure (optional, can be NULL)
+ * @param abtRx Response buffer
+ * @param szRx Response size
+ * @param ndm DEP mode
+ * @param nbr Baud rate
+ * @return 0 on success, negative error code on failure
+ */
+static int
+pn53x_parse_injumpfordep_response(nfc_target *pnt,
+                                   const uint8_t *abtRx,
+                                   size_t szRx,
+                                   const nfc_dep_mode ndm,
+                                   const nfc_baud_rate nbr)
+{
+  if (!pnt) {
+    return 0; // No target structure provided
+  }
+
+  pnt->nm.nmt = NMT_DEP;
+  pnt->nm.nbr = nbr;
+  pnt->nti.ndi.ndm = ndm;
+  
+  // Copy NFCID3 (10 bytes at offset +2)
+  if (nfc_safe_memcpy(pnt->nti.ndi.abtNFCID3, sizeof(pnt->nti.ndi.abtNFCID3), abtRx + 2, 10) < 0)
+    return NFC_ECHIP;
+  
+  // Copy DEP parameters
+  pnt->nti.ndi.btDID = abtRx[12];
+  pnt->nti.ndi.btBS = abtRx[13];
+  pnt->nti.ndi.btBR = abtRx[14];
+  pnt->nti.ndi.btTO = abtRx[15];
+  pnt->nti.ndi.btPP = abtRx[16];
+  
+  // Copy general bytes if present
+  if (szRx > 17) {
+    pnt->nti.ndi.szGB = szRx - 17;
+    if (nfc_safe_memcpy(pnt->nti.ndi.abtGB, sizeof(pnt->nti.ndi.abtGB), abtRx + 17, pnt->nti.ndi.szGB) < 0)
+      return NFC_ECHIP;
+  } else {
+    pnt->nti.ndi.szGB = 0;
+  }
+  
+  return 0;
+}
+
+/**
  * @brief Wrapper for InJumpForDEP command
  * @param pmInitModulation desired initial modulation
  * @param pbtPassiveInitiatorData NFCID1 (4 bytes) at 106kbps (optionnal, see NFCIP-1: 11.2.1.26) or Polling Request Frame's payload (5 bytes) at 212/424kbps (mandatory, see NFCIP-1: 11.2.2.5)
@@ -3509,97 +3643,38 @@ int pn53x_InJumpForDEP(struct nfc_device *pnd,
                        nfc_target *pnt,
                        const int timeout)
 {
-  // Max frame size = 1 (Command) + 1 (ActPass) + 1 (Baud rate) + 1 (Next) + 5 (PassiveInitiatorData) + 10 (NFCID3) + 48 (General bytes) = 67 bytes
-  uint8_t abtCmd[67] = {InJumpForDEP, (ndm == NDM_ACTIVE) ? 0x01 : 0x00};
-
-  size_t offset = 4; // 1 byte for command, 1 byte for DEP mode (Active/Passive), 1 byte for baud rate, 1 byte for following parameters flag
-
-  switch (nbr) {
-    case NBR_106:
-      abtCmd[2] = 0x00; // baud rate is 106 kbps
-      if (pbtPassiveInitiatorData && (ndm == NDM_PASSIVE)) {
-        /* can't have passive initiator data when using active mode */
-        abtCmd[3] |= 0x01;
-        // Safe copy passive initiator data, 106kbps = 4 bytes
-        if (nfc_safe_memcpy(abtCmd + offset, sizeof(abtCmd) - offset, pbtPassiveInitiatorData, 4) < 0)
-          return NFC_ECHIP;
-        offset += 4;
-      }
-      break;
-    case NBR_212:
-      abtCmd[2] = 0x01; // baud rate is 212 kbps
-      if (pbtPassiveInitiatorData && (ndm == NDM_PASSIVE)) {
-        abtCmd[3] |= 0x01;
-        // Safe copy passive initiator data, 212kbps = 5 bytes
-        if (nfc_safe_memcpy(abtCmd + offset, sizeof(abtCmd) - offset, pbtPassiveInitiatorData, 5) < 0)
-          return NFC_ECHIP;
-        offset += 5;
-      }
-      break;
-    case NBR_424:
-      abtCmd[2] = 0x02; // baud rate is 424 kbps
-      if (pbtPassiveInitiatorData && (ndm == NDM_PASSIVE)) {
-        abtCmd[3] |= 0x01;
-        // Safe copy passive initiator data, 424kbps = 5 bytes
-        if (nfc_safe_memcpy(abtCmd + offset, sizeof(abtCmd) - offset, pbtPassiveInitiatorData, 5) < 0)
-          return NFC_ECHIP;
-        offset += 5;
-      }
-      break;
-    case NBR_847:
-    case NBR_UNDEFINED:
+  uint8_t abtCmd[67];
+  int res;
+  
+  // Build command buffer
+  res = pn53x_build_injumpfordep_command(abtCmd, ndm, nbr, 
+                                          pbtPassiveInitiatorData,
+                                          pbtNFCID3i, pbtGBi, szGBi);
+  if (res < 0) {
+    if (res == NFC_EINVARG) {
       pnd->last_error = NFC_EINVARG;
       return pnd->last_error;
+    }
+    return res;
   }
-
-  if (pbtNFCID3i) {
-    abtCmd[3] |= 0x02;
-    // Safe copy NFCID3 initiator, fixed 10 bytes with dynamic offset
-    if (nfc_safe_memcpy(abtCmd + offset, sizeof(abtCmd) - offset, pbtNFCID3i, 10) < 0)
-      return NFC_ECHIP;
-    offset += 10;
-  }
-
-  if (szGBi && pbtGBi) {
-    abtCmd[3] |= 0x04;
-    // Safe copy General Bytes initiator, variable size szGBi with dynamic offset
-    if (nfc_safe_memcpy(abtCmd + offset, sizeof(abtCmd) - offset, pbtGBi, szGBi) < 0)
-      return NFC_ECHIP;
-    offset += szGBi;
-  }
-
+  
+  size_t cmd_len = (size_t)res;
+  
+  // Send command and receive response
   uint8_t abtRx[PN53x_EXTENDED_FRAME__DATA_MAX_LEN];
   size_t szRx = sizeof(abtRx);
-  int res = 0;
-  // Try to find a target, call the transceive callback function of the current device
-  if ((res = pn53x_transceive(pnd, abtCmd, offset, abtRx, szRx, timeout)) < 0)
+  
+  if ((res = pn53x_transceive(pnd, abtCmd, cmd_len, abtRx, szRx, timeout)) < 0)
     return res;
   szRx = (size_t)res;
-  // Make sure one target has been found, the PN53X returns 0x00 if none was available
+  
+  // Check if target was found (PN53X returns 0x00 if none available)
   if (abtRx[1] >= 1) {
-    // Is a target struct available
-    if (pnt) {
-      pnt->nm.nmt = NMT_DEP;
-      pnt->nm.nbr = nbr;
-      pnt->nti.ndi.ndm = ndm;
-      // Safe copy NFCID3 from response, fixed 10 bytes with offset +2
-      if (nfc_safe_memcpy(pnt->nti.ndi.abtNFCID3, sizeof(pnt->nti.ndi.abtNFCID3), abtRx + 2, 10) < 0)
-        return NFC_ECHIP;
-      pnt->nti.ndi.btDID = abtRx[12];
-      pnt->nti.ndi.btBS = abtRx[13];
-      pnt->nti.ndi.btBR = abtRx[14];
-      pnt->nti.ndi.btTO = abtRx[15];
-      pnt->nti.ndi.btPP = abtRx[16];
-      if (szRx > 17) {
-        pnt->nti.ndi.szGB = szRx - 17;
-        // Safe copy General Bytes from response, variable size with offset +17
-        if (nfc_safe_memcpy(pnt->nti.ndi.abtGB, sizeof(pnt->nti.ndi.abtGB), abtRx + 17, pnt->nti.ndi.szGB) < 0)
-          return NFC_ECHIP;
-      } else {
-        pnt->nti.ndi.szGB = 0;
-      }
-    }
+    // Parse response into target structure if provided
+    if ((res = pn53x_parse_injumpfordep_response(pnt, abtRx, szRx, ndm, nbr)) < 0)
+      return res;
   }
+  
   return abtRx[1];
 }
 
