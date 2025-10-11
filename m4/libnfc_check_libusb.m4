@@ -20,7 +20,7 @@ AC_DEFUN([LIBNFC_CHECK_LIBUSB],
       HAVE_LIBUSB=1
     fi
 
-    # Search using libusb module using pkg-config
+    # Search using libusb module using pkg-config (legacy libusb 0.1 API - priority)
     if test x"$HAVE_LIBUSB" = "x0"; then  
       if test x"$PKG_CONFIG" != "x"; then
         PKG_CHECK_MODULES([libusb], [libusb], [HAVE_LIBUSB=1], [HAVE_LIBUSB=0])
@@ -56,10 +56,10 @@ AC_DEFUN([LIBNFC_CHECK_LIBUSB],
       fi
     fi
   
-    # Search the library and headers directly (last chance)
+    # Search the library and headers directly (last chance - libusb 0.1 API)
     if test x"$HAVE_LIBUSB" = "x0"; then
       AC_CHECK_HEADER(usb.h, [], [AC_MSG_ERROR([The libusb headers are missing])])
-      AC_CHECK_LIB(usb, libusb_init, [], [AC_MSG_ERROR([The libusb library is missing])])
+      AC_CHECK_LIB(usb, usb_init, [], [AC_MSG_ERROR([The libusb library is missing])])
   
       libusb_LIBS="-lusb"
       HAVE_LIBUSB=1
