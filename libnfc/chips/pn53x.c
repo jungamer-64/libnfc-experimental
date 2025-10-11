@@ -35,6 +35,7 @@
 #endif // HAVE_CONFIG_H
 
 #include <inttypes.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -4069,6 +4070,111 @@ int pn53x_get_supported_baud_rate(nfc_device *pnd, const nfc_mode mode, const nf
   return NFC_SUCCESS;
 }
 
+/**
+ * @brief Safe string append with automatic error handling
+ * 
+ * Appends formatted string to buffer with bounds checking and automatic
+ * cleanup on error. Updates buffer pointer and remaining length.
+ * 
+ * @param buf Pointer to current buffer position (will be updated)
+ * @param buflen Pointer to remaining buffer length (will be updated)
+ * @param pbuf Pointer to original buffer (for cleanup on error)
+ * @param fmt Printf-style format string
+ * @param ... Variable arguments for formatting
+ * @return NFC_SUCCESS on success, error code on failure
+ */
+static int
+pn53x_safe_append(char **buf, size_t *buflen, char **pbuf, const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  int res = vsnprintf(*buf, *buflen, fmt, args);
+  va_end(args);
+  
+  if (res < 0) {
+    free(*pbuf);
+    *pbuf = NULL;
+    return NFC_ESOFT;
+  }
+  
+  if (*buflen <= (size_t)res) {
+    free(*pbuf);
+    *pbuf = NULL;
+    return NFC_EOVFLOW;
+  }
+  
+  *buf += res;
+  *buflen -= res;
+  return NFC_SUCCESS;
+}
+
+/**
+ * @brief Format modulation information for a specific mode
+ * 
+ * Formats supported modulation types and baud rates for initiator or target mode.
+ * 
+ * @param pnd NFC device
+ * @param mode Device mode (N_INITIATOR or N_TARGET)
+ * @param buf Pointer to current buffer position (will be updated)
+ * @param buflen Pointer to remaining buffer length (will be updated)
+ * @param pbuf Pointer to original buffer (for cleanup on error)
+ * @return NFC_SUCCESS on success, error code on failure
+ */
+static int
+pn53x_format_mode_info(nfc_device *pnd, nfc_mode mode, 
+                       char **buf, size_t *buflen, char **pbuf)
+{
+  const nfc_modulation_type *nmt;
+  int res;
+  
+  if ((res = nfc_device_get_supported_modulation(pnd, mode, &nmt)) < 0) {
+    free(*pbuf);
+    *pbuf = NULL;
+    return res;
+  }
+  
+  for (int i = 0; nmt[i]; i++) {
+    // Append modulation type name
+    if ((res = pn53x_safe_append(buf, buflen, pbuf, "%s%s (", 
+                                  (i == 0) ? "" : ", ",
+                                  str_nfc_modulation_type(nmt[i]))) < 0) {
+      return res;
+    }
+    
+    // Get supported baud rates
+    const nfc_baud_rate *nbr;
+    if (mode == N_INITIATOR) {
+      if ((res = nfc_device_get_supported_baud_rate(pnd, nmt[i], &nbr)) < 0) {
+        free(*pbuf);
+        *pbuf = NULL;
+        return res;
+      }
+    } else {
+      if ((res = nfc_device_get_supported_baud_rate_target_mode(pnd, nmt[i], &nbr)) < 0) {
+        free(*pbuf);
+        *pbuf = NULL;
+        return res;
+      }
+    }
+    
+    // Append baud rates
+    for (int j = 0; nbr[j]; j++) {
+      if ((res = pn53x_safe_append(buf, buflen, pbuf, "%s%s",
+                                    (j == 0) ? "" : ", ",
+                                    str_nfc_baud_rate(nbr[j]))) < 0) {
+        return res;
+      }
+    }
+    
+    // Close parenthesis
+    if ((res = pn53x_safe_append(buf, buflen, pbuf, ")")) < 0) {
+      return res;
+    }
+  }
+  
+  return NFC_SUCCESS;
+}
+
 int pn53x_get_information_about(nfc_device *pnd, char **pbuf)
 {
   size_t buflen = 2048;
@@ -4077,149 +4183,41 @@ int pn53x_get_information_about(nfc_device *pnd, char **pbuf)
     return NFC_ESOFT;
   }
   char *buf = *pbuf;
-
   int res;
-  if ((res = snprintf(buf, buflen, "chip: %s\n", CHIP_DATA(pnd)->firmware_text)) < 0) {
-    free(*pbuf);
-    return NFC_ESOFT;
-  }
-  buf += res;
-  if (buflen <= (size_t)res) {
-    free(*pbuf);
-    return NFC_EOVFLOW;
-  }
-  buflen -= res;
 
-  if ((res = snprintf(buf, buflen, "initator mode modulations: ")) < 0) {
-    free(*pbuf);
-    return NFC_ESOFT;
-  }
-  buf += res;
-  if (buflen <= (size_t)res) {
-    free(*pbuf);
-    return NFC_EOVFLOW;
-  }
-  buflen -= res;
-  const nfc_modulation_type *nmt;
-  if ((res = nfc_device_get_supported_modulation(pnd, N_INITIATOR, &nmt)) < 0) {
-    free(*pbuf);
+  // Append chip information
+  if ((res = pn53x_safe_append(&buf, &buflen, pbuf, "chip: %s\n", 
+                                CHIP_DATA(pnd)->firmware_text)) < 0) {
     return res;
   }
 
-  for (int i = 0; nmt[i]; i++) {
-    if ((res = snprintf(buf, buflen, "%s%s (", (i == 0) ? "" : ", ", str_nfc_modulation_type(nmt[i]))) < 0) {
-      free(*pbuf);
-      return NFC_ESOFT;
-    }
-    buf += res;
-    if (buflen <= (size_t)res) {
-      free(*pbuf);
-      return NFC_EOVFLOW;
-    }
-    buflen -= res;
-    const nfc_baud_rate *nbr;
-    if ((res = nfc_device_get_supported_baud_rate(pnd, nmt[i], &nbr)) < 0) {
-      free(*pbuf);
-      return res;
-    }
-
-    for (int j = 0; nbr[j]; j++) {
-      if ((res = snprintf(buf, buflen, "%s%s", (j == 0) ? "" : ", ", str_nfc_baud_rate(nbr[j]))) < 0) {
-        free(*pbuf);
-        return NFC_ESOFT;
-      }
-      buf += res;
-      if (buflen <= (size_t)res) {
-        free(*pbuf);
-        return NFC_EOVFLOW;
-      }
-      buflen -= res;
-    }
-    if ((res = snprintf(buf, buflen, ")")) < 0) {
-      free(*pbuf);
-      return NFC_ESOFT;
-    }
-    buf += res;
-    if (buflen <= (size_t)res) {
-      free(*pbuf);
-      return NFC_EOVFLOW;
-    }
-    buflen -= res;
-  }
-  if ((res = snprintf(buf, buflen, "\n")) < 0) {
-    free(*pbuf);
-    return NFC_ESOFT;
-  }
-  buf += res;
-  if (buflen <= (size_t)res) {
-    free(*pbuf);
-    return NFC_EOVFLOW;
-  }
-  buflen -= res;
-  if ((res = snprintf(buf, buflen, "target mode modulations: ")) < 0) {
-    free(*pbuf);
-    return NFC_ESOFT;
-  }
-  buf += res;
-  if (buflen <= (size_t)res) {
-    free(*pbuf);
-    return NFC_EOVFLOW;
-  }
-  buflen -= res;
-  if ((res = nfc_device_get_supported_modulation(pnd, N_TARGET, &nmt)) < 0) {
-    free(*pbuf);
+  // Append initiator mode modulations
+  if ((res = pn53x_safe_append(&buf, &buflen, pbuf, "initator mode modulations: ")) < 0) {
     return res;
   }
-  for (int i = 0; nmt[i]; i++) {
-    if ((res = snprintf(buf, buflen, "%s%s (", (i == 0) ? "" : ", ", str_nfc_modulation_type(nmt[i]))) < 0) {
-      free(*pbuf);
-      return NFC_ESOFT;
-    }
-    buf += res;
-    if (buflen <= (size_t)res) {
-      free(*pbuf);
-      return NFC_EOVFLOW;
-    }
-    buflen -= res;
-    const nfc_baud_rate *nbr;
-    if ((res = nfc_device_get_supported_baud_rate_target_mode(pnd, nmt[i], &nbr)) < 0) {
-      free(*pbuf);
-      return res;
-    }
+  
+  if ((res = pn53x_format_mode_info(pnd, N_INITIATOR, &buf, &buflen, pbuf)) < 0) {
+    return res;
+  }
 
-    for (int j = 0; nbr[j]; j++) {
-      if ((res = snprintf(buf, buflen, "%s%s", (j == 0) ? "" : ", ", str_nfc_baud_rate(nbr[j]))) < 0) {
-        free(*pbuf);
-        return NFC_ESOFT;
-      }
-      buf += res;
-      if (buflen <= (size_t)res) {
-        free(*pbuf);
-        return NFC_EOVFLOW;
-      }
-      buflen -= res;
-    }
-    if ((res = snprintf(buf, buflen, ")")) < 0) {
-      free(*pbuf);
-      return NFC_ESOFT;
-    }
-    buf += res;
-    if (buflen <= (size_t)res) {
-      free(*pbuf);
-      return NFC_EOVFLOW;
-    }
-    buflen -= res;
+  // Append newline after initiator mode
+  if ((res = pn53x_safe_append(&buf, &buflen, pbuf, "\n")) < 0) {
+    return res;
   }
-  if ((res = snprintf(buf, buflen, "\n")) < 0) {
-    free(*pbuf);
-    return NFC_ESOFT;
+
+  // Append target mode modulations
+  if ((res = pn53x_safe_append(&buf, &buflen, pbuf, "target mode modulations: ")) < 0) {
+    return res;
   }
-  // buf += res;
-  if (buflen <= (size_t)res) {
-    free(*pbuf);
-    return NFC_EOVFLOW;
+  
+  if ((res = pn53x_format_mode_info(pnd, N_TARGET, &buf, &buflen, pbuf)) < 0) {
+    return res;
   }
-  // buflen -= res;
+
+  // Append final newline
+  if ((res = pn53x_safe_append(&buf, &buflen, pbuf, "\n")) < 0) {
+    return res;
+  }
 
   return NFC_SUCCESS;
 }
