@@ -10,6 +10,27 @@
  *
  * @internal Use within NFC secure runtime or safe utilities only.
  *
+ * 📚 DOCUMENTATION:
+ * - Complete Usage Guide: libnfc/NFC_SECURE_USAGE_GUIDE.md
+ * - Best Practices: libnfc/NFC_SECURE_BEST_PRACTICES_V4.md
+ * - Security Fixes: libnfc/NFC_SECURE_CRITICAL_FIXES_V5.md
+ * - Examples: libnfc/nfc-secure-examples.c
+ *
+ * 🎯 QUICK START:
+ * ```c
+ * // Arrays (compile-time size)
+ * uint8_t buffer[64], data[16];
+ * NFC_SAFE_MEMCPY(buffer, data, sizeof(data));  // ✅ Automatic overflow check
+ *
+ * // Pointers/Dynamic memory (runtime size)
+ * uint8_t *buf = malloc(64);
+ * nfc_safe_memcpy(buf, 64, data, sizeof(data)); // ✅ Explicit size required
+ *
+ * // Secure erase (won't be optimized away)
+ * uint8_t password[256];
+ * NFC_SECURE_MEMSET(password, 0x00);            // ✅ Guaranteed execution
+ * ```
+ *
  * Configuration Options:
  * 
  * - NFC_SECURE_CHECK_OVERLAP: Enable buffer overlap detection in nfc_safe_memcpy()
