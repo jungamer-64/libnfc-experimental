@@ -2601,6 +2601,73 @@ int pn53x_initiator_target_is_present(struct nfc_device *pnd, const nfc_target *
 #define SAK_ISO14443_4_COMPLIANT 0x20
 #define SAK_ISO18092_COMPLIANT 0x40
 /**
+ * @brief Setup target mode flags based on modulation type
+ *
+ * Configures PN53x target mode flags and device parameters based on the
+ * requested NFC modulation type and target information.
+ *
+ * @param pnd NFC device
+ * @param pnt NFC target to emulate
+ * @return Target mode flags (pn53x_target_mode), or error code (<0)
+ */
+static int
+pn53x_setup_target_mode(struct nfc_device *pnd, const nfc_target *pnt)
+{
+  pn53x_target_mode ptm = PTM_NORMAL;
+
+  switch (pnt->nm.nmt) {
+    case NMT_ISO14443A:
+      ptm = PTM_PASSIVE_ONLY;
+      
+      // Validate UID constraints
+      if ((pnt->nti.nai.abtUid[0] != 0x08) || (pnt->nti.nai.szUidLen != 4)) {
+        pnd->last_error = NFC_EINVARG;
+        return pnd->last_error;
+      }
+      
+      pn53x_set_parameters(pnd, PARAM_AUTO_ATR_RES, false);
+      
+      // Configure ISO14443-4 PICC mode for PN532
+      if (CHIP_DATA(pnd)->type == PN532) {
+        if ((pnt->nti.nai.btSak & SAK_ISO14443_4_COMPLIANT) && (pnd->bAutoIso14443_4)) {
+          // Enable ISO14443-4 PICC mode
+          ptm |= PTM_ISO14443_4_PICC_ONLY;
+          pn53x_set_parameters(pnd, PARAM_14443_4_PICC, true);
+        } else {
+          pn53x_set_parameters(pnd, PARAM_14443_4_PICC, false);
+        }
+      }
+      break;
+
+    case NMT_FELICA:
+      ptm = PTM_PASSIVE_ONLY;
+      break;
+
+    case NMT_DEP:
+      pn53x_set_parameters(pnd, PARAM_AUTO_ATR_RES, true);
+      ptm = PTM_DEP_ONLY;
+      
+      // Add passive mode restriction if requested
+      if (pnt->nti.ndi.ndm == NDM_PASSIVE) {
+        ptm |= PTM_PASSIVE_ONLY;
+      }
+      break;
+
+    case NMT_ISO14443B:
+    case NMT_ISO14443BI:
+    case NMT_ISO14443B2SR:
+    case NMT_ISO14443B2CT:
+    case NMT_ISO14443BICLASS:
+    case NMT_JEWEL:
+    case NMT_BARCODE:
+      pnd->last_error = NFC_EDEVNOTSUPP;
+      return pnd->last_error;
+  }
+
+  return ptm;
+}
+
+/**
  * @brief Decode target activation mode byte from TgInitAsTarget response
  *
  * Decodes the btActivatedMode byte returned by TgInitAsTarget to determine
@@ -2658,48 +2725,14 @@ int pn53x_target_init(struct nfc_device *pnd, nfc_target *pnt, uint8_t *pbtRx, c
 
   CHIP_DATA(pnd)->operating_mode = TARGET;
 
-  pn53x_target_mode ptm = PTM_NORMAL;
-  int res = 0;
-
-  switch (pnt->nm.nmt) {
-    case NMT_ISO14443A:
-      ptm = PTM_PASSIVE_ONLY;
-      if ((pnt->nti.nai.abtUid[0] != 0x08) || (pnt->nti.nai.szUidLen != 4)) {
-        pnd->last_error = NFC_EINVARG;
-        return pnd->last_error;
-      }
-      pn53x_set_parameters(pnd, PARAM_AUTO_ATR_RES, false);
-      if (CHIP_DATA(pnd)->type == PN532) {
-        // We have a PN532
-        if ((pnt->nti.nai.btSak & SAK_ISO14443_4_COMPLIANT) && (pnd->bAutoIso14443_4)) {
-          // We have a ISO14443-4 tag to emulate and NP_AUTO_14443_4A option is enabled
-          ptm |= PTM_ISO14443_4_PICC_ONLY; // We add ISO14443-4 restriction
-          pn53x_set_parameters(pnd, PARAM_14443_4_PICC, true);
-        } else {
-          pn53x_set_parameters(pnd, PARAM_14443_4_PICC, false);
-        }
-      }
-      break;
-    case NMT_FELICA:
-      ptm = PTM_PASSIVE_ONLY;
-      break;
-    case NMT_DEP:
-      pn53x_set_parameters(pnd, PARAM_AUTO_ATR_RES, true);
-      ptm = PTM_DEP_ONLY;
-      if (pnt->nti.ndi.ndm == NDM_PASSIVE) {
-        ptm |= PTM_PASSIVE_ONLY; // We add passive mode restriction
-      }
-      break;
-    case NMT_ISO14443B:
-    case NMT_ISO14443BI:
-    case NMT_ISO14443B2SR:
-    case NMT_ISO14443B2CT:
-    case NMT_ISO14443BICLASS:
-    case NMT_JEWEL:
-    case NMT_BARCODE:
-      pnd->last_error = NFC_EDEVNOTSUPP;
-      return pnd->last_error;
+  // Setup target mode flags based on modulation type
+  int ptm_result = pn53x_setup_target_mode(pnd, pnt);
+  if (ptm_result < 0) {
+    return ptm_result; // Error occurred
   }
+  pn53x_target_mode ptm = (pn53x_target_mode)ptm_result;
+  
+  int res = 0;
 
   // Let the PN53X be activated by the RF level detector from power down mode
   if ((res = pn53x_write_register(pnd, PN53X_REG_CIU_TxAuto, SYMBOL_INITIAL_RF_ON, 0x04)) < 0)
