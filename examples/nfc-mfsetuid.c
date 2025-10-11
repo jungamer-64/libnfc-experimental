@@ -58,6 +58,7 @@
 
 #include <nfc/nfc.h>
 
+#include "nfc-secure.h"
 #include "utils/nfc-utils.h"
 
 #define SAK_FLAG_ATS_SUPPORTED 0x20
@@ -173,7 +174,10 @@ main(int argc, char *argv[])
       quiet_output = true;
     } else if (strlen(argv[arg]) == 8) {
       for (i = 0 ; i < 4 ; ++i) {
-        memcpy(tmp, argv[arg] + i * 2, 2);
+        if (nfc_safe_memcpy(tmp, sizeof(tmp), argv[arg] + i * 2, 2) < 0) {
+          ERR("Failed to copy UID bytes");
+          exit(EXIT_FAILURE);
+        }
         sscanf(tmp, "%02x", &c);
         abtData[i] = (char) c;
       }
@@ -181,7 +185,10 @@ main(int argc, char *argv[])
       iso14443a_crc_append(abtData, 16);
     } else if (strlen(argv[arg]) == 32) {
       for (i = 0 ; i < 16 ; ++i) {
-        memcpy(tmp, argv[arg] + i * 2, 2);
+        if (nfc_safe_memcpy(tmp, sizeof(tmp), argv[arg] + i * 2, 2) < 0) {
+          ERR("Failed to copy BLOCK0 bytes");
+          exit(EXIT_FAILURE);
+        }
         sscanf(tmp, "%02x", &c);
         abtData[i] = (char) c;
       }
@@ -249,7 +256,12 @@ main(int argc, char *argv[])
     nfc_exit(context);
     exit(EXIT_FAILURE);
   }
-  memcpy(abtAtqa, abtRx, 2);
+  if (nfc_safe_memcpy(abtAtqa, sizeof(abtAtqa), abtRx, 2) < 0) {
+    ERR("Failed to copy ATQA");
+    nfc_close(pnd);
+    nfc_exit(context);
+    exit(EXIT_FAILURE);
+  }
 
   // Anti-collision
   transmit_bytes(abtSelectAll, 2);
@@ -260,10 +272,20 @@ main(int argc, char *argv[])
   }
 
   // Save the UID CL1
-  memcpy(abtRawUid, abtRx, 4);
+  if (nfc_safe_memcpy(abtRawUid, sizeof(abtRawUid), abtRx, 4) < 0) {
+    ERR("Failed to save UID CL1");
+    nfc_close(pnd);
+    nfc_exit(context);
+    exit(EXIT_FAILURE);
+  }
 
   //Prepare and send CL1 Select-Command
-  memcpy(abtSelectTag + 2, abtRx, 5);
+  if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0) {
+    ERR("Failed to prepare CL1 Select command");
+    nfc_close(pnd);
+    nfc_exit(context);
+    exit(EXIT_FAILURE);
+  }
   iso14443a_crc_append(abtSelectTag, 7);
   transmit_bytes(abtSelectTag, 9);
   abtSak = abtRx[0];
@@ -292,11 +314,21 @@ main(int argc, char *argv[])
     }
 
     // Save UID CL2
-    memcpy(abtRawUid + 4, abtRx, 4);
+    if (nfc_safe_memcpy(abtRawUid + 4, sizeof(abtRawUid) - 4, abtRx, 4) < 0) {
+      ERR("Failed to save UID CL2");
+      nfc_close(pnd);
+      nfc_exit(context);
+      exit(EXIT_FAILURE);
+    }
 
     // Selection
     abtSelectTag[0] = 0x95;
-    memcpy(abtSelectTag + 2, abtRx, 5);
+    if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0) {
+      ERR("Failed to prepare CL2 Select command");
+      nfc_close(pnd);
+      nfc_exit(context);
+      exit(EXIT_FAILURE);
+    }
     iso14443a_crc_append(abtSelectTag, 7);
     transmit_bytes(abtSelectTag, 9);
     abtSak = abtRx[0];
@@ -323,11 +355,21 @@ main(int argc, char *argv[])
       }
 
       // Save UID CL3
-      memcpy(abtRawUid + 8, abtRx, 4);
+      if (nfc_safe_memcpy(abtRawUid + 8, sizeof(abtRawUid) - 8, abtRx, 4) < 0) {
+        ERR("Failed to save UID CL3");
+        nfc_close(pnd);
+        nfc_exit(context);
+        exit(EXIT_FAILURE);
+      }
 
       // Prepare and send final Select-Command
       abtSelectTag[0] = 0x97;
-      memcpy(abtSelectTag + 2, abtRx, 5);
+      if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0) {
+        ERR("Failed to prepare CL3 Select command");
+        nfc_close(pnd);
+        nfc_exit(context);
+        exit(EXIT_FAILURE);
+      }
       iso14443a_crc_append(abtSelectTag, 7);
       transmit_bytes(abtSelectTag, 9);
       abtSak = abtRx[0];
