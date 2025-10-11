@@ -21,6 +21,7 @@
 
 #include "drivers.h"
 #include "nfc-internal.h"
+#include "nfc-secure.h"
 
 #include "linux_nfc_api.h"
 
@@ -64,7 +65,15 @@ pn71xx_scan(const nfc_context *context, nfc_connstring connstrings[], const size
 
   if (nfcManager_doInitialize() == 0) {
     nfc_connstring connstring = "pn71xx";
-    memcpy(connstrings[device_found++], connstring, sizeof(nfc_connstring));
+    if (device_found < connstrings_len) {
+      if (nfc_safe_memcpy(connstrings[device_found], sizeof(nfc_connstring),
+                          connstring, sizeof(nfc_connstring)) < 0) {
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, 
+                "Failed to copy connection string");
+        return 0;
+      }
+      device_found++;
+    }
   }
 
   return device_found;
@@ -106,8 +115,24 @@ pn71xx_open(const nfc_context *context, const nfc_connstring connstring)
   }
 
   pnd->driver = &pn71xx_driver;
-  strcpy(pnd->name, "pn71xx-device");
-  strcpy(pnd->connstring, connstring);
+  
+  // Safe copy device name (fixed string copy)
+  if (nfc_safe_memcpy(pnd->name, sizeof(pnd->name), 
+                      "pn71xx-device", strlen("pn71xx-device") + 1) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, 
+            "Failed to copy device name");
+    nfc_device_free(pnd);
+    return NULL;
+  }
+  
+  // Safe copy connection string
+  if (nfc_safe_memcpy(pnd->connstring, sizeof(pnd->connstring),
+                      connstring, strlen(connstring) + 1) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to copy connection string");
+    nfc_device_free(pnd);
+    return NULL;
+  }
 
   TagCB.onTagArrival = onTagArrival;
   TagCB.onTagDeparture = onTagDeparture;
@@ -249,7 +274,21 @@ static void onTagArrival(nfc_tag_info_t *pTagInfo)
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "tag found");
 
   TagInfo = malloc(sizeof(nfc_tag_info_t));
-  memcpy(TagInfo, pTagInfo, sizeof(nfc_tag_info_t));
+  if (TagInfo == NULL) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, 
+            "Failed to allocate tag info");
+    return;
+  }
+  
+  // Safe copy NFC tag information structure
+  if (nfc_safe_memcpy(TagInfo, sizeof(nfc_tag_info_t),
+                      pTagInfo, sizeof(nfc_tag_info_t)) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to copy tag info");
+    free(TagInfo);
+    TagInfo = NULL;
+    return;
+  }
 
   PrintTagInfo(TagInfo);
 }
@@ -282,7 +321,12 @@ pn71xx_initiator_select_passive_target(struct nfc_device *pnd,
   if (TagInfo) {
 
     nfc_target nttmp;
-    memset(&nttmp, 0x00, sizeof(nfc_target));
+    // Secure clear NFC target structure (may contain sensitive UID/protocol data)
+    if (nfc_secure_memset(&nttmp, 0x00, sizeof(nfc_target)) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+              "Failed to clear target structure");
+      return NFC_EIO;
+    }
     nttmp.nm = nm;
 
     void *uidPtr = NULL;
@@ -300,7 +344,13 @@ pn71xx_initiator_select_passive_target(struct nfc_device *pnd,
             // make hardcoded desfire for freefare lib check
             nttmp.nti.nai.btSak = 0x20;
             nttmp.nti.nai.szAtsLen = 5;
-            memcpy(nttmp.nti.nai.abtAts, "\x75\x77\x81\x02", 4);
+            // Safe copy DESFire ATS bytes (Answer To Select)
+            if (nfc_safe_memcpy(nttmp.nti.nai.abtAts, sizeof(nttmp.nti.nai.abtAts),
+                                "\x75\x77\x81\x02", 4) < 0) {
+              log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+                      "Failed to copy ATS data");
+              return NFC_EIO;
+            }
           }
         }
         break;
@@ -354,13 +404,26 @@ pn71xx_initiator_select_passive_target(struct nfc_device *pnd,
     if (uidPtr && TagInfo->uid_length) {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "target found");
       int len = TagInfo->uid_length > maxLen ? maxLen : TagInfo->uid_length;
-      memcpy(uidPtr, TagInfo->uid, len);
+      
+      // Safe copy UID bytes (unique identifier for NFC tag)
+      if (nfc_safe_memcpy(uidPtr, maxLen, TagInfo->uid, len) < 0) {
+        log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+                "Failed to copy UID data");
+        return NFC_EIO;
+      }
+      
       if (nm.nmt == NMT_ISO14443A)
         nttmp.nti.nai.szUidLen = len;
 
       // Is a tag info struct available
       if (pnt) {
-        memcpy(pnt, &nttmp, sizeof(nfc_target));
+        // Safe copy complete NFC target structure to caller
+        if (nfc_safe_memcpy(pnt, sizeof(nfc_target),
+                            &nttmp, sizeof(nfc_target)) < 0) {
+          log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+                  "Failed to copy target structure");
+          return NFC_EIO;
+        }
       }
       return 1;
     }
@@ -419,7 +482,13 @@ pn71xx_initiator_poll_target(struct nfc_device *pnd,
       nfc_target nt;
       int res = pn71xx_initiator_select_passive_target(pnd, nm, 0, 0, &nt);
       if (res > 0 && pnt) {
-        memcpy(pnt, &nt, sizeof(nfc_target));
+        // Safe copy polled NFC target to caller
+        if (nfc_safe_memcpy(pnt, sizeof(nfc_target),
+                            &nt, sizeof(nfc_target)) < 0) {
+          log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+                  "Failed to copy polled target");
+          return NFC_EIO;
+        }
         return res;
       }
     }
@@ -514,7 +583,20 @@ pn71xx_get_information_about(nfc_device *pnd, char **pbuf)
   if (pnd == NULL) return NFC_EIO;
 
   *pbuf = malloc(buflen);
-  memcpy(*pbuf, info, buflen);
+  if (*pbuf == NULL) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to allocate info buffer");
+    return NFC_ESOFT;
+  }
+  
+  // Safe copy driver information string
+  if (nfc_safe_memcpy(*pbuf, buflen, info, buflen) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
+            "Failed to copy info string");
+    free(*pbuf);
+    *pbuf = NULL;
+    return NFC_ESOFT;
+  }
 
   return buflen;
 }
