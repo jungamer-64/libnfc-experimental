@@ -2600,6 +2600,58 @@ int pn53x_initiator_target_is_present(struct nfc_device *pnd, const nfc_target *
 
 #define SAK_ISO14443_4_COMPLIANT 0x20
 #define SAK_ISO18092_COMPLIANT 0x40
+/**
+ * @brief Decode target activation mode byte from TgInitAsTarget response
+ *
+ * Decodes the btActivatedMode byte returned by TgInitAsTarget to determine
+ * the actual modulation type, baud rate, and DEP mode used for activation.
+ *
+ * @param btActivatedMode Activation mode byte from TgInitAsTarget
+ * @param nm Output: Decoded NFC modulation (type and baud rate)
+ * @param ndm Output: Decoded NFC DEP mode (active/passive)
+ */
+static void
+pn53x_decode_activation_mode(uint8_t btActivatedMode, nfc_modulation *nm, nfc_dep_mode *ndm)
+{
+  // Initialize with safe defaults
+  nm->nmt = NMT_DEP;
+  nm->nbr = NBR_UNDEFINED;
+  *ndm = NDM_UNDEFINED;
+
+  // Decode baud rate from bits 4-6
+  switch (btActivatedMode & 0x70) {
+    case 0x00: // 106kbps
+      nm->nbr = NBR_106;
+      break;
+    case 0x10: // 212kbps
+      nm->nbr = NBR_212;
+      break;
+    case 0x20: // 424kbps
+      nm->nbr = NBR_424;
+      break;
+  }
+
+  // Decode modulation type and DEP mode
+  if (btActivatedMode & 0x04) {
+    // D.E.P. mode
+    nm->nmt = NMT_DEP;
+    if ((btActivatedMode & 0x03) == 0x01) {
+      *ndm = NDM_ACTIVE;
+    } else {
+      *ndm = NDM_PASSIVE;
+    }
+  } else {
+    // Not D.E.P.
+    if ((btActivatedMode & 0x03) == 0x00) {
+      // MIFARE
+      nm->nmt = NMT_ISO14443A;
+    } else if ((btActivatedMode & 0x03) == 0x02) {
+      // FeliCa
+      nm->nmt = NMT_FELICA;
+    }
+  }
+}
+
 int pn53x_target_init(struct nfc_device *pnd, nfc_target *pnt, uint8_t *pbtRx, const size_t szRxLen, int timeout)
 {
   pn53x_reset_settings(pnd);
@@ -2768,45 +2820,11 @@ int pn53x_target_init(struct nfc_device *pnd, nfc_target *pnt, uint8_t *pbtRx, c
       return res;
     }
     szRx = (size_t)res;
-    nfc_modulation nm = {
-      .nmt = NMT_DEP, // Silent compilation warnings
-      .nbr = NBR_UNDEFINED
-    };
-    nfc_dep_mode ndm = NDM_UNDEFINED;
-    // Decode activated "mode"
-    switch (btActivatedMode & 0x70) {
-      // Baud rate
-      case 0x00: // 106kbps
-        nm.nbr = NBR_106;
-        break;
-      case 0x10: // 212kbps
-        nm.nbr = NBR_212;
-        break;
-      case 0x20: // 424kbps
-        nm.nbr = NBR_424;
-        break;
-    };
-
-    if (btActivatedMode & 0x04) {
-      // D.E.P.
-      nm.nmt = NMT_DEP;
-      if ((btActivatedMode & 0x03) == 0x01) {
-        // Active mode
-        ndm = NDM_ACTIVE;
-      } else {
-        // Passive mode
-        ndm = NDM_PASSIVE;
-      }
-    } else {
-      // Not D.E.P.
-      if ((btActivatedMode & 0x03) == 0x00) {
-        // MIFARE
-        nm.nmt = NMT_ISO14443A;
-      } else if ((btActivatedMode & 0x03) == 0x02) {
-        // FeliCa
-        nm.nmt = NMT_FELICA;
-      }
-    }
+    
+    // Decode activation mode
+    nfc_modulation nm;
+    nfc_dep_mode ndm;
+    pn53x_decode_activation_mode(btActivatedMode, &nm, &ndm);
 
     if (pnt->nm.nmt == nm.nmt) {
       // Actual activation have the right modulation type
