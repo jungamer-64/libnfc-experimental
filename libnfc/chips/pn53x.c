@@ -2995,6 +2995,58 @@ static int pn53x_ISO14443B_CT_is_present(struct nfc_device *pnd)
   return ret;
 }
 
+// Helper: Determine appropriate ISO14443A presence check based on SAK/ATQA
+static int
+pn53x_check_iso14443a_presence(struct nfc_device *pnd)
+{
+  const nfc_target *target = CHIP_DATA(pnd)->current_target;
+  
+  if (target->nti.nai.btSak & 0x20)
+  {
+    // ISO14443-4 compliant
+    return pn53x_ISO14443A_4_is_present(pnd);
+  }
+  else if ((target->nti.nai.abtAtqa[0] == 0x00) &&
+           (target->nti.nai.abtAtqa[1] == 0x44) &&
+           (target->nti.nai.btSak == 0x00))
+  {
+    // MIFARE Ultralight
+    return pn53x_ISO14443A_MFUL_is_present(pnd);
+  }
+  else if (target->nti.nai.btSak & 0x08)
+  {
+    // MIFARE Classic
+    return pn53x_ISO14443A_MFC_is_present(pnd);
+  }
+  else
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", 
+            "target_is_present(): card type A not supported");
+    return NFC_EDEVNOTSUPP;
+  }
+}
+
+// Mapping table for modulation type to presence check function
+typedef int (*is_present_func_t)(struct nfc_device *);
+
+typedef struct {
+  nfc_modulation_type nmt;
+  is_present_func_t func;
+} is_present_map_t;
+
+static const is_present_map_t is_present_table[] = {
+  { NMT_ISO14443A,       pn53x_check_iso14443a_presence },
+  { NMT_DEP,             pn53x_DEP_is_present },
+  { NMT_FELICA,          pn53x_Felica_is_present },
+  { NMT_JEWEL,           pn53x_ISO14443A_Jewel_is_present },
+  { NMT_BARCODE,         pn53x_ISO14443A_Barcode_is_present },
+  { NMT_ISO14443B,       pn53x_ISO14443B_4_is_present },
+  { NMT_ISO14443BI,      pn53x_ISO14443B_I_is_present },
+  { NMT_ISO14443B2SR,    pn53x_ISO14443B_SR_is_present },
+  { NMT_ISO14443B2CT,    pn53x_ISO14443B_CT_is_present },
+  { NMT_ISO14443BICLASS, pn53x_ISO14443B_ICLASS_is_present },
+};
+
 int pn53x_initiator_target_is_present(struct nfc_device *pnd, const nfc_target *pnt)
 {
   // Check if there is a saved target
@@ -3011,61 +3063,22 @@ int pn53x_initiator_target_is_present(struct nfc_device *pnd, const nfc_target *
     return pnd->last_error = NFC_ETGRELEASED;
   }
 
-  // Ping target
+  // Lookup presence check function based on modulation type
+  nfc_modulation_type nmt = CHIP_DATA(pnd)->current_target->nm.nmt;
   int ret = NFC_EDEVNOTSUPP;
-  switch (CHIP_DATA(pnd)->current_target->nm.nmt)
+  
+  for (size_t i = 0; i < sizeof(is_present_table) / sizeof(is_present_table[0]); i++)
   {
-  case NMT_ISO14443A:
-    if (CHIP_DATA(pnd)->current_target->nti.nai.btSak & 0x20)
+    if (is_present_table[i].nmt == nmt)
     {
-      ret = pn53x_ISO14443A_4_is_present(pnd);
+      ret = is_present_table[i].func(pnd);
+      break;
     }
-    else if ((CHIP_DATA(pnd)->current_target->nti.nai.abtAtqa[0] == 0x00) &&
-             (CHIP_DATA(pnd)->current_target->nti.nai.abtAtqa[1] == 0x44) &&
-             (CHIP_DATA(pnd)->current_target->nti.nai.btSak == 0x00))
-    {
-      ret = pn53x_ISO14443A_MFUL_is_present(pnd);
-    }
-    else if (CHIP_DATA(pnd)->current_target->nti.nai.btSak & 0x08)
-    {
-      ret = pn53x_ISO14443A_MFC_is_present(pnd);
-    }
-    else
-    {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "target_is_present(): card type A not supported");
-      ret = NFC_EDEVNOTSUPP;
-    }
-    break;
-  case NMT_DEP:
-    ret = pn53x_DEP_is_present(pnd);
-    break;
-  case NMT_FELICA:
-    ret = pn53x_Felica_is_present(pnd);
-    break;
-  case NMT_JEWEL:
-    ret = pn53x_ISO14443A_Jewel_is_present(pnd);
-    break;
-  case NMT_BARCODE:
-    ret = pn53x_ISO14443A_Barcode_is_present(pnd);
-    break;
-  case NMT_ISO14443B:
-    ret = pn53x_ISO14443B_4_is_present(pnd);
-    break;
-  case NMT_ISO14443BI:
-    ret = pn53x_ISO14443B_I_is_present(pnd);
-    break;
-  case NMT_ISO14443B2SR:
-    ret = pn53x_ISO14443B_SR_is_present(pnd);
-    break;
-  case NMT_ISO14443B2CT:
-    ret = pn53x_ISO14443B_CT_is_present(pnd);
-    break;
-  case NMT_ISO14443BICLASS:
-    ret = pn53x_ISO14443B_ICLASS_is_present(pnd);
-    break;
   }
+  
   if (ret == NFC_ETGRELEASED)
     pn53x_current_target_free(pnd);
+  
   return pnd->last_error = ret;
 }
 
