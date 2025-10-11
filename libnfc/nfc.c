@@ -85,6 +85,7 @@
 #include <nfc/nfc.h>
 
 #include "nfc-internal.h"
+#include "nfc-secure.h"
 #include "target-subr.h"
 #include "drivers.h"
 
@@ -284,8 +285,13 @@ nfc_open(nfc_context *context, const nfc_connstring connstring)
       return NULL;
     }
   } else {
-    strncpy(ncs, connstring, sizeof(nfc_connstring));
-    ncs[sizeof(nfc_connstring) - 1] = '\0';
+    size_t conn_len = strlen(connstring);
+    size_t copy_len = (conn_len < sizeof(nfc_connstring) - 1) ? conn_len : sizeof(nfc_connstring) - 1;
+    if (nfc_safe_memcpy(ncs, sizeof(nfc_connstring), connstring, copy_len) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy connection string");
+      return NULL;
+    }
+    ncs[copy_len] = '\0';
   }
 
   // Search through the device list for an available device
@@ -581,7 +587,11 @@ nfc_initiator_select_passive_target(nfc_device *pnd,
   if (nm.nmt == NMT_ISO14443A) {
     iso14443_cascade_uid(pbtInitData, szInitData, abtInit, &szInit);
   } else {
-    memcpy(abtInit, pbtInitData, szInitData);
+    if (nfc_safe_memcpy(abtInit, maxAbt, pbtInitData, szInitData) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy init data");
+      free(abtInit);
+      return NFC_EINVARG;
+    }
     szInit = szInitData;
   }
   res = HAL(initiator_select_passive_target, pnd, nm, abtInit, szInit, pnt);
@@ -638,7 +648,10 @@ nfc_initiator_list_passive_targets(nfc_device *pnd,
     if (seen) {
       break;
     }
-    memcpy(&(ant[szTargetFound]), &nt, sizeof(nfc_target));
+    if (nfc_safe_memcpy(&(ant[szTargetFound]), sizeof(nfc_target), &nt, sizeof(nfc_target)) < 0) {
+      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy target data");
+      return NFC_EIO;
+    }
     szTargetFound++;
     if (szTargets == szTargetFound) {
       break;
