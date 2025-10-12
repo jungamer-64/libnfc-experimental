@@ -1663,95 +1663,118 @@ int pn53x_initiator_select_passive_target(struct nfc_device *pnd,
   return pn53x_initiator_select_passive_target_ext(pnd, nm, pbtInitData, szInitData, pnt, 300);
 }
 
+// Helper: Poll target using PN532's InAutoPoll command
+static int
+pn53x_poll_target_pn532(struct nfc_device *pnd, const nfc_modulation *pnmModulations,
+                        size_t szModulations, uint8_t uiPollNr, uint8_t uiPeriod, nfc_target *pnt)
+{
+  int res;
+  size_t szTargetTypes = 0;
+  pn53x_target_type apttTargetTypes[32];
+  
+  // Secure memset prevents compiler optimization
+  if (nfc_secure_memset(apttTargetTypes, PTT_UNDEFINED, 32 * sizeof(pn53x_target_type)) < 0)
+    return NFC_ECHIP;
+  
+  // Convert modulations to target types
+  for (size_t n = 0; n < szModulations; n++) {
+    const pn53x_target_type ptt = pn53x_nm_to_ptt(pnmModulations[n]);
+    if (PTT_UNDEFINED == ptt) {
+      pnd->last_error = NFC_EINVARG;
+      return pnd->last_error;
+    }
+    apttTargetTypes[szTargetTypes] = ptt;
+    if ((pnd->bAutoIso14443_4) && (ptt == PTT_MIFARE)) {
+      // Hack to have ATS
+      apttTargetTypes[szTargetTypes] = PTT_ISO14443_4A_106;
+      szTargetTypes++;
+      apttTargetTypes[szTargetTypes] = PTT_MIFARE;
+    }
+    szTargetTypes++;
+  }
+  
+  nfc_target ntTargets[2];
+  // Secure memset prevents compiler optimization from removing sensitive data clearing
+  if (nfc_secure_memset(ntTargets, 0x00, sizeof(nfc_target) * 2) < 0)
+    return NFC_ECHIP;
+
+  if ((res = pn53x_InAutoPoll(pnd, apttTargetTypes, szTargetTypes, uiPollNr, uiPeriod, ntTargets, 0)) < 0)
+    return res;
+  
+  switch (res) {
+    case 0:
+      return pnd->last_error = NFC_SUCCESS;
+    case 1:
+      *pnt = ntTargets[0];
+      if (pn53x_current_target_new(pnd, pnt) == NULL) {
+        return pnd->last_error = NFC_ESOFT;
+      }
+      return res;
+    case 2:
+      *pnt = ntTargets[1]; // We keep the selected one
+      if (pn53x_current_target_new(pnd, pnt) == NULL) {
+        return pnd->last_error = NFC_ESOFT;
+      }
+      return res;
+    default:
+      return NFC_ECHIP;
+  }
+}
+
+// Helper: Poll target using generic select_passive_target approach
+static int
+pn53x_poll_target_generic(struct nfc_device *pnd, const nfc_modulation *pnmModulations,
+                          size_t szModulations, uint8_t uiPollNr, uint8_t uiPeriod, nfc_target *pnt)
+{
+  bool bInfiniteSelect = pnd->bInfiniteSelect;
+  int result = 0;
+  int res;
+  
+  if ((res = pn53x_set_property_bool(pnd, NP_INFINITE_SELECT, true)) < 0)
+    return res;
+  
+  // FIXME It does not support DEP targets
+  do {
+    for (size_t p = 0; p < uiPollNr; p++) {
+      for (size_t n = 0; n < szModulations; n++) {
+        uint8_t *pbtInitiatorData;
+        size_t szInitiatorData;
+        prepare_initiator_data(pnmModulations[n], &pbtInitiatorData, &szInitiatorData);
+        const int timeout_ms = uiPeriod * 150;
+
+        if ((res = pn53x_initiator_select_passive_target_ext(pnd, pnmModulations[n], pbtInitiatorData, szInitiatorData, pnt, timeout_ms)) < 0) {
+          if (pnd->last_error != NFC_ETIMEOUT) {
+            result = pnd->last_error;
+            goto end;
+          }
+        } else {
+          result = res;
+          goto end;
+        }
+      }
+    }
+  } while (uiPollNr == 0xff); // uiPollNr==0xff means infinite polling
+  
+  // We reach this point when each listing give no result, we simply have to return 0
+end:
+  if (!bInfiniteSelect) {
+    if ((res = pn53x_set_property_bool(pnd, NP_INFINITE_SELECT, false)) < 0)
+      return res;
+  }
+  return result;
+}
+
 int pn53x_initiator_poll_target(struct nfc_device *pnd,
                                 const nfc_modulation *pnmModulations, const size_t szModulations,
                                 const uint8_t uiPollNr, const uint8_t uiPeriod,
                                 nfc_target *pnt)
 {
-  int res = 0;
-
+  // Dispatch to chip-specific implementation
   if (CHIP_DATA(pnd)->type == PN532) {
-    size_t szTargetTypes = 0;
-    pn53x_target_type apttTargetTypes[32];
-    // Secure memset prevents compiler optimization
-    if (nfc_secure_memset(apttTargetTypes, PTT_UNDEFINED, 32 * sizeof(pn53x_target_type)) < 0)
-      return NFC_ECHIP;
-    for (size_t n = 0; n < szModulations; n++) {
-      const pn53x_target_type ptt = pn53x_nm_to_ptt(pnmModulations[n]);
-      if (PTT_UNDEFINED == ptt) {
-        pnd->last_error = NFC_EINVARG;
-        return pnd->last_error;
-      }
-      apttTargetTypes[szTargetTypes] = ptt;
-      if ((pnd->bAutoIso14443_4) && (ptt == PTT_MIFARE)) {
-        // Hack to have ATS
-        apttTargetTypes[szTargetTypes] = PTT_ISO14443_4A_106;
-        szTargetTypes++;
-        apttTargetTypes[szTargetTypes] = PTT_MIFARE;
-      }
-      szTargetTypes++;
-    }
-    nfc_target ntTargets[2];
-    // Secure memset prevents compiler optimization from removing sensitive data clearing
-    if (nfc_secure_memset(ntTargets, 0x00, sizeof(nfc_target) * 2) < 0)
-      return NFC_ECHIP;
-
-    if ((res = pn53x_InAutoPoll(pnd, apttTargetTypes, szTargetTypes, uiPollNr, uiPeriod, ntTargets, 0)) < 0)
-      return res;
-    switch (res) {
-      case 0:
-        return pnd->last_error = NFC_SUCCESS;
-        break;
-      case 1:
-        *pnt = ntTargets[0];
-        if (pn53x_current_target_new(pnd, pnt) == NULL) {
-          return pnd->last_error = NFC_ESOFT;
-        }
-        return res;
-      case 2:
-        *pnt = ntTargets[1]; // We keep the selected one
-        if (pn53x_current_target_new(pnd, pnt) == NULL) {
-          return pnd->last_error = NFC_ESOFT;
-        }
-        return res;
-      default:
-        return NFC_ECHIP;
-    }
+    return pn53x_poll_target_pn532(pnd, pnmModulations, szModulations, uiPollNr, uiPeriod, pnt);
   } else {
-    bool bInfiniteSelect = pnd->bInfiniteSelect;
-    int result = 0;
-    if ((res = pn53x_set_property_bool(pnd, NP_INFINITE_SELECT, true)) < 0)
-      return res;
-    // FIXME It does not support DEP targets
-    do {
-      for (size_t p = 0; p < uiPollNr; p++) {
-        for (size_t n = 0; n < szModulations; n++) {
-          uint8_t *pbtInitiatorData;
-          size_t szInitiatorData;
-          prepare_initiator_data(pnmModulations[n], &pbtInitiatorData, &szInitiatorData);
-          const int timeout_ms = uiPeriod * 150;
-
-          if ((res = pn53x_initiator_select_passive_target_ext(pnd, pnmModulations[n], pbtInitiatorData, szInitiatorData, pnt, timeout_ms)) < 0) {
-            if (pnd->last_error != NFC_ETIMEOUT) {
-              result = pnd->last_error;
-              goto end;
-            }
-          } else {
-            result = res;
-            goto end;
-          }
-        }
-      }
-    } while (uiPollNr == 0xff); // uiPollNr==0xff means infinite polling
-    // We reach this point when each listing give no result, we simply have to return 0
-end:
-    if (!bInfiniteSelect) {
-      if ((res = pn53x_set_property_bool(pnd, NP_INFINITE_SELECT, false)) < 0)
-        return res;
-    }
-    return result;
+    return pn53x_poll_target_generic(pnd, pnmModulations, szModulations, uiPollNr, uiPeriod, pnt);
   }
-  return NFC_ECHIP;
 }
 
 int pn53x_initiator_select_dep_target(struct nfc_device *pnd,
