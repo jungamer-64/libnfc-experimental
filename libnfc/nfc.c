@@ -315,6 +315,21 @@ connstring_is_usb_request(const nfc_connstring ncs)
 }
 
 static bool
+prepare_connstring(nfc_context *context, const nfc_connstring connstring, nfc_connstring destination)
+{
+  if (!connstring)
+  {
+    nfc_connstring discovered;
+    if (nfc_list_devices(context, &discovered, 1) == 0)
+      return false;
+
+    return copy_connstring_safely(discovered, destination);
+  }
+
+  return copy_connstring_safely(connstring, destination);
+}
+
+static bool
 driver_matches_connstring(const struct nfc_driver *ndr, const nfc_connstring ncs, bool request_is_usb)
 {
   if (!ndr || !ndr->name)
@@ -347,6 +362,48 @@ apply_user_defined_device_name(nfc_context *context, const nfc_connstring ncs, n
     pnd->name[name_len] = '\0';
     break;
   }
+  return true;
+}
+
+typedef enum
+{
+  NFC_DRIVER_SKIP,
+  NFC_DRIVER_OPENED,
+  NFC_DRIVER_ABORT
+} nfc_driver_open_result;
+
+static nfc_driver_open_result
+attempt_open_driver(nfc_context *context, const nfc_connstring ncs, bool request_is_usb,
+                    const struct nfc_driver *ndr, nfc_device **out_device)
+{
+  if (!driver_matches_connstring(ndr, ncs, request_is_usb))
+    return NFC_DRIVER_SKIP;
+
+  nfc_device *candidate = ndr->open(context, ncs);
+  if (!candidate)
+  {
+    if (request_is_usb)
+      return NFC_DRIVER_SKIP;
+
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Unable to open \"%s\".", ncs);
+    return NFC_DRIVER_ABORT;
+  }
+
+  *out_device = candidate;
+  return NFC_DRIVER_OPENED;
+}
+
+static bool
+finalize_opened_device(nfc_context *context, const nfc_connstring ncs, nfc_device *pnd)
+{
+  if (!apply_user_defined_device_name(context, ncs, pnd))
+  {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy device name");
+    nfc_close(pnd);
+    return false;
+  }
+
+  log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "\"%s\" (%s) has been claimed.", pnd->name, pnd->connstring);
   return true;
 }
 
@@ -526,42 +583,25 @@ nfc_device *
 nfc_open(nfc_context *context, const nfc_connstring connstring)
 {
   nfc_connstring ncs;
-  if (connstring == NULL)
-  {
-    if (!nfc_list_devices(context, &ncs, 1))
-      return NULL;
-  }
-  else if (!copy_connstring_safely(connstring, ncs))
-  {
+  if (!prepare_connstring(context, connstring, ncs))
     return NULL;
-  }
 
   const bool request_is_usb = connstring_is_usb_request(ncs);
   for (const struct nfc_driver_list *pndl = nfc_drivers; pndl; pndl = pndl->next)
   {
-    const struct nfc_driver *ndr = pndl->driver;
-    if (!driver_matches_connstring(ndr, ncs, request_is_usb))
+    nfc_device *candidate = NULL;
+    nfc_driver_open_result result = attempt_open_driver(context, ncs, request_is_usb, pndl->driver, &candidate);
+
+    if (result == NFC_DRIVER_SKIP)
       continue;
 
-    nfc_device *pnd = ndr->open(context, ncs);
-    if (!pnd)
-    {
-      if (request_is_usb)
-        continue;
-
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Unable to open \"%s\".", ncs);
+    if (result == NFC_DRIVER_ABORT)
       return NULL;
-    }
 
-    if (!apply_user_defined_device_name(context, ncs, pnd))
-    {
-      log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy device name");
-      nfc_close(pnd);
-      return NULL;
-    }
+    if (candidate && finalize_opened_device(context, ncs, candidate))
+      return candidate;
 
-    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "\"%s\" (%s) has been claimed.", pnd->name, pnd->connstring);
-    return pnd;
+    return NULL;
   }
 
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "No driver available to handle \"%s\".", ncs);
