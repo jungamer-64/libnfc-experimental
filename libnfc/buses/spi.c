@@ -48,6 +48,9 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#ifndef NAME_MAX
+#define NAME_MAX 255
+#endif
 #include <stdio.h>
 #include <termios.h>
 #include <unistd.h>
@@ -291,10 +294,16 @@ spi_list_ports(void)
           goto oom;
 
         res = res2;
-        if (!(res[szRes - 1] = malloc(6 + nfc_safe_strlen(pdDirEnt->d_name, NAME_MAX))))
+        size_t path_len = 6 + nfc_safe_strlen(pdDirEnt->d_name, NAME_MAX);
+        if (!(res[szRes - 1] = malloc(path_len)))
           goto oom;
 
-        sprintf(res[szRes - 1], "/dev/%s", pdDirEnt->d_name);
+        int _n = snprintf(res[szRes - 1], path_len, "/dev/%s", pdDirEnt->d_name);
+        if (_n < 0)
+        {
+          free(res[szRes - 1]);
+          goto oom;
+        }
 
         szRes++;
         res[szRes - 1] = NULL;

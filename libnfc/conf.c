@@ -283,7 +283,11 @@ static void
 conf_keyvalue_device(void *data, const char *key, const char *value)
 {
   char newkey[BUFSIZ];
-  sprintf(newkey, "device.%s", key);
+  /* Use snprintf to avoid buffer overflow (CWE-120). Ensure null-termination. */
+  if (snprintf(newkey, sizeof(newkey), "device.%s", key) < 0) {
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to format device key");
+    return;
+  }
   conf_keyvalue_context(data, newkey, value);
 }
 

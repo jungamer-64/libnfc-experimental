@@ -59,7 +59,11 @@ log_init(const nfc_context *context)
 {
 #ifdef ENVVARS
   char str[32];
-  sprintf(str, "%"PRIu32, context->log_level);
+  /* Use snprintf to ensure we don't overflow the buffer */
+  if (snprintf(str, sizeof(str), "%"PRIu32, context->log_level) < 0) {
+    /* Fallback in case of formatting error */
+    str[0] = '\0';
+  }
   setenv("LIBNFC_LOG_LEVEL", str, 1);
 #else
   (void)context;
