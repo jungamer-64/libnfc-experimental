@@ -326,14 +326,14 @@ int main(int argc, const char *argv[])
       pfDump = fopen(argv[2], "wb");
       if (pfDump == NULL)
       {
-        printf("Could not open file: %s\n", argv[2]);
+        fprintf(stderr, "Could not open file: %s\n", argv[2]);
         nfc_close(pnd);
         nfc_exit(context);
         exit(EXIT_FAILURE);
       }
       if (fwrite(&ttDump, 1, sizeof(ttDump), pfDump) != sizeof(ttDump))
       {
-        printf("Could not write to file: %s\n", argv[2]);
+        fprintf(stderr, "Could not write to file: %s\n", argv[2]);
         fclose(pfDump);
         nfc_close(pnd);
         nfc_exit(context);

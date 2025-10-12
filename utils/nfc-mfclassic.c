@@ -730,11 +730,11 @@ int main(int argc, const char *argv[])
   if (bUseKeyFile) {
     FILE *pfKeys = fopen(argv[5], "rb");
     if (pfKeys == NULL) {
-      printf("Could not open keys file: %s\n", argv[5]);
+      fprintf(stderr, "Could not open keys file: %s\n", argv[5]);
       exit(EXIT_FAILURE);
     }
     if (fread(&mtKeys, 1, 4, pfKeys) != 4) {
-      printf("Could not read UID from key file: %s\n", argv[5]);
+      fprintf(stderr, "Could not read UID from key file: %s\n", argv[5]);
       fclose(pfKeys);
       exit(EXIT_FAILURE);
     }
@@ -869,11 +869,11 @@ int main(int argc, const char *argv[])
   if (bUseKeyFile) {
     FILE *pfKeys = fopen(argv[5], "rb");
     if (pfKeys == NULL) {
-      printf("Could not open keys file: %s\n", argv[5]);
+      fprintf(stderr, "Could not open keys file: %s\n", argv[5]);
       exit(EXIT_FAILURE);
     }
     if (fread(&mtKeys, 1, (uiBlocks + 1) * sizeof(mifare_classic_block), pfKeys) != (uiBlocks + 1) * sizeof(mifare_classic_block)) {
-      printf("Could not read keys file: %s\n", argv[5]);
+      fprintf(stderr, "Could not read keys file: %s\n", argv[5]);
       fclose(pfKeys);
       exit(EXIT_FAILURE);
     }
@@ -892,12 +892,12 @@ int main(int argc, const char *argv[])
     FILE *pfDump = fopen(argv[4], "rb");
 
     if (pfDump == NULL) {
-      printf("Could not open dump file: %s\n", argv[4]);
+      fprintf(stderr, "Could not open dump file: %s\n", argv[4]);
       exit(EXIT_FAILURE);
     }
 
     if (fread(&mtDump, 1, (uiBlocks + 1) * sizeof(mifare_classic_block), pfDump) != (uiBlocks + 1) * sizeof(mifare_classic_block)) {
-      printf("Could not read dump file: %s\n", argv[4]);
+      fprintf(stderr, "Could not read dump file: %s\n", argv[4]);
       fclose(pfDump);
       exit(EXIT_FAILURE);
     }
@@ -911,13 +911,13 @@ int main(int argc, const char *argv[])
       fflush(stdout);
       FILE *pfDump = fopen(argv[4], "wb");
       if (pfDump == NULL) {
-        printf("Could not open dump file: %s\n", argv[4]);
+        fprintf(stderr, "Could not open dump file: %s\n", argv[4]);
         nfc_close(pnd);
         nfc_exit(context);
         exit(EXIT_FAILURE);
       }
       if (fwrite(&mtDump, 1, (uiBlocks + 1) * sizeof(mifare_classic_block), pfDump) != ((uiBlocks + 1) * sizeof(mifare_classic_block))) {
-        printf("\nCould not write to file: %s\n", argv[4]);
+        fprintf(stderr, "\nCould not write to file: %s\n", argv[4]);
         fclose(pfDump);
         nfc_close(pnd);
         nfc_exit(context);

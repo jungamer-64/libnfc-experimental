@@ -773,7 +773,7 @@ int main(int argc, const char *argv[])
     pfDump = fopen(argv[2], "rb");
 
     if (pfDump == NULL) {
-      ERR("Could not open dump file: %s\n", argv[2]);
+      fprintf(stderr, "Could not open dump file: %s\n", argv[2]);
       exit(EXIT_FAILURE);
     }
 
@@ -806,7 +806,7 @@ int main(int argc, const char *argv[])
       exit(EXIT_FAILURE);
     }
     if (fwrite(&mtDump, 1, uiReadPages * 4, pfDump) != uiReadPages * 4) {
-      printf("Could not write to file: %s\n", argv[2]);
+      fprintf(stderr, "Could not write to file: %s\n", argv[2]);
       fclose(pfDump);
       nfc_close(pnd);
       nfc_exit(context);
