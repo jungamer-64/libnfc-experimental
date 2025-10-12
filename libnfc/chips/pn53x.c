@@ -1671,11 +1671,11 @@ pn53x_poll_target_pn532(struct nfc_device *pnd, const nfc_modulation *pnmModulat
   int res;
   size_t szTargetTypes = 0;
   pn53x_target_type apttTargetTypes[32];
-  
+
   // Secure memset prevents compiler optimization
   if (nfc_secure_memset(apttTargetTypes, PTT_UNDEFINED, 32 * sizeof(pn53x_target_type)) < 0)
     return NFC_ECHIP;
-  
+
   // Convert modulations to target types
   for (size_t n = 0; n < szModulations; n++) {
     const pn53x_target_type ptt = pn53x_nm_to_ptt(pnmModulations[n]);
@@ -1692,7 +1692,7 @@ pn53x_poll_target_pn532(struct nfc_device *pnd, const nfc_modulation *pnmModulat
     }
     szTargetTypes++;
   }
-  
+
   nfc_target ntTargets[2];
   // Secure memset prevents compiler optimization from removing sensitive data clearing
   if (nfc_secure_memset(ntTargets, 0x00, sizeof(nfc_target) * 2) < 0)
@@ -1700,7 +1700,7 @@ pn53x_poll_target_pn532(struct nfc_device *pnd, const nfc_modulation *pnmModulat
 
   if ((res = pn53x_InAutoPoll(pnd, apttTargetTypes, szTargetTypes, uiPollNr, uiPeriod, ntTargets, 0)) < 0)
     return res;
-  
+
   switch (res) {
     case 0:
       return pnd->last_error = NFC_SUCCESS;
@@ -1729,10 +1729,10 @@ pn53x_poll_target_generic(struct nfc_device *pnd, const nfc_modulation *pnmModul
   bool bInfiniteSelect = pnd->bInfiniteSelect;
   int result = 0;
   int res;
-  
+
   if ((res = pn53x_set_property_bool(pnd, NP_INFINITE_SELECT, true)) < 0)
     return res;
-  
+
   // FIXME It does not support DEP targets
   do {
     for (size_t p = 0; p < uiPollNr; p++) {
@@ -1754,7 +1754,7 @@ pn53x_poll_target_generic(struct nfc_device *pnd, const nfc_modulation *pnmModul
       }
     }
   } while (uiPollNr == 0xff); // uiPollNr==0xff means infinite polling
-  
+
   // We reach this point when each listing give no result, we simply have to return 0
 end:
   if (!bInfiniteSelect) {
@@ -3398,6 +3398,50 @@ int pn53x_PowerDown(struct nfc_device *pnd)
 }
 
 /**
+ * @brief Validates if a modulation is supported by the device
+ * @param pnd NFC device
+ * @param pmModulation Modulation to validate
+ * @return NFC_SUCCESS if supported, error code otherwise
+ */
+static int
+validate_modulation_support(struct nfc_device *pnd, pn53x_modulation pmModulation)
+{
+  switch (pmModulation) {
+    case PM_ISO14443A_106:
+    case PM_FELICA_212:
+    case PM_FELICA_424:
+      return NFC_SUCCESS;
+
+    case PM_ISO14443B_106:
+      if (!(pnd->btSupportByte & SUPPORT_ISO14443B)) {
+        return NFC_EDEVNOTSUPP;
+      }
+      return NFC_SUCCESS;
+
+    case PM_JEWEL_106:
+    case PM_BARCODE_106:
+      if (CHIP_DATA(pnd)->type == PN531) {
+        return NFC_EDEVNOTSUPP;
+      }
+      return NFC_SUCCESS;
+
+    case PM_ISO14443B_212:
+    case PM_ISO14443B_424:
+    case PM_ISO14443B_847:
+      if ((CHIP_DATA(pnd)->type != PN533) || (!(pnd->btSupportByte & SUPPORT_ISO14443B))) {
+        return NFC_EDEVNOTSUPP;
+      }
+      return NFC_SUCCESS;
+
+    case PM_UNDEFINED:
+      return NFC_EINVARG;
+
+    default:
+      return NFC_EINVARG;
+  }
+}
+
+/**
  * @brief C wrapper to InListPassiveTarget command
  * @return Returns selected targets count on success, otherwise returns libnfc's error code (negative value)
  *
@@ -3417,44 +3461,16 @@ int pn53x_InListPassiveTarget(struct nfc_device *pnd,
                               uint8_t *pbtTargetsData, size_t *pszTargetsData,
                               int timeout)
 {
-  uint8_t abtCmd[15] = {InListPassiveTarget};
-
-  abtCmd[1] = szMaxTargets; // MaxTg
-
-  switch (pmInitModulation) {
-    case PM_ISO14443A_106:
-    case PM_FELICA_212:
-    case PM_FELICA_424:
-      // all gone fine.
-      break;
-    case PM_ISO14443B_106:
-      if (!(pnd->btSupportByte & SUPPORT_ISO14443B)) {
-        // Eg. Some PN532 doesn't support type B!
-        pnd->last_error = NFC_EDEVNOTSUPP;
-        return pnd->last_error;
-      }
-      break;
-    case PM_JEWEL_106:
-    case PM_BARCODE_106:
-      if (CHIP_DATA(pnd)->type == PN531) {
-        // These modulations are not supported by pn531
-        pnd->last_error = NFC_EDEVNOTSUPP;
-        return pnd->last_error;
-      }
-      break;
-    case PM_ISO14443B_212:
-    case PM_ISO14443B_424:
-    case PM_ISO14443B_847:
-      if ((CHIP_DATA(pnd)->type != PN533) || (!(pnd->btSupportByte & SUPPORT_ISO14443B))) {
-        // These modulations are not supported by pn531 neither pn532
-        pnd->last_error = NFC_EDEVNOTSUPP;
-        return pnd->last_error;
-      }
-      break;
-    case PM_UNDEFINED:
-      pnd->last_error = NFC_EINVARG;
-      return pnd->last_error;
+  // Validate modulation support
+  int validation_result = validate_modulation_support(pnd, pmInitModulation);
+  if (validation_result != NFC_SUCCESS) {
+    pnd->last_error = validation_result;
+    return validation_result;
   }
+
+  // Build command
+  uint8_t abtCmd[15] = {InListPassiveTarget};
+  abtCmd[1] = szMaxTargets; // MaxTg
   abtCmd[2] = pmInitModulation; // BrTy, the type of init modulation used for polling a passive tag
 
   // Set the optional initiator data (used for Felica, ISO14443B, Topaz Polling or for ISO14443A selecting a specific UID).
@@ -3463,6 +3479,8 @@ int pn53x_InListPassiveTarget(struct nfc_device *pnd,
     if (nfc_safe_memcpy(abtCmd + 3, sizeof(abtCmd) - 3, pbtInitiatorData, szInitiatorData) < 0)
       return NFC_EINVARG;
   }
+
+  // Execute command
   int res = 0;
   if ((res = pn53x_transceive(pnd, abtCmd, 3 + szInitiatorData, pbtTargetsData, *pszTargetsData, timeout)) < 0) {
     return res;
