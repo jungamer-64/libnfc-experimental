@@ -8,7 +8,7 @@ on:
 
 jobs:
   codacy-analysis:
-    name: Codacy Security Scan
+    name: Code quality analysis
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -18,7 +18,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run Codacy Analysis CLI
+      - name: Run code quality analysis CLI
         continue-on-error: true
         uses: codacy/codacy-analysis-cli-action@master
         with:
@@ -36,11 +36,10 @@ jobs:
         run: |
           # Check if SARIF file was generated
           if [ ! -f "results.sarif" ]; then
-            echo "⚠️ SARIF file not generated (Codacy CLI encountered errors)"
+            echo "⚠️ SARIF file not generated (code quality CLI encountered errors)"
             echo "This may be due to encoding issues in source files."
             echo ""
-            echo "Complete analysis is still available at:"
-            echo "https://app.codacy.com/gh/jungamer-64/libnfc/dashboard"
+            echo "Complete analysis is still available at the code quality dashboard"
             echo ""
             echo "The build will continue normally."
             exit 0
@@ -51,7 +50,7 @@ jobs:
           echo "Found $run_count run(s) in SARIF file"
 
           if [ "$run_count" -le 1 ]; then
-            echo "✅ Single run detected - no filtering needed"
+            echo "Single run detected - no filtering needed"
             exit 0
           fi
 
@@ -66,7 +65,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results.sarif
-          category: codacy-security-scan
+          category: code-quality-scan
 
   build-and-test:
     name: Build & Test (Ubuntu)
@@ -162,13 +161,13 @@ jobs:
             echo "⚠️ No coverage data generated"
           fi
 
-      - name: Upload coverage to Codacy
+      - name: Upload coverage to code quality dashboard
         if: always()
         env:
           CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
         run: |
           if [ -f "coverage_filtered.info" ]; then
-            echo "📊 Uploading coverage to Codacy..."
+            echo "Uploading coverage to code quality dashboard..."
             bash <(curl -Ls https://coverage.codacy.com/get.sh) report \
               -r coverage_filtered.info \
               --language C

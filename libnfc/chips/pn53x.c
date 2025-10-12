@@ -3470,7 +3470,7 @@ int pn53x_InListPassiveTarget(struct nfc_device *pnd,
 
   // Build command
   uint8_t abtCmd[15] = {InListPassiveTarget};
-  abtCmd[1] = szMaxTargets; // MaxTg
+  abtCmd[1] = szMaxTargets;     // MaxTg
   abtCmd[2] = pmInitModulation; // BrTy, the type of init modulation used for polling a passive tag
 
   // Set the optional initiator data (used for Felica, ISO14443B, Topaz Polling or for ISO14443A selecting a specific UID).

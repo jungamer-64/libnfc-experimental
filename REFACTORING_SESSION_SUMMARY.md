@@ -1,10 +1,12 @@
 # リファクタリングセッションサマリー
-**日付**: 2025年10月12日  
+
+**日付**: 2025年10月12日
 **セッション**: コードベース全体の堅牢性向上
 
 ## 📊 実施した改善
 
-### 1. **Codacyによるコード品質分析**
+### 1. **コード品質分析**
+
 - **現在のグレード**: B (72点)
 - **検出された問題**: 491件
 - **複雑なファイル**: 30% (39ファイル)
@@ -14,16 +16,19 @@
 ### 2. **pn53x.cのリファクタリング**
 
 #### ✨ `pn53x_InListPassiveTarget`関数の改善
+
 **変更前の状態**:
+
 - 総行数: 63行
 - 巡回的複雑度: 推定 12-15
 - 大きなswitchステートメント (40行以上)
 - 責務が混在 (検証 + コマンド構築 + 実行)
 
 **実施した変更**:
+
 ```c
 // 新規ヘルパー関数を抽出
-static int validate_modulation_support(struct nfc_device *pnd, 
+static int validate_modulation_support(struct nfc_device *pnd,
                                       pn53x_modulation pmModulation)
 {
   // 50行のモジュレーション検証ロジック
@@ -32,12 +37,12 @@ static int validate_modulation_support(struct nfc_device *pnd,
     case PM_FELICA_212:
     case PM_FELICA_424:
       return NFC_SUCCESS;
-    
+
     case PM_ISO14443B_106:
       if (!(pnd->btSupportByte & SUPPORT_ISO14443B))
         return NFC_EDEVNOTSUPP;
       return NFC_SUCCESS;
-    
+
     // ... 他のケース
   }
 }
@@ -50,18 +55,19 @@ int pn53x_InListPassiveTarget(struct nfc_device *pnd, ...) {
     pnd->last_error = validation_result;
     return validation_result;
   }
-  
+
   // コマンド構築
   uint8_t abtCmd[15] = {InListPassiveTarget};
   abtCmd[1] = szMaxTargets;
   abtCmd[2] = pmInitModulation;
-  
+
   // データコピーと実行
   // ...
 }
 ```
 
 **変更後の改善**:
+
 - ✅ **行数削減**: 63行 → 33行 (-47%)
 - ✅ **複雑度削減**: CC 12-15 → CC 5-7 (-50%以上)
 - ✅ **責務の分離**: 検証ロジックが独立したヘルパー関数に
@@ -70,12 +76,14 @@ int pn53x_InListPassiveTarget(struct nfc_device *pnd, ...) {
 - ✅ **保守性向上**: 新しいモジュレーションタイプの追加が容易
 
 ### 3. **セキュリティ検証**
+
 ```bash
 Trivy Security Scan: ✅ PASSED
 検出された脆弱性: 0件
 ```
 
 ### 4. **ビルド検証**
+
 ```bash
 Build Status: ✅ SUCCESS
 - コンパイル警告: 最小限 (既存の警告のみ)
@@ -84,6 +92,7 @@ Build Status: ✅ SUCCESS
 ```
 
 ### 5. **Codacy CLI分析**
+
 ```bash
 ファイル分析: libnfc/chips/pn53x.c
 結果: ✅ 新しい問題なし
@@ -147,11 +156,12 @@ Build Status: ✅ SUCCESS
 
 5. **継続的検証**
    - 各変更後にビルドテスト
-   - Codacy分析で品質確認
+   - コード品質分析で品質確認
 
 ## 🔄 次のステップ
 
 ### 優先度: 高
+
 1. **pcsc.c のリファクタリング** (複雑度: 243)
    - 最も複雑なファイル
    - 31件の問題
@@ -166,11 +176,13 @@ Build Status: ✅ SUCCESS
    - D グレード
 
 ### 優先度: 中
+
 4. **pn53x_usb.c のリファクタリング** (複雑度: 150)
 5. **target-subr.c のリファクタリング** (複雑度: 136)
 6. **重複コードの削減** (現在29%)
 
 ### 優先度: 低
+
 7. **カバレッジの向上** (現在0%)
 8. **ドキュメント整備**
 
@@ -185,7 +197,7 @@ Build Status: ✅ SUCCESS
    - 各変更後に検証を実施
 
 3. **ツールの活用**
-   - Codacy: コード品質の可視化
+   - コード品質ダッシュボード: コード品質の可視化
    - Trivy: セキュリティ検証
    - Git: 変更履歴の管理
 

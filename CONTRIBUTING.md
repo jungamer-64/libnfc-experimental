@@ -58,7 +58,7 @@ return -1;
 
 ### Frame Processing
 
-Use the frame processing utilities from `nfc-frame.h` (Phase 11 Week 3+):
+Use the frame processing utilities from `nfc-frame.h`:
 
 ```c
 #include "nfc-frame.h"
@@ -118,7 +118,7 @@ git checkout -b feature/your-feature-name
 ### 2. Make Changes
 
 * Follow code standards above
-* Add tests for new functionality (Phase 12+)
+* Add tests for new functionality (when test infrastructure is available)
 * Update documentation if needed
 
 ### 3. Verify Locally
@@ -132,8 +132,8 @@ make -j$(nproc)
 # Run tests (when available)
 make check
 
-# Verify no new issues
-# Check: https://app.codacy.com/gh/jungamer-64/libnfc/dashboard
+    # Verify no new issues
+    # Check: code quality dashboard (internal)
 ```
 
 ### 4. Commit Changes

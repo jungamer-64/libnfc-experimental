@@ -42,10 +42,10 @@ AM_CONDITIONAL(POSIX_ONLY_EXAMPLES_ENABLED, [test "$WITH_POSIX_ONLY_EXAMPLES" = 
 PKG_PROG_PKG_CONFIG
 
 # Checks for header files.
-m4_warn([obsolete],
-[The preprocessor macro `STDC_HEADERS' is obsolete.
-  Except in unusual embedded environments, you can safely include all
-  ISO C90 headers unconditionally.])dnl
+# Note: STDC_HEADERS is considered obsolete by newer autoconf versions.
+# In most environments it's safe to include standard C headers unconditionally.
+# We intentionally do not emit a runtime warning here to avoid noisy output
+# from the generated `configure` script; keep only this explanatory comment.
 # Autoupdate added the next two lines to ensure that your configure
 # script's behavior did not change.  They are probably safe to remove.
 AC_CHECK_INCLUDES_DEFAULT
@@ -83,7 +83,7 @@ AC_ARG_ENABLE([log],AS_HELP_STRING([--disable-log],[Disable any logs]),[enable_l
 AC_MSG_CHECKING(for log flag)
 AC_MSG_RESULT($enable_log)
 AM_CONDITIONAL([WITH_LOG], [test "$enable_log" != "no"])
- 
+
 if test x"$enable_log" = "xyes"
 then
   AC_DEFINE([LOG], [1], [Enable log])
@@ -94,7 +94,7 @@ AC_ARG_ENABLE([conffiles],AS_HELP_STRING([--disable-conffiles],[Disable use of c
 AC_MSG_CHECKING(for conffiles flag)
 AC_MSG_RESULT($enable_conffiles)
 AM_CONDITIONAL([WITH_CONFFILES], [test "$enable_conffiles" != "no"])
- 
+
 if test x"$enable_conffiles" = "xyes"
 then
   AC_DEFINE([CONFFILES], [1], [Enable conffiles])
@@ -105,7 +105,7 @@ AC_ARG_ENABLE([envvars],AS_HELP_STRING([--disable-envvars],[Disable use of envir
 AC_MSG_CHECKING(for envvars flag)
 AC_MSG_RESULT($enable_envvars)
 AM_CONDITIONAL([WITH_ENVVARS], [test "$enable_envvars" != "no"])
- 
+
 if test x"$enable_envvars" = "xyes"
 then
   AC_DEFINE([ENVVARS], [1], [Enable envvars])
@@ -116,7 +116,7 @@ AC_ARG_ENABLE([debug],AS_HELP_STRING([--enable-debug],[Enable debug mode]),[enab
 AC_MSG_CHECKING(for debug flag)
 AC_MSG_RESULT($enable_debug)
 AM_CONDITIONAL([WITH_DEBUG], [test "$enable_debug" != "no"])
- 
+
 if test x"$enable_debug" = "xyes"
 then
   AC_DEFINE([DEBUG], [1], [Enable debug flag])
@@ -132,7 +132,7 @@ AM_CONDITIONAL(UART_ENABLED, [test x"$uart_required" = x"yes"])
 # Enable SPI if
 AM_CONDITIONAL(SPI_ENABLED, [test x"$spi_required" = x"yes"])
 
-# Enable I2C if 
+# Enable I2C if
 AM_CONDITIONAL(I2C_ENABLED, [test x"$i2c_required" = x"yes"])
 if test x"$i2c_required" = x"yes"
 then

@@ -374,7 +374,7 @@ Total Changes: 4 files changed, 466 insertions(+), 95 deletions(-)
 **After Session 2**:
 
 - ✅ **0 perror("malloc") calls** in refactored drivers
-- ✅ **11 log_put() calls** with consistent messages
+| Metric | Baseline (eca6140) | After 3 Drivers (9f52849) | Target | Status |
 - ✅ **Structured logging** via libnfc framework
 - ✅ **Severity levels**: NFC_LOG_PRIORITY_ERROR for all allocation failures
 

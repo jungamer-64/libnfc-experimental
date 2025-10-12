@@ -1,7 +1,5 @@
 # libnfc
 
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/05e217b260b54682a8ed9f3d347873a0)](https://app.codacy.com/gh/jungamer-64/libnfc/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
-[![Codacy Coverage](https://app.codacy.com/project/badge/Coverage/05e217b260b54682a8ed9f3d347873a0)](https://app.codacy.com/gh/jungamer-64/libnfc/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
 [![Build Status](https://github.com/jungamer-64/libnfc/actions/workflows/code-quality.yml/badge.svg)](https://github.com/jungamer-64/libnfc/actions/workflows/code-quality.yml)
 
 **Free/Libre Near Field Communication (NFC) library**
@@ -43,7 +41,7 @@ Some NFC drivers depend on third party software:
 
   * pcsc-lite <https://pcsclite.apdu.fr/>
 
-- pcsc:
+* pcsc:
 
   * Support build with pcsc driver, which can be using all compatible readers, Feitian R502 and bR500 already passed the test.
 
@@ -96,14 +94,9 @@ NFC_SECURE_MEMSET(password, 0x00);  // Guaranteed execution
 
 **Documentation**:
 
-* **Usage Guide**: `libnfc/NFC_SECURE_USAGE_GUIDE.md` - Complete reference with examples
-* **API Reference**: `libnfc/nfc-secure.h` - Detailed API documentation
-* **Best Practices**: `libnfc/NFC_SECURE_BEST_PRACTICES_V4.md` - Design patterns
-* **Recent Fixes**: `NFC_SECURE_V7_CRITICAL_FIXES.md` - Latest improvements (2025-10-12)
-  * Fixed incorrect `__builtin_memset_explicit` detection (doesn't exist)
-  * Moved `NFC_NULL` to header for project-wide visibility
-  * Enhanced `typeof` compiler detection (GCC/Clang requirement)
-  * Added `__has_include` checks for `HAVE_EXPLICIT_BZERO` safety
+* **Usage Guide**: `libnfc/NFC_SECURE_USAGE_GUIDE.md` - Reference with examples
+* **API Reference**: `libnfc/nfc-secure.h` - API documentation
+* **Best Practices**: `libnfc/NFC_SECURE_BEST_PRACTICES_V4.md`
 
 **Standards Support**: C89/C99/C11/C23
 
@@ -164,6 +157,7 @@ Environment Variables
 =====================
 
 You can override certain configuration options at runtime using the following environment variables:
+
 * `LIBNFC_DEFAULT_DEVICE=<connstring>`:  `LIBNFC_DEFAULT_DEVICE=pn532_uart:/dev/ttyACM0` will use pn532 on /dev/ttyACM0 as default device
 * `LIBNFC_DEVICE=<connstring>` will ignore all devices in the config files and use only the one defined in the variable
 * `LIBNFC_AUTO_SCAN=<true|false>` overrides `allow_autoscan` option in the config file

@@ -1,11 +1,11 @@
 # Phase 11 Week 2: High-Complexity Function Refactoring Progress
 
 **Date**: 2025年10月12日
-**Session**: Refactoring with Codacy MCP Integration
+**Session**: Refactoring with code quality dashboard integration
 
 ## Executive Summary
 
-Successfully refactored 2 of the highest complexity functions in the libnfc codebase using data-driven analysis from Codacy MCP server. Applied Extract Method pattern systematically to reduce cyclomatic complexity while improving code maintainability and testability.
+Successfully refactored 2 of the highest complexity functions in the libnfc codebase using data-driven analysis from the code quality dashboard. Applied Extract Method pattern systematically to reduce cyclomatic complexity while improving code maintainability and testability.
 
 ### Overall Progress
 
@@ -70,8 +70,8 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 ### Verification
 
 - ✅ Build successful
-- ✅ No Codacy complexity warnings
-- ⚠️ Codacy re-analysis pending (requires server-side processing)
+- No code quality dashboard complexity warnings
+- Code quality dashboard re-analysis pending (requires server-side processing)
 
 ---
 
@@ -183,49 +183,61 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 |--------|--------|-------|--------|
 | Complex Functions (CC > 20) | 8 | 6 | -2 (-25%) |
 | Average CC (Top 2) | 54 | 16 | -38 (-70%) |
-| Helper Functions Created | 0 | 4 | +4 |
-| Compiler Warnings | 5 | 0 | -5 (-100%) |
-
-### File Changes
-
 | File | Lines Changed | Impact |
-|------|--------------|--------|
 | `libnfc/chips/pn53x.c` | +283, -163 | Net +120 (with documentation) |
 | `libnfc/chips/pn53x.h` | +3 | Function declaration |
 | `libnfc/drivers/acr122_usb.c` | +1 | Warning suppression |
 | `libnfc/nfc.c` | +4 | strnlen declaration |
 | `libnfc/nfc-internal.c` | +4 | strnlen declaration |
+# Week 2: High-Complexity Function Refactoring Progress
+
+**Date**: 2025年10月12日
+**Session**: Refactoring (automated analysis integration)
 
 ---
 
-## Remaining Work (Phase 11 Week 2-3)
+### Verification
 
-### Priority Queue (CC > 20)
+- Build successful.
+- No complexity warnings reported by automated analysis tools.
+- Automated re-analysis pending (requires server-side processing)
 
 1. ⏳ **`pn53x_set_property_bool`** (CC: 37, 93 lines)
    - Large switch statement with 20+ cases
-   - Property validation logic
-   - Strategy: Extract validation helpers
+### Verification
 
+- Build successful.
+- No complexity warnings reported by analysis tools.
+- Note: Can be further reduced by extracting parameter setup logic
 2. ⏳ **`acr122_usb_receive`** (CC: 26, 122 lines)
    - Most complex driver function
    - Complex frame parsing
-   - Strategy: Extract frame processing helpers
-
-3. ⏳ **`pn53x_InJumpForDEP`** (CC: 27, 9 parameters)
+ - Build successful.
+ - No complexity warnings reported by analysis tools.
+ - Note: Can be further reduced by extracting parameter setup logic
    - High complexity + parameter count issue
    - DEP negotiation logic
    - Strategy: Extract parameter structure + helpers
 
 4. ⏳ **`pn53x_initiator_transceive_bytes_timed`** (CC: 22, 117 lines)
+| Function | Before CC | After CC | Reduction | Status |
+|----------|-----------|----------|-----------|--------|
+| `pn53x_initiator_select_passive_target_ext` | 59 | <10 | ~49 (83%) | Complete |
+| `pn53x_target_init` | 49 | ~22 | ~27 (55%) | In Progress |
    - Timing-sensitive transceive logic
    - Multiple hardware-specific paths
+1. **`pn53x_set_property_bool`** (CC: 37, 93 lines)
    - Strategy: Extract timing calculation helpers
+2. **`acr122_usb_receive`** (CC: 26, 122 lines)
 
+3. **`pn53x_InJumpForDEP`** (CC: 27, 9 parameters)
 5. ⏳ **`pn53x_initiator_poll_target`** (CC: 22, 99 lines)
+4. **`pn53x_initiator_transceive_bytes_timed`** (CC: 22, 117 lines)
    - Target polling loop
+5. **`pn53x_initiator_poll_target`** (CC: 22, 99 lines)
    - Multiple modulation types
    - Strategy: Extract modulation-specific handlers
+1. **Automated analysis integration**: analysis APIs provided objective metrics
 
 ### Additional Improvements
 
@@ -233,20 +245,32 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
   - Target: 29% → 20% duplication
   - Create `nfc-frame.h/c` infrastructure
   - Extract common frame parsing logic
+## Next Session Goals
+
+1. Complete `pn53x_target_init`: extract parameter setup helpers
+2. Refactor `pn53x_set_property_bool`: target CC < 15
+3. CI/CD verification: push commits and verify GitHub Actions pass
+4. Server analysis: verify CC reductions with server-side metrics
 
 - **Quality Targets**:
   - Grade: B (76%) → B+ (80%+)
   - Issues: 542 → <500
   - Complex Files: 40 (30%) → <26%
+**Branch**: master
+**Last Commit**: `e4282a9` - Extract `pn53x_setup_target_mode` helper
+**Build Status**: Passing
+**Automated analysis grade**: B (76%) - Server analysis pending
   - All functions CC < 20
 
 ---
+*Generated: 2025年10月12日*
+*Session: Week 2 - Complexity Reduction Campaign*
 
 ## Methodology
 
 ### Tool-Driven Analysis
 
-1. **Codacy MCP Integration**:
+1. **Code quality dashboard integration**:
    - Repository-level metrics
    - File complexity ranking
    - Function-level CC analysis
@@ -264,7 +288,7 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 ### Verification Process
 
 1. **Syntax Verification**: Build after each helper
-2. **Complexity Verification**: Check Codacy warnings
+2. **Complexity Verification**: Check code quality dashboard warnings
 3. **Incremental Commits**: One helper per commit
 4. **Documentation**: Comprehensive function docs
 
@@ -274,7 +298,7 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 
 ### What Worked Well
 
-1. **MCP Tool Integration**: Codacy API provided objective metrics
+1. **MCP Tool Integration**: code quality dashboard API provided objective metrics
 2. **Incremental Approach**: One helper at a time, commit often
 3. **Extract Method Pattern**: Proven effective for high-CC functions
 4. **Data-Driven**: Objective prioritization vs. guesswork
@@ -290,7 +314,7 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 1. **Read First**: Understand full function before extracting
 2. **Test Often**: Compile after each helper creation
 3. **Document Thoroughly**: Helper functions need clear purpose documentation
-4. **Verify CC Reduction**: Check Codacy warnings disappear
+4. **Verify CC Reduction**: Check code quality dashboard warnings disappear
 
 ---
 
@@ -299,7 +323,7 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 1. **Complete `pn53x_target_init`**: Extract parameter setup helpers
 2. **Refactor `pn53x_set_property_bool`**: Target CC < 15
 3. **CI/CD Verification**: Push commits and verify GitHub Actions pass
-4. **Codacy Server Analysis**: Verify CC reductions with server-side metrics
+4. **Server Analysis**: Verify CC reductions with server-side metrics
 
 ---
 
@@ -308,7 +332,7 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 **Branch**: master
 **Last Commit**: `e4282a9` - Extract `pn53x_setup_target_mode` helper
 **Build Status**: ✅ Passing
-**Codacy Grade**: B (76%) - Server analysis pending
+**Code quality dashboard Grade**: B (76%) - Server analysis pending
 
 **Files Modified**: 5
 **Lines Added**: +295

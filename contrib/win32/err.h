@@ -3,15 +3,19 @@
 
 #include <stdlib.h>
 
-#define warnx(...) do { \
-    fprintf (stderr, __VA_ARGS__); \
-    fprintf (stderr, "\n"); \
+#define warnx(...)                \
+  do                              \
+  {                               \
+    fprintf(stderr, __VA_ARGS__); \
+    fprintf(stderr, "\n");        \
   } while (0)
 
-#define errx(code, ...) do { \
-    fprintf (stderr, __VA_ARGS__); \
-    fprintf (stderr, "\n"); \
-    exit (code); \
+#define errx(code, ...)           \
+  do                              \
+  {                               \
+    fprintf(stderr, __VA_ARGS__); \
+    fprintf(stderr, "\n");        \
+    exit(code);                   \
   } while (0)
 
 #define err errx
