@@ -238,7 +238,8 @@ conf_keyvalue_context(void *data, const char *key, const char *value)
       }
       context->user_defined_device_count++;
     }
-    size_t value_len = strlen(value);
+    /* Safely determine value length with bounds check (CWE-126) */
+    size_t value_len = nfc_safe_strlen(value, DEVICE_NAME_LENGTH);
     size_t copy_len = (value_len < DEVICE_NAME_LENGTH - 1) ? value_len : DEVICE_NAME_LENGTH - 1;
     if (nfc_safe_memcpy(context->user_defined_devices[context->user_defined_device_count - 1].name,
                         DEVICE_NAME_LENGTH, value, copy_len) < 0) {
@@ -254,7 +255,8 @@ conf_keyvalue_context(void *data, const char *key, const char *value)
       }
       context->user_defined_device_count++;
     }
-    size_t value_len = strlen(value);
+    /* Safely determine value length with bounds check (CWE-126) */
+    size_t value_len = nfc_safe_strlen(value, NFC_BUFSIZE_CONNSTRING);
     size_t copy_len = (value_len < NFC_BUFSIZE_CONNSTRING - 1) ? value_len : NFC_BUFSIZE_CONNSTRING - 1;
     if (nfc_safe_memcpy(context->user_defined_devices[context->user_defined_device_count - 1].connstring,
                         NFC_BUFSIZE_CONNSTRING, value, copy_len) < 0) {
@@ -297,8 +299,9 @@ conf_devices_load(const char *dirname, nfc_context *context)
     // For consistent ordering, devices can be explicitly configured in libnfc.conf
     while ((de = readdir(d)) != NULL) {
       if (de->d_name[0] != '.') {
-        const size_t filename_len = strlen(de->d_name);
-        const size_t extension_len = strlen(".conf");
+        /* Safely determine filename length with bounds check (CWE-126) */
+        const size_t filename_len = nfc_safe_strlen(de->d_name, 256);
+        const size_t extension_len = 5; /* strlen(".conf") is constant */
         if ((filename_len > extension_len) &&
             (strncmp(".conf", de->d_name + (filename_len - extension_len), extension_len) == 0)) {
           char filename[BUFSIZ];

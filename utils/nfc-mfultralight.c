@@ -609,8 +609,20 @@ int main(int argc, const char *argv[])
     } else if (0 == strcmp(argv[arg], "--partial")) {
       bPart = true;
     } else if (0 == strcmp(argv[arg], "--pw")) {
+      size_t pwd_len;
       bPWD = true;
-      if (arg + 1 == argc || strlen(argv[++arg]) != 8 || !ev1_load_pwd(iPWD, argv[arg])) {
+      if (arg + 1 == argc) {
+        ERR("Please supply a PASSWORD of 8 HEX digits");
+        exit(EXIT_FAILURE);
+      }
+      ++arg;
+      /* Safely determine password length with bounds check (CWE-126) */
+      if (!nfc_is_null_terminated(argv[arg], 256)) {
+        ERR("Password argument not properly null-terminated");
+        exit(EXIT_FAILURE);
+      }
+      pwd_len = nfc_safe_strlen(argv[arg], 256);
+      if (pwd_len != 8 || !ev1_load_pwd(iPWD, argv[arg])) {
         ERR("Please supply a PASSWORD of 8 HEX digits");
         exit(EXIT_FAILURE);
       }

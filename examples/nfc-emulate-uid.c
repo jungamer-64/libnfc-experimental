@@ -57,6 +57,7 @@
 #include <signal.h>
 
 #include <nfc/nfc.h>
+#include "../libnfc/nfc-secure.h"
 
 #include "utils/nfc-utils.h"
 #include "nfc-secure.h"
@@ -108,13 +109,22 @@ int main(int argc, char *argv[])
 
   // Get commandline options
   for (arg = 1; arg < argc; arg++) {
+    size_t arg_len;
+
+    /* Safely determine argument length with bounds check (CWE-126) */
+    if (!nfc_is_null_terminated(argv[arg], 256)) {
+      ERR("Argument %d is not properly null-terminated", arg);
+      exit(EXIT_FAILURE);
+    }
+    arg_len = nfc_safe_strlen(argv[arg], 256);
+
     if (0 == strcmp(argv[arg], "-h")) {
       print_usage(argv);
       exit(EXIT_SUCCESS);
     } else if (0 == strcmp(argv[arg], "-q")) {
       printf("Quiet mode.\n");
       quiet_output = true;
-    } else if ((arg == argc - 1) && (strlen(argv[arg]) == 8)) {
+    } else if ((arg == argc - 1) && (arg_len == 8)) {
       // See if UID was specified as HEX string
       uint8_t abtTmp[3] = {0x00, 0x00, 0x00};
       printf("[+] Using UID: %s\n", argv[arg]);

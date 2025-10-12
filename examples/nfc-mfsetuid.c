@@ -49,6 +49,8 @@
 #include "config.h"
 #endif // HAVE_CONFIG_H
 
+#include "../libnfc/nfc-secure.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -161,6 +163,16 @@ int main(int argc, char *argv[])
 
   // Get commandline options
   for (arg = 1; arg < argc; arg++) {
+    size_t arg_len;
+
+    /* Safely determine argument length with bounds check */
+    /* This prevents buffer over-read if argv[arg] is not null-terminated (CWE-126) */
+    if (!nfc_is_null_terminated(argv[arg], 256)) {
+      ERR("Argument %d is not properly null-terminated", arg);
+      exit(EXIT_FAILURE);
+    }
+    arg_len = nfc_safe_strlen(argv[arg], 256);
+
     if (0 == strcmp(argv[arg], "-h")) {
       print_usage(argv);
       exit(EXIT_SUCCESS);
@@ -168,7 +180,7 @@ int main(int argc, char *argv[])
       format = true;
     } else if (0 == strcmp(argv[arg], "-q")) {
       quiet_output = true;
-    } else if (strlen(argv[arg]) == 8) {
+    } else if (arg_len == 8) {
       for (i = 0; i < 4; ++i) {
         if (nfc_safe_memcpy(tmp, sizeof(tmp), argv[arg] + i * 2, 2) < 0) {
           ERR("Failed to copy UID bytes");
@@ -179,7 +191,7 @@ int main(int argc, char *argv[])
       }
       abtData[4] = abtData[0] ^ abtData[1] ^ abtData[2] ^ abtData[3];
       iso14443a_crc_append(abtData, 16);
-    } else if (strlen(argv[arg]) == 32) {
+    } else if (arg_len == 32) {
       for (i = 0; i < 16; ++i) {
         if (nfc_safe_memcpy(tmp, sizeof(tmp), argv[arg] + i * 2, 2) < 0) {
           ERR("Failed to copy BLOCK0 bytes");

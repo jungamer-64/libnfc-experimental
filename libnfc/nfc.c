@@ -286,7 +286,8 @@ nfc_open(nfc_context *context, const nfc_connstring connstring)
       return NULL;
     }
   } else {
-    size_t conn_len = strlen(connstring);
+    /* Safely determine connection string length with bounds check (CWE-126) */
+    size_t conn_len = nfc_safe_strlen(connstring, sizeof(nfc_connstring));
     size_t copy_len = (conn_len < sizeof(nfc_connstring) - 1) ? conn_len : sizeof(nfc_connstring) - 1;
     if (nfc_safe_memcpy(ncs, sizeof(nfc_connstring), connstring, copy_len) < 0) {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy connection string");
@@ -299,11 +300,12 @@ nfc_open(nfc_context *context, const nfc_connstring connstring)
   const struct nfc_driver_list *pndl = nfc_drivers;
   while (pndl) {
     const struct nfc_driver *ndr = pndl->driver;
+    size_t ndr_name_len = nfc_safe_strlen(ndr->name, 64);
 
     // Specific device is requested: using device description
-    if (0 != strncmp(ndr->name, ncs, strlen(ndr->name))) {
+    if (0 != strncmp(ndr->name, ncs, ndr_name_len)) {
       // Check if connstring driver is usb -> accept any driver *_usb
-      if ((0 != strncmp("usb", ncs, strlen("usb"))) || 0 != strncmp("_usb", ndr->name + (strlen(ndr->name) - 4), 4)) {
+      if ((0 != strncmp("usb", ncs, 3)) || (ndr_name_len < 4) || 0 != strncmp("_usb", ndr->name + (ndr_name_len - 4), 4)) {
         pndl = pndl->next;
         continue;
       }
@@ -312,7 +314,8 @@ nfc_open(nfc_context *context, const nfc_connstring connstring)
     pnd = ndr->open(context, ncs);
     // Test if the opening was successful
     if (pnd == NULL) {
-      if (0 == strncmp("usb", ncs, strlen("usb"))) {
+      if (0 == strncmp("usb", ncs, 3)) {
+        /* "usb" length is constant 3 */
         // We've to test the other usb drivers before giving up
         pndl = pndl->next;
         continue;
@@ -383,7 +386,8 @@ nfc_list_devices(nfc_context *context, nfc_connstring connstrings[], const size_
       char *old_env_log_level = NULL;
       // do it silently
       if (env_log_level) {
-        size_t env_len = strlen(env_log_level);
+        /* Safely determine environment variable length with bounds check (CWE-126) */
+        size_t env_len = nfc_safe_strlen(env_log_level, 256);
         if ((old_env_log_level = malloc(env_len + 1)) == NULL) {
           log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "%s", "Unable to malloc()");
           return 0;

@@ -63,7 +63,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <nfc/nfc.h>
-#include "../utils/nfc-secure.h"
+#include "../libnfc/nfc-secure.h"
 
 #if defined(WIN32) /* mingw compiler */
 #include <getopt.h>
@@ -124,7 +124,13 @@ int main(int argc, char *argv[])
 
       case 'w':
         if (optarg) {
-          cbData = strlen(optarg);
+          /* Safely determine optarg length with bounds check (CWE-126) */
+          if (!nfc_is_null_terminated(optarg, 1024)) {
+            fprintf(stderr, "Error: Option argument not properly null-terminated\n");
+            bIsBadCli = true;
+            break;
+          }
+          cbData = nfc_safe_strlen(optarg, 1024);
           if ((cbData == (2 * 2)) || ((cbData == (4 * 2)))) {
             cbData >>= 1;
             if (cbData == 2) {

@@ -679,8 +679,17 @@ int main(int argc, const char *argv[])
   }
   if (argv[3][0] == 'U') {
     unsigned long int _uid;
+    size_t arg3_len;
 
-    if (strlen(argv[3]) != 9) {
+    /* Safely determine argument length with bounds check (CWE-126) */
+    if (!nfc_is_null_terminated(argv[3], 256)) {
+      printf("Error, argument not properly null-terminated.\n");
+      print_usage(argv[0]);
+      exit(EXIT_FAILURE);
+    }
+    arg3_len = nfc_safe_strlen(argv[3], 256);
+
+    if (arg3_len != 9) {
       printf("Error, illegal tag specification, use U01ab23cd for example.\n");
       print_usage(argv[0]);
       exit(EXIT_FAILURE);

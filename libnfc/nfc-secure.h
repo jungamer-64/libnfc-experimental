@@ -415,6 +415,129 @@ int nfc_secure_memset(void *ptr, int val, size_t size);
 #endif
 
 /* ============================================================================
+ * SAFE STRING LENGTH FUNCTIONS (CWE-126 Prevention)
+ * ========================================================================== */
+
+/**
+ * @brief Safely compute string length with maximum bounds check
+ *
+ * This function prevents buffer over-read vulnerabilities (CWE-126) by
+ * limiting the search for the null terminator to a specified maximum length.
+ *
+ * @param[in] str      Pointer to the string (may not be null-terminated)
+ * @param[in] maxlen   Maximum number of bytes to examine
+ * @return Length of the string if null terminator found within maxlen,
+ *         or maxlen if no null terminator found
+ *
+ * @note This is similar to POSIX strnlen() but with guaranteed availability
+ * @note If str is NULL, returns 0
+ *
+ * @security Prevents buffer over-read by limiting memory scan
+ *
+ * Example:
+ * ```c
+ * char buffer[64];
+ * // Unsafe: strlen(buffer) - may read beyond buffer if not null-terminated
+ * // Safe:
+ * size_t len = nfc_safe_strlen(buffer, sizeof(buffer));
+ * ```
+ */
+static inline size_t
+nfc_safe_strlen(const char *str, size_t maxlen)
+{
+  if (str == NFC_NULL) {
+    return 0;
+  }
+
+  size_t len = 0;
+  while (len < maxlen && str[len] != '\0') {
+    len++;
+  }
+  return len;
+}
+
+/**
+ * @brief Validate that a buffer contains a null-terminated string
+ *
+ * This function checks whether a buffer contains a properly null-terminated
+ * string within the specified length.
+ *
+ * @param[in] buf      Pointer to the buffer to check
+ * @param[in] bufsize  Size of the buffer in bytes
+ * @return 1 if null terminator found within bufsize, 0 otherwise
+ *
+ * @note If buf is NULL, returns 0
+ *
+ * Example:
+ * ```c
+ * char user_input[256];
+ * if (!nfc_is_null_terminated(user_input, sizeof(user_input))) {
+ *     fprintf(stderr, "Error: Input not properly terminated\n");
+ *     return NFC_EINVARG;
+ * }
+ * size_t len = strlen(user_input); // Now safe to use strlen
+ * ```
+ */
+static inline int
+nfc_is_null_terminated(const char *buf, size_t bufsize)
+{
+  if (buf == NFC_NULL || bufsize == 0) {
+    return 0;
+  }
+
+  for (size_t i = 0; i < bufsize; i++) {
+    if (buf[i] == '\0') {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/**
+ * @brief Ensure a buffer is null-terminated by adding terminator if needed
+ *
+ * This function guarantees that a buffer is null-terminated by adding a
+ * null terminator at the last position if none exists within the buffer.
+ *
+ * @param[inout] buf      Pointer to the buffer to null-terminate
+ * @param[in]    bufsize  Size of the buffer in bytes (must be > 0)
+ *
+ * @note This will overwrite the last byte with '\0' if needed
+ * @note If buf is NULL or bufsize is 0, does nothing
+ *
+ * @warning This may truncate data if the buffer is full without null terminator
+ *
+ * Example:
+ * ```c
+ * char buffer[256];
+ * strncpy(buffer, user_input, sizeof(buffer)); // May not be null-terminated
+ * nfc_ensure_null_terminated(buffer, sizeof(buffer)); // Now guaranteed safe
+ * size_t len = strlen(buffer); // Safe
+ * ```
+ */
+static inline void
+nfc_ensure_null_terminated(char *buf, size_t bufsize)
+{
+  if (buf == NFC_NULL || bufsize == 0) {
+    return;
+  }
+
+  /* Check if already null-terminated */
+  int found_null = 0;
+  for (size_t i = 0; i < bufsize; i++) {
+    if (buf[i] == '\0') {
+      found_null = 1;
+      break;
+    }
+  }
+
+  /* If not null-terminated, add terminator at the end */
+  if (!found_null) {
+    buf[bufsize - 1] = '\0';
+  }
+}
+
+/* ============================================================================
  * THREAD SAFETY
  * ========================================================================== */
 
