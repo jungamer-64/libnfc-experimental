@@ -100,6 +100,14 @@
 #define SUPPORT_ISO14443B 0x02
 #define SUPPORT_ISO18092 0x04
 
+// Buffer size constants for command construction
+#define PN53X_CMD_INLISTPASSIVETARGET_SIZE 15
+#define PN53X_CMD_INLISTPASSIVETARGET_INITIATOR_DATA_MAX 12  // (PN53X_CMD_INLISTPASSIVETARGET_SIZE - 3)
+
+// String formatting constants
+#define PN53X_FORMAT_DELIMITER_FIRST ""
+#define PN53X_FORMAT_DELIMITER_SUBSEQUENT ", "
+
 // Internal parameters flags
 #define PARAM_NONE 0x00
 #define PARAM_NAD_USED 0x01

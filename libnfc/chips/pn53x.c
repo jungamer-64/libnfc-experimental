@@ -2871,6 +2871,36 @@ pn53x_decode_activation_mode(uint8_t btActivatedMode, nfc_modulation *nm, nfc_de
   }
 }
 
+/**
+ * @brief Check if activation parameters are compatible with target configuration
+ * @param pnt Target configuration
+ * @param nm Actual modulation
+ * @param ndm Actual DEP mode
+ * @return true if compatible, false otherwise
+ */
+static bool
+is_activation_compatible(const nfc_target *pnt, const nfc_modulation *nm, nfc_dep_mode ndm)
+{
+  // Modulation type must match
+  if (pnt->nm.nmt != nm->nmt) {
+    return false;
+  }
+
+  // Baud rate must match or be undefined
+  if ((pnt->nm.nbr != NBR_UNDEFINED) && (pnt->nm.nbr != nm->nbr)) {
+    return false;
+  }
+
+  // For DEP targets, check DEP mode compatibility
+  if (pnt->nm.nmt == NMT_DEP) {
+    if ((pnt->nti.ndi.ndm != NDM_UNDEFINED) && (pnt->nti.ndi.ndm != ndm)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 int pn53x_target_init(struct nfc_device *pnd, nfc_target *pnt, uint8_t *pbtRx, const size_t szRxLen, int timeout)
 {
   pn53x_reset_settings(pnd);
@@ -3011,16 +3041,8 @@ int pn53x_target_init(struct nfc_device *pnd, nfc_target *pnt, uint8_t *pbtRx, c
     nfc_dep_mode ndm;
     pn53x_decode_activation_mode(btActivatedMode, &nm, &ndm);
 
-    if (pnt->nm.nmt == nm.nmt) {
-      // Actual activation have the right modulation type
-      if ((pnt->nm.nbr == NBR_UNDEFINED) || (pnt->nm.nbr == nm.nbr)) {
-        // Have the right baud rate (or undefined)
-        if ((pnt->nm.nmt != NMT_DEP) || (pnt->nti.ndi.ndm == NDM_UNDEFINED) || (pnt->nti.ndi.ndm == ndm)) {
-          // Have the right DEP mode (or is not a DEP)
-          targetActivated = true;
-        }
-      }
-    }
+    // Check if activation is compatible with target configuration
+    targetActivated = is_activation_compatible(pnt, &nm, ndm);
 
     if (targetActivated) {
       pnt->nm.nbr = nm.nbr; // Update baud rate
@@ -3469,13 +3491,19 @@ int pn53x_InListPassiveTarget(struct nfc_device *pnd,
   }
 
   // Build command
-  uint8_t abtCmd[15] = {InListPassiveTarget};
+  uint8_t abtCmd[PN53X_CMD_INLISTPASSIVETARGET_SIZE] = {InListPassiveTarget};
   abtCmd[1] = szMaxTargets;     // MaxTg
   abtCmd[2] = pmInitModulation; // BrTy, the type of init modulation used for polling a passive tag
 
   // Set the optional initiator data (used for Felica, ISO14443B, Topaz Polling or for ISO14443A selecting a specific UID).
-  // Safe copy with offset +3, variable size szInitiatorData (user-controlled)
+  // Validate buffer size before copy (user-controlled)
   if (pbtInitiatorData) {
+    // Explicit size check: maximum initiator data is 12 bytes
+    if (szInitiatorData > PN53X_CMD_INLISTPASSIVETARGET_INITIATOR_DATA_MAX) {
+      pnd->last_error = NFC_EINVARG;
+      return NFC_EINVARG;
+    }
+    // Safe copy with validated size
     if (nfc_safe_memcpy(abtCmd + 3, sizeof(abtCmd) - 3, pbtInitiatorData, szInitiatorData) < 0)
       return NFC_EINVARG;
   }

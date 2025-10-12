@@ -189,6 +189,7 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 | `libnfc/drivers/acr122_usb.c` | +1 | Warning suppression |
 | `libnfc/nfc.c` | +4 | strnlen declaration |
 | `libnfc/nfc-internal.c` | +4 | strnlen declaration |
+
 # Week 2: High-Complexity Function Refactoring Progress
 
 **Date**: 2025年10月12日
@@ -204,20 +205,23 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
 
 1. ⏳ **`pn53x_set_property_bool`** (CC: 37, 93 lines)
    - Large switch statement with 20+ cases
+
 ### Verification
 
 - Build successful.
 - No complexity warnings reported by analysis tools.
 - Note: Can be further reduced by extracting parameter setup logic
+
 2. ⏳ **`acr122_usb_receive`** (CC: 26, 122 lines)
    - Most complex driver function
    - Complex frame parsing
- - Build successful.
- - No complexity warnings reported by analysis tools.
- - Note: Can be further reduced by extracting parameter setup logic
-   - High complexity + parameter count issue
-   - DEP negotiation logic
-   - Strategy: Extract parameter structure + helpers
+
+- Build successful.
+- No complexity warnings reported by analysis tools.
+- Note: Can be further reduced by extracting parameter setup logic
+  - High complexity + parameter count issue
+  - DEP negotiation logic
+  - Strategy: Extract parameter structure + helpers
 
 4. ⏳ **`pn53x_initiator_transceive_bytes_timed`** (CC: 22, 117 lines)
 | Function | Before CC | After CC | Reduction | Status |
@@ -245,6 +249,7 @@ Successfully refactored 2 of the highest complexity functions in the libnfc code
   - Target: 29% → 20% duplication
   - Create `nfc-frame.h/c` infrastructure
   - Extract common frame parsing logic
+
 ## Next Session Goals
 
 1. Complete `pn53x_target_init`: extract parameter setup helpers
