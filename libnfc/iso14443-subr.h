@@ -25,15 +25,20 @@
  */
 
 /**
- * @file acr122_usb.h
- * @brief Driver for ACR122 devices using direct USB connection (without PCSC)
+ * @file iso14443-subr.h
+ * @brief ISO14443 subroutines
  */
 
-#ifndef __NFC_DRIVER_ACR122_USB_H__
-#define __NFC_DRIVER_ACR122_USB_H__
+#ifndef __NFC_ISO14443_SUBR_H__
+#define __NFC_ISO14443_SUBR_H__
 
-#include <nfc/nfc-types.h>
+#include <stddef.h>
+#include <stdint.h>
 
-extern const struct nfc_driver acr122_usb_driver;
+void iso14443a_crc(const uint8_t *pbtData, size_t szLen, uint8_t *pbtCrc);
+void iso14443a_crc_append(uint8_t *pbtData, size_t szLen);
+void iso14443b_crc_append(uint8_t *pbtData, size_t szLen);
+uint8_t *iso14443a_locate_historical_bytes(const uint8_t *pbtAts, size_t szAts, size_t *pszTk);
+void iso14443_cascade_uid(const uint8_t *abtUID, const size_t szUID, uint8_t *pbtCascadedUID, size_t *pszCascadedUID);
 
-#endif // ! __NFC_DRIVER_ACR122_USB_H__
+#endif // __NFC_ISO14443_SUBR_H__

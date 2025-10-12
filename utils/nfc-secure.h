@@ -188,6 +188,20 @@ int nfc_secure_memset(void *ptr, int val, size_t size);
 #define NFC_SECURE_MEMSET(ptr, val) \
   nfc_secure_memset((ptr), (val), sizeof(ptr))
 
+/**
+ * @brief Safe string length calculation with maximum bound
+ *
+ * Calculates the length of a null-terminated string, but never scans more than
+ * maxlen bytes. This prevents reading beyond buffer boundaries when strings
+ * are not properly null-terminated.
+ *
+ * @param[in] str String to measure (can be NULL)
+ * @param[in] maxlen Maximum number of bytes to scan
+ * @return Length of string (excluding null terminator), or 0 if str is NULL
+ * @note Returns maxlen if no null terminator found within maxlen bytes
+ */
+size_t nfc_safe_strlen(const char *str, size_t maxlen);
+
 #ifdef __cplusplus
 }
 #endif

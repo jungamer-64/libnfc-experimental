@@ -11,17 +11,10 @@ if DRIVER_PCSC_ENABLED
 libnfcdrivers_la_SOURCES += pcsc.c pcsc.h
 endif
 
-if DRIVER_ACR122_PCSC_ENABLED
-libnfcdrivers_la_SOURCES += acr122_pcsc.c acr122_pcsc.h
-endif
-
-if DRIVER_ACR122_USB_ENABLED
-libnfcdrivers_la_SOURCES += acr122_usb.c acr122_usb.h
-endif
-
-if DRIVER_ACR122S_ENABLED
-libnfcdrivers_la_SOURCES += acr122s.c acr122s.h
-endif
+# Removed drivers (deleted files):
+# - acr122_pcsc (use pcsc driver instead)
+# - acr122_usb (use pn53x_usb driver instead)
+# - acr122s (serial version, rarely used)
 
 if DRIVER_ARYGON_ENABLED
 libnfcdrivers_la_SOURCES += arygon.c arygon.h
@@ -43,10 +36,8 @@ if DRIVER_PN532_I2C_ENABLED
 libnfcdrivers_la_SOURCES += pn532_i2c.c pn532_i2c.h
 endif
 
-if DRIVER_PN71XX_ENABLED
-libnfcdrivers_la_LIBADD += @LIBNFC_NCI_LIBS@
-libnfcdrivers_la_SOURCES += pn71xx.c pn71xx.h
-endif
+# Removed driver:
+# - pn71xx (experimental NCI driver, deleted file)
 
 if PCSC_ENABLED
   libnfcdrivers_la_CFLAGS += @libpcsclite_CFLAGS@
@@ -57,4 +48,3 @@ if LIBUSB_ENABLED
   libnfcdrivers_la_CFLAGS += @libusb_CFLAGS@
   libnfcdrivers_la_LIBADD  += @libusb_LIBS@
 endif
-

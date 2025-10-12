@@ -1,0 +1,306 @@
+make  all-recursive
+make[1]: ディレクトリ '/home/jungamer/Downloads/libnfc' に入ります
+Making all in libnfc
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/libnfc' に入ります
+Making all in chips
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/libnfc/chips' に入ります
+  CC       libnfcchips_la-pn53x.lo
+pn53x.c: In function 'pn53x_initiator_transceive_bytes_timed':
+pn53x.c:2261:11: warning: unused variable 'sz' [-Wunused-variable]
+ 2261 |   uint8_t sz = 0;
+      |           ^~
+pn53x.c:2260:12: warning: unused variable 'i' [-Wunused-variable]
+ 2260 |   uint16_t i;
+      |            ^
+  CCLD     libnfcchips.la
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/libnfc/chips' から出ます
+Making all in buses
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/libnfc/buses' に入ります
+  CC       libnfcbuses_la-empty.lo
+  CC       libnfcbuses_la-spi.lo
+  CC       libnfcbuses_la-uart.lo
+  CC       libnfcbuses_la-usbbus.lo
+  CC       libnfcbuses_la-i2c.lo
+  CCLD     libnfcbuses.la
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/libnfc/buses' から出ます
+Making all in drivers
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/libnfc/drivers' に入ります
+  CC       libnfcdrivers_la-arygon.lo
+  CC       libnfcdrivers_la-pn53x_usb.lo
+  CC       libnfcdrivers_la-pn532_uart.lo
+  CC       libnfcdrivers_la-pn532_spi.lo
+  CC       libnfcdrivers_la-pn532_i2c.lo
+  CCLD     libnfcdrivers.la
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/libnfc/drivers' から出ます
+Making all in .
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/libnfc' に入ります
+  CC       libnfc_la-conf.lo
+  CC       libnfc_la-iso14443-subr.lo
+  CC       libnfc_la-mirror-subr.lo
+  CC       libnfc_la-nfc.lo
+  CC       libnfc_la-nfc-device.lo
+  CC       libnfc_la-nfc-emulation.lo
+  CC       libnfc_la-nfc-internal.lo
+  CC       libnfc_la-nfc-secure.lo
+  CC       libnfc_la-target-subr.lo
+  CC       libnfc_la-target-subr-helpers.lo
+  CC       libnfc_la-target-subr-helpers2.lo
+  CC       libnfc_la-log.lo
+target-subr-helpers2.c:15:12: warning: redundant redeclaration of 'snprint_hex' [-Wredundant-decls]
+   15 | extern int snprint_hex(char *dst, size_t size, const uint8_t *pbtData, const size_t szBytes);
+      |            ^~~~~~~~~~~
+In file included from target-subr-helpers2.c:12:
+target-subr.h:36:9: note: previous declaration of 'snprint_hex' with type 'int(char *, size_t,  const uint8_t *, const size_t)' {aka 'int(char *, long unsigned int,  const unsigned char *, const long unsigned int)'}
+   36 | int     snprint_hex(char *dst, size_t size, const uint8_t *pbtData, const size_t szLen);
+      |         ^~~~~~~~~~~
+iso14443-subr.c:65:6: warning: no previous prototype for 'iso14443_cascade_uid' [-Wmissing-prototypes]
+   65 | void iso14443_cascade_uid(const uint8_t *abtUID, const size_t szUID, uint8_t *pbtCascadedUID, size_t *pszCascadedUID)
+      |      ^~~~~~~~~~~~~~~~~~~~
+target-subr-helpers.c:25:12: warning: redundant redeclaration of 'snprint_hex' [-Wredundant-decls]
+   25 | extern int snprint_hex(char *dst, size_t size, const uint8_t *pbtData, const size_t szBytes);
+      |            ^~~~~~~~~~~
+In file included from target-subr-helpers.c:22:
+target-subr.h:36:9: note: previous declaration of 'snprint_hex' with type 'int(char *, size_t,  const uint8_t *, const size_t)' {aka 'int(char *, long unsigned int,  const unsigned char *, const long unsigned int)'}
+   36 | int     snprint_hex(char *dst, size_t size, const uint8_t *pbtData, const size_t szLen);
+      |         ^~~~~~~~~~~
+In file included from nfc.c:92:
+nfc.c: In function 'nfc_initiator_init':
+nfc-internal.h:49:50: warning: declaration of 'res' shadows a previous local [-Wshadow]
+   49 | #define HAL( FUNCTION, ... ) __extension__ ({int res; \
+      |                                                  ^~~
+nfc.c:547:10: note: in expansion of macro 'HAL'
+  547 |   return HAL(initiator_init, pnd);
+      |          ^~~
+nfc.c:522:7: note: shadowed declaration is here
+  522 |   int res = 0;
+      |       ^~~
+nfc.c: In function 'nfc_initiator_select_passive_target':
+nfc-internal.h:49:50: warning: declaration of 'res' shadows a previous local [-Wshadow]
+   49 | #define HAL( FUNCTION, ... ) __extension__ ({int res; \
+      |                                                  ^~~
+nfc.c:602:12: note: in expansion of macro 'HAL'
+  602 |     return HAL(initiator_select_passive_target, pnd, nm, abtInit, szInit, pnt);
+      |            ^~~
+nfc.c:595:7: note: shadowed declaration is here
+  595 |   int res;
+      |       ^~~
+nfc-internal.h:49:50: warning: declaration of 'res' shadows a previous local [-Wshadow]
+   49 | #define HAL( FUNCTION, ... ) __extension__ ({int res; \
+      |                                                  ^~~
+nfc.c:616:9: note: in expansion of macro 'HAL'
+  616 |   res = HAL(initiator_select_passive_target, pnd, nm, abtInit, szInit, pnt);
+      |         ^~~
+nfc.c:595:7: note: shadowed declaration is here
+  595 |   int res;
+      |       ^~~
+nfc.c: In function 'nfc_target_init':
+nfc-internal.h:49:50: warning: declaration of 'res' shadows a previous local [-Wshadow]
+   49 | #define HAL( FUNCTION, ... ) __extension__ ({int res; \
+      |                                                  ^~~
+nfc.c:1029:10: note: in expansion of macro 'HAL'
+ 1029 |   return HAL(target_init, pnd, pnt, pbtRx, szRx, timeout);
+      |          ^~~
+nfc.c:1004:7: note: shadowed declaration is here
+ 1004 |   int res = 0;
+      |       ^~~
+In file included from log-internal.h:31,
+                 from nfc-secure.c:26:
+../config.h:169: warning: "_XOPEN_SOURCE" redefined
+  169 | #define _XOPEN_SOURCE 600
+      | 
+In file included from /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:33,
+                 from /usr/include/stdint.h:26,
+                 from /usr/lib/gcc/x86_64-linux-gnu/13/include/stdint.h:9,
+                 from nfc-secure.h:44,
+                 from nfc-secure.c:25:
+/usr/include/features.h:216: note: this is the location of the previous definition
+  216 | # define _XOPEN_SOURCE  700
+      | 
+nfc-secure.c: In function 'nfc_secure_memset':
+nfc-secure.c:406:38: warning: unused parameter 'val' [-Wunused-parameter]
+  406 | int nfc_secure_memset(void *ptr, int val, size_t size)
+      |                                  ~~~~^~~
+  CC       libnfc_la-log-internal.lo
+  CCLD     libnfc.la
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/libnfc' から出ます
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/libnfc' から出ます
+Making all in utils
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/utils' に入ります
+  CC       nfc-barcode.o
+  CC       nfc-utils.lo
+  CC       nfc-emulate-forum-tag4.o
+  CC       nfc-jewel.o
+  CC       jewel.o
+  CC       nfc-list.o
+  CC       nfc-mfclassic.o
+  CC       mifare.o
+  CC       nfc-mfultralight.o
+  CC       nfc-read-forum-tag3.o
+  CC       nfc-relay-picc.o
+  CC       nfc-scan-device.o
+nfc-jewel.c: In function ‘main’:
+nfc-jewel.c:220:9: warning: implicit declaration of function ‘nfc_secure_memset’ [-Wimplicit-function-declaration]
+  220 |     if (nfc_secure_memset(&ttDump, 0x00, sizeof(ttDump)) < 0) {
+      |         ^~~~~~~~~~~~~~~~~
+nfc-jewel.c:220:9: warning: nested extern declaration of ‘nfc_secure_memset’ [-Wnested-externs]
+nfc-relay-picc.c: In function ‘scan_hex_fd3’:
+nfc-relay-picc.c:144:64: warning: implicit declaration of function ‘nfc_safe_strlen’ [-Wimplicit-function-declaration]
+  144 |   if (nfc_safe_memcpy(pchScan, sizeof(pchScan) - 8, pchPrefix, nfc_safe_strlen(pchPrefix, 64) + 1) < 0) {
+      |                                                                ^~~~~~~~~~~~~~~
+nfc-relay-picc.c:144:64: warning: nested extern declaration of ‘nfc_safe_strlen’ [-Wnested-externs]
+nfc-read-forum-tag3.c: In function ‘main’:
+nfc-read-forum-tag3.c:215:8: warning: implicit declaration of function ‘nfc_safe_strlen’ [-Wimplicit-function-declaration]
+  215 |   if ((nfc_safe_strlen(ndef_output, PATH_MAX) == 1) && (ndef_output[0] == '-')) {
+      |        ^~~~~~~~~~~~~~~
+nfc-read-forum-tag3.c:215:8: warning: nested extern declaration of ‘nfc_safe_strlen’ [-Wnested-externs]
+  CCLD     nfc-jewel
+  CCLD     libnfcutils.la
+  CCLD     nfc-mfultralight
+  CCLD     nfc-barcode
+  CCLD     nfc-emulate-forum-tag4
+  CCLD     nfc-list
+  CCLD     nfc-mfclassic
+  CCLD     nfc-read-forum-tag3
+  CCLD     nfc-relay-picc
+  CCLD     nfc-scan-device
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/utils' から出ます
+Making all in examples
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/examples' に入ります
+Making all in pn53x-tamashell-scripts
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/examples/pn53x-tamashell-scripts' に入ります
+make[3]: 'all' に対して行うべき事はありません.
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/examples/pn53x-tamashell-scripts' から出ます
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/examples' に入ります
+  CC       nfc-anticol.o
+  CC       nfc-dep-initiator.o
+  CC       nfc-dep-target.o
+  CC       nfc-emulate-forum-tag2.o
+  CC       nfc-emulate-tag.o
+  CC       nfc-emulate-uid.o
+  CC       nfc-mfsetuid.o
+  CC       nfc-poll.o
+  CC       nfc-relay.o
+  CC       nfc-st25tb.o
+  CC       pn53x-diagnose.o
+  CC       pn53x-sam.o
+nfc-st25tb.c:335:6: warning: no previous prototype for ‘get_info_st25tb512’ [-Wmissing-prototypes]
+  335 | void get_info_st25tb512(uint8_t *systemArea)
+      |      ^~~~~~~~~~~~~~~~~~
+nfc-st25tb.c:357:6: warning: no previous prototype for ‘get_info_st25tb2k_4k’ [-Wmissing-prototypes]
+  357 | void get_info_st25tb2k_4k(uint8_t *systemArea)
+      |      ^~~~~~~~~~~~~~~~~~~~
+nfc-st25tb.c:386:6: warning: no previous prototype for ‘get_info_sr176_legacy’ [-Wmissing-prototypes]
+  386 | void get_info_sr176_legacy(uint8_t *systemArea)
+      |      ^~~~~~~~~~~~~~~~~~~~~
+nfc-st25tb.c:406:6: warning: no previous prototype for ‘get_info_sri_srt_512_legacy’ [-Wmissing-prototypes]
+  406 | void get_info_sri_srt_512_legacy(uint8_t *systemArea)
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+nfc-st25tb.c:428:6: warning: no previous prototype for ‘get_info_sri2k_4k_srix4k_srix512_legacy’ [-Wmissing-prototypes]
+  428 | void get_info_sri2k_4k_srix4k_srix512_legacy(uint8_t *systemArea)
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+nfc-emulate-tag.c: In function ‘main’:
+nfc-emulate-tag.c:101:67: warning: ‘__builtin___snprintf_chk’ output truncated before the last format character [-Wformat-truncation=]
+  101 |         snprintf((char *)pbtOutput, *pszOutput, "You read block %c", pbtInput[1]);
+      |                                                                   ^
+In file included from /usr/include/stdio.h:980,
+                 from nfc-emulate-tag.c:50:
+In function ‘snprintf’,
+    inlined from ‘target_io’ at nfc-emulate-tag.c:101:9,
+    inlined from ‘nfc_target_emulate_tag’ at nfc-emulate-tag.c:165:12,
+    inlined from ‘main’ at nfc-emulate-tag.c:295:8:
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:54:10: note: ‘__builtin___snprintf_chk’ output 17 bytes into a destination of size 16
+   54 |   return __builtin___snprintf_chk (__s, __n, __USE_FORTIFY_LEVEL - 1,
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   55 |                                    __glibc_objsize (__s), __fmt,
+      |                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   56 |                                    __va_arg_pack ());
+      |                                    ~~~~~~~~~~~~~~~~~
+  CC       pn53x_tamashell-pn53x-tamashell.o
+  CCLD     nfc-dep-target
+  CCLD     nfc-emulate-forum-tag2
+  CCLD     nfc-dep-initiator
+  CCLD     nfc-poll
+  CCLD     pn53x-diagnose
+  CCLD     nfc-emulate-tag
+  CCLD     pn53x-sam
+  CCLD     nfc-anticol
+  CCLD     nfc-emulate-uid
+  CCLD     nfc-relay
+  CCLD     nfc-mfsetuid
+  CCLD     pn53x-tamashell
+  CCLD     nfc-st25tb
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/examples' から出ます
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/examples' から出ます
+Making all in include
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/include' に入ります
+Making all in nfc
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/include/nfc' に入ります
+make[3]: 'all' に対して行うべき事はありません.
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/include/nfc' から出ます
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/include' に入ります
+make[3]: 'all-am' に対して行うべき事はありません.
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/include' から出ます
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/include' から出ます
+Making all in contrib
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib' に入ります
+Making all in devd
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/devd' に入ります
+make[3]: 'all' に対して行うべき事はありません.
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/devd' から出ます
+Making all in libnfc
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/libnfc' に入ります
+make[3]: 'all' に対して行うべき事はありません.
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/libnfc' から出ます
+Making all in linux
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/linux' に入ります
+make[3]: 'all' に対して行うべき事はありません.
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/linux' から出ます
+Making all in udev
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/udev' に入ります
+make[3]: 'all' に対して行うべき事はありません.
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/udev' から出ます
+Making all in win32
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/win32' に入ります
+Making all in libnfc
+make[4]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/win32/libnfc' に入ります
+Making all in buses
+make[5]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/win32/libnfc/buses' に入ります
+make[5]: 'all' に対して行うべき事はありません.
+make[5]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/win32/libnfc/buses' から出ます
+Making all in .
+make[5]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/win32/libnfc' に入ります
+make[5]: 'all-am' に対して行うべき事はありません.
+make[5]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/win32/libnfc' から出ます
+make[4]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/win32/libnfc' から出ます
+Making all in sys
+make[4]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/win32/sys' に入ります
+make[4]: 'all' に対して行うべき事はありません.
+make[4]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/win32/sys' から出ます
+Making all in .
+make[4]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/win32' に入ります
+make[4]: 'all-am' に対して行うべき事はありません.
+make[4]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/win32' から出ます
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib/win32' から出ます
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib' に入ります
+make[3]: 'all-am' に対して行うべき事はありません.
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib' から出ます
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/contrib' から出ます
+Making all in cmake
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/cmake' に入ります
+Making all in modules
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/cmake/modules' に入ります
+make[3]: 'all' に対して行うべき事はありません.
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/cmake/modules' から出ます
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/cmake' に入ります
+make[3]: 'all-am' に対して行うべき事はありません.
+make[3]: ディレクトリ '/home/jungamer/Downloads/libnfc/cmake' から出ます
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/cmake' から出ます
+Making all in test
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/test' に入ります
+make[2]: 'all' に対して行うべき事はありません.
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc/test' から出ます
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc' に入ります
+cd . && /bin/bash ./config.status libnfc.pc
+config.status: creating libnfc.pc
+make[2]: ディレクトリ '/home/jungamer/Downloads/libnfc' から出ます
+make[1]: ディレクトリ '/home/jungamer/Downloads/libnfc' から出ます

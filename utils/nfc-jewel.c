@@ -57,6 +57,7 @@
 
 #include "nfc-utils.h"
 #include "jewel.h"
+#include "../libnfc/nfc-secure.h"
 
 static nfc_device *pnd;
 static nfc_target nt;
@@ -67,8 +68,8 @@ static uint32_t uiBlocks = 0x0E;
 static uint32_t uiBytesPerBlock = 0x08;
 
 static const nfc_modulation nmJewel = {
-  .nmt = NMT_JEWEL,
-  .nbr = NBR_106,
+    .nmt = NMT_JEWEL,
+    .nbr = NBR_106,
 };
 
 static void
@@ -89,15 +90,20 @@ read_card(void)
 
   printf("Reading %d blocks |", uiBlocks + 1);
 
-  for (block = 0; block <= uiBlocks; block++) {
-    for (byte = 0; byte < uiBytesPerBlock; byte++) {
+  for (block = 0; block <= uiBlocks; block++)
+  {
+    for (byte = 0; byte < uiBytesPerBlock; byte++)
+    {
 
       // Try to read the byte
       req.read.btCmd = TC_READ;
       req.read.btAdd = (block << 3) + byte;
-      if (nfc_initiator_jewel_cmd(pnd, req, &res)) {
+      if (nfc_initiator_jewel_cmd(pnd, req, &res))
+      {
         ttDump.ttd.abtData[(block << 3) + byte] = res.read.btDat;
-      } else {
+      }
+      else
+      {
         bFailure = true;
         break;
       }
@@ -127,13 +133,15 @@ write_card(void)
   bool write_lock;
 
   printf("Write Lock bytes ? [yN] ");
-  if (!fgets(buffer, BUFSIZ, stdin)) {
+  if (!fgets(buffer, BUFSIZ, stdin))
+  {
     ERR("Unable to read standard input.");
   }
   write_lock = ((buffer[0] == 'y') || (buffer[0] == 'Y'));
 
   printf("Write OTP bytes ? [yN] ");
-  if (!fgets(buffer, BUFSIZ, stdin)) {
+  if (!fgets(buffer, BUFSIZ, stdin))
+  {
     ERR("Unable to read standard input.");
   }
   write_otp = ((buffer[0] == 'y') || (buffer[0] == 'Y'));
@@ -144,37 +152,46 @@ write_card(void)
   printf("s");
   uiSkippedBlocks++;
 
-  for (block = uiSkippedBlocks; block <= uiBlocks; block++) {
+  for (block = uiSkippedBlocks; block <= uiBlocks; block++)
+  {
     // Skip block 0x0D - it is reserved for internal use and can't be written
-    if (block == 0x0D) {
+    if (block == 0x0D)
+    {
       printf("s");
       uiSkippedBlocks++;
       continue;
     }
     // Skip block 0X0E if lock-bits and OTP shouldn't be written
-    if ((block == 0x0E) && (!write_lock) && (!write_otp)) {
+    if ((block == 0x0E) && (!write_lock) && (!write_otp))
+    {
       printf("s");
       uiSkippedBlocks++;
       continue;
     }
     // Write block 0x0E partially if lock-bits or OTP shouldn't be written
-    if ((block == 0x0E) && (!write_lock || !write_otp)) {
+    if ((block == 0x0E) && (!write_lock || !write_otp))
+    {
       printf("p");
       uiPartialBlocks++;
     }
 
-    for (byte = 0; byte < uiBytesPerBlock; byte++) {
-      if ((block == 0x0E) && (byte == 0 || byte == 1) && (!write_lock)) {
+    for (byte = 0; byte < uiBytesPerBlock; byte++)
+    {
+      if ((block == 0x0E) && (byte == 0 || byte == 1) && (!write_lock))
+      {
         continue;
       }
-      if ((block == 0x0E) && (byte > 1) && (!write_otp)) {
+      if ((block == 0x0E) && (byte > 1) && (!write_otp))
+      {
         continue;
       }
 
       // Show if the readout went well
-      if (bFailure) {
+      if (bFailure)
+      {
         // When a failure occured we need to redo the anti-collision
-        if (nfc_initiator_select_passive_target(pnd, nmJewel, NULL, 0, &nt) <= 0) {
+        if (nfc_initiator_select_passive_target(pnd, nmJewel, NULL, 0, &nt) <= 0)
+        {
           ERR("tag was removed");
           return false;
         }
@@ -184,7 +201,8 @@ write_card(void)
       req.writee.btCmd = TC_WRITEE;
       req.writee.btAdd = (block << 3) + byte;
       req.writee.btDat = ttDump.ttd.abtData[(block << 3) + byte];
-      if (!nfc_initiator_jewel_cmd(pnd, req, &res)) {
+      if (!nfc_initiator_jewel_cmd(pnd, req, &res))
+      {
         bFailure = true;
       }
     }
@@ -202,7 +220,8 @@ int main(int argc, const char *argv[])
   bool bReadAction;
   FILE *pfDump;
 
-  if (argc < 3) {
+  if (argc < 3)
+  {
     printf("\n");
     printf("%s r|w <dump.jwd>\n", argv[0]);
     printf("\n");
@@ -214,22 +233,28 @@ int main(int argc, const char *argv[])
 
   DBG("\nChecking arguments and settings\n");
 
-  bReadAction = tolower((int)((unsigned char) * (argv[1])) == 'r');
+  bReadAction = tolower((int)((unsigned char)*(argv[1])) == 'r');
 
-  if (bReadAction) {
-    if (nfc_secure_memset(&ttDump, 0x00, sizeof(ttDump)) < 0) {
+  if (bReadAction)
+  {
+    if (nfc_secure_memset(&ttDump, 0x00, sizeof(ttDump)) < 0)
+    {
       ERR("Failed to initialize dump structure");
       exit(EXIT_FAILURE);
     }
-  } else {
+  }
+  else
+  {
     pfDump = fopen(argv[2], "rb");
 
-    if (pfDump == NULL) {
+    if (pfDump == NULL)
+    {
       ERR("Could not open dump file: %s\n", argv[2]);
       exit(EXIT_FAILURE);
     }
 
-    if (fread(&ttDump, 1, sizeof(ttDump), pfDump) != sizeof(ttDump)) {
+    if (fread(&ttDump, 1, sizeof(ttDump), pfDump) != sizeof(ttDump))
+    {
       ERR("Could not read from dump file: %s\n", argv[2]);
       fclose(pfDump);
       exit(EXIT_FAILURE);
@@ -240,20 +265,23 @@ int main(int argc, const char *argv[])
 
   nfc_context *context;
   nfc_init(&context);
-  if (context == NULL) {
+  if (context == NULL)
+  {
     ERR("Unable to init libnfc (malloc)");
     exit(EXIT_FAILURE);
   }
 
   // Try to open the NFC device
   pnd = nfc_open(context, NULL);
-  if (pnd == NULL) {
+  if (pnd == NULL)
+  {
     ERR("Error opening NFC device");
     nfc_exit(context);
     exit(EXIT_FAILURE);
   }
 
-  if (nfc_initiator_init(pnd) < 0) {
+  if (nfc_initiator_init(pnd) < 0)
+  {
     nfc_perror(pnd, "nfc_initiator_init");
     nfc_close(pnd);
     nfc_exit(context);
@@ -261,7 +289,8 @@ int main(int argc, const char *argv[])
   }
 
   // Let the device only try once to find a tag
-  if (nfc_device_set_property_bool(pnd, NP_INFINITE_SELECT, false) < 0) {
+  if (nfc_device_set_property_bool(pnd, NP_INFINITE_SELECT, false) < 0)
+  {
     nfc_perror(pnd, "nfc_device_set_property_bool");
     nfc_close(pnd);
     nfc_exit(context);
@@ -271,7 +300,8 @@ int main(int argc, const char *argv[])
   printf("NFC device: %s opened\n", nfc_device_get_name(pnd));
 
   // Try to find a Jewel tag
-  if (nfc_initiator_select_passive_target(pnd, nmJewel, NULL, 0, &nt) <= 0) {
+  if (nfc_initiator_select_passive_target(pnd, nmJewel, NULL, 0, &nt) <= 0)
+  {
     ERR("no tag was found\n");
     nfc_close(pnd);
     nfc_exit(context);
@@ -281,23 +311,28 @@ int main(int argc, const char *argv[])
   // Get the info from the current tag
   printf("Found Jewel card with UID: ");
   size_t szPos;
-  for (szPos = 0; szPos < 4; szPos++) {
+  for (szPos = 0; szPos < 4; szPos++)
+  {
     printf("%02x", nt.nti.nji.btId[szPos]);
   }
   printf("\n");
 
-  if (bReadAction) {
-    if (read_card()) {
+  if (bReadAction)
+  {
+    if (read_card())
+    {
       printf("Writing data to file: %s ... ", argv[2]);
       fflush(stdout);
       pfDump = fopen(argv[2], "wb");
-      if (pfDump == NULL) {
+      if (pfDump == NULL)
+      {
         printf("Could not open file: %s\n", argv[2]);
         nfc_close(pnd);
         nfc_exit(context);
         exit(EXIT_FAILURE);
       }
-      if (fwrite(&ttDump, 1, sizeof(ttDump), pfDump) != sizeof(ttDump)) {
+      if (fwrite(&ttDump, 1, sizeof(ttDump), pfDump) != sizeof(ttDump))
+      {
         printf("Could not write to file: %s\n", argv[2]);
         fclose(pfDump);
         nfc_close(pnd);
@@ -307,7 +342,9 @@ int main(int argc, const char *argv[])
       fclose(pfDump);
       printf("Done.\n");
     }
-  } else {
+  }
+  else
+  {
     write_card();
   }
 

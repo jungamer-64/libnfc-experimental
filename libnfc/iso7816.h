@@ -22,22 +22,24 @@
  *
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
+ *
  */
 
 /**
-* @file iso7816.h
-* @brief Defines some macros extracted for ISO/IEC 7816-4
-*/
+ * @file iso7816.h
+ * @brief ISO/IEC 7816 constants and definitions
+ */
 
-#ifndef __LIBNFC_ISO7816_H__
-#define __LIBNFC_ISO7816_H__
+#ifndef __NFC_ISO7816_H__
+#define __NFC_ISO7816_H__
 
-#define ISO7816_C_APDU_COMMAND_HEADER_LEN 4
-#define ISO7816_SHORT_APDU_MAX_DATA_LEN 256
-#define ISO7816_SHORT_C_APDU_MAX_OVERHEAD 2
-#define ISO7816_SHORT_R_APDU_RESPONSE_TRAILER_LEN 2
+// ISO 7816-3 / 7816-4 APDU length constants
+// Short APDU format (as per ISO 7816-3)
+#define ISO7816_SHORT_C_APDU_MAX_LEN   261  /* CLA + INS + P1 + P2 + Lc (1 byte) + Data (255 bytes) + Le (1 byte) */
+#define ISO7816_SHORT_R_APDU_MAX_LEN   258  /* Data (256 bytes) + SW1 + SW2 */
 
-#define ISO7816_SHORT_C_APDU_MAX_LEN (ISO7816_C_APDU_COMMAND_HEADER_LEN + ISO7816_SHORT_APDU_MAX_DATA_LEN + ISO7816_SHORT_C_APDU_MAX_OVERHEAD)
-#define ISO7816_SHORT_R_APDU_MAX_LEN (ISO7816_SHORT_APDU_MAX_DATA_LEN + ISO7816_SHORT_R_APDU_RESPONSE_TRAILER_LEN)
+// Extended APDU format (as per ISO 7816-3 amendment 1)
+#define ISO7816_EXT_C_APDU_MAX_LEN     65544 /* CLA + INS + P1 + P2 + Lc (3 bytes) + Data (65535 bytes) + Le (2 bytes) */
+#define ISO7816_EXT_R_APDU_MAX_LEN     65538 /* Data (65536 bytes) + SW1 + SW2 */
 
-#endif /* !__LIBNFC_ISO7816_H__ */
+#endif /* __NFC_ISO7816_H__ */

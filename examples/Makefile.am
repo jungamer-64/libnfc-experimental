@@ -90,18 +90,19 @@ quick_start_example2_LDADD =  $(top_builddir)/libnfc/libnfc.la \
 		  $(top_builddir)/utils/libnfcutils.la
 
 
-dist_man_MANS = \
-		nfc-anticol.1 \
-		nfc-dep-initiator.1 \
-		nfc-dep-target.1 \
-		nfc-emulate-tag.1 \
-		nfc-emulate-uid.1 \
-		nfc-poll.1 \
-		nfc-relay.1 \
-		nfc-mfsetuid.1 \
-		pn53x-diagnose.1 \
-		pn53x-sam.1 \
-		pn53x-tamashell.1 \
-		nfc-emulate-forum-tag2.1
+# Man pages disabled - files not present in repository
+# dist_man_MANS = \
+# 		nfc-anticol.1 \
+# 		nfc-dep-initiator.1 \
+# 		nfc-dep-target.1 \
+# 		nfc-emulate-tag.1 \
+# 		nfc-emulate-uid.1 \
+# 		nfc-poll.1 \
+# 		nfc-relay.1 \
+# 		nfc-mfsetuid.1 \
+# 		pn53x-diagnose.1 \
+# 		pn53x-sam.1 \
+# 		pn53x-tamashell.1 \
+# 		nfc-emulate-forum-tag2.1
 
 EXTRA_DIST = CMakeLists.txt

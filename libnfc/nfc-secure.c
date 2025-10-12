@@ -473,3 +473,30 @@ int nfc_secure_memset(void *ptr, int val, size_t size)
 
   return NFC_SECURE_SUCCESS;
 }
+
+/**
+ * @brief Safe strlen that prevents buffer over-read
+ *
+ * @param str      String to measure (may be NULL)
+ * @param maxlen   Maximum bytes to scan
+ * @return Length of string up to first null terminator,
+ *         or maxlen if no null terminator found
+ *
+ * @note This is similar to POSIX strnlen() but with guaranteed availability
+ * @note If str is NULL, returns 0
+ *
+ * @security Prevents buffer over-read by limiting memory scan
+ */
+size_t
+nfc_safe_strlen(const char *str, size_t maxlen)
+{
+  if (str == NFC_NULL) {
+    return 0;
+  }
+
+  size_t len = 0;
+  while (len < maxlen && str[len] != '\0') {
+    len++;
+  }
+  return len;
+}

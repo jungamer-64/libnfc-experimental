@@ -1757,7 +1757,7 @@ int pn53x_initiator_select_passive_target_ext(struct nfc_device *pnd,
                                               nfc_target *pnt,
                                               int timeout)
 {
-  uint8_t abtTargetsData[PN53x_EXTENDED_FRAME__DATA_MAX_LEN];
+  uint8_t abtTargetsData[PN53x_EXTENDED_FRAME__DATA_MAX_LEN] = {0};
   size_t szTargetsData = sizeof(abtTargetsData);
   int res = 0;
   nfc_target nttmp;
@@ -1806,6 +1806,9 @@ int pn53x_initiator_select_passive_target_ext(struct nfc_device *pnd,
       if ((res = pn53x_transceive(pnd, pncmd_inpsl, sizeof(pncmd_inpsl), NULL, 0, 0)) < 0)
         return res;
     }
+
+    // Get target count (Tg) from InListPassiveTarget response
+    // At this point szTargetsData > 1, so abtTargetsData[0] is valid
     res = abtTargetsData[0]; // TargetCount = Tg from InListPassiveTarget answer
   }
 

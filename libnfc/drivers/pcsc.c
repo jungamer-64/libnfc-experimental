@@ -87,15 +87,15 @@
 #define LOG_CATEGORY "libnfc.driver.pcsc"
 
 static const char *supported_devices[] = {
-  "ACS ACR122",       // ACR122U & Touchatag, last version
-  "ACS ACR 38U-CCID", // Touchatag, early version
-  "ACS ACR38U-CCID",  // Touchatag, early version, under MacOSX
-  "ACS AET65",        // Touchatag using CCID driver version >= 1.4.6
-  "    CCID USB",     // ??
-  NULL
-};
+    "ACS ACR122",       // ACR122U & Touchatag, last version
+    "ACS ACR 38U-CCID", // Touchatag, early version
+    "ACS ACR38U-CCID",  // Touchatag, early version, under MacOSX
+    "ACS AET65",        // Touchatag using CCID driver version >= 1.4.6
+    "    CCID USB",     // ??
+    NULL};
 
-struct pcsc_data {
+struct pcsc_data
+{
   SCARDHANDLE hCard;
   SCARD_IO_REQUEST ioCard;
   DWORD dwShareMode;
@@ -113,7 +113,8 @@ const nfc_modulation_type pcsc_supported_mts[] = {NMT_ISO14443A, NMT_ISO14443B, 
 static SCARDCONTEXT *
 pcsc_get_scardcontext(void)
 {
-  if (_iSCardContextRefCount == 0) {
+  if (_iSCardContextRefCount == 0)
+  {
     if (SCardEstablishContext(SCARD_SCOPE_USER, NULL, NULL, &_SCardContext) != SCARD_S_SUCCESS)
       return NULL;
   }
@@ -125,9 +126,11 @@ pcsc_get_scardcontext(void)
 static void
 pcsc_free_scardcontext(void)
 {
-  if (_iSCardContextRefCount) {
+  if (_iSCardContextRefCount)
+  {
     _iSCardContextRefCount--;
-    if (!_iSCardContextRefCount) {
+    if (!_iSCardContextRefCount)
+    {
       SCardReleaseContext(_SCardContext);
     }
   }
@@ -145,10 +148,14 @@ static int pcsc_transmit(struct nfc_device *pnd, const uint8_t *tx, const size_t
   DWORD dw_rx_len = *rx_len;
   // in libfreefare, tx_len = 1, and it leads to 0x80100008 error, with PC/SC reader, the input tx_len at least two bytes for the SW value
   // so if found the reader is Feitian reader, we set to 2
-  if (is_pcsc_reader_vendor_feitian(pnd)) {
-    if (dw_rx_len == 1) {
+  if (is_pcsc_reader_vendor_feitian(pnd))
+  {
+    if (dw_rx_len == 1)
+    {
       dw_rx_len = 2;
-    } else {
+    }
+    else
+    {
       dw_rx_len += 2; // in libfreefare, some data length send not include sw1 and sw2, so add it.
     }
   }
@@ -157,7 +164,8 @@ static int pcsc_transmit(struct nfc_device *pnd, const uint8_t *tx, const size_t
 
   data->last_error = SCardTransmit(data->hCard, &data->ioCard, tx, tx_len,
                                    NULL, rx, &dw_rx_len);
-  if (data->last_error != SCARD_S_SUCCESS) {
+  if (data->last_error != SCARD_S_SUCCESS)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "PCSC transmit failed");
     return NFC_EIO;
   }
@@ -174,7 +182,8 @@ static int pcsc_get_status(struct nfc_device *pnd, int *target_present, uint8_t 
   DWORD dw_atr_len = *atr_len, reader_len, state, protocol;
 
   data->last_error = SCardStatus(data->hCard, NULL, &reader_len, &state, &protocol, atr, &dw_atr_len);
-  if (data->last_error != SCARD_S_SUCCESS && data->last_error != SCARD_W_RESET_CARD) {
+  if (data->last_error != SCARD_S_SUCCESS && data->last_error != SCARD_W_RESET_CARD)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Get status failed");
     return NFC_EIO;
   }
@@ -190,7 +199,8 @@ static int pcsc_reconnect(struct nfc_device *pnd, DWORD share_mode, DWORD protoc
   struct pcsc_data *data = pnd->driver_data;
 
   data->last_error = SCardReconnect(data->hCard, share_mode, protocol, disposition, &data->ioCard.dwProtocol);
-  if (data->last_error != SCARD_S_SUCCESS && data->last_error != SCARD_W_RESET_CARD) {
+  if (data->last_error != SCARD_S_SUCCESS && data->last_error != SCARD_W_RESET_CARD)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Reconnect failed");
     return NFC_EIO;
   }
@@ -212,7 +222,9 @@ static uint8_t pcsc_get_icc_type(const struct nfc_device *pnd)
 static bool is_pcsc_reader_vendor(const struct nfc_device *pnd, const char *target_vendor_name)
 {
   bool isTarget = false;
-  if (pnd == NULL || strlen(pnd->name) == 0) {
+  /* Safely check device name length with bounds check (CWE-126) */
+  if (pnd == NULL || nfc_safe_strlen(pnd->name, DEVICE_NAME_LENGTH) == 0)
+  {
     return isTarget;
   }
 
@@ -235,12 +247,14 @@ static int pcsc_get_atqa(struct nfc_device *pnd, uint8_t *atqa, size_t atqa_len)
   if (pnd->last_error != NFC_SUCCESS)
     return pnd->last_error;
 
-  if (resp_len < 2) {
+  if (resp_len < 2)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Reader doesn't support request for ATQA");
     pnd->last_error = NFC_EDEVNOTSUPP;
     return pnd->last_error;
   }
-  if (atqa_len < resp_len - 2) {
+  if (atqa_len < resp_len - 2)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "ATQA length is wrong");
     pnd->last_error = NFC_ESOFT;
     return pnd->last_error;
@@ -248,7 +262,8 @@ static int pcsc_get_atqa(struct nfc_device *pnd, uint8_t *atqa, size_t atqa_len)
 
   // Safe copy ATQA data (PC/SC response minus SW1SW2)
   size_t atqa_data_len = resp_len - 2;
-  if (nfc_safe_memcpy(atqa, atqa_len, resp, atqa_data_len) < 0) {
+  if (nfc_safe_memcpy(atqa, atqa_len, resp, atqa_data_len) < 0)
+  {
     pnd->last_error = NFC_ECHIP;
     return pnd->last_error;
   }
@@ -266,24 +281,28 @@ static int pcsc_get_ats(struct nfc_device *pnd, uint8_t *ats, size_t ats_len)
   if (pnd->last_error != NFC_SUCCESS)
     return pnd->last_error;
 
-  if (resp_len <= 2) {
+  if (resp_len <= 2)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Reader doesn't support request for ATS");
     pnd->last_error = NFC_EDEVNOTSUPP;
     return pnd->last_error;
   }
-  if (ats_len < resp_len - 2) {
+  if (ats_len < resp_len - 2)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "ATS length is wrong");
     pnd->last_error = NFC_ESOFT;
     return pnd->last_error;
   }
 
   // Safe copy ATS data (skip TL byte, minus SW1SW2)
-  if (resp_len < 3) {
+  if (resp_len < 3)
+  {
     pnd->last_error = NFC_ESOFT;
     return pnd->last_error;
   }
   size_t ats_data_len = resp_len - 3;
-  if (nfc_safe_memcpy(ats, ats_len, resp + 1, ats_data_len) < 0) {
+  if (nfc_safe_memcpy(ats, ats_len, resp + 1, ats_data_len) < 0)
+  {
     pnd->last_error = NFC_ECHIP;
     return pnd->last_error;
   }
@@ -301,12 +320,14 @@ static int pcsc_get_sak(struct nfc_device *pnd, uint8_t *sak, size_t sak_len)
   if (pnd->last_error != NFC_SUCCESS)
     return pnd->last_error;
 
-  if (resp_len < 2) {
+  if (resp_len < 2)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Reader doesn't support request for SAK");
     pnd->last_error = NFC_EDEVNOTSUPP;
     return pnd->last_error;
   }
-  if (sak_len < resp_len - 2) {
+  if (sak_len < resp_len - 2)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "SAK length is wrong");
     pnd->last_error = NFC_ESOFT;
     return pnd->last_error;
@@ -314,7 +335,8 @@ static int pcsc_get_sak(struct nfc_device *pnd, uint8_t *sak, size_t sak_len)
 
   // Safe copy SAK data (PC/SC response minus SW1SW2)
   size_t sak_data_len = resp_len - 2;
-  if (nfc_safe_memcpy(sak, sak_len, resp, sak_data_len) < 0) {
+  if (nfc_safe_memcpy(sak, sak_len, resp, sak_data_len) < 0)
+  {
     pnd->last_error = NFC_ECHIP;
     return pnd->last_error;
   }
@@ -331,12 +353,14 @@ static int pcsc_get_uid(struct nfc_device *pnd, uint8_t *uid, size_t uid_len)
   if (pnd->last_error != NFC_SUCCESS)
     return pnd->last_error;
 
-  if (resp_len < 2) {
+  if (resp_len < 2)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Reader doesn't support request for UID");
     pnd->last_error = NFC_EDEVNOTSUPP;
     return pnd->last_error;
   }
-  if (uid_len < resp_len - 2) {
+  if (uid_len < resp_len - 2)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "UID too big");
     pnd->last_error = NFC_ESOFT;
     return pnd->last_error;
@@ -344,7 +368,8 @@ static int pcsc_get_uid(struct nfc_device *pnd, uint8_t *uid, size_t uid_len)
 
   // Safe copy UID data (PC/SC response minus SW1SW2)
   size_t uid_data_len = resp_len - 2;
-  if (nfc_safe_memcpy(uid, uid_len, resp, uid_data_len) < 0) {
+  if (nfc_safe_memcpy(uid, uid_len, resp, uid_data_len) < 0)
+  {
     pnd->last_error = NFC_ECHIP;
     return pnd->last_error;
   }
@@ -353,84 +378,95 @@ static int pcsc_get_uid(struct nfc_device *pnd, uint8_t *uid, size_t uid_len)
 
 static int pcsc_props_to_target(struct nfc_device *pnd, uint8_t it, const uint8_t *patr, size_t szatr, const uint8_t *puid, int szuid, const nfc_modulation_type nmt, nfc_target *pnt)
 {
-  if (NULL != pnt) {
-    switch (nmt) {
-      case NMT_ISO14443A:
-        if ((it == ICC_TYPE_UNKNOWN || it == ICC_TYPE_14443A) && (szuid <= 0 || szuid == 4 || szuid == 7 || szuid == 10) && NULL != patr && szatr >= 5 && patr[0] == 0x3B && patr[1] == (0x80 | ((uint8_t)(szatr - 5))) && patr[2] == 0x80 && patr[3] == 0x01) {
-          // Safe struct initialization (ISO14443A)
-          if (nfc_secure_memset(pnt, 0x00, sizeof(*pnt)) < 0)
+  if (NULL != pnt)
+  {
+    switch (nmt)
+    {
+    case NMT_ISO14443A:
+      if ((it == ICC_TYPE_UNKNOWN || it == ICC_TYPE_14443A) && (szuid <= 0 || szuid == 4 || szuid == 7 || szuid == 10) && NULL != patr && szatr >= 5 && patr[0] == 0x3B && patr[1] == (0x80 | ((uint8_t)(szatr - 5))) && patr[2] == 0x80 && patr[3] == 0x01)
+      {
+        // Safe struct initialization (ISO14443A)
+        if (nfc_secure_memset(pnt, 0x00, sizeof(*pnt)) < 0)
+          return NFC_ECHIP;
+        pnt->nm.nmt = NMT_ISO14443A;
+        pnt->nm.nbr = pcsc_supported_brs[0];
+        if (szuid > 0)
+        {
+          // Safe copy UID to target structure (4/7/10 bytes typical)
+          if (nfc_safe_memcpy(pnt->nti.nai.abtUid, sizeof(pnt->nti.nai.abtUid), puid, szuid) < 0)
             return NFC_ECHIP;
-          pnt->nm.nmt = NMT_ISO14443A;
-          pnt->nm.nbr = pcsc_supported_brs[0];
-          if (szuid > 0) {
-            // Safe copy UID to target structure (4/7/10 bytes typical)
-            if (nfc_safe_memcpy(pnt->nti.nai.abtUid, sizeof(pnt->nti.nai.abtUid), puid, szuid) < 0)
+          pnt->nti.nai.szUidLen = szuid;
+        }
+        if (is_pcsc_reader_vendor_feitian(pnd))
+        {
+          uint8_t atqa[2];
+          pcsc_get_atqa(pnd, atqa, sizeof(atqa));
+          // ATQA Coding of NXP Contactless Card ICs
+          if (atqa[0] == 0x00 || atqa[0] == 0x03)
+          {
+            // Safe copy ATQA (2 bytes fixed)
+            if (nfc_safe_memcpy(pnt->nti.nai.abtAtqa, sizeof(pnt->nti.nai.abtAtqa), atqa, 2) < 0)
               return NFC_ECHIP;
-            pnt->nti.nai.szUidLen = szuid;
           }
-          if (is_pcsc_reader_vendor_feitian(pnd)) {
-            uint8_t atqa[2];
-            pcsc_get_atqa(pnd, atqa, sizeof(atqa));
-            // ATQA Coding of NXP Contactless Card ICs
-            if (atqa[0] == 0x00 || atqa[0] == 0x03) {
-              // Safe copy ATQA (2 bytes fixed)
-              if (nfc_safe_memcpy(pnt->nti.nai.abtAtqa, sizeof(pnt->nti.nai.abtAtqa), atqa, 2) < 0)
-                return NFC_ECHIP;
-            } else {
-              pnt->nti.nai.abtAtqa[0] = atqa[1];
-              pnt->nti.nai.abtAtqa[1] = atqa[0];
-            }
-
-            uint8_t sak[1];
-            pcsc_get_sak(pnd, sak, sizeof(sak));
-            pnt->nti.nai.btSak = sak[0];
-            uint8_t ats[256];
-            int ats_len = pcsc_get_ats(pnd, ats, sizeof(ats));
-            ats_len = (ats_len > 0 ? ats_len : 0); // The reader may not support to get ATS
-            // Safe copy ATS data (variable size, may be 0)
-            if (nfc_safe_memcpy(pnt->nti.nai.abtAts, sizeof(pnt->nti.nai.abtAts), ats, ats_len) < 0)
-              return NFC_ECHIP;
-            pnt->nti.nai.szAtsLen = ats_len;
-          } else {
-            /* SAK_ISO14443_4_COMPLIANT */
-            pnt->nti.nai.btSak = 0x20;
-            /* Choose TL, TA, TB, TC according to Mifare DESFire */
-            // Safe copy DESFire defaults (fixed 4 bytes)
-            if (nfc_safe_memcpy(pnt->nti.nai.abtAts, sizeof(pnt->nti.nai.abtAts), "\x75\x77\x81\x02", 4) < 0)
-              return NFC_ECHIP;
-            /* copy historical bytes */
-            // Safe copy historical bytes with compound offset
-            if (szatr < 5)
-              return NFC_EINVARG;
-            size_t hist_len = szatr - 5;
-            if (nfc_safe_memcpy(pnt->nti.nai.abtAts + 4, sizeof(pnt->nti.nai.abtAts) - 4, patr + 4, hist_len) < 0)
-              return NFC_ECHIP;
-            pnt->nti.nai.szAtsLen = 4 + (uint8_t)hist_len;
+          else
+          {
+            pnt->nti.nai.abtAtqa[0] = atqa[1];
+            pnt->nti.nai.abtAtqa[1] = atqa[0];
           }
 
-          return NFC_SUCCESS;
+          uint8_t sak[1];
+          pcsc_get_sak(pnd, sak, sizeof(sak));
+          pnt->nti.nai.btSak = sak[0];
+          uint8_t ats[256];
+          int ats_len = pcsc_get_ats(pnd, ats, sizeof(ats));
+          ats_len = (ats_len > 0 ? ats_len : 0); // The reader may not support to get ATS
+          // Safe copy ATS data (variable size, may be 0)
+          if (nfc_safe_memcpy(pnt->nti.nai.abtAts, sizeof(pnt->nti.nai.abtAts), ats, ats_len) < 0)
+            return NFC_ECHIP;
+          pnt->nti.nai.szAtsLen = ats_len;
         }
-        break;
-      case NMT_ISO14443B:
-        if ((ICC_TYPE_UNKNOWN == 0 || ICC_TYPE_14443B == 6) && (szuid <= 0 || szuid == 8) && NULL != patr && szatr == 5 + 8 && patr[0] == 0x3B && patr[1] == (0x80 | 0x08) && patr[2] == 0x80 && patr[3] == 0x01) {
-          // Safe struct initialization (ISO14443B)
-          if (nfc_secure_memset(pnt, 0x00, sizeof(*pnt)) < 0)
+        else
+        {
+          /* SAK_ISO14443_4_COMPLIANT */
+          pnt->nti.nai.btSak = 0x20;
+          /* Choose TL, TA, TB, TC according to Mifare DESFire */
+          // Safe copy DESFire defaults (fixed 4 bytes)
+          if (nfc_safe_memcpy(pnt->nti.nai.abtAts, sizeof(pnt->nti.nai.abtAts), "\x75\x77\x81\x02", 4) < 0)
             return NFC_ECHIP;
-          pnt->nm.nmt = NMT_ISO14443B;
-          pnt->nm.nbr = pcsc_supported_brs[0];
-          // Safe copy ApplicationData (fixed 4 bytes)
-          if (nfc_safe_memcpy(pnt->nti.nbi.abtApplicationData, sizeof(pnt->nti.nbi.abtApplicationData), patr + 4, 4) < 0)
+          /* copy historical bytes */
+          // Safe copy historical bytes with compound offset
+          if (szatr < 5)
+            return NFC_EINVARG;
+          size_t hist_len = szatr - 5;
+          if (nfc_safe_memcpy(pnt->nti.nai.abtAts + 4, sizeof(pnt->nti.nai.abtAts) - 4, patr + 4, hist_len) < 0)
             return NFC_ECHIP;
-          // Safe copy ProtocolInfo (fixed 3 bytes)
-          if (nfc_safe_memcpy(pnt->nti.nbi.abtProtocolInfo, sizeof(pnt->nti.nbi.abtProtocolInfo), patr + 8, 3) < 0)
-            return NFC_ECHIP;
-          /* PI_ISO14443_4_SUPPORTED */
-          pnt->nti.nbi.abtProtocolInfo[1] = 0x01;
-          return NFC_SUCCESS;
+          pnt->nti.nai.szAtsLen = 4 + (uint8_t)hist_len;
         }
-        break;
-      default:
-        break;
+
+        return NFC_SUCCESS;
+      }
+      break;
+    case NMT_ISO14443B:
+      if ((ICC_TYPE_UNKNOWN == 0 || ICC_TYPE_14443B == 6) && (szuid <= 0 || szuid == 8) && NULL != patr && szatr == 5 + 8 && patr[0] == 0x3B && patr[1] == (0x80 | 0x08) && patr[2] == 0x80 && patr[3] == 0x01)
+      {
+        // Safe struct initialization (ISO14443B)
+        if (nfc_secure_memset(pnt, 0x00, sizeof(*pnt)) < 0)
+          return NFC_ECHIP;
+        pnt->nm.nmt = NMT_ISO14443B;
+        pnt->nm.nbr = pcsc_supported_brs[0];
+        // Safe copy ApplicationData (fixed 4 bytes)
+        if (nfc_safe_memcpy(pnt->nti.nbi.abtApplicationData, sizeof(pnt->nti.nbi.abtApplicationData), patr + 4, 4) < 0)
+          return NFC_ECHIP;
+        // Safe copy ProtocolInfo (fixed 3 bytes)
+        if (nfc_safe_memcpy(pnt->nti.nbi.abtProtocolInfo, sizeof(pnt->nti.nbi.abtProtocolInfo), patr + 8, 3) < 0)
+          return NFC_ECHIP;
+        /* PI_ISO14443_4_SUPPORTED */
+        pnt->nti.nbi.abtProtocolInfo[1] = 0x01;
+        return NFC_SUCCESS;
+      }
+      break;
+    default:
+      break;
     }
   }
   return NFC_EINVARG;
@@ -461,7 +497,8 @@ pcsc_scan(const nfc_context *context, nfc_connstring connstrings[], const size_t
     return 0;
 
   // Test if context succeeded
-  if (!(pscc = pcsc_get_scardcontext())) {
+  if (!(pscc = pcsc_get_scardcontext()))
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_INFO, "Warning: %s", "PCSC context not found (make sure PCSC daemon is running).");
     return 0;
   }
@@ -471,18 +508,24 @@ pcsc_scan(const nfc_context *context, nfc_connstring connstrings[], const size_t
     return 0;
 
   size_t device_found = 0;
-  while ((acDeviceNames[szPos] != '\0') && (device_found < connstrings_len)) {
+  while ((acDeviceNames[szPos] != '\0') && (device_found < connstrings_len))
+  {
     bool bSupported = false;
-    for (i = 0; supported_devices[i] && !bSupported; i++) {
-      int l = strlen(supported_devices[i]);
+    for (i = 0; supported_devices[i] && !bSupported; i++)
+    {
+      /* Safely determine supported device name length (CWE-126) */
+      int l = (int)nfc_safe_strlen(supported_devices[i], 256);
       bSupported = 0 == !strncmp(supported_devices[i], acDeviceNames + szPos, l);
     }
 
-    if (bSupported) {
+    if (bSupported)
+    {
       // Supported non-ACR122 device found
       snprintf(connstrings[device_found], sizeof(nfc_connstring), "%s:%s", PCSC_DRIVER_NAME, acDeviceNames + szPos);
       device_found++;
-    } else {
+    }
+    else
+    {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Skipping PCSC device [%s] as it is supported by acr122_pcsc driver.", acDeviceNames + szPos);
     }
 
@@ -495,7 +538,8 @@ pcsc_scan(const nfc_context *context, nfc_connstring connstrings[], const size_t
   return device_found;
 }
 
-struct pcsc_descriptor {
+struct pcsc_descriptor
+{
   char *pcsc_device_name;
 };
 
@@ -505,48 +549,60 @@ pcsc_open(const nfc_context *context, const nfc_connstring connstring)
   struct pcsc_descriptor ndd;
   int connstring_decode_level = connstring_decode(connstring, PCSC_DRIVER_NAME, "pcsc", &ndd.pcsc_device_name, NULL);
 
-  if (connstring_decode_level < 1) {
+  if (connstring_decode_level < 1)
+  {
     return NULL;
   }
 
   nfc_connstring fullconnstring;
-  if (connstring_decode_level == 1) {
+  if (connstring_decode_level == 1)
+  {
     // Device was not specified, take the first one we can find
     size_t szDeviceFound = pcsc_scan(context, &fullconnstring, 1);
     if (szDeviceFound < 1)
       return NULL;
     connstring_decode_level = connstring_decode(fullconnstring, PCSC_DRIVER_NAME, "pcsc", &ndd.pcsc_device_name, NULL);
-    if (connstring_decode_level < 2) {
+    if (connstring_decode_level < 2)
+    {
       return NULL;
     }
-  } else {
+  }
+  else
+  {
     // Safe copy connection string (fixed size)
     if (nfc_safe_memcpy(fullconnstring, sizeof(nfc_connstring), connstring, sizeof(nfc_connstring)) < 0)
       return NULL;
   }
-  if (strlen(ndd.pcsc_device_name) < 5) {
+  /* Safely check device name length (CWE-126) */
+  if (nfc_safe_strlen(ndd.pcsc_device_name, 256) < 5)
+  {
     // We can assume it's a reader ID as pcsc_name always ends with "NN NN"
     // Device was not specified, only ID, retrieve it
     size_t index;
-    if (sscanf(ndd.pcsc_device_name, "%4" SCNuPTR, &index) != 1) {
+    if (sscanf(ndd.pcsc_device_name, "%4" SCNuPTR, &index) != 1)
+    {
       free(ndd.pcsc_device_name);
       return NULL;
     }
     nfc_connstring *ncs = malloc(sizeof(nfc_connstring) * (index + 1));
-    if (!ncs) {
+    if (!ncs)
+    {
       perror("malloc");
       free(ndd.pcsc_device_name);
       return NULL;
     }
     size_t szDeviceFound = pcsc_scan(context, ncs, index + 1);
-    if (szDeviceFound < index + 1) {
+    if (szDeviceFound < index + 1)
+    {
       free(ncs);
       free(ndd.pcsc_device_name);
       return NULL;
     }
-    size_t conn_len = strlen(ncs[index]);
+    /* Safely determine connection string length (CWE-126) */
+    size_t conn_len = nfc_safe_strlen(ncs[index], sizeof(nfc_connstring));
     size_t copy_len = (conn_len < sizeof(nfc_connstring) - 1) ? conn_len : (sizeof(nfc_connstring) - 1);
-    if (nfc_safe_memcpy(fullconnstring, sizeof(nfc_connstring), ncs[index], copy_len) < 0) {
+    if (nfc_safe_memcpy(fullconnstring, sizeof(nfc_connstring), ncs[index], copy_len) < 0)
+    {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy connection string");
       free(ncs);
       free(ndd.pcsc_device_name);
@@ -556,19 +612,22 @@ pcsc_open(const nfc_context *context, const nfc_connstring connstring)
     free(ncs);
     connstring_decode_level = connstring_decode(fullconnstring, PCSC_DRIVER_NAME, "pcsc", &ndd.pcsc_device_name, NULL);
 
-    if (connstring_decode_level < 2) {
+    if (connstring_decode_level < 2)
+    {
       free(ndd.pcsc_device_name);
       return NULL;
     }
   }
 
   nfc_device *pnd = nfc_device_new(context, fullconnstring);
-  if (!pnd) {
+  if (!pnd)
+  {
     perror("malloc");
     goto error;
   }
   pnd->driver_data = malloc(sizeof(struct pcsc_data));
-  if (!pnd->driver_data) {
+  if (!pnd->driver_data)
+  {
     perror("malloc");
     goto error;
   }
@@ -579,8 +638,9 @@ pcsc_open(const nfc_context *context, const nfc_connstring connstring)
   // Test if context succeeded
   if (!(pscc = pcsc_get_scardcontext()))
     goto error;
-  DRIVER_DATA(pnd)->last_error = SCardConnect(*pscc, ndd.pcsc_device_name, SCARD_SHARE_DIRECT, 0 | 1, &(DRIVER_DATA(pnd)->hCard), (void *) & (DRIVER_DATA(pnd)->ioCard.dwProtocol));
-  if (DRIVER_DATA(pnd)->last_error != SCARD_S_SUCCESS) {
+  DRIVER_DATA(pnd)->last_error = SCardConnect(*pscc, ndd.pcsc_device_name, SCARD_SHARE_DIRECT, 0 | 1, &(DRIVER_DATA(pnd)->hCard), (void *)&(DRIVER_DATA(pnd)->ioCard.dwProtocol));
+  if (DRIVER_DATA(pnd)->last_error != SCARD_S_SUCCESS)
+  {
     // We can not connect to this device.
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "PCSC connect failed");
     goto error;
@@ -617,132 +677,133 @@ static const char *stringify_error(const LONG pcscError)
   static char strError[75];
   const char *msg = NULL;
 
-  switch (pcscError) {
-    case SCARD_S_SUCCESS:
-      msg = "Command successful.";
-      break;
-    case SCARD_F_INTERNAL_ERROR:
-      msg = "Internal error.";
-      break;
-    case SCARD_E_CANCELLED:
-      msg = "Command cancelled.";
-      break;
-    case SCARD_E_INVALID_HANDLE:
-      msg = "Invalid handle.";
-      break;
-    case SCARD_E_INVALID_PARAMETER:
-      msg = "Invalid parameter given.";
-      break;
-    case SCARD_E_INVALID_TARGET:
-      msg = "Invalid target given.";
-      break;
-    case SCARD_E_NO_MEMORY:
-      msg = "Not enough memory.";
-      break;
-    case SCARD_F_WAITED_TOO_LONG:
-      msg = "Waited too long.";
-      break;
-    case SCARD_E_INSUFFICIENT_BUFFER:
-      msg = "Insufficient buffer.";
-      break;
-    case SCARD_E_UNKNOWN_READER:
-      msg = "Unknown reader specified.";
-      break;
-    case SCARD_E_TIMEOUT:
-      msg = "Command timeout.";
-      break;
-    case SCARD_E_SHARING_VIOLATION:
-      msg = "Sharing violation.";
-      break;
-    case SCARD_E_NO_SMARTCARD:
-      msg = "No smart card inserted.";
-      break;
-    case SCARD_E_UNKNOWN_CARD:
-      msg = "Unknown card.";
-      break;
-    case SCARD_E_CANT_DISPOSE:
-      msg = "Cannot dispose handle.";
-      break;
-    case SCARD_E_PROTO_MISMATCH:
-      msg = "Card protocol mismatch.";
-      break;
-    case SCARD_E_NOT_READY:
-      msg = "Subsystem not ready.";
-      break;
-    case SCARD_E_INVALID_VALUE:
-      msg = "Invalid value given.";
-      break;
-    case SCARD_E_SYSTEM_CANCELLED:
-      msg = "System cancelled.";
-      break;
-    case SCARD_F_COMM_ERROR:
-      msg = "RPC transport error.";
-      break;
-    case SCARD_F_UNKNOWN_ERROR:
-      msg = "Unknown error.";
-      break;
-    case SCARD_E_INVALID_ATR:
-      msg = "Invalid ATR.";
-      break;
-    case SCARD_E_NOT_TRANSACTED:
-      msg = "Transaction failed.";
-      break;
-    case SCARD_E_READER_UNAVAILABLE:
-      msg = "Reader is unavailable.";
-      break;
-    /* case SCARD_P_SHUTDOWN: */
-    case SCARD_E_PCI_TOO_SMALL:
-      msg = "PCI struct too small.";
-      break;
-    case SCARD_E_READER_UNSUPPORTED:
-      msg = "Reader is unsupported.";
-      break;
-    case SCARD_E_DUPLICATE_READER:
-      msg = "Reader already exists.";
-      break;
-    case SCARD_E_CARD_UNSUPPORTED:
-      msg = "Card is unsupported.";
-      break;
-    case SCARD_E_NO_SERVICE:
-      msg = "Service not available.";
-      break;
-    case SCARD_E_SERVICE_STOPPED:
-      msg = "Service was stopped.";
-      break;
-    /* case SCARD_E_UNEXPECTED: */
-    /* case SCARD_E_ICC_CREATEORDER: */
-    /* case SCARD_E_UNSUPPORTED_FEATURE: */
-    /* case SCARD_E_DIR_NOT_FOUND: */
-    /* case SCARD_E_NO_DIR: */
-    /* case SCARD_E_NO_FILE: */
-    /* case SCARD_E_NO_ACCESS: */
-    /* case SCARD_E_WRITE_TOO_MANY: */
-    /* case SCARD_E_BAD_SEEK: */
-    /* case SCARD_E_INVALID_CHV: */
-    /* case SCARD_E_UNKNOWN_RES_MNG: */
-    /* case SCARD_E_NO_SUCH_CERTIFICATE: */
-    /* case SCARD_E_CERTIFICATE_UNAVAILABLE: */
-    case SCARD_E_NO_READERS_AVAILABLE:
-      msg = "Cannot find a smart card reader.";
-      break;
-    /* case SCARD_E_COMM_DATA_LOST: */
-    /* case SCARD_E_NO_KEY_CONTAINER: */
-    /* case SCARD_E_SERVER_TOO_BUSY: */
-    case SCARD_W_UNSUPPORTED_CARD:
-      msg = "Card is not supported.";
-      break;
-    case SCARD_W_UNRESPONSIVE_CARD:
-      msg = "Card is unresponsive.";
-      break;
-    case SCARD_W_UNPOWERED_CARD:
-      msg = "Card is unpowered.";
-      break;
-    case SCARD_W_RESET_CARD:
-      msg = "Card was reset.";
-      break;
-    case SCARD_W_REMOVED_CARD:
-      msg = "Card was removed.";
-      break;
+  switch (pcscError)
+  {
+  case SCARD_S_SUCCESS:
+    msg = "Command successful.";
+    break;
+  case SCARD_F_INTERNAL_ERROR:
+    msg = "Internal error.";
+    break;
+  case SCARD_E_CANCELLED:
+    msg = "Command cancelled.";
+    break;
+  case SCARD_E_INVALID_HANDLE:
+    msg = "Invalid handle.";
+    break;
+  case SCARD_E_INVALID_PARAMETER:
+    msg = "Invalid parameter given.";
+    break;
+  case SCARD_E_INVALID_TARGET:
+    msg = "Invalid target given.";
+    break;
+  case SCARD_E_NO_MEMORY:
+    msg = "Not enough memory.";
+    break;
+  case SCARD_F_WAITED_TOO_LONG:
+    msg = "Waited too long.";
+    break;
+  case SCARD_E_INSUFFICIENT_BUFFER:
+    msg = "Insufficient buffer.";
+    break;
+  case SCARD_E_UNKNOWN_READER:
+    msg = "Unknown reader specified.";
+    break;
+  case SCARD_E_TIMEOUT:
+    msg = "Command timeout.";
+    break;
+  case SCARD_E_SHARING_VIOLATION:
+    msg = "Sharing violation.";
+    break;
+  case SCARD_E_NO_SMARTCARD:
+    msg = "No smart card inserted.";
+    break;
+  case SCARD_E_UNKNOWN_CARD:
+    msg = "Unknown card.";
+    break;
+  case SCARD_E_CANT_DISPOSE:
+    msg = "Cannot dispose handle.";
+    break;
+  case SCARD_E_PROTO_MISMATCH:
+    msg = "Card protocol mismatch.";
+    break;
+  case SCARD_E_NOT_READY:
+    msg = "Subsystem not ready.";
+    break;
+  case SCARD_E_INVALID_VALUE:
+    msg = "Invalid value given.";
+    break;
+  case SCARD_E_SYSTEM_CANCELLED:
+    msg = "System cancelled.";
+    break;
+  case SCARD_F_COMM_ERROR:
+    msg = "RPC transport error.";
+    break;
+  case SCARD_F_UNKNOWN_ERROR:
+    msg = "Unknown error.";
+    break;
+  case SCARD_E_INVALID_ATR:
+    msg = "Invalid ATR.";
+    break;
+  case SCARD_E_NOT_TRANSACTED:
+    msg = "Transaction failed.";
+    break;
+  case SCARD_E_READER_UNAVAILABLE:
+    msg = "Reader is unavailable.";
+    break;
+  /* case SCARD_P_SHUTDOWN: */
+  case SCARD_E_PCI_TOO_SMALL:
+    msg = "PCI struct too small.";
+    break;
+  case SCARD_E_READER_UNSUPPORTED:
+    msg = "Reader is unsupported.";
+    break;
+  case SCARD_E_DUPLICATE_READER:
+    msg = "Reader already exists.";
+    break;
+  case SCARD_E_CARD_UNSUPPORTED:
+    msg = "Card is unsupported.";
+    break;
+  case SCARD_E_NO_SERVICE:
+    msg = "Service not available.";
+    break;
+  case SCARD_E_SERVICE_STOPPED:
+    msg = "Service was stopped.";
+    break;
+  /* case SCARD_E_UNEXPECTED: */
+  /* case SCARD_E_ICC_CREATEORDER: */
+  /* case SCARD_E_UNSUPPORTED_FEATURE: */
+  /* case SCARD_E_DIR_NOT_FOUND: */
+  /* case SCARD_E_NO_DIR: */
+  /* case SCARD_E_NO_FILE: */
+  /* case SCARD_E_NO_ACCESS: */
+  /* case SCARD_E_WRITE_TOO_MANY: */
+  /* case SCARD_E_BAD_SEEK: */
+  /* case SCARD_E_INVALID_CHV: */
+  /* case SCARD_E_UNKNOWN_RES_MNG: */
+  /* case SCARD_E_NO_SUCH_CERTIFICATE: */
+  /* case SCARD_E_CERTIFICATE_UNAVAILABLE: */
+  case SCARD_E_NO_READERS_AVAILABLE:
+    msg = "Cannot find a smart card reader.";
+    break;
+  /* case SCARD_E_COMM_DATA_LOST: */
+  /* case SCARD_E_NO_KEY_CONTAINER: */
+  /* case SCARD_E_SERVER_TOO_BUSY: */
+  case SCARD_W_UNSUPPORTED_CARD:
+    msg = "Card is not supported.";
+    break;
+  case SCARD_W_UNRESPONSIVE_CARD:
+    msg = "Card is unresponsive.";
+    break;
+  case SCARD_W_UNPOWERED_CARD:
+    msg = "Card is unpowered.";
+    break;
+  case SCARD_W_RESET_CARD:
+    msg = "Card was reset.";
+    break;
+  case SCARD_W_REMOVED_CARD:
+    msg = "Card was removed.";
+    break;
     /* case SCARD_W_SECURITY_VIOLATION: */
     /* case SCARD_W_WRONG_CHV: */
     /* case SCARD_W_CHV_BLOCKED: */
@@ -750,24 +811,31 @@ static const char *stringify_error(const LONG pcscError)
     /* case SCARD_W_CANCELLED_BY_USER: */
     /* case SCARD_W_CARD_NOT_AUTHENTICATED: */
 
-    case SCARD_E_UNSUPPORTED_FEATURE:
-      msg = "Feature not supported.";
-      break;
-    default:
-      (void)snprintf(strError, sizeof(strError) - 1, "Unknown error: 0x%08lX",
-                     pcscError);
+  case SCARD_E_UNSUPPORTED_FEATURE:
+    msg = "Feature not supported.";
+    break;
+  default:
+    (void)snprintf(strError, sizeof(strError) - 1, "Unknown error: 0x%08lX",
+                   pcscError);
   };
 
-  if (msg) {
-    size_t msg_len = strlen(msg);
+  if (msg)
+  {
+    /* Safely determine error message length (CWE-126) */
+    size_t msg_len = nfc_safe_strlen(msg, sizeof(strError));
     size_t copy_len = (msg_len < sizeof(strError) - 1) ? msg_len : (sizeof(strError) - 1);
-    if (nfc_safe_memcpy(strError, sizeof(strError), msg, copy_len) < 0) {
+    if (nfc_safe_memcpy(strError, sizeof(strError), msg, copy_len) < 0)
+    {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Failed to copy error message");
       (void)snprintf(strError, sizeof(strError) - 1, "Unknown error: 0x%08lX", pcscError);
-    } else {
+    }
+    else
+    {
       strError[copy_len] = '\0';
     }
-  } else {
+  }
+  else
+  {
     (void)snprintf(strError, sizeof(strError) - 1, "Unknown error: 0x%08lX",
                    pcscError);
   }
@@ -807,14 +875,16 @@ static int pcsc_initiator_select_passive_target(struct nfc_device *pnd, const nf
   if (pnd->last_error != NFC_SUCCESS)
     return pnd->last_error;
 
-  if (!target_present) {
+  if (!target_present)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "No target present");
     return NFC_ENOTSUCHDEV;
   }
 
   uint8_t icc_type = pcsc_get_icc_type(pnd);
   int uid_len = pcsc_get_uid(pnd, uid, sizeof uid);
-  if (pcsc_props_to_target(pnd, icc_type, atr, atr_len, uid, uid_len, nm.nmt, pnt) != NFC_SUCCESS) {
+  if (pcsc_props_to_target(pnd, icc_type, atr, atr_len, uid, uid_len, nm.nmt, pnt) != NFC_SUCCESS)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Type of target not supported");
     return NFC_EDEVNOTSUPP;
   }
@@ -842,13 +912,15 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
   // PC/SC handles timeouts internally based on SCARD_SHARE_* mode
   (void)timeout;
 
-  if (is_pcsc_reader_vendor_feitian(pnd)) {
+  if (is_pcsc_reader_vendor_feitian(pnd))
+  {
     LOG_HEX(NFC_LOG_GROUP_COM, "not feitian reader pcsc apdu send", pbtTx, szTx);
 
     uint8_t apdu_data[256];
     uint8_t resp[256 + 2];
     size_t send_size = 0;
-    if (pbtTx[0] == 0x30) {
+    if (pbtTx[0] == 0x30)
+    {
       // read data
       apdu_data[0] = 0xFF;
       apdu_data[1] = 0xB0;
@@ -856,7 +928,9 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
       apdu_data[3] = pbtTx[1];
       apdu_data[4] = 0x10;
       send_size = 5;
-    } else if (pbtTx[0] == 0xA0 || pbtTx[0] == 0xA2) {
+    }
+    else if (pbtTx[0] == 0xA0 || pbtTx[0] == 0xA2)
+    {
       // write data
       apdu_data[0] = 0xFF;
       apdu_data[1] = 0xD6;
@@ -868,7 +942,9 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
       if (nfc_safe_memcpy(apdu_data + 5, sizeof(apdu_data) - 5, pbtTx + 2, write_data_len) < 0)
         return NFC_ECHIP;
       send_size = 5 + write_data_len;
-    } else if (pbtTx[0] == 0x60 || pbtTx[0] == 0x61 || pbtTx[0] == 0x1A) {
+    }
+    else if (pbtTx[0] == 0x60 || pbtTx[0] == 0x61 || pbtTx[0] == 0x1A)
+    {
       // Auth command
       // load pin first
       {
@@ -901,7 +977,9 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
       apdu_data[8] = pbtTx[0]; // type a or type b
       apdu_data[9] = 0x01;
       send_size = 10;
-    } else if (pbtTx[0] == 0xC0) {
+    }
+    else if (pbtTx[0] == 0xC0)
+    {
       // DECREMENT cmd
       apdu_data[0] = 0xFF;
       apdu_data[1] = 0xD7;
@@ -913,7 +991,9 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
       if (nfc_safe_memcpy(apdu_data + 5, sizeof(apdu_data) - 5, pbtTx + 2, dec_data_len) < 0)
         return NFC_ECHIP;
       send_size = 5 + dec_data_len;
-    } else if (pbtTx[0] == 0xC1) {
+    }
+    else if (pbtTx[0] == 0xC1)
+    {
       // INCREMENT cmd
       apdu_data[0] = 0xFF;
       apdu_data[1] = 0xD7;
@@ -925,7 +1005,9 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
       if (nfc_safe_memcpy(apdu_data + 5, sizeof(apdu_data) - 5, pbtTx + 2, inc_data_len) < 0)
         return NFC_ECHIP;
       send_size = 5 + inc_data_len;
-    } else if (pbtTx[0] == 0xC2) {
+    }
+    else if (pbtTx[0] == 0xC2)
+    {
       // STORE cmd
       apdu_data[0] = 0xFF;
       apdu_data[1] = 0xD8;
@@ -937,7 +1019,9 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
       if (nfc_safe_memcpy(apdu_data + 5, sizeof(apdu_data) - 5, pbtTx + 2, store_data_len) < 0)
         return NFC_ECHIP;
       send_size = 5 + store_data_len;
-    } else {
+    }
+    else
+    {
       // other cmd
       // Safe copy generic command data
       if (nfc_safe_memcpy(apdu_data, sizeof(apdu_data), pbtTx, szTx) < 0)
@@ -951,7 +1035,9 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
     // Safe copy response data
     if (nfc_safe_memcpy(pbtRx, szRx, resp, resp_len) < 0)
       return NFC_ECHIP;
-  } else {
+  }
+  else
+  {
     pnd->last_error = pcsc_transmit(pnd, pbtTx, szTx, pbtRx, &resp_len);
   }
   if (pnd->last_error != NFC_SUCCESS)
@@ -971,13 +1057,16 @@ static int pcsc_initiator_target_is_present(struct nfc_device *pnd, const nfc_ta
   if (pnd->last_error != NFC_SUCCESS)
     return pnd->last_error;
 
-  if (!target_present) {
+  if (!target_present)
+  {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "No target present");
     return NFC_ENOTSUCHDEV;
   }
 
-  if (pnt) {
-    if (pcsc_props_to_target(pnd, ICC_TYPE_UNKNOWN, atr, atr_len, NULL, 0, pnt->nm.nmt, &nt) != NFC_SUCCESS || pnt->nm.nmt != nt.nm.nmt || pnt->nm.nbr != nt.nm.nbr) {
+  if (pnt)
+  {
+    if (pcsc_props_to_target(pnd, ICC_TYPE_UNKNOWN, atr, atr_len, NULL, 0, pnt->nm.nmt, &nt) != NFC_SUCCESS || pnt->nm.nmt != nt.nm.nmt || pnt->nm.nbr != nt.nm.nbr)
+    {
       log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Target doesn't meet requirements");
       return NFC_ENOTSUCHDEV;
     }
@@ -988,38 +1077,40 @@ static int pcsc_initiator_target_is_present(struct nfc_device *pnd, const nfc_ta
 static int pcsc_device_set_property_bool(struct nfc_device *pnd, const nfc_property property, const bool bEnable)
 {
   (void)pnd;
-  switch (property) {
-    case NP_INFINITE_SELECT:
-      // ignore
+  switch (property)
+  {
+  case NP_INFINITE_SELECT:
+    // ignore
+    return NFC_SUCCESS;
+  case NP_AUTO_ISO14443_4:
+    if ((bEnable == true) || (is_pcsc_reader_vendor_feitian(pnd)))
       return NFC_SUCCESS;
-    case NP_AUTO_ISO14443_4:
-      if ((bEnable == true) || (is_pcsc_reader_vendor_feitian(pnd)))
-        return NFC_SUCCESS;
-      break;
-    case NP_EASY_FRAMING:
-      if ((bEnable == true) || (is_pcsc_reader_vendor_feitian(pnd)))
-        return NFC_SUCCESS;
-      break;
-    case NP_FORCE_ISO14443_A:
-    case NP_HANDLE_CRC:
-    case NP_HANDLE_PARITY:
-    case NP_FORCE_SPEED_106:
-      if (bEnable == true)
-        return NFC_SUCCESS;
-      break;
-    case NP_ACCEPT_INVALID_FRAMES:
-    case NP_ACCEPT_MULTIPLE_FRAMES:
-      if (bEnable == false)
-        return NFC_SUCCESS;
-      break;
-    case NP_ACTIVATE_FIELD:
-      if (bEnable == false) {
-        struct pcsc_data *data = pnd->driver_data;
-        pcsc_reconnect(pnd, data->dwShareMode, data->ioCard.dwProtocol, SCARD_RESET_CARD);
-      }
+    break;
+  case NP_EASY_FRAMING:
+    if ((bEnable == true) || (is_pcsc_reader_vendor_feitian(pnd)))
       return NFC_SUCCESS;
-    default:
-      break;
+    break;
+  case NP_FORCE_ISO14443_A:
+  case NP_HANDLE_CRC:
+  case NP_HANDLE_PARITY:
+  case NP_FORCE_SPEED_106:
+    if (bEnable == true)
+      return NFC_SUCCESS;
+    break;
+  case NP_ACCEPT_INVALID_FRAMES:
+  case NP_ACCEPT_MULTIPLE_FRAMES:
+    if (bEnable == false)
+      return NFC_SUCCESS;
+    break;
+  case NP_ACTIVATE_FIELD:
+    if (bEnable == false)
+    {
+      struct pcsc_data *data = pnd->driver_data;
+      pcsc_reconnect(pnd, data->dwShareMode, data->ioCard.dwProtocol, SCARD_RESET_CARD);
+    }
+    return NFC_SUCCESS;
+  default:
+    break;
   }
   return NFC_EDEVNOTSUPP;
 }
@@ -1058,7 +1149,8 @@ pcsc_get_information_about(nfc_device *pnd, char **pbuf)
   int res = NFC_SUCCESS;
   SCARDCONTEXT *pscc;
 
-  if (!(pscc = pcsc_get_scardcontext())) {
+  if (!(pscc = pcsc_get_scardcontext()))
+  {
     pnd->last_error = NFC_ESOFT;
     return pnd->last_error;
   }
@@ -1069,7 +1161,8 @@ pcsc_get_information_about(nfc_device *pnd, char **pbuf)
   SCardGetAttrib(data->hCard, SCARD_ATTR_VENDOR_IFD_SERIAL_NO, (LPBYTE)&serial, &serial_len);
 
   *pbuf = malloc(name_len + type_len + version_len + serial_len + 30);
-  if (!*pbuf) {
+  if (!*pbuf)
+  {
     res = NFC_ESOFT;
     goto error;
   }
@@ -1080,38 +1173,43 @@ pcsc_get_information_about(nfc_device *pnd, char **pbuf)
           "%s%s\n" // serial
           ,
           name && name_len > 0 && name[0] != '\0'
-          ? (char *)name
-          : "unknown model",
+              ? (char *)name
+              : "unknown model",
           version && version_len > 0 && version[0] != '\0'
-          ? " "
-          : "",
+              ? " "
+              : "",
           version_len > 0 ? (char *)version : "",
           type && type_len > 0 && type[0] != '\0'
-          ? (char *)type
-          : "unknown vendor",
+              ? (char *)type
+              : "unknown vendor",
           serial && serial_len > 0 && serial[0] != '\0'
-          ? "\nserial: "
-          : "",
+              ? "\nserial: "
+              : "",
           serial_len > 0 ? (char *)serial : "");
 
 error:
 #ifdef __APPLE__
-  if (pscc != NULL) {
+  if (pscc != NULL)
+  {
     SCardReleaseContext(*pscc);
   }
-  if (name != NULL) {
+  if (name != NULL)
+  {
     free(name);
     name = NULL;
   }
-  if (type != NULL) {
+  if (type != NULL)
+  {
     free(type);
     type = NULL;
   }
-  if (version != NULL) {
+  if (version != NULL)
+  {
     free(version);
     version = NULL;
   }
-  if (serial != NULL) {
+  if (serial != NULL)
+  {
     free(serial);
     serial = NULL;
   }
@@ -1127,37 +1225,37 @@ error:
 }
 
 const struct nfc_driver pcsc_driver = {
-  .name = PCSC_DRIVER_NAME,
-  .scan = pcsc_scan,
-  .open = pcsc_open,
-  .close = pcsc_close,
-  .strerror = pcsc_strerror,
+    .name = PCSC_DRIVER_NAME,
+    .scan = pcsc_scan,
+    .open = pcsc_open,
+    .close = pcsc_close,
+    .strerror = pcsc_strerror,
 
-  .initiator_init = pcsc_initiator_init,
-  .initiator_init_secure_element = NULL, // No secure-element support
-  .initiator_select_passive_target = pcsc_initiator_select_passive_target,
-  .initiator_poll_target = NULL,
-  .initiator_select_dep_target = NULL,
-  .initiator_deselect_target = NULL,
-  .initiator_transceive_bytes = pcsc_initiator_transceive_bytes,
-  .initiator_transceive_bits = NULL,
-  .initiator_transceive_bytes_timed = NULL,
-  .initiator_transceive_bits_timed = NULL,
-  .initiator_target_is_present = pcsc_initiator_target_is_present,
+    .initiator_init = pcsc_initiator_init,
+    .initiator_init_secure_element = NULL, // No secure-element support
+    .initiator_select_passive_target = pcsc_initiator_select_passive_target,
+    .initiator_poll_target = NULL,
+    .initiator_select_dep_target = NULL,
+    .initiator_deselect_target = NULL,
+    .initiator_transceive_bytes = pcsc_initiator_transceive_bytes,
+    .initiator_transceive_bits = NULL,
+    .initiator_transceive_bytes_timed = NULL,
+    .initiator_transceive_bits_timed = NULL,
+    .initiator_target_is_present = pcsc_initiator_target_is_present,
 
-  .target_init = NULL,
-  .target_send_bytes = NULL,
-  .target_receive_bytes = NULL,
-  .target_send_bits = NULL,
-  .target_receive_bits = NULL,
+    .target_init = NULL,
+    .target_send_bytes = NULL,
+    .target_receive_bytes = NULL,
+    .target_send_bits = NULL,
+    .target_receive_bits = NULL,
 
-  .device_set_property_bool = pcsc_device_set_property_bool,
-  .device_set_property_int = NULL,
-  .get_supported_modulation = pcsc_get_supported_modulation,
-  .get_supported_baud_rate = pcsc_get_supported_baud_rate,
-  .device_get_information_about = pcsc_get_information_about,
+    .device_set_property_bool = pcsc_device_set_property_bool,
+    .device_set_property_int = NULL,
+    .get_supported_modulation = pcsc_get_supported_modulation,
+    .get_supported_baud_rate = pcsc_get_supported_baud_rate,
+    .device_get_information_about = pcsc_get_information_about,
 
-  .abort_command = NULL, // Abort is not supported in this driver
-  .idle = NULL,
-  .powerdown = NULL,
+    .abort_command = NULL, // Abort is not supported in this driver
+    .idle = NULL,
+    .powerdown = NULL,
 };

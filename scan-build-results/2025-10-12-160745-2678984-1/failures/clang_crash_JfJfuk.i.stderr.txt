@@ -1,0 +1,56 @@
+pn53x.c:1821:38: warning: Assigned value is garbage or undefined [core.uninitialized.Assign]
+ 1821 |   // Store selected target in device context
+      |                                      ^ ~~~~~
+ 1822 |   if (pn53x_current_target_new(pnd, &nttmp) == NULL)
+      |   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace, preprocessed source, and associated run script.
+Stack dump:
+0.	Program arguments: /usr/lib/llvm-18/bin/clang -cc1 -triple x86_64-pc-linux-gnu -analyze -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name pn53x.c -analyzer-checker=core -analyzer-checker=apiModeling -analyzer-checker=unix -analyzer-checker=deadcode -analyzer-checker=security.insecureAPI.UncheckedReturn -analyzer-checker=security.insecureAPI.getpw -analyzer-checker=security.insecureAPI.gets -analyzer-checker=security.insecureAPI.mktemp -analyzer-checker=security.insecureAPI.mkstemp -analyzer-checker=security.insecureAPI.vfork -analyzer-checker=nullability.NullPassedToNonnull -analyzer-checker=nullability.NullReturnedFromNonnull -analyzer-output plist -w -setup-static-analyzer -mrelocation-model pic -pic-level 2 -fhalf-no-semantic-interposition -mframe-pointer=none -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/jungamer/Downloads/libnfc/libnfc/chips -fcoverage-compilation-dir=/home/jungamer/Downloads/libnfc/libnfc/chips -resource-dir /usr/lib/llvm-18/lib/clang/18 -D HAVE_CONFIG_H -I . -I ../.. -I ../../libnfc -I ../../include -I ../../include -I ../../libnfc -D u_int8_t=uint8_t -D u_int16_t=uint16_t -D PIC -internal-isystem /usr/lib/llvm-18/lib/clang/18/include -internal-isystem /usr/local/include -internal-isystem /usr/lib/gcc/x86_64-linux-gnu/13/../../../../x86_64-linux-gnu/include -internal-externc-isystem /usr/include/x86_64-linux-gnu -internal-externc-isystem /include -internal-externc-isystem /usr/include -O2 -Wwrite-strings -std=c99 -fconst-strings -ferror-limit 19 -fno-signed-char -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -vectorize-loops -vectorize-slp -analyzer-output=html -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -o /home/jungamer/Downloads/libnfc/scan-build-results/2025-10-12-160745-2678984-1 -x c pn53x.c
+1.	<eof> parser at end of file
+ #0 0x00007a8c391a63bf llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) build-llvm/tools/clang/stage2-bins/llvm/lib/Support/Unix/Signals.inc:723:13
+ #1 0x00007a8c391a44f9 llvm::sys::RunSignalHandlers() build-llvm/tools/clang/stage2-bins/llvm/lib/Support/Signals.cpp:106:18
+ #2 0x00007a8c391a6b00 SignalHandler build-llvm/tools/clang/stage2-bins/llvm/lib/Support/Unix/Signals.inc:413:1
+ #3 0x00007a8c37c45330 (/lib/x86_64-linux-gnu/libc.so.6+0x45330)
+ #4 0x00007a8c41ec3b3a getChild build-llvm/tools/clang/stage2-bins/clang/lib/Rewrite/RewriteRope.cpp:429:14
+ #5 0x00007a8c41ec3b3a split build-llvm/tools/clang/stage2-bins/clang/lib/Rewrite/RewriteRope.cpp:484:32
+ #6 0x00007a8c41ec3b3a split build-llvm/tools/clang/stage2-bins/clang/lib/Rewrite/RewriteRope.cpp:637:46
+ #7 0x00007a8c41ec39d0 clang::RopePieceBTree::insert(unsigned int, clang::RopePiece const&) build-llvm/tools/clang/stage2-bins/clang/lib/Rewrite/RewriteRope.cpp:749:27
+ #8 0x00007a8c41ec4a60 release build-llvm/tools/clang/stage2-bins/llvm/include/llvm/ADT/IntrusiveRefCntPtr.h:232:9
+ #9 0x00007a8c41ec4a60 ~IntrusiveRefCntPtr build-llvm/tools/clang/stage2-bins/llvm/include/llvm/ADT/IntrusiveRefCntPtr.h:196:27
+#10 0x00007a8c41ec4a60 ~RopePiece build-llvm/tools/clang/stage2-bins/clang/include/clang/Rewrite/Core/RewriteRope.h:58:10
+#11 0x00007a8c41ec4a60 insert build-llvm/tools/clang/stage2-bins/clang/include/clang/Rewrite/Core/RewriteRope.h:208:5
+#12 0x00007a8c41ec4a60 clang::RewriteBuffer::InsertText(unsigned int, llvm::StringRef, bool) build-llvm/tools/clang/stage2-bins/clang/lib/Rewrite/Rewriter.cpp:117:10
+#13 0x00007a8c41ec19b2 InsertTextBefore build-llvm/tools/clang/stage2-bins/clang/include/clang/Rewrite/Core/RewriteBuffer.h:0:5
+#14 0x00007a8c41ec19b2 clang::html::HighlightRange(clang::RewriteBuffer&, unsigned int, unsigned int, char const*, char const*, char const*) build-llvm/tools/clang/stage2-bins/clang/lib/Rewrite/HTMLRewrite.cpp:77:12
+#15 0x00007a8c41ec1855 clang::html::HighlightRange(clang::Rewriter&, clang::SourceLocation, clang::SourceLocation, char const*, char const*, bool) build-llvm/tools/clang/stage2-bins/clang/lib/Rewrite/HTMLRewrite.cpp:54:1
+#16 0x00007a8c428fd550 asRange build-llvm/tools/clang/stage2-bins/clang/include/clang/Analysis/PathDiagnostic.h:344:12
+#17 0x00007a8c428fd550 ProcessControlFlowPiece build-llvm/tools/clang/stage2-bins/clang/lib/StaticAnalyzer/Core/HTMLDiagnostics.cpp:1238:49
+#18 0x00007a8c428fd550 RewriteFile build-llvm/tools/clang/stage2-bins/clang/lib/StaticAnalyzer/Core/HTMLDiagnostics.cpp:821:24
+#19 0x00007a8c428fd550 GenerateHTML build-llvm/tools/clang/stage2-bins/clang/lib/StaticAnalyzer/Core/HTMLDiagnostics.cpp:392:5
+#20 0x00007a8c428fc472 ReportDiag build-llvm/tools/clang/stage2-bins/clang/lib/StaticAnalyzer/Core/HTMLDiagnostics.cpp:316:24
+#21 0x00007a8c428fc472 FlushDiagnosticsImpl build-llvm/tools/clang/stage2-bins/clang/lib/StaticAnalyzer/Core/HTMLDiagnostics.cpp:246:5
+#22 0x00007a8c41d4d2c5 __normal_iterator /usr/lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13/bits/stl_iterator.h:1077:20
+#23 0x00007a8c41d4d2c5 begin /usr/lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13/bits/stl_vector.h:874:16
+#24 0x00007a8c41d4d2c5 clang::ento::PathDiagnosticConsumer::FlushDiagnostics(clang::ento::PathDiagnosticConsumer::FilesMade*) build-llvm/tools/clang/stage2-bins/clang/lib/Analysis/PathDiagnostic.cpp:424:21
+#25 0x00007a8c4285147b operator++ /usr/lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13/bits/stl_iterator.h:1111:2
+#26 0x00007a8c4285147b FlushDiagnostics build-llvm/tools/clang/stage2-bins/clang/lib/StaticAnalyzer/Core/AnalysisManager.cpp:60:41
+#27 0x00007a8c4285147b clang::ento::AnalysisManager::~AnalysisManager() build-llvm/tools/clang/stage2-bins/clang/lib/StaticAnalyzer/Core/AnalysisManager.cpp:52:3
+#28 0x00007a8c428516b2 clang::ento::AnalysisManager::~AnalysisManager() build-llvm/tools/clang/stage2-bins/clang/lib/StaticAnalyzer/Core/AnalysisManager.cpp:51:37
+#29 0x00007a8c42cb496b HandleTranslationUnit build-llvm/tools/clang/stage2-bins/clang/lib/StaticAnalyzer/Frontend/AnalysisConsumer.cpp:622:1
+#30 0x00007a8c407973d6 __normal_iterator /usr/lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13/bits/stl_iterator.h:1077:20
+#31 0x00007a8c407973d6 begin /usr/lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13/bits/stl_vector.h:874:16
+#32 0x00007a8c407973d6 finalize<std::vector<std::unique_ptr<clang::TemplateInstantiationCallback, std::default_delete<clang::TemplateInstantiationCallback> >, std::allocator<std::unique_ptr<clang::TemplateInstantiationCallback, std::default_delete<clang::TemplateInstantiationCallback> > > > > build-llvm/tools/clang/stage2-bins/clang/include/clang/Sema/TemplateInstCallback.h:54:16
+#33 0x00007a8c407973d6 clang::ParseAST(clang::Sema&, bool, bool) build-llvm/tools/clang/stage2-bins/clang/lib/Parse/ParseAST.cpp:183:3
+#34 0x00007a8c4260662c clang::FrontendAction::Execute() build-llvm/tools/clang/stage2-bins/clang/lib/Frontend/FrontendAction.cpp:1073:10
+#35 0x00007a8c425830b4 getPtr build-llvm/tools/clang/stage2-bins/llvm/include/llvm/Support/Error.h:279:12
+#36 0x00007a8c425830b4 operator bool build-llvm/tools/clang/stage2-bins/llvm/include/llvm/Support/Error.h:239:16
+#37 0x00007a8c425830b4 clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) build-llvm/tools/clang/stage2-bins/clang/lib/Frontend/CompilerInstance.cpp:1057:23
+#38 0x00007a8c4268263d clang::ExecuteCompilerInvocation(clang::CompilerInstance*) build-llvm/tools/clang/stage2-bins/clang/lib/FrontendTool/ExecuteCompilerInvocation.cpp:272:25
+#39 0x00005d80f9e8542e cc1_main(llvm::ArrayRef<char const*>, char const*, void*) build-llvm/tools/clang/stage2-bins/clang/tools/driver/cc1_main.cpp:294:15
+#40 0x00005d80f9e82894 ExecuteCC1Tool build-llvm/tools/clang/stage2-bins/clang/tools/driver/driver.cpp:365:12
+#41 0x00005d80f9e81a26 clang_main(int, char**, llvm::ToolContext const&) build-llvm/tools/clang/stage2-bins/clang/tools/driver/driver.cpp:405:12
+#42 0x00005d80f9e8f383 main build-llvm/tools/clang/stage2-bins/build-llvm/tools/clang/stage2-bins/tools/clang/tools/driver/clang-driver.cpp:17:10
+#43 0x00007a8c37c2a1ca __libc_start_call_main ./csu/../sysdeps/nptl/libc_start_call_main.h:74:3
+#44 0x00007a8c37c2a28b call_init ./csu/../csu/libc-start.c:128:20
+#45 0x00007a8c37c2a28b __libc_start_main ./csu/../csu/libc-start.c:347:5
+#46 0x00005d80f9e7f255 _start (/usr/lib/llvm-18/bin/clang+0xe255)

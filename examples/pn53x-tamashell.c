@@ -40,14 +40,14 @@
  */
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
-#  include <stdio.h>
+#include <stdio.h>
 #if defined(HAVE_READLINE)
-#  include <readline/readline.h>
-#  include <readline/history.h>
-#endif //HAVE_READLINE
+#include <readline/readline.h>
+#include <readline/history.h>
+#endif // HAVE_READLINE
 
 #include <stdlib.h>
 #include <string.h>
@@ -55,23 +55,25 @@
 #include <time.h>
 
 #ifndef _WIN32
-#  include <time.h>
-#  define msleep(x) do { \
-    struct timespec xsleep; \
-    xsleep.tv_sec = x / 1000; \
+#include <time.h>
+#define msleep(x)                                              \
+  do                                                           \
+  {                                                            \
+    struct timespec xsleep;                                    \
+    xsleep.tv_sec = x / 1000;                                  \
     xsleep.tv_nsec = (x - xsleep.tv_sec * 1000) * 1000 * 1000; \
-    nanosleep(&xsleep, NULL); \
+    nanosleep(&xsleep, NULL);                                  \
   } while (0)
 #else
-#  include <winbase.h>
-#  define msleep Sleep
+#include <winbase.h>
+#define msleep Sleep
 #endif
-
 
 #include <nfc/nfc.h>
 
 #include "utils/nfc-utils.h"
 #include "libnfc/chips/pn53x.h"
+#include "libnfc/nfc-secure.h"
 
 #define MAX_FRAME_LEN 264
 
@@ -84,8 +86,10 @@ int main(int argc, const char *argv[])
   size_t szTx;
   FILE *input = NULL;
 
-  if (argc >= 2) {
-    if ((input = fopen(argv[1], "r")) == NULL) {
+  if (argc >= 2)
+  {
+    if ((input = fopen(argv[1], "r")) == NULL)
+    {
       ERR("%s", "Cannot open file.");
       exit(EXIT_FAILURE);
     }
@@ -93,7 +97,8 @@ int main(int argc, const char *argv[])
 
   nfc_context *context;
   nfc_init(&context);
-  if (context == NULL) {
+  if (context == NULL)
+  {
     ERR("Unable to init libnfc (malloc)");
     exit(EXIT_FAILURE);
   }
@@ -101,9 +106,11 @@ int main(int argc, const char *argv[])
   // Try to open the NFC reader
   pnd = nfc_open(context, NULL);
 
-  if (pnd == NULL) {
+  if (pnd == NULL)
+  {
     ERR("%s", "Unable to open NFC device.");
-    if (input != NULL) {
+    if (input != NULL)
+    {
       fclose(input);
     }
     nfc_exit(context);
@@ -111,9 +118,11 @@ int main(int argc, const char *argv[])
   }
 
   printf("NFC reader: %s opened\n", nfc_device_get_name(pnd));
-  if (nfc_initiator_init(pnd) < 0) {
+  if (nfc_initiator_init(pnd) < 0)
+  {
     nfc_perror(pnd, "nfc_initiator_init");
-    if (input != NULL) {
+    if (input != NULL)
+    {
       fclose(input);
     }
     nfc_close(pnd);
@@ -122,31 +131,41 @@ int main(int argc, const char *argv[])
   }
 
   const char *prompt = "> ";
-  while (1) {
+  while (1)
+  {
     int offset = 0;
     char *cmd;
 #if defined(HAVE_READLINE)
-    if (input == NULL) { // means we use stdin
+    if (input == NULL)
+    { // means we use stdin
       cmd = readline(prompt);
       // NULL if ctrl-d
-      if (cmd == NULL) {
+      if (cmd == NULL)
+      {
         printf("Bye!\n");
         break;
       }
       add_history(cmd);
-    } else {
-#endif //HAVE_READLINE
+    }
+    else
+    {
+#endif // HAVE_READLINE
       size_t n = 512;
       char *ret = NULL;
       cmd = malloc(n);
       printf("%s", prompt);
       fflush(0);
-      if (input != NULL) {
+      if (input != NULL)
+      {
         ret = fgets(cmd, n, input);
-      } else {
+      }
+      else
+      {
         ret = fgets(cmd, n, stdin);
       }
-      if (ret == NULL || strlen(cmd) <= 0) {
+      // cmd buffer size is n, use safe strlen with that bound
+      if (ret == NULL || nfc_safe_strlen(cmd, n) <= 0)
+      {
         printf("Bye!\n");
         free(cmd);
         break;
@@ -155,46 +174,55 @@ int main(int argc, const char *argv[])
       printf("%s", cmd);
 #if defined(HAVE_READLINE)
     }
-#endif //HAVE_READLINE
-    if (cmd[0] == 'q') {
+#endif // HAVE_READLINE
+    if (cmd[0] == 'q')
+    {
       printf("Bye!\n");
       free(cmd);
       break;
     }
-    if (cmd[0] == 'p') {
+    if (cmd[0] == 'p')
+    {
       int ms = 0;
       offset++;
-      while (isspace(cmd[offset])) {
+      while (isspace(cmd[offset]))
+      {
         offset++;
       }
       sscanf(cmd + offset, "%10d", &ms);
       printf("Pause for %i msecs\n", ms);
-      if (ms > 0) {
+      if (ms > 0)
+      {
         msleep(ms);
       }
       free(cmd);
       continue;
     }
     szTx = 0;
-    for (int i = 0; i < MAX_FRAME_LEN; i++) {
+    for (int i = 0; i < MAX_FRAME_LEN; i++)
+    {
       int size;
       unsigned int byte;
-      while (isspace(cmd[offset])) {
+      while (isspace(cmd[offset]))
+      {
         offset++;
       }
       size = sscanf(cmd + offset, "%2x", &byte);
-      if (size < 1) {
+      if (size < 1)
+      {
         break;
       }
       abtTx[i] = byte;
       szTx++;
-      if (cmd[offset + 1] == 0) { // if last hex was only 1 symbol
+      if (cmd[offset + 1] == 0)
+      { // if last hex was only 1 symbol
         break;
       }
       offset += 2;
     }
 
-    if ((int)szTx < 1) {
+    if ((int)szTx < 1)
+    {
       free(cmd);
       continue;
     }
@@ -203,19 +231,21 @@ int main(int argc, const char *argv[])
 
     szRx = sizeof(abtRx);
     int res = 0;
-    if ((res = pn53x_transceive(pnd, abtTx, szTx, abtRx, szRx, 0)) < 0) {
+    if ((res = pn53x_transceive(pnd, abtTx, szTx, abtRx, szRx, 0)) < 0)
+    {
       free(cmd);
       nfc_perror(pnd, "Rx");
       continue;
     }
-    szRx = (size_t) res;
+    szRx = (size_t)res;
 
     printf("Rx: ");
     print_hex(abtRx, szRx);
     free(cmd);
   }
 
-  if (input != NULL) {
+  if (input != NULL)
+  {
     fclose(input);
   }
   nfc_close(pnd);

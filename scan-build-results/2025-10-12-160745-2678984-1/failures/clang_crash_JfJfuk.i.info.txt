@@ -1,0 +1,12 @@
+/home/jungamer/Downloads/libnfc/libnfc/chips/pn53x.c
+Crash
+-cc1 -triple x86_64-pc-linux-gnu -fsyntax-only -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name pn53x.c -mrelocation-model pic -pic-level 2 -fhalf-no-semantic-interposition -mframe-pointer=none -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/jungamer/Downloads/libnfc/libnfc/chips -fcoverage-compilation-dir=/home/jungamer/Downloads/libnfc/libnfc/chips -resource-dir /usr/lib/llvm-18/lib/clang/18 -D HAVE_CONFIG_H -I . -I ../.. -I ../../libnfc -I ../../include -I ../../include -I ../../libnfc -D u_int8_t=uint8_t -D u_int16_t=uint16_t -D PIC -internal-isystem /usr/lib/llvm-18/lib/clang/18/include -internal-isystem /usr/local/include -internal-isystem /usr/lib/gcc/x86_64-linux-gnu/13/../../../../x86_64-linux-gnu/include -internal-externc-isystem /usr/include/x86_64-linux-gnu -internal-externc-isystem /include -internal-externc-isystem /usr/include -O2 -Wwrite-strings -std=c99 -fconst-strings -ferror-limit 19 -fno-signed-char -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -vectorize-loops -vectorize-slp -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -x c pn53x.c
+Linux main-pc 6.14.0-33-generic #33~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep 19 17:02:30 UTC 2 x86_64 x86_64 x86_64 GNU/Linux
+Using built-in specs.
+COLLECT_GCC=gcc
+COLLECT_LTO_WRAPPER=/usr/local/gcc-15/libexec/gcc/x86_64-pc-linux-gnu/15.2.0/lto-wrapper
+Target: x86_64-pc-linux-gnu
+Configured with: ../configure --prefix=/usr/local/gcc-15 --enable-languages=c,c++ --disable-multilib
+Thread model: posix
+Supported LTO compression algorithms: zlib zstd
+gcc version 15.2.0 (GCC) 

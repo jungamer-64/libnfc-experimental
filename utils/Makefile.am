@@ -51,15 +51,16 @@ nfc_scan_device_SOURCES = nfc-scan-device.c nfc-utils.h
 nfc_scan_device_LDADD = $(top_builddir)/libnfc/libnfc.la \
 		 libnfcutils.la
 
-dist_man_MANS = \
-		nfc-barcode.1 \
-		nfc-emulate-forum-tag4.1 \
-		nfc-jewel.1 \
-		nfc-list.1 \
-		nfc-mfclassic.1 \
-		nfc-mfultralight.1 \
-		nfc-read-forum-tag3.1 \
-		nfc-relay-picc.1 \
-		nfc-scan-device.1
+# Man pages disabled - files not present in repository
+# dist_man_MANS = \
+# 		nfc-barcode.1 \
+# 		nfc-emulate-forum-tag4.1 \
+# 		nfc-jewel.1 \
+# 		nfc-list.1 \
+# 		nfc-mfclassic.1 \
+# 		nfc-mfultralight.1 \
+# 		nfc-read-forum-tag3.1 \
+# 		nfc-relay-picc.1 \
+# 		nfc-scan-device.1
 
 EXTRA_DIST = CMakeLists.txt

@@ -61,7 +61,7 @@ IF(LIBUSB_FOUND)
 ENDIF(LIBUSB_FOUND)
 
 # Library
-SET(LIBRARY_SOURCES nfc.c nfc-device.c nfc-emulation.c nfc-internal.c nfc-secure.c nfc-common.c conf.c iso14443-subr.c mirror-subr.c target-subr.c ${DRIVERS_SOURCES} ${BUSES_SOURCES} ${CHIPS_SOURCES} ${WINDOWS_SOURCES})
+SET(LIBRARY_SOURCES nfc.c nfc-device.c nfc-emulation.c nfc-internal.c nfc-secure.c nfc-common.c conf.c iso14443-subr.c mirror-subr.c target-subr.c target-subr-helpers.c target-subr-helpers2.c ${DRIVERS_SOURCES} ${BUSES_SOURCES} ${CHIPS_SOURCES} ${WINDOWS_SOURCES})
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 
 IF(LIBNFC_LOG)

@@ -14,6 +14,8 @@ libnfc_la_SOURCES = \
 		    nfc-internal.c \
 		    nfc-secure.c \
 		    target-subr.c \
+		    target-subr-helpers.c \
+		    target-subr-helpers2.c \
 		    conf.h \
 		    drivers.h \
 		    iso7816.h \
@@ -22,7 +24,8 @@ libnfc_la_SOURCES = \
 		    mirror-subr.h \
 		    nfc-internal.h \
 		    nfc-secure.h \
-		    target-subr.h
+		    target-subr.h \
+		    target-subr-internal.h
 
 libnfc_la_LDFLAGS = -no-undefined -version-info 6:0:0 -export-symbols-regex '^nfc_|^iso14443a_|^iso14443b_|^str_nfc_|pn53x_transceive|pn532_SAMConfiguration|pn53x_read_register|pn53x_write_register|^nfc_safe_|^nfc_secure_'
 libnfc_la_CFLAGS = @DRIVERS_CFLAGS@
