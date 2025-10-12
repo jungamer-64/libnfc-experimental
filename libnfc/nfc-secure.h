@@ -114,10 +114,10 @@
  * C23 nullptr support for better type safety
  *
  * ⚠️  INTERNAL USE ONLY: This macro is primarily for internal implementation.
- * 
+ *
  * External code should continue using NULL (C89-C17) or nullptr (C23) directly.
  * You are NOT required to use NFC_NULL in your application code.
- * 
+ *
  * The nfc-secure library uses NFC_NULL internally to maintain consistency
  * across C standards (C89/C99/C11/C17/C23), but the public API accepts
  * standard NULL/nullptr values from application code.
@@ -238,89 +238,89 @@ const char *nfc_secure_strerror(int error_code);
  * // result == NFC_SECURE_ERROR_OVERFLOW, buffer overflow prevented
  * ```
  */
-int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size);/**
- * @brief Secure memset for sensitive data
- *
- * This function ensures that memory is securely erased and cannot be
- * optimized away by the compiler (unlike standard memset).
- *
- * Security Concern:
- * When handling sensitive information (keys, passwords, crypto material),
- * standard memset() may be optimized away by the compiler if it detects
- * that the memory is not used after the call ("dead store elimination").
- *
- * Implementation uses volatile pointer trick to prevent optimization:
- * ```c
- * volatile uint8_t *p = ptr;
- * while (size--) {
- *     *p++ = val;
- * }
- * ```
- *
- * @param[out] ptr Pointer to memory to clear (must be non-NULL)
- * @param[in] val Value to set (typically 0x00)
- * @param[in] size Number of bytes to set
- *
- * @return  NFC_SECURE_SUCCESS (0)     on success (including zero-size operations)
- * @return  NFC_SECURE_ERROR_INVALID  if ptr is NULL
- * @return  NFC_SECURE_ERROR_RANGE    if size exceeds SIZE_MAX / 2
- * @return  NFC_SECURE_ERROR_ZERO_SIZE (deprecated) - now returns SUCCESS for zero-size
- *
- * @note This function is explicitly designed to prevent the compiler from
- *       optimizing away the memory write (for example, via dead-store
- *       elimination). Use this function only for sensitive data such as
- *       cryptographic keys, passwords, or authentication tokens. For
- *       non-sensitive data, prefer the standard memset() for better
- *       performance.
- *
- * ⚠️ WARNING: Alignment Requirements
- * This function does NOT handle alignment issues. Ensure that:
- * - Buffer is properly aligned for its intended use
- * - On ARM/SPARC, misaligned access may cause SIGBUS
- * - Use malloc/aligned_alloc for dynamic memory
- *
- * ⚠️ WARNING: Old Compiler Limitations
- * On C89/C90 compilers:
- * - No _Static_assert (compile-time checks disabled)
- * - Volatile fallback may be less reliable
- * - Test with objdump to verify memset is not optimized away
- *
- * Platform-specific implementations:
- * - Windows: Uses SecureZeroMemory (guaranteed not optimized away)
- * - BSD/Linux: Uses explicit_bzero (guaranteed not optimized away)
- * - C11: Uses memset_s from Annex K (optional, guaranteed)
- * - Fallback: volatile pointer + memory barriers
- *
- * ⚠️ PERFORMANCE CHARACTERISTICS:
- * - Small buffers (≤256 bytes): Optimized volatile loop (~20-50 cycles overhead)
- *   * Ideal for: Crypto keys (16-32 bytes), MIFARE keys (6 bytes), UIDs (4-10 bytes)
- *   * Performance: ~1-5 microseconds on modern CPUs
- *
- * - Large buffers (>256 bytes): memset + memory barrier fallback
- *   * Penalty: ~10-30% slower than standard memset
- *   * Still acceptable for: Authentication buffers (<1KB), temporary command buffers
- *   * NOT recommended for: Large file buffers, network packet buffers (use standard memset)
- *
- * - Platform functions (SecureZeroMemory/explicit_bzero): Near-native performance
- *   * Minimal overhead compared to standard memset
- *   * Always preferred when available
- *
- * 💡 RECOMMENDATION: Use this function ONLY for sensitive data that MUST be cleared.
- *    For non-sensitive data, use standard memset() for better performance.
- *
- * Example usage:
- * ```c
- * uint8_t key[16];
- * // ... use key for crypto operations ...
- *
- * // Securely erase key from memory
- * int result = nfc_secure_memset(key, 0x00, sizeof(key));
- * if (result != NFC_SECURE_SUCCESS) {
- *     fprintf(stderr, "Secure erase failed: %s\n", nfc_secure_strerror(result));
- * }
- * // Compiler cannot optimize away this erasure
- * ```
- */
+int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size); /**
+                                                                                    * @brief Secure memset for sensitive data
+                                                                                    *
+                                                                                    * This function ensures that memory is securely erased and cannot be
+                                                                                    * optimized away by the compiler (unlike standard memset).
+                                                                                    *
+                                                                                    * Security Concern:
+                                                                                    * When handling sensitive information (keys, passwords, crypto material),
+                                                                                    * standard memset() may be optimized away by the compiler if it detects
+                                                                                    * that the memory is not used after the call ("dead store elimination").
+                                                                                    *
+                                                                                    * Implementation uses volatile pointer trick to prevent optimization:
+                                                                                    * ```c
+                                                                                    * volatile uint8_t *p = ptr;
+                                                                                    * while (size--) {
+                                                                                    *     *p++ = val;
+                                                                                    * }
+                                                                                    * ```
+                                                                                    *
+                                                                                    * @param[out] ptr Pointer to memory to clear (must be non-NULL)
+                                                                                    * @param[in] val Value to set (typically 0x00)
+                                                                                    * @param[in] size Number of bytes to set
+                                                                                    *
+                                                                                    * @return  NFC_SECURE_SUCCESS (0)     on success (including zero-size operations)
+                                                                                    * @return  NFC_SECURE_ERROR_INVALID  if ptr is NULL
+                                                                                    * @return  NFC_SECURE_ERROR_RANGE    if size exceeds SIZE_MAX / 2
+                                                                                    * @return  NFC_SECURE_ERROR_ZERO_SIZE (deprecated) - now returns SUCCESS for zero-size
+                                                                                    *
+                                                                                    * @note This function is explicitly designed to prevent the compiler from
+                                                                                    *       optimizing away the memory write (for example, via dead-store
+                                                                                    *       elimination). Use this function only for sensitive data such as
+                                                                                    *       cryptographic keys, passwords, or authentication tokens. For
+                                                                                    *       non-sensitive data, prefer the standard memset() for better
+                                                                                    *       performance.
+                                                                                    *
+                                                                                    * ⚠️ WARNING: Alignment Requirements
+                                                                                    * This function does NOT handle alignment issues. Ensure that:
+                                                                                    * - Buffer is properly aligned for its intended use
+                                                                                    * - On ARM/SPARC, misaligned access may cause SIGBUS
+                                                                                    * - Use malloc/aligned_alloc for dynamic memory
+                                                                                    *
+                                                                                    * ⚠️ WARNING: Old Compiler Limitations
+                                                                                    * On C89/C90 compilers:
+                                                                                    * - No _Static_assert (compile-time checks disabled)
+                                                                                    * - Volatile fallback may be less reliable
+                                                                                    * - Test with objdump to verify memset is not optimized away
+                                                                                    *
+                                                                                    * Platform-specific implementations:
+                                                                                    * - Windows: Uses SecureZeroMemory (guaranteed not optimized away)
+                                                                                    * - BSD/Linux: Uses explicit_bzero (guaranteed not optimized away)
+                                                                                    * - C11: Uses memset_s from Annex K (optional, guaranteed)
+                                                                                    * - Fallback: volatile pointer + memory barriers
+                                                                                    *
+                                                                                    * ⚠️ PERFORMANCE CHARACTERISTICS:
+                                                                                    * - Small buffers (≤256 bytes): Optimized volatile loop (~20-50 cycles overhead)
+                                                                                    *   * Ideal for: Crypto keys (16-32 bytes), MIFARE keys (6 bytes), UIDs (4-10 bytes)
+                                                                                    *   * Performance: ~1-5 microseconds on modern CPUs
+                                                                                    *
+                                                                                    * - Large buffers (>256 bytes): memset + memory barrier fallback
+                                                                                    *   * Penalty: ~10-30% slower than standard memset
+                                                                                    *   * Still acceptable for: Authentication buffers (<1KB), temporary command buffers
+                                                                                    *   * NOT recommended for: Large file buffers, network packet buffers (use standard memset)
+                                                                                    *
+                                                                                    * - Platform functions (SecureZeroMemory/explicit_bzero): Near-native performance
+                                                                                    *   * Minimal overhead compared to standard memset
+                                                                                    *   * Always preferred when available
+                                                                                    *
+                                                                                    * 💡 RECOMMENDATION: Use this function ONLY for sensitive data that MUST be cleared.
+                                                                                    *    For non-sensitive data, use standard memset() for better performance.
+                                                                                    *
+                                                                                    * Example usage:
+                                                                                    * ```c
+                                                                                    * uint8_t key[16];
+                                                                                    * // ... use key for crypto operations ...
+                                                                                    *
+                                                                                    * // Securely erase key from memory
+                                                                                    * int result = nfc_secure_memset(key, 0x00, sizeof(key));
+                                                                                    * if (result != NFC_SECURE_SUCCESS) {
+                                                                                    *     fprintf(stderr, "Secure erase failed: %s\n", nfc_secure_strerror(result));
+                                                                                    * }
+                                                                                    * // Compiler cannot optimize away this erasure
+                                                                                    * ```
+                                                                                    */
 int nfc_secure_memset(void *ptr, int val, size_t size);
 
 /*
