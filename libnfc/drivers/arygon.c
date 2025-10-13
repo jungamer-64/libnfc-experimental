@@ -969,4 +969,4 @@ const struct nfc_driver arygon_driver = {
     .idle = pn53x_idle,
     /* Even if PN532, PowerDown is not recommended on those devices */
     .powerdown = NULL,
-}
+};

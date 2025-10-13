@@ -100,6 +100,18 @@
 #define SUPPORT_ISO14443B 0x02
 #define SUPPORT_ISO18092 0x04
 
+#ifndef SAK_ISO14443_4_COMPLIANT
+#define SAK_ISO14443_4_COMPLIANT 0x20
+#endif
+
+#ifndef SAK_ISO18092_COMPLIANT
+#define SAK_ISO18092_COMPLIANT 0x40
+#endif
+
+#ifndef SAK_MIFARE_CLASSIC_MASK
+#define SAK_MIFARE_CLASSIC_MASK 0x08
+#endif
+
 // Buffer size constants for command construction
 #define PN53X_CMD_INLISTPASSIVETARGET_SIZE 15
 #define PN53X_CMD_INLISTPASSIVETARGET_INITIATOR_DATA_MAX 12 // (PN53X_CMD_INLISTPASSIVETARGET_SIZE - 3)
@@ -132,7 +144,8 @@
  * @enum pn53x_power_mode
  * @brief PN53x power mode enumeration
  */
-typedef enum {
+typedef enum
+{
   NORMAL,    // In that case, there is no power saved but the PN53x reacts as fast as possible on the host controller interface.
   POWERDOWN, // Only on PN532, need to be wake up to process commands with a long preamble
   LOWVBAT    // Only on PN532, need to be wake up to process commands with a long preamble and SAMConfiguration command
@@ -142,7 +155,8 @@ typedef enum {
  * @enum pn53x_operating_mode
  * @brief PN53x operatin mode enumeration
  */
-typedef enum {
+typedef enum
+{
   IDLE,
   INITIATOR,
   TARGET,
@@ -152,7 +166,8 @@ typedef enum {
  * @enum pn532_sam_mode
  * @brief PN532 SAM mode enumeration
  */
-typedef enum {
+typedef enum
+{
   PSM_NORMAL = 0x01,
   PSM_VIRTUAL_CARD = 0x02,
   PSM_WIRED_CARD = 0x03,
@@ -164,7 +179,8 @@ typedef enum {
  * @struct pn53x_io
  * @brief PN53x I/O structure
  */
-struct pn53x_io {
+struct pn53x_io
+{
   int (*send)(struct nfc_device *pnd, const uint8_t *pbtData, const size_t szData, int timeout);
   int (*receive)(struct nfc_device *pnd, uint8_t *pbtData, const size_t szDataLen, int timeout);
 };
@@ -179,7 +195,8 @@ struct pn53x_io {
  * @struct pn53x_data
  * @brief PN53x data structure
  */
-struct pn53x_data {
+struct pn53x_data
+{
   /** Chip type (PN531, PN532 or PN533) */
   pn53x_type type;
   /** Chip firmware text */
@@ -228,7 +245,8 @@ struct pn53x_data {
  * @enum pn53x_modulation
  * @brief NFC modulation enumeration
  */
-typedef enum {
+typedef enum
+{
   /** Undefined modulation */
   PM_UNDEFINED = -1,
   /** ISO14443-A (NXP MIFARE) http://en.wikipedia.org/wiki/MIFARE */
@@ -255,7 +273,8 @@ typedef enum {
  * @enum pn53x_target_type
  * @brief NFC target type enumeration
  */
-typedef enum {
+typedef enum
+{
   /** Undefined target type */
   PTT_UNDEFINED = -1,
   /** Generic passive 106 kbps (ISO/IEC14443-4A, mifare, DEP) */
@@ -296,7 +315,8 @@ typedef enum {
  * @enum pn53x_target_mode
  * @brief PN53x target mode enumeration
  */
-typedef enum {
+typedef enum
+{
   /** Configure the PN53x to accept all initiator mode */
   PTM_NORMAL = 0x00,
   /** Configure the PN53x to accept to be initialized only in passive mode */

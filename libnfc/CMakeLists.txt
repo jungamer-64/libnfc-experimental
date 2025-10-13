@@ -61,20 +61,28 @@ IF(LIBUSB_FOUND)
 ENDIF(LIBUSB_FOUND)
 
 # Library
-SET(LIBRARY_SOURCES nfc.c nfc-device.c nfc-emulation.c nfc-internal.c nfc-secure.c nfc-common.c conf.c iso14443-subr.c mirror-subr.c target-subr.c target-subr-helpers.c target-subr-helpers2.c ${DRIVERS_SOURCES} ${BUSES_SOURCES} ${CHIPS_SOURCES} ${WINDOWS_SOURCES})
+SET(LIBRARY_SOURCES nfc.c nfc-device.c nfc-emulation.c nfc-internal.c nfc-secure.c nfc-common.cpp conf.c iso14443-subr.c mirror-subr.c target-subr.c target-subr-helpers.c target-subr-helpers2.c ${DRIVERS_SOURCES} ${BUSES_SOURCES} ${CHIPS_SOURCES} ${WINDOWS_SOURCES})
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
+
+if(USE_RUST_NFC_SECURE)
+  # Remove C implementation from sources when using Rust replacement
+  list(REMOVE_ITEM LIBRARY_SOURCES nfc-secure.c)
+endif()
 
 IF(LIBNFC_LOG)
   IF(WIN32)
     IF(MINGW)
       SET(CMAKE_C_FLAGS "-fgnu89-inline ${CMAKE_C_FLAGS}")
     ENDIF(MINGW)
-    LIST(APPEND LIBRARY_SOURCES log.c ../contrib/win32/libnfc/log-internal.c)
+  LIST(APPEND LIBRARY_SOURCES log.cpp ../contrib/win32/libnfc/log-internal.c)
   ELSE(WIN32)
-    LIST(APPEND LIBRARY_SOURCES log.c log-internal.c)
+  LIST(APPEND LIBRARY_SOURCES log.cpp log-internal.c)
   ENDIF(WIN32)
 ENDIF(LIBNFC_LOG)
 ADD_LIBRARY(nfc SHARED ${LIBRARY_SOURCES})
+add_dependencies(nfc libnfc_rs_build)
+set_property(TARGET nfc APPEND PROPERTY LINK_DEPENDS ${RUST_LIB_PATH})
+TARGET_LINK_LIBRARIES(nfc ${RUST_LIB_PATH})
 
 IF(PCSC_FOUND)
   TARGET_LINK_LIBRARIES(nfc ${PCSC_LIBRARIES})

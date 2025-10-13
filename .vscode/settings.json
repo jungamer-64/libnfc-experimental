@@ -1,5 +1,6 @@
 {
     "files.associations": {
-        "nfc-common.h": "c"
+        "nfc-common.h": "c",
+        "pn53x_usb.h": "c"
     }
 }

@@ -1,0 +1,18 @@
+[package]
+name = "libnfc-rs"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[lib]
+name = "libnfc_rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+libc = "0.2"
+
+[features]
+# Feature gate for replacing the C nfc-secure implementation with the Rust one
+nfc_secure = []
+# Debug helpers for nfc-secure (buffers overlap checks, suspicious size warnings)
+nfc_secure_debug = []

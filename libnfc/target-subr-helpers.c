@@ -36,8 +36,7 @@ static const int max_frame_sizes[] = {16, 24, 32, 40, 48, 64, 96, 128, 256};
  */
 static inline int get_max_frame_size(uint8_t fsci)
 {
-  if (fsci < sizeof(max_frame_sizes) / sizeof(max_frame_sizes[0]))
-  {
+  if (fsci < sizeof(max_frame_sizes) / sizeof(max_frame_sizes[0])) {
     return max_frame_sizes[fsci];
   }
   return 16; // Default minimum
@@ -65,8 +64,7 @@ int snprint_atqa_section(char *dst, size_t size, const nfc_iso14443a_info *pnai,
   off += snprintf(dst + off, size - off, "    ATQA (SENS_RES): ");
   off += snprint_hex(dst + off, size - off, pnai->abtAtqa, 2);
 
-  if (!verbose)
-  {
+  if (!verbose) {
     return off;
   }
 
@@ -74,20 +72,19 @@ int snprint_atqa_section(char *dst, size_t size, const nfc_iso14443a_info *pnai,
   off += snprintf(dst + off, size - off, "* UID size: ");
   uint8_t uid_size_code = (pnai->abtAtqa[1] & ATQA_UID_SIZE_MASK) >> ATQA_UID_SIZE_SHIFT;
 
-  switch (uid_size_code)
-  {
-  case ATQA_UID_SIZE_SINGLE:
-    off += snprintf(dst + off, size - off, "single\n");
-    break;
-  case ATQA_UID_SIZE_DOUBLE:
-    off += snprintf(dst + off, size - off, "double\n");
-    break;
-  case ATQA_UID_SIZE_TRIPLE:
-    off += snprintf(dst + off, size - off, "triple\n");
-    break;
-  case ATQA_UID_SIZE_RFU:
-    off += snprintf(dst + off, size - off, "RFU\n");
-    break;
+  switch (uid_size_code) {
+    case ATQA_UID_SIZE_SINGLE:
+      off += snprintf(dst + off, size - off, "single\n");
+      break;
+    case ATQA_UID_SIZE_DOUBLE:
+      off += snprintf(dst + off, size - off, "double\n");
+      break;
+    case ATQA_UID_SIZE_TRIPLE:
+      off += snprintf(dst + off, size - off, "triple\n");
+      break;
+    case ATQA_UID_SIZE_RFU:
+      off += snprintf(dst + off, size - off, "RFU\n");
+      break;
   }
 
   // Decode bit frame anticollision support
@@ -95,12 +92,9 @@ int snprint_atqa_section(char *dst, size_t size, const nfc_iso14443a_info *pnai,
   uint8_t anticol_bits = pnai->abtAtqa[1] & ATQA_BITFRAME_ANTICOL_MASK;
 
   // Valid anticollision values: 0x01, 0x02, 0x04, 0x08, 0x10 (powers of 2)
-  if (anticol_bits != 0 && (anticol_bits & (anticol_bits - 1)) == 0 && anticol_bits <= 0x10)
-  {
+  if (anticol_bits != 0 && (anticol_bits & (anticol_bits - 1)) == 0 && anticol_bits <= 0x10) {
     off += snprintf(dst + off, size - off, "supported\n");
-  }
-  else
-  {
+  } else {
     off += snprintf(dst + off, size - off, "not supported\n");
   }
 
@@ -121,8 +115,7 @@ int snprint_uid_section(char *dst, size_t size, const nfc_iso14443a_info *pnai, 
   off += snprintf(dst + off, size - off, "       UID (NFCID%c): ", nfcid_type);
   off += snprint_hex(dst + off, size - off, pnai->abtUid, pnai->szUidLen);
 
-  if (verbose && pnai->abtUid[0] == UID_RANDOM_ID)
-  {
+  if (verbose && pnai->abtUid[0] == UID_RANDOM_ID) {
     off += snprintf(dst + off, size - off, "* Random UID\n");
   }
 
@@ -140,34 +133,26 @@ int snprint_sak_section(char *dst, size_t size, const nfc_iso14443a_info *pnai, 
   off += snprintf(dst + off, size - off, "      SAK (SEL_RES): ");
   off += snprint_hex(dst + off, size - off, &pnai->btSak, 1);
 
-  if (!verbose)
-  {
+  if (!verbose) {
     return off;
   }
 
   // Check cascade bit
-  if (pnai->btSak & SAK_UID_NOT_COMPLETE)
-  {
+  if (pnai->btSak & SAK_UID_NOT_COMPLETE) {
     off += snprintf(dst + off, size - off, "* Warning! Cascade bit set: UID not complete\n");
   }
 
   // Check ISO/IEC 14443-4 compliance
-  if (pnai->btSak & SAK_ISO14443_4_COMPLIANT)
-  {
+  if (pnai->btSak & SAK_ISO14443_4_COMPLIANT) {
     off += snprintf(dst + off, size - off, "* Compliant with ISO/IEC 14443-4\n");
-  }
-  else
-  {
+  } else {
     off += snprintf(dst + off, size - off, "* Not compliant with ISO/IEC 14443-4\n");
   }
 
   // Check ISO/IEC 18092 compliance
-  if (pnai->btSak & SAK_ISO18092_COMPLIANT)
-  {
+  if (pnai->btSak & SAK_ISO18092_COMPLIANT) {
     off += snprintf(dst + off, size - off, "* Compliant with ISO/IEC 18092\n");
-  }
-  else
-  {
+  } else {
     off += snprintf(dst + off, size - off, "* Not compliant with ISO/IEC 18092\n");
   }
 
@@ -184,47 +169,38 @@ int snprint_ats_bitrate_capability(char *dst, size_t size, uint8_t TA)
 
   off += snprintf(dst + off, size - off, "* Bit Rate Capability:\n");
 
-  if (TA == 0)
-  {
+  if (TA == 0) {
     return off + snprintf(dst + off, size - off,
                           "  * PICC supports only 106 kbits/s in both directions\n");
   }
 
-  if (TA & ATS_TA1_SAME_BITRATE)
-  {
+  if (TA & ATS_TA1_SAME_BITRATE) {
     off += snprintf(dst + off, size - off, "  * Same bitrate in both directions mandatory\n");
   }
 
   // PICC to PCD bitrates
-  if (TA & ATS_TA1_DS2_SUPPORTED)
-  {
+  if (TA & ATS_TA1_DS2_SUPPORTED) {
     off += snprintf(dst + off, size - off, "  * PICC to PCD, DS=2, bitrate 212 kbits/s supported\n");
   }
-  if (TA & ATS_TA1_DS4_SUPPORTED)
-  {
+  if (TA & ATS_TA1_DS4_SUPPORTED) {
     off += snprintf(dst + off, size - off, "  * PICC to PCD, DS=4, bitrate 424 kbits/s supported\n");
   }
-  if (TA & ATS_TA1_DS8_SUPPORTED)
-  {
+  if (TA & ATS_TA1_DS8_SUPPORTED) {
     off += snprintf(dst + off, size - off, "  * PICC to PCD, DS=8, bitrate 847 kbits/s supported\n");
   }
 
   // PCD to PICC bitrates
-  if (TA & ATS_TA1_DR2_SUPPORTED)
-  {
+  if (TA & ATS_TA1_DR2_SUPPORTED) {
     off += snprintf(dst + off, size - off, "  * PCD to PICC, DR=2, bitrate 212 kbits/s supported\n");
   }
-  if (TA & ATS_TA1_DR4_SUPPORTED)
-  {
+  if (TA & ATS_TA1_DR4_SUPPORTED) {
     off += snprintf(dst + off, size - off, "  * PCD to PICC, DR=4, bitrate 424 kbits/s supported\n");
   }
-  if (TA & ATS_TA1_DR8_SUPPORTED)
-  {
+  if (TA & ATS_TA1_DR8_SUPPORTED) {
     off += snprintf(dst + off, size - off, "  * PCD to PICC, DR=8, bitrate 847 kbits/s supported\n");
   }
 
-  if (TA & ATS_TA1_ERROR_BIT)
-  {
+  if (TA & ATS_TA1_ERROR_BIT) {
     off += snprintf(dst + off, size - off, "  * ERROR unknown value\n");
   }
 
@@ -245,12 +221,9 @@ int snprint_ats_frame_timing(char *dst, size_t size, uint8_t TB)
   off += snprintf(dst + off, size - off, "* Frame Waiting Time: %.4g ms\n",
                   calculate_fwt_ms(fwi));
 
-  if (sfgi == 0)
-  {
+  if (sfgi == 0) {
     off += snprintf(dst + off, size - off, "* No Start-up Frame Guard Time required\n");
-  }
-  else
-  {
+  } else {
     off += snprintf(dst + off, size - off, "* Start-up Frame Guard Time: %.4g ms\n",
                     calculate_fwt_ms(sfgi));
   }
@@ -266,21 +239,15 @@ int snprint_ats_node_cid_support(char *dst, size_t size, uint8_t TC)
 {
   int off = 0;
 
-  if (TC & ATS_TC1_NAD_SUPPORTED)
-  {
+  if (TC & ATS_TC1_NAD_SUPPORTED) {
     off += snprintf(dst + off, size - off, "* Node Address supported\n");
-  }
-  else
-  {
+  } else {
     off += snprintf(dst + off, size - off, "* Node Address not supported\n");
   }
 
-  if (TC & ATS_TC1_CID_SUPPORTED)
-  {
+  if (TC & ATS_TC1_CID_SUPPORTED) {
     off += snprintf(dst + off, size - off, "* Card IDentifier supported\n");
-  }
-  else
-  {
+  } else {
     off += snprintf(dst + off, size - off, "* Card IDentifier not supported\n");
   }
 
@@ -295,8 +262,7 @@ int snprint_ats_section(char *dst, size_t size, const nfc_iso14443a_info *pnai, 
 {
   int off = 0;
 
-  if (pnai->szAtsLen == 0)
-  {
+  if (pnai->szAtsLen == 0) {
     return 0;
   }
 
@@ -304,8 +270,7 @@ int snprint_ats_section(char *dst, size_t size, const nfc_iso14443a_info *pnai, 
   off += snprintf(dst + off, size - off, "                ATS: ");
   off += snprint_hex(dst + off, size - off, pnai->abtAts, pnai->szAtsLen);
 
-  if (!verbose)
-  {
+  if (!verbose) {
     return off;
   }
 
@@ -320,29 +285,25 @@ int snprint_ats_section(char *dst, size_t size, const nfc_iso14443a_info *pnai, 
   size_t offset = 1;
 
   // TA(1) - Bitrate capability
-  if (t0 & ATS_T0_TA1_PRESENT)
-  {
+  if (t0 & ATS_T0_TA1_PRESENT) {
     off += snprint_ats_bitrate_capability(dst + off, size - off, pnai->abtAts[offset]);
     offset++;
   }
 
   // TB(1) - Frame timing
-  if (t0 & ATS_T0_TB1_PRESENT)
-  {
+  if (t0 & ATS_T0_TB1_PRESENT) {
     off += snprint_ats_frame_timing(dst + off, size - off, pnai->abtAts[offset]);
     offset++;
   }
 
   // TC(1) - Node address and CID support
-  if (t0 & ATS_T0_TC1_PRESENT)
-  {
+  if (t0 & ATS_T0_TC1_PRESENT) {
     off += snprint_ats_node_cid_support(dst + off, size - off, pnai->abtAts[offset]);
     offset++;
   }
 
   // Historical bytes
-  if (pnai->szAtsLen > offset)
-  {
+  if (pnai->szAtsLen > offset) {
     off += snprint_ats_historical_bytes(dst + off, size - off, pnai, offset);
   }
 

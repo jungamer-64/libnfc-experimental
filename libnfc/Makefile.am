@@ -12,7 +12,8 @@ libnfc_la_SOURCES = \
 		    nfc-device.c \
 		    nfc-emulation.c \
 		    nfc-internal.c \
-		    nfc-secure.c \
+			@USE_RUST_NFC_SECURE_FALSE@ \
+		    nfc-common.cpp \
 		    target-subr.c \
 		    target-subr-helpers.c \
 		    target-subr-helpers2.c \
@@ -32,7 +33,8 @@ libnfc_la_CFLAGS = @DRIVERS_CFLAGS@
 libnfc_la_LIBADD = \
 	$(top_builddir)/libnfc/chips/libnfcchips.la \
 	$(top_builddir)/libnfc/buses/libnfcbuses.la \
-	$(top_builddir)/libnfc/drivers/libnfcdrivers.la
+	$(top_builddir)/libnfc/drivers/libnfcdrivers.la \
+	$(top_builddir)/rust/target/release/liblibnfc_rs.a
 
 if PCSC_ENABLED
   libnfc_la_CFLAGS += @libpcsclite_CFLAGS@ -DHAVE_PCSC
@@ -45,7 +47,7 @@ if LIBUSB_ENABLED
 endif
 
 if WITH_LOG
-  libnfc_la_SOURCES += log.c log-internal.c
+	libnfc_la_SOURCES += log.cpp log-internal.c
 endif
 
 EXTRA_DIST = \

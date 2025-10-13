@@ -20,7 +20,13 @@ m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])])
 
 AC_LANG([C])
 AC_PROG_CC
+AC_PROG_CXX
 AC_PROG_MAKE_SET
+AC_PATH_PROG([CARGO], [cargo])
+if test -z "$CARGO"; then
+  AC_MSG_ERROR([cargo is required to build Rust components])
+fi
+AC_SUBST([CARGO])
 
 WITH_POSIX_ONLY_EXAMPLES=1
 # Libtool
@@ -56,8 +62,13 @@ AC_CHECK_HEADERS([fcntl.h limits.h stdio.h stdlib.h stdint.h stddef.h stdbool.h 
 AC_CHECK_HEADERS([linux/spi/spidev.h], [spi_available="yes"])
 AC_CHECK_HEADERS([linux/i2c-dev.h], [i2c_available="yes"])
 AC_CHECK_HEADERS([linux_nfc_api.h], [nfc_nci_available="yes"])
-AC_CHECK_FUNCS([memmove memset select strdup strerror strstr strtol usleep],
-	       [AC_DEFINE([_XOPEN_SOURCE], [600], [Enable POSIX extensions if present])])
+AC_CHECK_FUNCS([memmove memset select strdup strerror strstr strtol usleep])
+
+AH_VERBATIM([_XOPEN_SOURCE_GUARD],
+[[/* Enable POSIX extensions if present */
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 600
+#endif]])
 
 AC_DEFINE(_NETBSD_SOURCE, 1, [Define on NetBSD to activate all library features])
 AC_DEFINE(_DARWIN_C_SOURCE, 1, [Define on Darwin to activate all library features])
@@ -173,6 +184,22 @@ AC_MSG_RESULT($enable_example)
 
 AM_CONDITIONAL(EXAMPLE_ENABLED, [test x"$enable_example" = xyes])
 
+# Option to enable Rust nfc-secure replacement
+AC_ARG_ENABLE([rust-secure],AS_HELP_STRING([--enable-rust-secure],[Enable Rust implementation of nfc-secure]),[enable_rust_secure=$enableval],[enable_rust_secure="no"])
+AC_MSG_CHECKING(for rust-secure flag)
+AC_MSG_RESULT($enable_rust_secure)
+AM_CONDITIONAL([USE_RUST_NFC_SECURE], [test "$enable_rust_secure" != "no"] )
+if test x"$enable_rust_secure" = x"xyes"
+then
+  AC_DEFINE([USE_RUST_NFC_SECURE], [1], [Use Rust implementation for nfc-secure])
+fi
+if test x"$enable_rust_secure" = x"xyes"
+then
+  AC_SUBST([USE_RUST_NFC_SECURE_FALSE], [])
+else
+  AC_SUBST([USE_RUST_NFC_SECURE_FALSE], [nfc-secure.c])
+fi
+
 # Dependencies
 PKG_CONFIG_REQUIRES=""
 
@@ -198,6 +225,7 @@ fi
 
 # Help us to write great code ;-)
 CFLAGS="$CFLAGS -Wall -pedantic -Wextra"
+CXXFLAGS="$CXXFLAGS -Wall -pedantic -Wextra"
 
 # Defines and C flags
 CFLAGS="$CFLAGS -std=c99"
@@ -228,6 +256,7 @@ AC_CONFIG_FILES([
 		libnfc/buses/Makefile
 		libnfc/chips/Makefile
 		libnfc/drivers/Makefile
+    rust/Makefile
 		test/Makefile
 		utils/Makefile
 		])

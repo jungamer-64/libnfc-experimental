@@ -28,15 +28,24 @@
 #define __LOG_INTERNAL_H__
 
 #ifdef HAVE_CONFIG_H
-#  include "config.h"
+#include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include <stdarg.h>
 
-// Internal methods so different platforms can route the logging
-// Offering both forms of the variadic function
-// These are implemented in the log_<platform> specific file
-void log_put_internal(const char *format, ...);
-void log_vput_internal(const char *format, va_list args);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+    // Internal methods so different platforms can route the logging
+    // Offering both forms of the variadic function
+    // These are implemented in the log_<platform> specific file
+    void log_put_internal(const char *format, ...);
+    void log_vput_internal(const char *format, va_list args);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // __LOG_INTERNAL_H__

@@ -72,8 +72,7 @@ const char *spi_ports_device_radix[] = {"spidev", NULL};
 #error "Can't determine spi port string for your system"
 #endif
 
-struct spi_port_unix
-{
+struct spi_port_unix {
   int fd; // Serial port file descriptor
   //~ struct termios 	termios_backup; 	// Terminal info before using the port
   //~ struct termios 	termios_new; 		// Terminal info during the transaction
@@ -90,8 +89,7 @@ spi_open(const char *pcPortName)
     return INVALID_SPI_PORT;
 
   sp->fd = open(pcPortName, O_RDWR | O_NOCTTY | O_NONBLOCK);
-  if (sp->fd == -1)
-  {
+  if (sp->fd == -1) {
     spi_close(sp);
     return INVALID_SPI_PORT;
   }
@@ -168,20 +166,16 @@ int spi_send_receive(spi_port sp, const uint8_t *pbtTx, const size_t szTx, uint8
 
   uint8_t *pbtTxLSB = 0;
 
-  if (szTx)
-  {
+  if (szTx) {
     LOG_HEX(LOG_GROUP, "TX", pbtTx, szTx);
-    if (lsb_first)
-    {
+    if (lsb_first) {
       pbtTxLSB = malloc(szTx * sizeof(uint8_t));
-      if (!pbtTxLSB)
-      {
+      if (!pbtTxLSB) {
         return NFC_ESOFT;
       }
 
       size_t i;
-      for (i = 0; i < szTx; ++i)
-      {
+      for (i = 0; i < szTx; ++i) {
         pbtTxLSB[i] = bit_reversal(pbtTx[i]);
       }
 
@@ -189,53 +183,46 @@ int spi_send_receive(spi_port sp, const uint8_t *pbtTx, const size_t szTx, uint8
     }
 
     struct spi_ioc_transfer tr_send = {
-        .tx_buf = (unsigned long)pbtTx,
-        .rx_buf = 0,
-        .len = szTx,
-        .delay_usecs = 0,
-        .speed_hz = 0,
-        .bits_per_word = 0,
+      .tx_buf = (unsigned long)pbtTx,
+      .rx_buf = 0,
+      .len = szTx,
+      .delay_usecs = 0,
+      .speed_hz = 0,
+      .bits_per_word = 0,
     };
     tr[transfers] = tr_send;
 
     ++transfers;
   }
 
-  if (szRx)
-  {
+  if (szRx) {
     struct spi_ioc_transfer tr_receive = {
-        .tx_buf = 0,
-        .rx_buf = (unsigned long)pbtRx,
-        .len = szRx,
-        .delay_usecs = 0,
-        .speed_hz = 0,
-        .bits_per_word = 0,
+      .tx_buf = 0,
+      .rx_buf = (unsigned long)pbtRx,
+      .len = szRx,
+      .delay_usecs = 0,
+      .speed_hz = 0,
+      .bits_per_word = 0,
     };
     tr[transfers] = tr_receive;
     ++transfers;
   }
 
-  if (transfers)
-  {
+  if (transfers) {
     int ret = ioctl(SPI_DATA(sp)->fd, SPI_IOC_MESSAGE(transfers), tr);
-    if (szTx && lsb_first)
-    {
+    if (szTx && lsb_first) {
       free(pbtTxLSB);
     }
 
-    if (ret != (int)(szRx + szTx))
-    {
+    if (ret != (int)(szRx + szTx)) {
       return NFC_EIO;
     }
 
     // Reverse received bytes if needed
-    if (szRx)
-    {
-      if (lsb_first)
-      {
+    if (szRx) {
+      if (lsb_first) {
         size_t i;
-        for (i = 0; i < szRx; ++i)
-        {
+        for (i = 0; i < szRx; ++i) {
           pbtRx[i] = bit_reversal(pbtRx[i]);
         }
       }
@@ -277,18 +264,15 @@ spi_list_ports(void)
 
   DIR *pdDir = opendir("/dev");
   struct dirent *pdDirEnt;
-  while ((pdDirEnt = readdir(pdDir)) != NULL)
-  {
+  while ((pdDirEnt = readdir(pdDir)) != NULL) {
 #if !defined(__APPLE__)
     size_t name_len = nfc_safe_strlen(pdDirEnt->d_name, NAME_MAX);
     if (name_len == 0 || !isdigit(pdDirEnt->d_name[name_len - 1]))
       continue;
 #endif
     const char **p = spi_ports_device_radix;
-    while (*p)
-    {
-      if (!strncmp(pdDirEnt->d_name, *p, nfc_safe_strlen(*p, NAME_MAX)))
-      {
+    while (*p) {
+      if (!strncmp(pdDirEnt->d_name, *p, nfc_safe_strlen(*p, NAME_MAX))) {
         char **res2 = realloc(res, (szRes + 1) * sizeof(char *));
         if (!res2)
           goto oom;
@@ -299,8 +283,7 @@ spi_list_ports(void)
           goto oom;
 
         int _n = snprintf(res[szRes - 1], path_len, "/dev/%s", pdDirEnt->d_name);
-        if (_n < 0)
-        {
+        if (_n < 0) {
           free(res[szRes - 1]);
           goto oom;
         }

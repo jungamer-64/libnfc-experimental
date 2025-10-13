@@ -4,7 +4,13 @@ if (NOT DEFINED CMAKE_BUILD_TYPE)
   set (CMAKE_BUILD_TYPE Release CACHE STRING "Build type")
 endif ()
 
-project (libnfc C)
+project (libnfc C CXX)
+
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 SET(VERSION_MAJOR "1")
 SET(VERSION_MINOR "8")
@@ -15,6 +21,55 @@ SET(VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
 SET(PACKAGE_NAME "libnfc")
 SET(PACKAGE_VERSION ${VERSION})
 SET(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
+
+option (USE_RUST_NFC_SECURE "Use Rust implementation of nfc-secure" OFF)
+
+find_program(CARGO_EXECUTABLE cargo)
+if(NOT CARGO_EXECUTABLE)
+  message(FATAL_ERROR "cargo executable is required to build the Rust components")
+endif()
+
+set(RUST_TARGET_DIR ${CMAKE_BINARY_DIR}/rust-target)
+file(GLOB_RECURSE LIBNFC_RUST_SOURCES
+  ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/src/*.rs)
+set(RUST_CRATE_NAME libnfc_rs)
+set(RUST_LIB_FILENAME ${CMAKE_STATIC_LIBRARY_PREFIX}${RUST_CRATE_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX})
+set(RUST_LIB_PATH ${RUST_TARGET_DIR}/release/${RUST_LIB_FILENAME} CACHE INTERNAL "Path to Rust support library")
+
+set(RUST_CARGO_FEATURES)
+if(USE_RUST_NFC_SECURE)
+  # Pass features as separate arguments so cargo receives them correctly
+  set(RUST_CARGO_FEATURES --features nfc_secure)
+endif()
+
+add_custom_command(
+  OUTPUT ${RUST_LIB_PATH}
+  COMMAND ${CARGO_EXECUTABLE} build --release --manifest-path ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml --target-dir ${RUST_TARGET_DIR} ${RUST_CARGO_FEATURES}
+  DEPENDS ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml ${LIBNFC_RUST_SOURCES}
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  COMMENT "Building Rust support library"
+  VERBATIM)
+
+add_custom_target(libnfc_rs_build ALL DEPENDS ${RUST_LIB_PATH})
+
+# Generate C header from Rust sources (cbindgen) into the rust target dir
+find_program(CBINDGEN_EXECUTABLE cbindgen)
+if(CBINDGEN_EXECUTABLE)
+  set(RUST_HEADER ${RUST_TARGET_DIR}/include/libnfc_rs.h)
+  add_custom_command(
+    OUTPUT ${RUST_HEADER}
+    COMMAND ${CBINDGEN_EXECUTABLE} --config ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/cbindgen.toml --crate libnfc-rs --output ${RUST_HEADER}
+    DEPENDS ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml ${LIBNFC_RUST_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/rust/libnfc-rs
+    COMMENT "Generating C header for Rust FFI (libnfc_rs.h)"
+    VERBATIM)
+
+  add_custom_target(libnfc_rs_headers DEPENDS ${RUST_HEADER})
+  add_dependencies(libnfc_rs_build libnfc_rs_headers)
+  include_directories(${RUST_TARGET_DIR}/include)
+else()
+  message(STATUS "cbindgen not found: rust FFI header will not be auto-generated")
+endif()
 
 # config.h
 IF(WIN32)
@@ -111,6 +166,16 @@ IF(CMAKE_COMPILER_IS_GNUCC)
     SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pie")
   ENDIF(NOT WIN32)
 ENDIF(CMAKE_COMPILER_IS_GNUCC)
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  set(CMAKE_CXX_FLAGS "-Wall -Wextra -pedantic ${CMAKE_CXX_FLAGS}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_FORTIFY_SOURCE=2")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wformat -Wformat-security")
+  if (NOT WIN32)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIE")
+  endif()
+endif()
 
 # Workarounds for libusb in C99
 ADD_DEFINITIONS(-Du_int8_t=uint8_t -Du_int16_t=uint16_t)

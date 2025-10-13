@@ -39,7 +39,9 @@ FOREACH(source ${UTILS-SOURCES})
 
   # Add nfc-secure.c for memory safety wrappers
   IF((${source} MATCHES "nfc-read-forum-tag3") OR (${source} MATCHES "nfc-relay-picc"))
-    LIST(APPEND TARGETS nfc-secure.c)
+    if(NOT USE_RUST_NFC_SECURE)
+      LIST(APPEND TARGETS nfc-secure.c)
+    endif()
   ENDIF()
 
   IF(WIN32)

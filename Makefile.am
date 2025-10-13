@@ -2,7 +2,7 @@ ACLOCAL_AMFLAGS = -I m4
 
 AM_CFLAGS = $(LIBNFC_CFLAGS)
 
-SUBDIRS = libnfc utils
+SUBDIRS = rust libnfc utils
 
 if EXAMPLE_ENABLED
 SUBDIRS += examples
