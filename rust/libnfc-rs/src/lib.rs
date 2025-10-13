@@ -1,3 +1,5 @@
+// src/lib.rs
+
 use libc::{c_char, c_int, c_void, size_t};
 use std::cell::RefCell;
 use std::ffi::{CStr, CString};
@@ -6,22 +8,45 @@ use std::ptr;
 
 #[cfg(feature = "nfc_secure")]
 mod nfc_secure;
+#[cfg(feature = "nfc_secure")]
+pub use nfc_secure::{
+    nfc_ensure_null_terminated, nfc_is_null_terminated, nfc_safe_memcpy, nfc_safe_memmove,
+    nfc_safe_strlen, nfc_secure_memset, nfc_secure_strerror, NFC_SECURE_SUCCESS,
+};
+
+// Public test helpers module. Enabled by the `test_helpers` feature and
+// requires `nfc_secure` so internal helpers can be re-exported. This is
+// intended for integration tests that need access to small, well-audited
+// helpers without making them part of the production API surface.
+#[cfg(all(any(test, feature = "test_helpers"), feature = "nfc_secure"))]
+pub(crate) mod test_helpers {
+    //! Test-only helpers. Enabled with `--features test_helpers`.
+    pub(crate) use crate::nfc_secure::nfc_buffers_overlap_usize;
+    pub(crate) use crate::nfc_secure::nfc_secure_max_reasonable_size;
+    pub(crate) use crate::nfc_secure::nfc_secure_max_size_usize;
+    pub(crate) use crate::nfc_secure::nfc_secure_memset_threshold;
+
+    // Volatile helpers: only available when the volatile fallback path is
+    // compiled.
+    #[cfg(not(any(have_memset_explicit, have_memset_s)))]
+    pub(crate) use crate::nfc_secure::{nfc_memset_and_fence, nfc_volatile_memset};
+}
 
 thread_local! {
     static LAST_ERROR: RefCell<Option<CString>> = RefCell::new(None);
 }
 
-const NFC_COMMON_SUCCESS: c_int = 0;
-const NFC_COMMON_ERROR: c_int = -1;
-const NFC_COMMON_INVALID: c_int = -(libc::EINVAL as c_int);
+pub const NFC_COMMON_SUCCESS: c_int = 0;
+pub const NFC_COMMON_ERROR: c_int = -1;
+pub const NFC_COMMON_INVALID: c_int = -(libc::EINVAL as c_int);
 
-const LOG_GROUP_GENERAL: u8 = 1;
-const LOG_PRIORITY_ERROR: u8 = 1;
-const LOG_PRIORITY_DEBUG: u8 = 3;
+pub const LOG_GROUP_GENERAL: u8 = 1;
+pub const LOG_PRIORITY_ERROR: u8 = 1;
+pub const LOG_PRIORITY_DEBUG: u8 = 3;
 
-const LOG_CATEGORY: &[u8] = b"libnfc.common\0";
-const NFC_BUFSIZE_CONNSTRING: usize = 1024;
-const MALLOC_LABEL: &[u8] = b"malloc\0";
+const LOG_CATEGORY: *const c_char = b"libnfc.common\0" as *const u8 as *const c_char;
+pub const NFC_BUFSIZE_CONNSTRING: usize = 1024;
+const MALLOC_LABEL: *const c_char = b"malloc\0" as *const u8 as *const c_char;
 
 #[cfg(not(test))]
 extern "C" {
@@ -71,12 +96,7 @@ pub fn test_clear_last_log() {
 fn log_message(priority: u8, message: &str) {
     if let Ok(c_msg) = CString::new(message) {
         unsafe {
-            log_put_message(
-                LOG_GROUP_GENERAL,
-                LOG_CATEGORY.as_ptr() as *const c_char,
-                priority,
-                c_msg.as_ptr(),
-            );
+            log_put_message(LOG_GROUP_GENERAL, LOG_CATEGORY, priority, c_msg.as_ptr());
         }
     }
 }
@@ -171,7 +191,7 @@ unsafe fn alloc_and_copy(segment: &[u8]) -> Result<*mut c_char, ()> {
     let size = length + 1;
     let memory = libc::malloc(size) as *mut c_char;
     if memory.is_null() {
-        libc::perror(MALLOC_LABEL.as_ptr() as *const c_char);
+        libc::perror(MALLOC_LABEL);
         return Err(());
     }
 
@@ -183,7 +203,19 @@ unsafe fn alloc_and_copy(segment: &[u8]) -> Result<*mut c_char, ()> {
     Ok(memory)
 }
 
-fn ffi_catch_unwind_int<F>(operation: F) -> c_int
+/// Run the provided operation inside a panic boundary and convert panics
+/// into a stable error return code. This prevents Rust panics from
+/// unwinding across the FFI boundary. The function logs the panic and
+/// sets the thread-local last-error buffer so C callers can inspect it.
+///
+/// For unit testing it's sometimes useful to observe panics directly.
+/// To support those cases we provide an opt-in feature
+/// `test_no_catch` which compiles a version that *does not* catch
+/// panics. This feature should only be enabled in test builds and is
+/// intentionally opt-in to avoid changing FFI behavior in normal
+/// builds.
+#[cfg(not(feature = "test_no_catch"))]
+fn ffi_catch_unwind_int<F>(context: &str, panic_code: c_int, operation: F) -> c_int
 where
     F: FnOnce() -> c_int,
     F: panic::UnwindSafe,
@@ -191,12 +223,25 @@ where
     match panic::catch_unwind(panic::AssertUnwindSafe(operation)) {
         Ok(result) => result,
         Err(_) => {
-            let message = "panic in connstring_decode";
-            log_error(message);
+            let message = format!("panic in {}", context);
+            log_error(&message);
             set_last_error_message(message);
-            0
+            panic_code
         }
     }
+}
+
+// Test-only variant that bypasses the panic-catching wrapper so tests
+// can observe panics directly. Enable by running `cargo test --features test_no_catch`.
+#[cfg(feature = "test_no_catch")]
+fn ffi_catch_unwind_int<F>(_context: &str, _panic_code: c_int, operation: F) -> c_int
+where
+    F: FnOnce() -> c_int,
+    F: panic::UnwindSafe,
+{
+    // Intentionally do not catch unwinds; let the panic propagate to
+    // the test harness so tests can assert #[should_panic] behavior.
+    operation()
 }
 
 #[no_mangle]
@@ -542,7 +587,7 @@ pub unsafe extern "C" fn connstring_decode(
     pparam1: *mut *mut c_char,
     pparam2: *mut *mut c_char,
 ) -> c_int {
-    ffi_catch_unwind_int(|| {
+    ffi_catch_unwind_int("connstring_decode", NFC_COMMON_ERROR, || {
         connstring_decode_impl(connstring, driver_name, bus_name, pparam1, pparam2)
     })
 }
@@ -670,6 +715,20 @@ mod tests {
             let logged = test_get_last_log();
             assert!(logged.is_some());
             assert!(logged.unwrap().contains("does not match prefix"));
+        }
+    }
+
+    #[test]
+    fn ffi_catch_unwind_maps_panic_to_error() {
+        // Ensure the panic boundary converts a panic into the
+        // appropriate external error code instead of letting the
+        // panic unwind across the FFI boundary.
+        unsafe {
+            use crate::nfc_secure::NFC_SECURE_ERROR_INTERNAL;
+            let rc = ffi_catch_unwind_int("test_panic", NFC_SECURE_ERROR_INTERNAL, || {
+                panic!("boom");
+            });
+            assert_eq!(rc, NFC_SECURE_ERROR_INTERNAL);
         }
     }
 }

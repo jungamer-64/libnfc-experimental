@@ -146,18 +146,31 @@ nfc_safe_memmove(buffer + 8, 56, buffer, 32);  // SUCCESS
 
 ## 🔒 2. 安全な消去操作
 
-### 2.1 セキュア memset
+### 2.1 セキュア消去（推奨: nfc_secure_zero）
 
-#### 関数版: `nfc_secure_memset()`
+#### 関数版: `nfc_secure_zero()` （推奨）
 
-**用途**: パスワード、鍵、トークンなど**秘密情報の完全消去**
+**用途**: パスワード、鍵、トークンなど **秘密情報の完全消去**。ゼロ埋め専用の API として明確に分離されているため、プラットフォームが提供する "ゼロ消去" の追加保証（`explicit_bzero` や `SecureZeroMemory` 等）を優先して利用します。
 
 ```c
 char password[256];
 // ... パスワード入力 ...
 
 // ✅ セキュア消去(コンパイラ最適化で消されない)
-nfc_secure_memset(password, 0x00, sizeof(password));
+if (nfc_secure_zero(password, sizeof(password)) != NFC_SECURE_SUCCESS) {
+    /* エラー処理 */
+}
+```
+
+#### 関数版: `nfc_secure_memset()`（任意バイトでの塗りつぶし）
+
+`nfc_secure_memset()` は任意のバイト値（例: 0xFF）で塗りつぶすために使用しますが、プラットフォームにより "ゼロ専用" の安全化プリミティブしか存在しない場合は、ライブラリ実装はフォールバックを行います（小さいバッファは volatile 書き込み、大きいバッファは `memset` + コンパイラフェンス等）。そのため、秘密情報を確実に消去する目的では `nfc_secure_zero()` を優先してください。
+
+```c
+// 任意値で上書きする際（注意が必要）
+if (nfc_secure_memset(buf, 0xFF, len) != NFC_SECURE_SUCCESS) {
+    /* エラー処理 */
+}
 ```
 
 **通常の memset との違い**:
@@ -208,10 +221,11 @@ NFC_SECURE_MEMSET(key, 0x00);  // コンパイルエラー(C11+)
 cmake -DCMAKE_BUILD_TYPE=Debug ..
 make
 
-# 実行時ログ
-# [LOG] nfc-secure: using explicit_bzero for secure memset
+# 実行時ログ (例)
+# [LOG] nfc-secure: using explicit_bzero for secure zero
+# [LOG] nfc-secure: using memset_s for secure zero
 # または
-# [LOG] nfc-secure: using volatile fallback for secure memset
+# [LOG] nfc-secure: using volatile fallback for secure zero
 ```
 
 ---
@@ -221,11 +235,12 @@ make
 ```c
 // 小さいバッファ(≤256B): volatile ループ(確実)
 uint8_t small[16];
-nfc_secure_memset(small, 0, sizeof(small));  // ~10ns
+// 推奨: ゼロ消去には nfc_secure_zero を使う
+if (nfc_secure_zero(small, sizeof(small)) != NFC_SECURE_SUCCESS) { /* error */ }
 
 // 大きいバッファ(>256B): memset + バリア(高速)
 uint8_t large[4096];
-nfc_secure_memset(large, 0, sizeof(large));  // ~100ns
+if (nfc_secure_zero(large, sizeof(large)) != NFC_SECURE_SUCCESS) { /* error */ }
 ```
 
 **チューニング** (必要な場合):
@@ -554,9 +569,9 @@ export NFC_LOG_LEVEL=3  # LOG_PRIORITY_DEBUG
 
 **ログ出力例**:
 
-```
+```text
 [DEBUG] nfc-secure: memcpy dst=0x7ffd12340000 src=0x7ffd12340100 size=64
-[INFO] nfc-secure: using explicit_bzero for secure memset
+[INFO] nfc-secure: using explicit_bzero for secure zero
 [WARN] nfc-secure: detected buffer overlap in memcpy
 [ERROR] nfc-secure: buffer overflow: dst_size=32 < src_size=64
 ```

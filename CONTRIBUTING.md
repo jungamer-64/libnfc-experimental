@@ -171,6 +171,25 @@ Then create a Pull Request on GitHub. The CI/CD pipeline will automatically veri
 * Code quality standards met
 * Coverage targets achieved (when test infrastructure is available)
 
+## FFI Change Checklist
+
+When your change touches the FFI boundary (Rust ⇄ C), include the following in your PR description and ensure CI checks pass:
+
+1. Regenerate and commit the cbindgen header (if any symbol/signature/layout changed):
+
+        ```sh
+        cbindgen --config rust/libnfc-rs/cbindgen.toml --crate libnfc-rs --output rust/libnfc-rs/include/libnfc_rs.h
+        ```
+
+2. Include a short ownership table: who allocates / who frees any returned buffers (use `nfc_free_*` wrappers for CallerFree cases).
+3. Demonstrate `nfc_set_last_error()` usage for error paths where appropriate and list the error codes added.
+4. Add or update unit tests (Rust) and C integration tests that exercise success and failure paths. `ffi-sanity` integration must pass.
+5. Ensure `scripts/check-cbindgen.sh` and `scripts/check_callerfree_usage.sh` pass locally and in CI.
+6. Coverage thresholds: changed modules should maintain >= 80% line coverage; critical FFI paths require 100% tests where feasible.
+7. If the change is ABI-breaking, include an RFC and obtain maintainers' approval before merging.
+
+CI will gate FFI PRs on the above checks — failing the header check or ffi-sanity will block merges.
+
 ## Refactoring Guidelines
 
 ### Complexity Reduction

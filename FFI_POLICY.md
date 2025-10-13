@@ -13,7 +13,13 @@
 
 1. **panic を FFI 境界の外へ漏らさないこと** — すべての公開 `#[no_mangle] extern "C"` 関数は `ffi_catch_unwind`（または同等のラッパー）でトップレベルを防御し、パニックを NULL もしくは規定の errno に正規化する。`unwrap()` や panic を起こし得る操作をラッパー外で実行することを禁止する。
 2. **CallerFree ポインタを生の `free()` で解放しないこと** — Rust 側で確保して `CString::into_raw` 等で C に渡したメモリは、対応する `*_free` ラッパーのみで解放する。C テスト・サンプルを含むどのコードでも `free(ptr)` は使用禁止。
-3. **cbindgen で再生成したヘッダをコミットせずに ABI を変更しないこと** — FFI のシグネチャや `#[repr(C)]` 構造体に変更がある場合、必ず `cbindgen --config rust/libnfc-rs/cbindgen.toml ...` を実行し、`rust/libnfc-rs/include/libnfc_rs.h` の差分を PR に含める。レビューチェックリスト（§7）に従い ABI 互換性の証跡を添付すること。
+3. **cbindgen で再生成したヘッダをコミットせずに ABI を変更しないこと** — FFI のシグネチャや `#[repr(C)]` 構造体に変更がある場合、必ず次のように `cbindgen` を実行してヘッダを再生成し、`rust/libnfc-rs/include/libnfc_rs.h` の差分を PR に含める:
+
+```sh
+cbindgen --config rust/libnfc-rs/cbindgen.toml --crate libnfc-rs --output rust/libnfc-rs/include/libnfc_rs.h
+```
+
+レビューチェックリスト（§7）に従い ABI 互換性の証跡を添付すること。
 
 これらのルール違反はただちにマージ不可とし、既存ブランチでも修正されるまで作業を停止すること。
 
@@ -63,6 +69,35 @@
 - `nfc_get_last_error()` のようなスレッドローカルな文字列アクセサを用意し、直近の失敗理由を C 呼び出し元が取得できるようにする。
 - エラーコード表（enum）は `libnfc_error_t` を定義し、拡張する際は互換性を配慮する。
 - 可能であれば、`errno` は使わず独自のスレッドローカル `last_error` を用いる。`errno` を利用する既存コードが多い場合はマッピングを明記する。
+
+### 4.1) `nfc_set_last_error` の使用例と典型ケース
+
+`nfc_set_last_error()` は、C 側から詳細な失敗理由を取り出す必要がある場面で呼び出します。典型的な呼び出しタイミング:
+
+- 引数検証に失敗したとき（例: NULL ポインタ、範囲外の値）
+- メモリ確保に失敗したとき（OOM）
+- デバイス検出・プローブが失敗したとき（I/O/プローブエラー）
+- 通信中の I/O エラーやタイムアウト時
+- 内部的な不整合／期待値違反が検出されたとき（ライブラリ内部のロジックエラー）
+
+実装例（擬似 Rust / C 表現）:
+
+```rust
+// Rust 側 FFI エントリポイントの先頭でのパターン
+#[no_mangle]
+pub extern "C" fn nfc_do_something(arg: *const c_char) -> i32 {
+  ffi_catch_unwind(|| {
+    if arg.is_null() {
+      unsafe { nfc_set_last_error(NfcError::InvalidArg.as_errno(), "arg is NULL\0".as_ptr() as *const _); }
+      return Err(NfcError::InvalidArg);
+    }
+    // ... normal path ...
+    Ok(())
+  })
+}
+```
+
+上位の C 呼び出し元は、戻り値のエラーコードに基づいて `nfc_get_last_error()` を呼び出して詳細な説明を取得します。成功パスでは直ちにエラーバッファをクリアしてください（`nfc_clear_last_error()`）。
 
 ## 4.5) Error Mapping Layer
 
@@ -183,6 +218,13 @@ extern "C" fn my_c_callback(event_data: i32, user_data: *mut std::ffi::c_void) {
   - unsafe の根拠と不変条件
   - ABI 互換性のエビデンス（cbindgen 出力や readelf/nm の抜粋）
   - 対応する単体テスト / FFI サニティテスト
+ 
+  FFI 固有の追記（PR 要件）:
+
+  - 変更モジュールに対して最低 80% の行カバレッジを満たすこと（重要なパスは 100% を推奨）
+  - `ffi-sanity` 統合テストが成功すること（CI で実行）
+  - `cbindgen` で生成したヘッダと追跡中のヘッダが一致すること（CI の `cbindgen` チェック）
+  - CallerFree を採用する場合、`*_free` ヘルパと使用例が PR に含まれていること
 
 ## 12) 付録: 推奨ツール一覧
 
@@ -197,6 +239,36 @@ extern "C" fn my_c_callback(event_data: i32, user_data: *mut std::ffi::c_void) {
 - 利用者には `nfc_context_new()` / `nfc_context_free()` などのコンストラクタ/デストラクタ関数を提供し、メモリ生存期間と所有権を明確にする。
 - `#[repr(C)]` でレイアウトを共有するのは、フィールドを直接公開する必要がある単純なデータ構造に限定する。その場合はパディングや順序を含む不変条件をドキュメント化する。
 - 将来的にフィールドを追加・変更する際は、このセクションのルールに照らして ABI 安全性をレビューし、必要であればバージョンを更新する。
+
+## 秘密データの消去（Secure zeroing）ポリシー
+
+秘密情報（パスワード、暗号鍵、認証トークン等）をメモリから除去する際の挙動は曖昧になりやすく、最悪の場合コンパイラ最適化やプラットフォームの実装差により消去が行われないリスクがあります。そこで本プロジェクトでは以下の原則を採用します。
+
+- API の分離: ゼロ埋め（zero-only）を目的とする操作は `nfc_secure_zero(void *ptr, size_t size)` を用いることを推奨します。任意バイト値で埋める必要がある場合は `nfc_secure_memset(void *ptr, int val, size_t size)` を使用しますが、プラットフォーム差異に注意してください。
+- プラットフォーム優先順位: ゼロ消去に関しては、利用可能ならば以下のプラットフォーム提供 API を優先して利用します（優先順）:
+  1. C23 `memset_explicit`
+  2. `memset_s`（C11 Annex K 実装）
+  3. `explicit_bzero`（glibc/BSD 実装）
+  4. Windows の `SecureZeroMemory`
+
+- 非ゼロ塗りつぶしの扱い: `nfc_secure_memset` に対して要求された `val != 0` は、上記のような「ゼロ専用」プリミティブでは満たせない場合があります。その場合は実装は次善策として小さいバッファでは volatile による明示的書き込み、より大きなバッファでは通常の `memset` 実行後にコンパイラフェンスを挟む等のフォールバックを行います。これにより呼び出し側は要求した塗り替えを受け取れますが、ゼロ専用プリミティブが持つ追加保証（OSが提供する特定のセキュリティ保証等）は得られないことに留意してください。
+- サイズと安全性のチェック: すべてのセキュア消去 API は不合理に大きいサイズを拒否するチェックを行います（ライブラリ内では `secure_max_size()` のような関数で中央集権的に管理）。呼び出し元は戻り値を必ず検査してください。
+
+推奨例（C 側）:
+
+```c
+// 秘密データを確実にゼロ消去する（推奨）
+if (nfc_secure_zero(secret, secret_len) != NFC_SECURE_SUCCESS) {
+    // エラー処理
+}
+
+// 任意のバイト値で塗りつぶしたい（注意: プラットフォーム差あり）
+if (nfc_secure_memset(buf, 0xFF, len) != NFC_SECURE_SUCCESS) {
+    // エラー処理
+}
+```
+
+ドキュメントと CI においては、`nfc_secure_zero` を「秘密情報の消去用 API」として明記し、`nfc_secure_memset` は任意値塗りつぶし用であることを明確にしてください。また、プラットフォーム固有の振る舞い（`explicit_bzero` があるか、Windows の `SecureZeroMemory` があるか等）をビルド時に検出し、利用可能な場合はそれを優先する旨を README / 使用ガイドに記述すること。
 
 ---
 

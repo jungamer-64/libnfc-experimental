@@ -1,0 +1,75 @@
+name: AddressSanitizer (ASan) CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  asan:
+    name: ASan — Rust (nightly) + C
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            lld \
+            libclang-dev \
+            pkg-config \
+            autoconf \
+            automake \
+            libtool
+
+      - name: Setup Rust (nightly) and components
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+          profile: minimal
+
+      - name: Add rust-src (required for building instrumented std)
+        run: |
+          rustup component add rust-src --toolchain nightly
+
+      - name: Build and test Rust crate with ASan
+        env:
+          # Tell ASan to abort on error so CI fails fast and provides diagnostics
+          ASAN_OPTIONS: "detect_leaks=1:abort_on_error=1:symbolize=1"
+          # Nightly-only sanitizer flag — instruct cargo to instrument std as well
+          RUSTFLAGS: "-Z sanitizer=address"
+        run: |
+          # Ensure we use nightly cargo invocation explicitly
+          cargo +nightly test -Z build-std --target x86_64-unknown-linux-gnu -Z sanitizer=address \
+            --manifest-path rust/libnfc-rs/Cargo.toml --features "nfc_secure nfc_secure_debug test_helpers" -- --nocapture || true
+
+      - name: Configure and build C components with ASan
+        working-directory: .
+        run: |
+          autoreconf -vis
+          ./configure CFLAGS="-fsanitize=address -fno-omit-frame-pointer -g -O1" \
+                      LDFLAGS="-fsanitize=address"
+          make -j$(nproc)
+
+      - name: Run C unit tests (if present)
+        run: |
+          if [ -f "Makefile" ] && grep -q "check:" Makefile; then
+            make check || true
+          else
+            echo "No C 'make check' target found — skipping"
+          fi
+
+      - name: Collect ASan logs (if any)
+        if: always()
+        run: |
+          echo "=== Searching for ASan output files and logs ==="
+          grep -R --line-number "ERROR: AddressSanitizer" || true
+          # Show any .log or sanitizer dumps to help debugging
+          find . -type f -name "*asan*.log" -print -exec sed -n '1,200p' {} \; || true

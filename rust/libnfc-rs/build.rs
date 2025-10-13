@@ -2,53 +2,101 @@
 use std::env;
 use std::process::Command;
 
-fn have_function_in_libc(func: &str) -> bool {
-    // Try to compile a small C program that references the function.
-    // Use cc crate when available, but keep this minimal to avoid adding dependencies.
-    let out_dir = env::var("OUT_DIR").unwrap_or_else(|_| ".".into());
-    let test_c = format!(
-        "#include <string.h>\nint main() {{ void *p = (void*)(&{func}); (void)p; return 0; }}\n",
-        func = func
-    );
-    let test_file = std::path::Path::new(&out_dir).join(format!("check_{}.c", func));
-    if std::fs::write(&test_file, test_c).is_err() {
-        return false;
+fn pick_compiler_for_target() -> String {
+    // Prefer an explicit CC if provided; otherwise pick a reasonable
+    // default based on the TARGET triple so cross-compilation attempts
+    // are more likely to use an appropriate toolchain when available.
+    if let Ok(cc) = env::var("CC") {
+        return cc;
     }
-    let cc = env::var("CC").unwrap_or_else(|_| "cc".into());
-    let exe = std::path::Path::new(&out_dir).join(format!("check_{}", func));
-    let status = Command::new(cc).arg(test_file).arg("-o").arg(&exe).status();
-    match status {
-        Ok(s) => s.success(),
-        Err(_) => false,
+    match env::var("TARGET").unwrap_or_default().as_str() {
+        t if t.contains("windows") => "x86_64-w64-mingw32-gcc".into(),
+        t if t.contains("musl") => "musl-gcc".into(),
+        _ => "cc".into(),
     }
 }
 
+fn have_function_in_libc(func: &str) -> bool {
+    // Generate a minimal C program that references the requested symbol and
+    // attempt to compile *and link* it. Linking ensures we do not report
+    // false positives when the prototype exists but the implementation is
+    // missing from libc for the current target (common when cross-compiling).
+    let out_dir = env::var("OUT_DIR").unwrap_or_else(|_| ".".into());
+
+    let snippet = match func {
+        "explicit_bzero" => "#define _GNU_SOURCE\n#include <string.h>\nint main(void) { explicit_bzero((void*)0, 0); return 0; }\n",
+        "memset_s" => "#define __STDC_WANT_LIB_EXT1__ 1\n#include <string.h>\nint main(void) { size_t s = 0; return memset_s((void*)0, s, 0, s); }\n",
+        "memset_explicit" => "#include <string.h>\nint main(void) { memset_explicit((void*)0, 0, 0); return 0; }\n",
+        "secure_zero_memory" => "#include <windows.h>\nint main(void) { SecureZeroMemory((void*)0, 0); return 0; }\n",
+        _ => return false,
+    };
+
+    let test_file = std::path::Path::new(&out_dir).join(format!("check_{}.c", func));
+    if std::fs::write(&test_file, snippet).is_err() {
+        return false;
+    }
+
+    let cc = pick_compiler_for_target();
+    let target = env::var("TARGET").unwrap_or_default();
+    let exe_ext = if target.contains("windows") {
+        ".exe"
+    } else {
+        ""
+    };
+    let exe_path = std::path::Path::new(&out_dir).join(format!("check_{}{}", func, exe_ext));
+
+    let status = Command::new(&cc)
+        .arg(&test_file)
+        .arg("-o")
+        .arg(&exe_path)
+        .status();
+
+    let success = matches!(status, Ok(s) if s.success());
+
+    // Best-effort cleanup of temporary files; ignore errors so detection
+    // results are driven solely by the compilation/link step above.
+    let _ = std::fs::remove_file(&test_file);
+    let _ = std::fs::remove_file(&exe_path);
+
+    success
+}
+
 fn main() {
-    // Tell rustc to not warn about our custom cfg names during check-cfg
-    println!("cargo:rustc-check-cfg=cfg(have_secure_zero_memory)");
-    println!("cargo:rustc-check-cfg=cfg(have_explicit_bzero)");
-    println!("cargo:rustc-check-cfg=cfg(have_memset_s)");
+    // Always announce the cfg names so `rustc --check-cfg` does not warn
+    // regardless of detection results. This keeps tools like cbindgen from
+    // emitting spurious "missing defines" warnings.
+    for cfg_name in &[
+        "have_memset_explicit",
+        "have_memset_s",
+        "have_explicit_bzero",
+        "have_secure_zero_memory",
+    ] {
+        println!("cargo:rustc-check-cfg=cfg({})", cfg_name);
+    }
     // Conservative default: do not assume availability.
     // Check for explicit_bzero, memset_s and SecureZeroMemory by trying to compile.
     // Note: cross-compilation may not allow executing the compiled binary, but the
     // compiler will still accept references to external symbols, so the compile
     // should succeed if symbols are available in the headers/libraries.
 
-    // Only try to probe on non-windows for explicit_bzero and memset_s
-    if cfg!(not(target_os = "windows")) {
-        // probe explicit_bzero
-        let _ = std::fs::create_dir_all(env::var("OUT_DIR").unwrap());
-        if have_function_in_libc("explicit_bzero") {
-            println!("cargo:rustc-cfg=have_explicit_bzero");
-            println!("cargo:rustc-check-cfg=cfg(have_explicit_bzero)");
+    // Use the TARGET triple to decide detection strategy rather than the
+    // build host. This makes build.rs robust when cross-compiling.
+    let target = env::var("TARGET").unwrap_or_default();
+    let _ = std::fs::create_dir_all(env::var("OUT_DIR").unwrap());
+
+    if target.contains("windows") {
+        // Windows targets expose SecureZeroMemory in system libraries.
+        println!("cargo:rustc-cfg=have_secure_zero_memory");
+    } else {
+        // For Unix-like targets attempt to detect C23/C11/BSD primitives.
+        if have_function_in_libc("memset_explicit") {
+            println!("cargo:rustc-cfg=have_memset_explicit");
         }
         if have_function_in_libc("memset_s") {
             println!("cargo:rustc-cfg=have_memset_s");
-            println!("cargo:rustc-check-cfg=cfg(have_memset_s)");
         }
-    } else {
-        // Windows: assume SecureZeroMemory is present in kernel32/lib
-        println!("cargo:rustc-cfg=have_secure_zero_memory");
-        println!("cargo:rustc-check-cfg=cfg(have_secure_zero_memory)");
+        if have_function_in_libc("explicit_bzero") {
+            println!("cargo:rustc-cfg=have_explicit_bzero");
+        }
     }
 }

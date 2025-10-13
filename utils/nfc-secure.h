@@ -120,6 +120,23 @@ int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size
  */
 int nfc_secure_memset(void *ptr, int val, size_t size);
 
+/**
+ * @brief Secure zeroing helper
+ *
+ * Use this API to explicitly zero secrets. This function is the
+ * preferred method to erase sensitive data because it is implemented to
+ * prefer platform "zero-only" primitives when available (for example
+ * explicit_bzero or SecureZeroMemory).
+ *
+ * @param[out] ptr Pointer to memory to clear (must be non-NULL)
+ * @param[in] size Number of bytes to set to zero
+ *
+ * @return  0       on success
+ * @return -EINVAL  if ptr is NULL
+ * @return -ERANGE  if size exceeds SIZE_MAX / 2
+ */
+int nfc_secure_zero(void *ptr, size_t size);
+
 /*
  * @note Always check the return value of these functions. Negative
  *       return codes indicate validation errors and must not be ignored
@@ -187,6 +204,15 @@ int nfc_secure_memset(void *ptr, int val, size_t size);
  */
 #define NFC_SECURE_MEMSET(ptr, val) \
   nfc_secure_memset((ptr), (val), sizeof(ptr))
+
+/**
+ * @brief Convenience macro to zero an array-sized buffer
+ *
+ * This macro behaves similarly to NFC_SECURE_MEMSET but is intended for
+ * the zeroing use-case and expands to a call to nfc_secure_zero().
+ */
+#define NFC_SECURE_ZERO(ptr) \
+  nfc_secure_zero((ptr), sizeof(ptr))
 
 /**
  * @brief Safe string length calculation with maximum bound

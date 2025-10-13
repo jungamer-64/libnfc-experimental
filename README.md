@@ -98,6 +98,8 @@ NFC_SECURE_MEMSET(password, 0x00);  // Guaranteed execution
 * **API Reference**: `libnfc/nfc-secure.h` - API documentation
 * **Best Practices**: `libnfc/NFC_SECURE_BEST_PRACTICES_V4.md`
 
+  (new: `nfc_secure_zero()` recommended for secrets)
+
 **Standards Support**: C89/C99/C11/C23
 
 Building

@@ -37,7 +37,7 @@ After the successful V8 refactoring (quality: 9.7/10), a comprehensive code revi
 
 ### 1. Fixed constexpr Misuse (CRITICAL)
 
-**Problem:** C23 constexpr only supports functions, not variables (still under discussion in C23 working group).
+**Problem:** C23 constexpr only supports functions in earlier drafts; by 2025 the standard text regarding constexpr is finalized but compiler support for constexpr variables remains incomplete. Until major compilers provide broad support we prefer `static const` for portability.
 
 **Before (V8 - INCORRECT):**
 

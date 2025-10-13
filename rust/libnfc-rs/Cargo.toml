@@ -6,7 +6,7 @@ build = "build.rs"
 
 [lib]
 name = "libnfc_rs"
-crate-type = ["staticlib"]
+crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 libc = "0.2"
@@ -16,3 +16,14 @@ libc = "0.2"
 nfc_secure = []
 # Debug helpers for nfc-secure (buffers overlap checks, suspicious size warnings)
 nfc_secure_debug = []
+# Opt-in test feature to disable the panic-catching wrapper so tests can
+# observe panics directly. Enable in test runs only: e.g.
+# `cargo test --features test_no_catch`
+test_no_catch = []
+# Feature to expose test-only helpers to integration tests. Enable
+# during `cargo test` when integration tests need access to internal
+# test helpers, e.g. `cargo test --features "nfc_secure test_helpers"`.
+test_helpers = []
+
+[dev-dependencies]
+criterion = "0.5"

@@ -46,9 +46,10 @@
  * - Leaves room for internal calculations without wraparound
  * - Any buffer > SIZE_MAX/2 is likely a bug
  *
- * IMPORTANT: C23 constexpr for variables is still under discussion.
- * Current C23 drafts only support constexpr for functions, not variables.
- * Using static const instead for maximum compatibility.
+ * C23 constexpr is finalized but compiler support for constexpr variables
+ * remains limited as of 2025. Using `static const` (or macros) remains the
+ * most portable choice until major compilers (GCC/Clang/MSVC) provide
+ * widespread guarantees for constexpr variable semantics.
  *
  * C23: Use static const with compile-time assertions
  * Pre-C23: Use macro (most portable)
@@ -98,6 +99,8 @@ static_assert(SIZE_MAX / 2 < SIZE_MAX,
 #if defined(__STDC_LIB_EXT1__) && defined(__STDC_WANT_LIB_EXT1__)
 #include <errno.h>
 #define HAVE_MEMSET_S 1
+#define HAVE_MEMCPY_S 1
+#define HAVE_MEMMOVE_S 1
 #endif
 
 /**
@@ -319,7 +322,16 @@ int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size
 #endif
 
   /* All checks passed - safe to copy */
+#if defined(HAVE_MEMCPY_S)
+  if (memcpy_s(dst, dst_size, src, src_size) != 0) {
+#ifdef LOG
+    log_put_internal("nfc_safe_memcpy: memcpy_s failed");
+#endif
+    return NFC_SECURE_ERROR_INVALID;
+  }
+#else
   memcpy(dst, src, src_size);
+#endif
   return NFC_SECURE_SUCCESS;
 }
 
@@ -341,7 +353,16 @@ int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_siz
   }
 
   /* All checks passed - safe to move (handles overlapping buffers) */
+#if defined(HAVE_MEMMOVE_S)
+  if (memmove_s(dst, dst_size, src, src_size) != 0) {
+#ifdef LOG
+    log_put_internal("nfc_safe_memmove: memmove_s failed");
+#endif
+    return NFC_SECURE_ERROR_INVALID;
+  }
+#else
   memmove(dst, src, src_size);
+#endif
   return NFC_SECURE_SUCCESS;
 }
 
@@ -385,7 +406,17 @@ __attribute__((always_inline))
 static inline void
 secure_memset_barrier(void *ptr, int val, size_t size)
 {
+#if defined(HAVE_MEMSET_S)
+  /* Use the bounds-checked memset_s when available; it returns non-zero on failure */
+  if (memset_s(ptr, size, val, size) != 0) {
+#ifdef LOG
+    log_put_internal("secure_memset_barrier: memset_s failed");
+#endif
+    return;
+  }
+#else
   memset(ptr, val, size);
+#endif
 
   /* Memory barrier prevents compiler from optimizing away memset */
 #if defined(__GNUC__) || defined(__clang__)

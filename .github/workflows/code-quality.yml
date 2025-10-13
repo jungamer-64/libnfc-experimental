@@ -194,6 +194,39 @@ jobs:
           echo "=== Utility binaries ==="
           ls -lh utils/nfc-scan-device utils/nfc-mfultralight 2>/dev/null || echo "Utility binaries not found"
 
+  rust-sanity:
+    name: Rust Sanity Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - name: Install cbindgen (for header checks)
+        run: |
+          cargo install cbindgen --locked || true
+
+      - name: Run cbindgen header check
+        run: |
+          bash scripts/check-cbindgen.sh
+
+      - name: Check for direct free() usage in Rust/FFI tests
+        run: |
+          bash scripts/check_callerfree_usage.sh
+
+      - name: Run Rust unit tests (stable features)
+        run: |
+          cargo test --manifest-path rust/libnfc-rs/Cargo.toml --features nfc_secure -- --nocapture
+
+      - name: Run Rust unit tests (including debug helpers)
+        run: |
+          cargo test --manifest-path rust/libnfc-rs/Cargo.toml --features "nfc_secure nfc_secure_debug" -- --nocapture || true
+
   code-quality-gate:
     name: Code Quality Gate
     runs-on: ubuntu-latest

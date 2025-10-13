@@ -24,6 +24,17 @@ SET(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
 
 option (USE_RUST_NFC_SECURE "Use Rust implementation of nfc-secure" OFF)
 
+# Optional: features to pass to cbindgen when generating the public Rust header.
+# By default this is empty which generates a stable header without debug helpers.
+set(RUST_CBINDGEN_FEATURES "" CACHE STRING "Features to pass to cbindgen when generating the Rust FFI header (comma-separated)")
+# Convenience switch to generate a debug header that includes debug-only helpers
+option(RUST_CBINDGEN_DEBUG_HEADER "Generate Rust FFI header including debug helpers (nfc_secure_debug)" OFF)
+if(RUST_CBINDGEN_DEBUG_HEADER)
+  # When the debug header option is enabled, request the feature that exposes
+  # debug helpers inside the generated header.
+  set(RUST_CBINDGEN_FEATURES "nfc_secure_debug")
+endif()
+
 find_program(CARGO_EXECUTABLE cargo)
 if(NOT CARGO_EXECUTABLE)
   message(FATAL_ERROR "cargo executable is required to build the Rust components")
@@ -54,15 +65,37 @@ add_custom_target(libnfc_rs_build ALL DEPENDS ${RUST_LIB_PATH})
 
 # Generate C header from Rust sources (cbindgen) into the rust target dir
 find_program(CBINDGEN_EXECUTABLE cbindgen)
+find_program(PYTHON3_EXECUTABLE python3)
 if(CBINDGEN_EXECUTABLE)
   set(RUST_HEADER ${RUST_TARGET_DIR}/include/libnfc_rs.h)
-  add_custom_command(
-    OUTPUT ${RUST_HEADER}
-    COMMAND ${CBINDGEN_EXECUTABLE} --config ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/cbindgen.toml --crate libnfc-rs --output ${RUST_HEADER}
-    DEPENDS ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml ${LIBNFC_RUST_SOURCES}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/rust/libnfc-rs
-    COMMENT "Generating C header for Rust FFI (libnfc_rs.h)"
-    VERBATIM)
+  # Build command accepts optional feature flags which are passed through
+  # to cbindgen to include feature-gated symbols when explicitly requested.
+  if(RUST_CBINDGEN_FEATURES)
+    set(RUST_CBINDGEN_FEATURE_FLAGS --features ${RUST_CBINDGEN_FEATURES})
+  else()
+    set(RUST_CBINDGEN_FEATURE_FLAGS "")
+  endif()
+
+  # Prefer using the stable Python wrapper around cbindgen when available.
+  # The wrapper centralizes invocation, suppresses known benign warnings
+  # and can optionally auto-update the cbindgen defines mapping.
+  if(PYTHON3_EXECUTABLE AND EXISTS ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/tools/generate_cbindgen_header.py)
+    add_custom_command(
+      OUTPUT ${RUST_HEADER}
+      COMMAND ${PYTHON3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/tools/generate_cbindgen_header.py ${RUST_CBINDGEN_FEATURE_FLAGS} --output ${RUST_HEADER}
+      DEPENDS ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml ${LIBNFC_RUST_SOURCES}
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/rust/libnfc-rs
+      COMMENT "Generating C header for Rust FFI (libnfc_rs.h) via wrapper"
+      VERBATIM)
+  else()
+    add_custom_command(
+      OUTPUT ${RUST_HEADER}
+      COMMAND ${CBINDGEN_EXECUTABLE} --config ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/cbindgen.toml --crate libnfc-rs ${RUST_CBINDGEN_FEATURE_FLAGS} --output ${RUST_HEADER}
+      DEPENDS ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml ${LIBNFC_RUST_SOURCES}
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/rust/libnfc-rs
+      COMMENT "Generating C header for Rust FFI (libnfc_rs.h)"
+      VERBATIM)
+  endif()
 
   add_custom_target(libnfc_rs_headers DEPENDS ${RUST_HEADER})
   add_dependencies(libnfc_rs_build libnfc_rs_headers)
