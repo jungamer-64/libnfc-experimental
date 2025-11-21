@@ -34,42 +34,89 @@
 // Handle platform specific includes
 #include "contrib/windows.h"
 
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
+
 // There is no setenv()and unsetenv() in windows,but we can use putenv() instead.
 int setenv(const char *name, const char *value, int overwrite)
 {
-  if (!name || !value) {
+  if (!name || name[0] == '\0' || !value)
+  {
+    errno = EINVAL;
     return -1;
   }
 
-  char *env = getenv(name);
-  if ((env && overwrite) || (!env)) {
-    // Calculate required buffer size: name + "=" + value + null terminator
-    size_t len = strlen(name) + strlen(value) + 2;
-    char *str = malloc(len);
-    if (!str) {
-      return -1;
-    }
-    snprintf(str, len, "%s=%s", name, value);
-    int result = putenv(str);
-    // Note: Do not free str as putenv takes ownership of the string
-    return result;
+  if (!overwrite && getenv(name))
+  {
+    return 0;
   }
-  return -1;
+
+#if defined(_MSC_VER) || defined(__MINGW32__) || defined(__MINGW64__)
+  if (_putenv_s(name, value) != 0)
+  {
+    return -1;
+  }
+  return 0;
+#else
+  // Fallback to ANSI putenv if secure variant is unavailable
+  size_t name_len = strlen(name);
+  size_t value_len = strlen(value);
+  size_t len = name_len + value_len + 2;
+  char *str = malloc(len);
+  if (!str)
+  {
+    errno = ENOMEM;
+    return -1;
+  }
+
+  memcpy(str, name, name_len);
+  str[name_len] = '=';
+  memcpy(str + name_len + 1, value, value_len);
+  str[len - 1] = '\0';
+
+  if (putenv(str) != 0)
+  {
+    free(str);
+    return -1;
+  }
+  return 0;
+#endif
 }
 
-void unsetenv(const char *name)
+int unsetenv(const char *name)
 {
-  if (!name) {
-    return;
+  if (!name || name[0] == '\0')
+  {
+    errno = EINVAL;
+    return -1;
   }
 
-  // Calculate required buffer size: name + "=" + null terminator
-  size_t len = strlen(name) + 2;
-  char *str = malloc(len);
-  if (!str) {
-    return;
+#if defined(_MSC_VER) || defined(__MINGW32__) || defined(__MINGW64__)
+  if (_putenv_s(name, "") != 0)
+  {
+    return -1;
   }
-  snprintf(str, len, "%s=", name);
-  putenv(str);
-  // Note: Do not free str as putenv takes ownership of the string
+  return 0;
+#else
+  size_t name_len = strlen(name);
+  size_t len = name_len + 2;
+  char *str = malloc(len);
+  if (!str)
+  {
+    errno = ENOMEM;
+    return -1;
+  }
+
+  memcpy(str, name, name_len);
+  str[len - 2] = '=';
+  str[len - 1] = '\0';
+
+  if (putenv(str) != 0)
+  {
+    free(str);
+    return -1;
+  }
+  return 0;
+#endif
 }

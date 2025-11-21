@@ -1164,31 +1164,14 @@ const struct nfc_driver pn53x_usb_driver = {
     .close = pn53x_usb_close,
     .strerror = pn53x_strerror,
 
-    .initiator_init = pn53x_initiator_init,
-    .initiator_init_secure_element = NULL, // No secure-element support
-    .initiator_select_passive_target = pn53x_initiator_select_passive_target,
-    .initiator_poll_target = pn53x_initiator_poll_target,
-    .initiator_select_dep_target = pn53x_initiator_select_dep_target,
-    .initiator_deselect_target = pn53x_initiator_deselect_target,
-    .initiator_transceive_bytes = pn53x_initiator_transceive_bytes,
-    .initiator_transceive_bits = pn53x_initiator_transceive_bits,
-    .initiator_transceive_bytes_timed = pn53x_initiator_transceive_bytes_timed,
-    .initiator_transceive_bits_timed = pn53x_initiator_transceive_bits_timed,
-    .initiator_target_is_present = pn53x_initiator_target_is_present,
+    /* No secure-element support */
+    PN53X_DRIVER_INITIATOR_FUNCTIONS(NULL)
+    PN53X_DRIVER_TARGET_FUNCTIONS
+    PN53X_DRIVER_DEVICE_FUNCTIONS(pn53x_usb_set_property_bool,
+                    pn53x_set_property_int,
+                    pn53x_usb_get_supported_modulation,
+                    pn53x_get_supported_baud_rate,
+                    pn53x_get_information_about)
 
-    .target_init = pn53x_target_init,
-    .target_send_bytes = pn53x_target_send_bytes,
-    .target_receive_bytes = pn53x_target_receive_bytes,
-    .target_send_bits = pn53x_target_send_bits,
-    .target_receive_bits = pn53x_target_receive_bits,
-
-    .device_set_property_bool = pn53x_usb_set_property_bool,
-    .device_set_property_int = pn53x_set_property_int,
-    .get_supported_modulation = pn53x_usb_get_supported_modulation,
-    .get_supported_baud_rate = pn53x_get_supported_baud_rate,
-    .device_get_information_about = pn53x_get_information_about,
-
-    .abort_command = pn53x_usb_abort_command,
-    .idle = pn53x_idle,
-    .powerdown = pn53x_PowerDown,
+    PN53X_DRIVER_STATE_FUNCTIONS(pn53x_usb_abort_command, pn53x_idle, pn53x_PowerDown)
 };

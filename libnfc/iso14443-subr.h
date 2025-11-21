@@ -36,6 +36,7 @@
 #include <stdint.h>
 
 void iso14443a_crc(const uint8_t *pbtData, size_t szLen, uint8_t *pbtCrc);
+void iso14443b_crc(uint8_t *pbtData, size_t szLen, uint8_t *pbtCrc);
 void iso14443a_crc_append(uint8_t *pbtData, size_t szLen);
 void iso14443b_crc_append(uint8_t *pbtData, size_t szLen);
 uint8_t *iso14443a_locate_historical_bytes(const uint8_t *pbtAts, size_t szAts, size_t *pszTk);

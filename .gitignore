@@ -63,6 +63,11 @@ utils/nfc-read-forum-tag3
 utils/nfc-relay-picc
 utils/nfc-scan-device
 
+lib/
 
 #Ignore insiders AI rules
 .github/instructions/codacy.instructions.md
+
+
+#Ignore vscode AI rules
+.github\instructions\codacy.instructions.md

@@ -95,40 +95,18 @@ int main(int argc, const char *argv[])
     }
   }
 
-  nfc_context *context;
-  nfc_init(&context);
-  if (context == NULL)
-  {
-    ERR("Unable to init libnfc (malloc)");
-    exit(EXIT_FAILURE);
-  }
+  nfc_context *context = NULL;
 
-  // Try to open the NFC reader
-  pnd = nfc_open(context, NULL);
-
-  if (pnd == NULL)
+  if (!nfc_example_prepare_initiator(&context, &pnd))
   {
-    ERR("%s", "Unable to open NFC device.");
     if (input != NULL)
     {
       fclose(input);
     }
-    nfc_exit(context);
     exit(EXIT_FAILURE);
   }
 
   printf("NFC reader: %s opened\n", nfc_device_get_name(pnd));
-  if (nfc_initiator_init(pnd) < 0)
-  {
-    nfc_perror(pnd, "nfc_initiator_init");
-    if (input != NULL)
-    {
-      fclose(input);
-    }
-    nfc_close(pnd);
-    nfc_exit(context);
-    exit(EXIT_FAILURE);
-  }
 
   const char *prompt = "> ";
   while (1)
@@ -248,7 +226,6 @@ int main(int argc, const char *argv[])
   {
     fclose(input);
   }
-  nfc_close(pnd);
-  nfc_exit(context);
+  nfc_example_cleanup(&context, &pnd);
   exit(EXIT_SUCCESS);
 }

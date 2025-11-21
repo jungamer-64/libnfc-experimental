@@ -63,6 +63,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <nfc/nfc.h>
+#include "utils/nfc-utils.h"
 #include "../libnfc/nfc-secure.h"
 
 #if defined(WIN32) /* mingw compiler */
@@ -181,47 +182,38 @@ int main(int argc, char *argv[])
   }
 
   if (!bIsBadCli) {
-    nfc_init(&context);
-    if (context) {
-      pnd = nfc_open(context, NULL);
-      if (pnd) {
-        res = nfc_initiator_init(pnd);
-        if (res == NFC_SUCCESS) {
-          printf("Reader  : %s - via %s\n  ...wait for card...\n", nfc_device_get_name(pnd), nfc_device_get_connstring(pnd));
+    if (!nfc_example_prepare_initiator(&context, &pnd)) {
+      return EXIT_FAILURE;
+    }
 
-          res = nfc_initiator_select_passive_target(pnd, nm, NULL, 0, &nt);
-          if (res > 0) {
-            stcurrent = get_info(&nt, true);
-            if (stcurrent) {
-              printf("\n");
+    printf("Reader  : %s - via %s\n  ...wait for card...\n", nfc_device_get_name(pnd), nfc_device_get_connstring(pnd));
 
-              if (bIsBlock && (bIsRead || bIsWrite)) {
-                if (bIsRead) {
-                  get_block_at(pnd, blockNumber, NULL, 0, true);
-                }
+    res = nfc_initiator_select_passive_target(pnd, nm, NULL, 0, &nt);
+    if (res > 0) {
+      stcurrent = get_info(&nt, true);
+      if (stcurrent) {
+        printf("\n");
 
-                if (bIsWrite) {
-                  set_block_at_confirmed(pnd, blockNumber, data, cbData, true);
-                }
-              } else if (!bIsRead && !bIsWrite && !bIsBlock) {
-                for (i = 0; i < stcurrent->nbNormalBlock; i++) {
-                  get_block_at(pnd, i, NULL, 0, true);
-                }
-                display_system_info(pnd, stcurrent);
-              }
-            }
-          } else
-            printf("ERROR - nfc_initiator_select_passive_target: %i\n", res);
-        } else
-          printf("ERROR - nfc_initiator_init: %i\n", res);
+        if (bIsBlock && (bIsRead || bIsWrite)) {
+          if (bIsRead) {
+            get_block_at(pnd, blockNumber, NULL, 0, true);
+          }
 
-        nfc_close(pnd);
-      } else
-        printf("ERROR - nfc_open\n");
+          if (bIsWrite) {
+            set_block_at_confirmed(pnd, blockNumber, data, cbData, true);
+          }
+        } else if (!bIsRead && !bIsWrite && !bIsBlock) {
+          for (i = 0; i < stcurrent->nbNormalBlock; i++) {
+            get_block_at(pnd, i, NULL, 0, true);
+          }
+          display_system_info(pnd, stcurrent);
+        }
+      }
+    } else {
+      printf("ERROR - nfc_initiator_select_passive_target: %i\n", res);
+    }
 
-      nfc_exit(context);
-    } else
-      printf("ERROR - nfc_init\n");
+    nfc_example_cleanup(&context, &pnd);
   } else {
     printf(
       "Usage:\n"

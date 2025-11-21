@@ -20,16 +20,13 @@
 int
 main(int argc, const char *argv[])
 {
-  nfc_device *pnd;
+  nfc_device *pnd = NULL;
   nfc_target nt;
 
   // Allocate only a pointer to nfc_context
-  nfc_context *context;
+  nfc_context *context = NULL;
 
-  // Initialize libnfc and set the nfc_context
-  nfc_init(&context);
-  if (context == NULL) {
-    ERR("Unable to init libnfc (malloc)");
+  if (!nfc_example_prepare_initiator(&context, &pnd)) {
     exit(EXIT_FAILURE);
   }
 
@@ -37,23 +34,6 @@ main(int argc, const char *argv[])
   const char *acLibnfcVersion = nfc_version();
   (void)argc;
   printf("%s uses libnfc %s\n", argv[0], acLibnfcVersion);
-
-  // Open, using the first available NFC device which can be in order of selection:
-  //   - default device specified using environment variable or
-  //   - first specified device in libnfc.conf (/etc/nfc) or
-  //   - first specified device in device-configuration directory (/etc/nfc/devices.d) or
-  //   - first auto-detected (if feature is not disabled in libnfc.conf) device
-  pnd = nfc_open(context, NULL);
-
-  if (pnd == NULL) {
-    ERR("%s", "Unable to open NFC device.");
-    exit(EXIT_FAILURE);
-  }
-  // Set opened NFC device to initiator mode
-  if (nfc_initiator_init(pnd) < 0) {
-    nfc_perror(pnd, "nfc_initiator_init");
-    exit(EXIT_FAILURE);
-  }
 
   printf("NFC reader: %s opened\n", nfc_device_get_name(pnd));
 
@@ -75,9 +55,6 @@ main(int argc, const char *argv[])
       print_hex(nt.nti.nai.abtAts, nt.nti.nai.szAtsLen);
     }
   }
-  // Close NFC device
-  nfc_close(pnd);
-  // Release the context
-  nfc_exit(context);
+  nfc_example_cleanup(&context, &pnd);
   exit(EXIT_SUCCESS);
 }

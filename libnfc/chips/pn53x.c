@@ -78,6 +78,36 @@ void pn53x_current_target_free(const struct nfc_device *pnd);
 bool pn53x_current_target_is(const struct nfc_device *pnd, const nfc_target *pnt);
 
 /* implementations */
+
+static int
+pn53x_transceive_bytes_with_retries(struct nfc_device *pnd,
+                                    const uint8_t *cmd,
+                                    const size_t cmd_len,
+                                    const int timeout,
+                                    const uint8_t max_failures)
+{
+  int ret = 0;
+  uint8_t failures = 0;
+
+  while (failures < max_failures)
+  {
+    ret = nfc_initiator_transceive_bytes(pnd, cmd, cmd_len, NULL, 0, timeout);
+    if (ret < 1)
+    {
+      if ((ret == NFC_ERFTRANS) && (CHIP_DATA(pnd)->last_status_byte == 0x01))
+      {
+        return NFC_ETGRELEASED;
+      }
+      failures++;
+    }
+    else
+    {
+      return NFC_SUCCESS;
+    }
+  }
+
+  return ret;
+}
 int pn53x_init(struct nfc_device *pnd)
 {
   int res = 0;
@@ -2628,30 +2658,8 @@ static int pn53x_ISO14443A_4_is_present(struct nfc_device *pnd)
     // Diagnose06 failed completely with a JCOP31 on a PN532 so let's do it manually
     if ((ret = pn53x_set_property_bool(pnd, NP_EASY_FRAMING, false)) < 0)
       return ret;
-    uint8_t abtCmd[1] = {0xb2}; // CID=0
-    int failures = 0;
-    while (failures < 2)
-    {
-      if ((ret = nfc_initiator_transceive_bytes(pnd, abtCmd, sizeof(abtCmd), NULL, 0, 300)) < 1)
-      {
-        if ((ret == NFC_ERFTRANS) && (CHIP_DATA(pnd)->last_status_byte == 0x01))
-        {
-          // Timeout
-          ret = NFC_ETGRELEASED;
-          break;
-        }
-        else
-        {
-          // Other errors can appear when card is tired-off, let's try again
-          failures++;
-        }
-      }
-      else
-      {
-        ret = NFC_SUCCESS;
-        break;
-      }
-    }
+    const uint8_t abtCmd[] = {0xb2}; // CID=0
+    ret = pn53x_transceive_bytes_with_retries(pnd, abtCmd, sizeof(abtCmd), 300, 2);
     int ret2;
     if ((ret2 = pn53x_set_property_bool(pnd, NP_EASY_FRAMING, true)) < 0)
       ret = ret2;
@@ -2665,31 +2673,9 @@ static int pn53x_ISO14443A_4_is_present(struct nfc_device *pnd)
 
 static int pn53x_ISO14443A_Jewel_is_present(struct nfc_device *pnd)
 {
-  int ret;
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "target_is_present(): Ping Jewel");
-  uint8_t abtCmd[1] = {0x78};
-  int failures = 0;
-  while (failures < 2)
-  {
-    if ((ret = nfc_initiator_transceive_bytes(pnd, abtCmd, sizeof(abtCmd), NULL, 0, -1)) < 1)
-    {
-      if ((ret == NFC_ERFTRANS) && (CHIP_DATA(pnd)->last_status_byte == 0x01))
-      {
-        // Timeout
-        return NFC_ETGRELEASED;
-      }
-      else
-      {
-        // Other errors can appear when card is tired-off, let's try again
-        failures++;
-      }
-    }
-    else
-    {
-      return NFC_SUCCESS;
-    }
-  }
-  return ret;
+  const uint8_t abtCmd[] = {0x78};
+  return pn53x_transceive_bytes_with_retries(pnd, abtCmd, sizeof(abtCmd), -1, 2);
 }
 
 static int pn53x_ISO14443A_Barcode_is_present(struct nfc_device *pnd)
@@ -2744,27 +2730,7 @@ static int pn53x_ISO14443A_MFUL_is_present(struct nfc_device *pnd)
   else
   {
     uint8_t abtCmd[2] = {0x30, 0x00};
-    int failures = 0;
-    while (failures < 2)
-    {
-      if ((ret = nfc_initiator_transceive_bytes(pnd, abtCmd, sizeof(abtCmd), NULL, 0, -1)) < 1)
-      {
-        if ((ret == NFC_ERFTRANS) && (CHIP_DATA(pnd)->last_status_byte == 0x01))
-        {
-          // Timeout
-          return NFC_ETGRELEASED;
-        }
-        else
-        {
-          // Other errors can appear when card is tired-off, let's try again
-          failures++;
-        }
-      }
-      else
-      {
-        return NFC_SUCCESS;
-      }
-    }
+    ret = pn53x_transceive_bytes_with_retries(pnd, abtCmd, sizeof(abtCmd), -1, 2);
   }
   return ret;
 }
@@ -2857,30 +2823,8 @@ static int pn53x_ISO14443B_4_is_present(struct nfc_device *pnd)
     if ((ret = pn53x_set_property_bool(pnd, NP_EASY_FRAMING, false)) < 0)
       return ret;
     // uint8_t abtCmd[1] = {0xb2}; // if on PN533, CID=0
-    uint8_t abtCmd[2] = {0xba, 0x01}; // if on PN532, CID=1
-    int failures = 0;
-    while (failures < 2)
-    {
-      if ((ret = nfc_initiator_transceive_bytes(pnd, abtCmd, sizeof(abtCmd), NULL, 0, 300)) < 1)
-      {
-        if ((ret == NFC_ERFTRANS) && (CHIP_DATA(pnd)->last_status_byte == 0x01))
-        {
-          // Timeout
-          ret = NFC_ETGRELEASED;
-          break;
-        }
-        else
-        {
-          // Other errors can appear when card is tired-off, let's try again
-          failures++;
-        }
-      }
-      else
-      {
-        ret = NFC_SUCCESS;
-        break;
-      }
-    }
+    const uint8_t abtCmd[] = {0xba, 0x01}; // if on PN532, CID=1
+    ret = pn53x_transceive_bytes_with_retries(pnd, abtCmd, sizeof(abtCmd), 300, 2);
     int ret2;
     if ((ret2 = pn53x_set_property_bool(pnd, NP_EASY_FRAMING, true)) < 0)
       ret = ret2;
@@ -2899,29 +2843,7 @@ static int pn53x_ISO14443B_I_is_present(struct nfc_device *pnd)
   // Safe copy DIV field with offset +2, fixed 4 bytes
   if (nfc_safe_memcpy(abtCmd + 2, sizeof(abtCmd) - 2, CHIP_DATA(pnd)->current_target->nti.nii.abtDIV, 4) < 0)
     return NFC_ECHIP;
-  int failures = 0;
-  while (failures < 2)
-  {
-    if ((ret = nfc_initiator_transceive_bytes(pnd, abtCmd, sizeof(abtCmd), NULL, 0, 300)) < 1)
-    {
-      if ((ret == NFC_ERFTRANS) && (CHIP_DATA(pnd)->last_status_byte == 0x01))
-      {
-        // Timeout
-        ret = NFC_ETGRELEASED;
-        break;
-      }
-      else
-      {
-        // Other errors can appear when card is tired-off, let's try again
-        failures++;
-      }
-    }
-    else
-    {
-      ret = NFC_SUCCESS;
-      break;
-    }
-  }
+  ret = pn53x_transceive_bytes_with_retries(pnd, abtCmd, sizeof(abtCmd), 300, 2);
   int ret2;
   if ((ret2 = pn53x_set_property_bool(pnd, NP_EASY_FRAMING, true)) < 0)
     ret = ret2;
@@ -2933,31 +2855,8 @@ static int pn53x_ISO14443B_SR_is_present(struct nfc_device *pnd)
   int ret;
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "target_is_present(): Ping B2 ST SRx");
   // Sending Get_UID in raw: (EASY_FRAMING is already supposed to be false)
-  uint8_t abtCmd[1] = {0x0b};
-  int failures = 0;
-  while (failures < 2)
-  {
-    if ((ret = nfc_initiator_transceive_bytes(pnd, abtCmd, sizeof(abtCmd), NULL, 0, 300)) < 1)
-    {
-      if ((ret == NFC_ERFTRANS) && (CHIP_DATA(pnd)->last_status_byte == 0x01))
-      {
-        // Timeout
-        ret = NFC_ETGRELEASED;
-        break;
-      }
-      else
-      {
-        // Other errors can appear when card is tired-off, let's try again
-        failures++;
-      }
-    }
-    else
-    {
-      ret = NFC_SUCCESS;
-      break;
-    }
-  }
-  return ret;
+  const uint8_t abtCmd[] = {0x0b};
+  return pn53x_transceive_bytes_with_retries(pnd, abtCmd, sizeof(abtCmd), 300, 2);
 }
 
 static int pn53x_ISO14443B_ICLASS_is_present(struct nfc_device *pnd)
@@ -2995,30 +2894,7 @@ static int pn53x_ISO14443B_CT_is_present(struct nfc_device *pnd)
   // Safe copy UID with offset +1, fixed 2 bytes
   if (nfc_safe_memcpy(abtCmd + 1, sizeof(abtCmd) - 1, CHIP_DATA(pnd)->current_target->nti.nci.abtUID, 2) < 0)
     return NFC_ECHIP;
-  int failures = 0;
-  while (failures < 2)
-  {
-    if ((ret = nfc_initiator_transceive_bytes(pnd, abtCmd, sizeof(abtCmd), NULL, 0, 300)) < 1)
-    {
-      if ((ret == NFC_ERFTRANS) && (CHIP_DATA(pnd)->last_status_byte == 0x01))
-      {
-        // Timeout
-        ret = NFC_ETGRELEASED;
-        break;
-      }
-      else
-      {
-        // Other errors can appear when card is tired-off, let's try again
-        failures++;
-      }
-    }
-    else
-    {
-      ret = NFC_SUCCESS;
-      break;
-    }
-  }
-  return ret;
+  return pn53x_transceive_bytes_with_retries(pnd, abtCmd, sizeof(abtCmd), 300, 2);
 }
 
 // Helper: Determine appropriate ISO14443A presence check based on SAK/ATQA

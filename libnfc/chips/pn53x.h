@@ -36,6 +36,45 @@
 #include <nfc/nfc-types.h>
 #include "pn53x-internal.h"
 
+/*
+ * Helper macros to keep PN53x-based driver definitions consistent.
+ * They expand to the common sets of function pointers used across the
+ * PN53x driver table initialisers.  Each macro keeps trailing commas so
+ * they can be combined directly inside designated initialisers.
+ */
+#define PN53X_DRIVER_INITIATOR_FUNCTIONS(secure_element_fn)                    \
+  .initiator_init = pn53x_initiator_init,                                    \
+  .initiator_init_secure_element = (secure_element_fn),                      \
+  .initiator_select_passive_target = pn53x_initiator_select_passive_target,  \
+  .initiator_poll_target = pn53x_initiator_poll_target,                      \
+  .initiator_select_dep_target = pn53x_initiator_select_dep_target,          \
+  .initiator_deselect_target = pn53x_initiator_deselect_target,              \
+  .initiator_transceive_bytes = pn53x_initiator_transceive_bytes,            \
+  .initiator_transceive_bits = pn53x_initiator_transceive_bits,              \
+  .initiator_transceive_bytes_timed = pn53x_initiator_transceive_bytes_timed,\
+  .initiator_transceive_bits_timed = pn53x_initiator_transceive_bits_timed,  \
+  .initiator_target_is_present = pn53x_initiator_target_is_present,
+
+#define PN53X_DRIVER_TARGET_FUNCTIONS                                         \
+  .target_init = pn53x_target_init,                                         \
+  .target_send_bytes = pn53x_target_send_bytes,                             \
+  .target_receive_bytes = pn53x_target_receive_bytes,                       \
+  .target_send_bits = pn53x_target_send_bits,                               \
+  .target_receive_bits = pn53x_target_receive_bits,
+
+#define PN53X_DRIVER_DEVICE_FUNCTIONS(set_prop_bool_fn, set_prop_int_fn,       \
+                    get_mod_fn, get_baud_fn, get_info_fn)   \
+  .device_set_property_bool = (set_prop_bool_fn),                           \
+  .device_set_property_int = (set_prop_int_fn),                             \
+  .get_supported_modulation = (get_mod_fn),                                \
+  .get_supported_baud_rate = (get_baud_fn),                                \
+  .device_get_information_about = (get_info_fn),
+
+#define PN53X_DRIVER_STATE_FUNCTIONS(abort_fn, idle_fn, powerdown_fn)         \
+  .abort_command = (abort_fn),                                              \
+  .idle = (idle_fn),                                                        \
+  .powerdown = (powerdown_fn),
+
 // Registers and symbols masks used to covers parts within a register
 //   PN53X_REG_CIU_TxMode
 #define SYMBOL_TX_CRC_ENABLE 0x80

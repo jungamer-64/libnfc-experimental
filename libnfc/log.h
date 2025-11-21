@@ -38,6 +38,8 @@
 #define NFC_LOG_PRIORITY_ERROR 1
 #define NFC_LOG_PRIORITY_INFO 2
 #define NFC_LOG_PRIORITY_DEBUG 3
+/* Compatibility alias: warnings share INFO verbosity until wider granularity exists */
+#define NFC_LOG_PRIORITY_WARN NFC_LOG_PRIORITY_INFO
 
 #define NFC_LOG_GROUP_GENERAL 1
 #define NFC_LOG_GROUP_CONFIG 2

@@ -209,27 +209,9 @@ int main(int argc, char *argv[])
     }
   }
 
-  nfc_context *context;
-  nfc_init(&context);
-  if (context == NULL) {
-    ERR("Unable to init libnfc (malloc)");
-    exit(EXIT_FAILURE);
-  }
+  nfc_context *context = NULL;
 
-  // Try to open the NFC reader
-  pnd = nfc_open(context, NULL);
-
-  if (pnd == NULL) {
-    ERR("Error opening NFC reader");
-    nfc_exit(context);
-    exit(EXIT_FAILURE);
-  }
-
-  // Initialise NFC device as "initiator"
-  if (nfc_initiator_init(pnd) < 0) {
-    nfc_perror(pnd, "nfc_initiator_init");
-    nfc_close(pnd);
-    nfc_exit(context);
+  if (!nfc_example_prepare_initiator(&context, &pnd)) {
     exit(EXIT_FAILURE);
   }
 
@@ -444,7 +426,6 @@ int main(int argc, char *argv[])
     }
   }
 
-  nfc_close(pnd);
-  nfc_exit(context);
+  nfc_example_cleanup(&context, &pnd);
   exit(EXIT_SUCCESS);
 }

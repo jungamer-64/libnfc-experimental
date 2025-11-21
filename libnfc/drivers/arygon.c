@@ -61,6 +61,14 @@
 #include "chips/pn53x-internal.h"
 #include "uart.h"
 
+#if defined(_MSC_VER)
+#define NFC_SECURE_SNPRINTF(buffer, size, fmt, ...) _snprintf_s(buffer, size, _TRUNCATE, fmt, __VA_ARGS__)
+#define NFC_SECURE_SSCANF(buffer, fmt, ...) sscanf_s(buffer, fmt, __VA_ARGS__)
+#else
+#define NFC_SECURE_SNPRINTF(buffer, size, fmt, ...) snprintf(buffer, size, fmt, __VA_ARGS__)
+#define NFC_SECURE_SSCANF(buffer, fmt, ...) sscanf(buffer, fmt, __VA_ARGS__)
+#endif
+
 /* ============================================================================
  * PROTOCOL DEFINITIONS
  * ========================================================================== */
@@ -340,7 +348,7 @@ arygon_scan(const nfc_context *context, nfc_connstring connstrings[],
 
     /* Build connection string */
     nfc_connstring connstring;
-    int ret = snprintf(connstring, sizeof(nfc_connstring), "%s:%s:%" PRIu32,
+    int ret = NFC_SECURE_SNPRINTF(connstring, sizeof(nfc_connstring), "%s:%s:%" PRIu32,
                        ARYGON_DRIVER_NAME, acPort, ARYGON_DEFAULT_SPEED);
 
     /* Check for truncation */
@@ -417,7 +425,7 @@ arygon_open(const nfc_context *context, const nfc_connstring connstring)
   /* Parse speed if provided */
   if (decode_level == 3)
   {
-    if (sscanf(speed_s, "%10" PRIu32, &ndd.speed) != 1)
+    if (NFC_SECURE_SSCANF(speed_s, "%10" PRIu32, &ndd.speed) != 1)
     {
       NFC_LOG_ERROR("Invalid speed format: %s", speed_s);
       goto error;
@@ -444,7 +452,7 @@ arygon_open(const nfc_context *context, const nfc_connstring connstring)
   }
 
   /* Set device name with bounds checking */
-  int name_len = snprintf(pnd->name, sizeof(pnd->name), "%s:%s",
+  int name_len = NFC_SECURE_SNPRINTF(pnd->name, sizeof(pnd->name), "%s:%s",
                           ARYGON_DRIVER_NAME, ndd.port);
   if (name_len < 0 || (size_t)name_len >= sizeof(pnd->name))
   {
@@ -470,7 +478,7 @@ arygon_open(const nfc_context *context, const nfc_connstring connstring)
   char *pcName = strdup(pnd->name);
   if (pcName)
   {
-    snprintf(pnd->name, sizeof(pnd->name), "%s %s",
+    NFC_SECURE_SNPRINTF(pnd->name, sizeof(pnd->name), "%s %s",
              pcName, arygon_firmware_version);
     free(pcName);
   }
@@ -817,7 +825,7 @@ arygon_firmware(nfc_device *pnd, char *str, size_t str_len)
     uint8_t *p = abtRx + 6;
     unsigned int szData;
 
-    if (sscanf((const char *)p, "%02x", &szData) != 1)
+    if (NFC_SECURE_SSCANF((const char *)p, "%02x", &szData) != 1)
     {
       str[0] = '\0';
       return;
@@ -941,32 +949,14 @@ const struct nfc_driver arygon_driver = {
     .close = arygon_close,
     .strerror = pn53x_strerror,
 
-    .initiator_init = pn53x_initiator_init,
-    .initiator_init_secure_element = NULL, // No secure-element support
-    .initiator_select_passive_target = pn53x_initiator_select_passive_target,
-    .initiator_poll_target = pn53x_initiator_poll_target,
-    .initiator_select_dep_target = pn53x_initiator_select_dep_target,
-    .initiator_deselect_target = pn53x_initiator_deselect_target,
-    .initiator_transceive_bytes = pn53x_initiator_transceive_bytes,
-    .initiator_transceive_bits = pn53x_initiator_transceive_bits,
-    .initiator_transceive_bytes_timed = pn53x_initiator_transceive_bytes_timed,
-    .initiator_transceive_bits_timed = pn53x_initiator_transceive_bits_timed,
-    .initiator_target_is_present = pn53x_initiator_target_is_present,
+    PN53X_DRIVER_INITIATOR_FUNCTIONS(NULL)
+    PN53X_DRIVER_TARGET_FUNCTIONS
+    PN53X_DRIVER_DEVICE_FUNCTIONS(pn53x_set_property_bool,
+                    pn53x_set_property_int,
+                    pn53x_get_supported_modulation,
+                    pn53x_get_supported_baud_rate,
+                    pn53x_get_information_about)
 
-    .target_init = pn53x_target_init,
-    .target_send_bytes = pn53x_target_send_bytes,
-    .target_receive_bytes = pn53x_target_receive_bytes,
-    .target_send_bits = pn53x_target_send_bits,
-    .target_receive_bits = pn53x_target_receive_bits,
-
-    .device_set_property_bool = pn53x_set_property_bool,
-    .device_set_property_int = pn53x_set_property_int,
-    .get_supported_modulation = pn53x_get_supported_modulation,
-    .get_supported_baud_rate = pn53x_get_supported_baud_rate,
-    .device_get_information_about = pn53x_get_information_about,
-
-    .abort_command = arygon_abort_command,
-    .idle = pn53x_idle,
     /* Even if PN532, PowerDown is not recommended on those devices */
-    .powerdown = NULL,
-}
+    PN53X_DRIVER_STATE_FUNCTIONS(arygon_abort_command, pn53x_idle, NULL)
+  };

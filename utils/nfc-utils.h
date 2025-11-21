@@ -42,9 +42,11 @@
 #ifndef _EXAMPLES_NFC_UTILS_H_
 #  define _EXAMPLES_NFC_UTILS_H_
 
+#  include <stdbool.h>
 #  include <stdlib.h>
 #  include <string.h>
 #  include <err.h>
+#  include <nfc/nfc.h>
 
 /**
  * @macro DBG
@@ -100,5 +102,8 @@ void    print_hex_bits(const uint8_t *pbtData, const size_t szBits);
 void    print_hex_par(const uint8_t *pbtData, const size_t szBits, const uint8_t *pbtDataPar);
 
 void    print_nfc_target(const nfc_target *pnt, bool verbose);
+
+bool    nfc_example_prepare_initiator(nfc_context **ppcontext, nfc_device **ppnd);
+void    nfc_example_cleanup(nfc_context **ppcontext, nfc_device **ppnd);
 
 #endif

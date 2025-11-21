@@ -124,25 +124,44 @@ extern "C"
   } while (0)
 
 /**
+ * @brief Error logging helper without early return
+ */
+#define NFC_LOG_ERROR(format, ...)                                      \
+  do                                                                    \
+  {                                                                     \
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,            \
+            format, ##__VA_ARGS__);                                     \
+  } while (0)
+
+/**
  * @brief Warning logging macro
  */
-#define NFC_LOG_WARN(format, ...)                         \
-  log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_WARN, \
-          format, ##__VA_ARGS__)
+#define NFC_LOG_WARN(format, ...)                                      \
+  do                                                                   \
+  {                                                                    \
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_WARN,            \
+            format, ##__VA_ARGS__);                                    \
+  } while (0)
 
 /**
  * @brief Info logging macro
  */
-#define NFC_LOG_INFO(format, ...)                         \
-  log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_INFO, \
-          format, ##__VA_ARGS__)
+#define NFC_LOG_INFO(format, ...)                                      \
+  do                                                                   \
+  {                                                                    \
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_INFO,            \
+            format, ##__VA_ARGS__);                                    \
+  } while (0)
 
 /**
  * @brief Debug logging macro
  */
-#define NFC_LOG_DEBUG(format, ...)                         \
-  log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, \
-          format, ##__VA_ARGS__)
+#define NFC_LOG_DEBUG(format, ...)                                      \
+  do                                                                   \
+  {                                                                    \
+    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG,           \
+            format, ##__VA_ARGS__);                                    \
+  } while (0)
 
 /* ============================================================================
  * MEMORY MANAGEMENT HELPERS
@@ -237,8 +256,15 @@ nfc_alloc_driver_data(nfc_device *pnd, size_t data_size)
     return -1;
   }
 
-  /* Zero-initialize for safety */
-  memset(pnd->driver_data, 0, data_size);
+  /* Zero-initialize for safety using secure memset */
+  if (nfc_secure_memset(pnd->driver_data, 0x00, data_size) < 0)
+  {
+    log_put(NFC_LOG_GROUP_GENERAL, "libnfc.common", NFC_LOG_PRIORITY_ERROR,
+            "Failed to zero driver data (%zu bytes)", data_size);
+    free(pnd->driver_data);
+    pnd->driver_data = NULL;
+    return -1;
+  }
   return 0;
 }
 

@@ -127,3 +127,54 @@ print_nfc_target(const nfc_target *pnt, bool verbose)
   printf("%s", s);
   nfc_free(s);
 }
+
+bool
+nfc_example_prepare_initiator(nfc_context **ppcontext, nfc_device **ppnd)
+{
+  if ((ppcontext == NULL) || (ppnd == NULL)) {
+    ERR("Invalid arguments passed to nfc_example_prepare_initiator");
+    return false;
+  }
+
+  nfc_context *context = NULL;
+  nfc_device *pnd = NULL;
+
+  nfc_init(&context);
+  if (context == NULL) {
+    ERR("Unable to init libnfc (malloc)");
+    return false;
+  }
+
+  pnd = nfc_open(context, NULL);
+  if (pnd == NULL) {
+    ERR("Error opening NFC reader");
+    nfc_exit(context);
+    return false;
+  }
+
+  if (nfc_initiator_init(pnd) < 0) {
+    nfc_perror(pnd, "nfc_initiator_init");
+    nfc_close(pnd);
+    nfc_exit(context);
+    return false;
+  }
+
+  *ppcontext = context;
+  *ppnd = pnd;
+
+  return true;
+}
+
+void
+nfc_example_cleanup(nfc_context **ppcontext, nfc_device **ppnd)
+{
+  if ((ppnd != NULL) && (*ppnd != NULL)) {
+    nfc_close(*ppnd);
+    *ppnd = NULL;
+  }
+
+  if ((ppcontext != NULL) && (*ppcontext != NULL)) {
+    nfc_exit(*ppcontext);
+    *ppcontext = NULL;
+  }
+}

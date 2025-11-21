@@ -32,6 +32,21 @@ void iso14443b_crc_append(uint8_t *pbtData, size_t szLen)
   pbtData[szLen + 1] = (uint8_t)((crc >> 8) & 0xFF);
 }
 
+void iso14443b_crc(uint8_t *pbtData, size_t szLen, uint8_t *pbtCrc)
+{
+  uint16_t crc = 0xFFFF;
+  for (size_t i = 0; i < szLen; i++)
+  {
+    uint8_t bt = pbtData[i];
+    bt = (bt ^ (uint8_t)(crc & 0x00FF));
+    bt = (bt ^ (bt << 4));
+    crc = (crc >> 8) ^ ((uint16_t)bt << 8) ^ ((uint16_t)bt << 3) ^ ((uint16_t)bt >> 4);
+  }
+  crc = ~crc;
+  pbtCrc[0] = (uint8_t)(crc & 0xFF);
+  pbtCrc[1] = (uint8_t)((crc >> 8) & 0xFF);
+}
+
 void iso14443a_crc(uint8_t *pbtData, size_t szLen, uint8_t *pbtCrc)
 {
   uint16_t crc = 0x6363;

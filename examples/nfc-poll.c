@@ -60,7 +60,14 @@
 #define MAX_DEVICE_COUNT 16
 
 static nfc_device *pnd = NULL;
-static nfc_context *context;
+static nfc_context *context = NULL;
+
+static void
+cleanup_and_exit_failure(void)
+{
+  nfc_example_cleanup(&context, &pnd);
+  exit(EXIT_FAILURE);
+}
 
 static void stop_polling(int sig)
 {
@@ -68,8 +75,7 @@ static void stop_polling(int sig)
   if (pnd != NULL)
     nfc_abort_command(pnd);
   else {
-    nfc_exit(context);
-    exit(EXIT_FAILURE);
+    cleanup_and_exit_failure();
   }
 }
 
@@ -115,34 +121,16 @@ main(int argc, const char *argv[])
   nfc_target nt;
   int res = 0;
 
-  nfc_init(&context);
-  if (context == NULL) {
-    ERR("Unable to init libnfc (malloc)");
-    exit(EXIT_FAILURE);
+  if (!nfc_example_prepare_initiator(&context, &pnd)) {
+    cleanup_and_exit_failure();
   }
 
-  pnd = nfc_open(context, NULL);
-
-  if (pnd == NULL) {
-    ERR("%s", "Unable to open NFC device.");
-    nfc_exit(context);
-    exit(EXIT_FAILURE);
-  }
-
-  if (nfc_initiator_init(pnd) < 0) {
-    nfc_perror(pnd, "nfc_initiator_init");
-    nfc_close(pnd);
-    nfc_exit(context);
-    exit(EXIT_FAILURE);
-  }
-
+  unsigned long total_poll_time = (unsigned long) uiPollNr * (unsigned long) szModulations * (unsigned long) uiPeriod * 150UL;
   printf("NFC reader: %s opened\n", nfc_device_get_name(pnd));
-  printf("NFC device will poll during %ld ms (%u pollings of %lu ms for %" PRIdPTR " modulations)\n", (unsigned long) uiPollNr * szModulations * uiPeriod * 150, uiPollNr, (unsigned long) uiPeriod * 150, szModulations);
+  printf("NFC device will poll during %lu ms (%u pollings of %lu ms for %" PRIdPTR " modulations)\n", total_poll_time, uiPollNr, (unsigned long) uiPeriod * 150, szModulations);
   if ((res = nfc_initiator_poll_target(pnd, nmModulations, szModulations, uiPollNr, uiPeriod, &nt))  < 0) {
     nfc_perror(pnd, "nfc_initiator_poll_target");
-    nfc_close(pnd);
-    nfc_exit(context);
-    exit(EXIT_FAILURE);
+    cleanup_and_exit_failure();
   }
 
   if (res > 0) {
@@ -156,7 +144,6 @@ main(int argc, const char *argv[])
     printf("No target found.\n");
   }
 
-  nfc_close(pnd);
-  nfc_exit(context);
+  nfc_example_cleanup(&context, &pnd);
   exit(EXIT_SUCCESS);
 }
