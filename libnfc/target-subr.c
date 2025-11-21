@@ -94,12 +94,26 @@ size_t const_cs_size = sizeof(const_cs) / sizeof(const_cs[0]);
 int snprint_hex(char *dst, size_t size, const uint8_t *pbtData, const size_t szBytes)
 {
   size_t szPos;
-  size_t res = 0;
+  int res = 0;
+
   for (szPos = 0; szPos < szBytes; szPos++)
   {
-    res += snprintf(dst + res, size - res, "%02x  ", pbtData[szPos]);
+    const size_t remaining = (res < 0 || size <= (size_t)res) ? 0 : size - (size_t)res;
+    const int written = snprintf(dst + (size_t)res, remaining, "%02x  ", pbtData[szPos]);
+    if (written < 0)
+    {
+      return written;
+    }
+    res += written;
   }
-  res += snprintf(dst + res, size - res, "\n");
+
+  const size_t remaining = (res < 0 || size <= (size_t)res) ? 0 : size - (size_t)res;
+  const int written = snprintf(dst + (size_t)res, remaining, "\n");
+  if (written < 0)
+  {
+    return written;
+  }
+  res += written;
   return res;
 }
 

@@ -4,7 +4,7 @@
  * Libnfc historical contributors:
  * Copyright (C) 2009      Roel Verdult
  * Copyright (C) 2009-2013 Romuald Conty
- * Copyright (C) 2010-2012 Romain Tartière
+ * Copyright (C) 2010-2012 Romain Tartiere
  * Copyright (C) 2010-2013 Philippe Teuwen
  * Copyright (C) 2012-2013 Ludovic Rousseau
  * See AUTHORS file for a more comprehensive list of contributors.
@@ -83,9 +83,11 @@
 #include <assert.h>
 #include <ctype.h>
 
-// Declare strnlen if not available
-#ifndef HAVE_STRNLEN
+// Declare strnlen if not available (MSVC 2015+ already provides it)
+#if !defined(HAVE_STRNLEN)
+#  if !(defined(_MSC_VER) && _MSC_VER >= 1900)
 extern size_t strnlen(const char *s, size_t maxlen);
+#  endif
 #endif
 
 #include <nfc/nfc.h>
@@ -887,7 +889,7 @@ int nfc_initiator_select_passive_target(nfc_device *pnd,
                                         nfc_target *pnt)
 {
   uint8_t *abtInit = NULL;
-  uint8_t maxAbt = MAX(12, szInitData);
+  size_t maxAbt = MAX((size_t)12, szInitData);
   size_t szInit = 0;
   int res;
   if ((res = nfc_device_validate_modulation(pnd, N_INITIATOR, &nm)) != NFC_SUCCESS)
@@ -994,9 +996,9 @@ int nfc_initiator_list_passive_targets(nfc_device *pnd,
  * @param pnd \a nfc_device struct pointer that represent currently used device
  * @param pnmModulations desired modulations
  * @param szModulations size of \a pnmModulations
- * @param uiPollNr specifies the number of polling (0x01 – 0xFE: 1 up to 254 polling, 0xFF: Endless polling)
+ * @param uiPollNr specifies the number of polling (0x01 - 0xFE: 1 up to 254 polling, 0xFF: Endless polling)
  * @note one polling is a polling for each desired target type
- * @param uiPeriod indicates the polling period in units of 150 ms (0x01 – 0x0F: 150ms – 2.25s)
+ * @param uiPeriod indicates the polling period in units of 150 ms (0x01 - 0x0F: 150ms - 2.25s)
  * @note e.g. if uiPeriod=10, it will poll each desired target type during 1.5s
  * @param[out] pnt pointer on \a nfc_target (over)writable struct
  */

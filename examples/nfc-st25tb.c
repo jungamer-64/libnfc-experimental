@@ -62,6 +62,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <limits.h>
 #include <nfc/nfc.h>
 #include "utils/nfc-utils.h"
 #include "../libnfc/nfc-secure.h"
@@ -89,7 +90,6 @@ bool set_block_at(nfc_device *pnd, uint8_t block, uint8_t *data, uint8_t cbData,
 bool set_block_at_confirmed(nfc_device *pnd, uint8_t block, uint8_t *data, uint8_t cbData, bool bPrintIt);
 const st_data *get_info(const nfc_target *pnt, bool bPrintIt);
 void display_system_info(nfc_device *pnd, const st_data *stdata);
-void print_hex(const uint8_t *pbtData, const size_t szBytes);
 
 int main(int argc, char *argv[])
 {
@@ -112,9 +112,16 @@ int main(int argc, char *argv[])
       case 'b':
         if (optarg) {
           bIsBlock = true;
-          blockNumber = strtoul(optarg, NULL, 0);
-        } else
+          unsigned long parsed = strtoul(optarg, NULL, 0);
+          if (parsed > UINT8_MAX) {
+            fprintf(stderr, "Error: block number 0x%lX is out of range (max 0x%02X)\n", parsed, UINT8_MAX);
+            bIsBadCli = true;
+          } else {
+            blockNumber = (uint8_t)parsed;
+          }
+        } else {
           bIsBadCli = true;
+        }
 
         break;
 
@@ -148,6 +155,10 @@ int main(int argc, char *argv[])
           }
 
           if (!bIsWrite) {
+            bIsBadCli = true;
+          }
+          if (cbData > UINT8_MAX) {
+            fprintf(stderr, "Error: data length %zu exceeds maximum byte size\n", cbData);
             bIsBadCli = true;
           }
         }
@@ -200,7 +211,7 @@ int main(int argc, char *argv[])
           }
 
           if (bIsWrite) {
-            set_block_at_confirmed(pnd, blockNumber, data, cbData, true);
+            set_block_at_confirmed(pnd, blockNumber, data, (uint8_t)cbData, true);
           }
         } else if (!bIsRead && !bIsWrite && !bIsBlock) {
           for (i = 0; i < stcurrent->nbNormalBlock; i++) {
@@ -517,10 +528,3 @@ void display_system_info(nfc_device *pnd, const st_data *stdata)
   }
 }
 
-void print_hex(const uint8_t *pbtData, const size_t szBytes)
-{
-  size_t szPos;
-  for (szPos = 0; szPos < szBytes; szPos++) {
-    printf("%02hhx ", pbtData[szPos]);
-  }
-}

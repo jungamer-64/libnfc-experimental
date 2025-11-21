@@ -4,7 +4,7 @@
  * Libnfc historical contributors:
  * Copyright (C) 2009      Roel Verdult
  * Copyright (C) 2009-2013 Romuald Conty
- * Copyright (C) 2010-2012 Romain Tartière
+ * Copyright (C) 2010-2012 Romain Tartiere
  * Copyright (C) 2010-2013 Philippe Teuwen
  * Copyright (C) 2012-2013 Ludovic Rousseau
  * See AUTHORS file for a more comprehensive list of contributors.
@@ -63,7 +63,7 @@
  *
  * ISO/IEC 14443-3
  *  First edition - 2001-02-01
- *  Identification cards — Contactless integrated circuit(s) cards — Proximity cards
+ *  Identification cards - Contactless integrated circuit(s) cards - Proximity cards
  *  Part 3: Initialization and anticollision
  */
 

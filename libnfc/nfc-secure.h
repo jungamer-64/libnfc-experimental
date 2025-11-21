@@ -15,13 +15,13 @@
  * - [[nodiscard]] for mandatory error checking
  * - Improved type generic macros with typeof
  *
- * 📚 DOCUMENTATION:
+ * [DOCS] DOCUMENTATION:
  * - Complete Usage Guide: libnfc/NFC_SECURE_USAGE_GUIDE.md
  * - Best Practices: libnfc/NFC_SECURE_BEST_PRACTICES_V4.md
  * - Security Fixes: libnfc/NFC_SECURE_CRITICAL_FIXES_V5.md
  * - Examples: libnfc/nfc-secure-examples.c
  *
- * 🎯 QUICK START:
+ * [GOAL] QUICK START:
  * ```c
  * // Arrays (compile-time size)
  * uint8_t buffer[64], data[16];
@@ -43,6 +43,30 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+
+/* ============================================================================
+ * EXPORT MACRO (SHARED WITH PUBLIC API)
+ * ========================================================================== */
+
+/*
+ * When this header is included without <nfc/nfc.h>, ensure NFC_EXPORT is
+ * defined so the secure helpers are exported from the libnfc DLL on Windows.
+ */
+#ifndef NFC_EXPORT
+#  ifdef _WIN32
+#    ifndef _WINDLL
+#      ifdef nfc_EXPORTS
+#        define NFC_EXPORT __declspec(dllexport)
+#      else
+#        define NFC_EXPORT __declspec(dllimport)
+#      endif
+#    else
+#      define NFC_EXPORT
+#    endif
+#  else
+#    define NFC_EXPORT
+#  endif
+#endif
 
 /* ============================================================================
  * CONFIGURATION MACROS
@@ -177,7 +201,7 @@ extern "C"
    * @param error_code Error code from nfc_secure_error enum
    * @return String describing the error, or "Unknown error" for invalid codes
    */
-  const char *nfc_secure_strerror(int error_code);
+  NFC_EXPORT const char *nfc_secure_strerror(int error_code);
 
   /* ============================================================================
    * CORE SECURE MEMORY FUNCTIONS
@@ -213,7 +237,7 @@ extern "C"
    * free(buffer);
    * ```
    */
-  NFC_NODISCARD
+  NFC_EXPORT NFC_NODISCARD
   int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size);
 
   /**
@@ -240,7 +264,7 @@ extern "C"
    * // Result: "Hello, Hello!"
    * ```
    */
-  NFC_NODISCARD
+  NFC_EXPORT NFC_NODISCARD
   int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_size);
 
   /**
@@ -265,7 +289,7 @@ extern "C"
    * @return NFC_SECURE_ERROR_RANGE if size exceeds SIZE_MAX / 2
    *
    * Performance characteristics:
-   * - Small buffers (≤256 bytes): Optimized volatile loop (~1-5 μs)
+   * - Small buffers (<=256 bytes): Optimized volatile loop (~1-5 micros)
    * - Large buffers (>256 bytes): memset + memory barrier (~10-30% overhead)
    * - Platform functions: Near-native performance
    *
@@ -280,7 +304,7 @@ extern "C"
    * // Compiler cannot optimize away this erasure
    * ```
    */
-  NFC_NODISCARD
+  NFC_EXPORT NFC_NODISCARD
   int nfc_secure_memset(void *ptr, int val, size_t size);
 
 #ifdef __cplusplus
@@ -333,14 +357,14 @@ extern "C"
  * ```c
  * uint8_t buffer[10];
  * uint8_t data[5];
- * NFC_SAFE_MEMCPY(buffer, data, sizeof(data)); // ✅ Correct
+ * NFC_SAFE_MEMCPY(buffer, data, sizeof(data)); // [OK] Correct
  * ```
  *
  * Example (incorrect - will fail at compile time on C11+):
  * ```c
  * uint8_t *buffer = malloc(10);
  * uint8_t data[5];
- * NFC_SAFE_MEMCPY(buffer, data, sizeof(data)); // ❌ Compile error
+ * NFC_SAFE_MEMCPY(buffer, data, sizeof(data)); // [FAIL] Compile error
  * // Use: nfc_safe_memcpy(buffer, 10, data, sizeof(data));
  * ```
  */
@@ -397,7 +421,7 @@ extern "C"
  * Example:
  * ```c
  * uint8_t key[16];
- * NFC_SECURE_MEMSET(key, 0x00); // ✅ Correct
+ * NFC_SECURE_MEMSET(key, 0x00); // [OK] Correct
  * ```
  */
 #if NFC_HAVE_C11 && NFC_HAVE_GNU_EXTENSIONS
@@ -444,7 +468,7 @@ extern "C"
  * ```
  */
 // Implementation in nfc-secure.c (not inline due to export requirements)
-size_t nfc_safe_strlen(const char *str, size_t maxlen);
+NFC_EXPORT size_t nfc_safe_strlen(const char *str, size_t maxlen);
 
 /**
  * @brief Validate that a buffer contains a null-terminated string
@@ -548,23 +572,23 @@ nfc_ensure_null_terminated(char *buf, size_t bufsize)
  * ========================================================================== */
 
 /*
- * 💡 QUICK REFERENCE:
+ * [TIP] QUICK REFERENCE:
  *
- * 1. FIXED-SIZE ARRAYS → Use MACROS
+ * 1. FIXED-SIZE ARRAYS -> Use MACROS
  *    uint8_t buf[16];
  *    NFC_SAFE_MEMCPY(buf, src, len);
  *
- * 2. DYNAMIC MEMORY → Use FUNCTIONS
+ * 2. DYNAMIC MEMORY -> Use FUNCTIONS
  *    uint8_t *buf = malloc(16);
  *    nfc_safe_memcpy(buf, 16, src, len);
  *
- * 3. OVERLAPPING BUFFERS → Use memmove variants
+ * 3. OVERLAPPING BUFFERS -> Use memmove variants
  *    nfc_safe_memmove(buf+5, 10, buf, 5);
  *
- * 4. SENSITIVE DATA → Always use secure memset
+ * 4. SENSITIVE DATA -> Always use secure memset
  *    NFC_SECURE_MEMSET(key, 0x00);
  *
- * 5. ERROR HANDLING → Always check return values
+ * 5. ERROR HANDLING -> Always check return values
  *    if (result != NFC_SECURE_SUCCESS) {
  *        handle_error(nfc_secure_strerror(result));
  *    }

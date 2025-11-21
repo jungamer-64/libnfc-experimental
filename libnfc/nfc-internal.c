@@ -44,11 +44,14 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <inttypes.h>
 
-// Declare strnlen if not available
-#ifndef HAVE_STRNLEN
+// Declare strnlen if not available (MSVC 2015+ already provides it)
+#if !defined(HAVE_STRNLEN)
+#  if !(defined(_MSC_VER) && _MSC_VER >= 1900)
 extern size_t strnlen(const char *s, size_t maxlen);
+#  endif
 #endif
 
 #define LOG_GROUP NFC_LOG_GROUP_GENERAL
@@ -261,21 +264,21 @@ int connstring_decode(const nfc_connstring connstring, const char *driver_name, 
     bus_name = "";
   }
   // Use safe strlen with NFC_BUFSIZE_CONNSTRING bound
-  int n = nfc_safe_strlen(connstring, NFC_BUFSIZE_CONNSTRING) + 1;
-  char *param0 = malloc(n);
+  size_t buffer_len = nfc_safe_strlen(connstring, NFC_BUFSIZE_CONNSTRING) + 1;
+  char *param0 = malloc(buffer_len);
   if (param0 == NULL)
   {
     perror("malloc");
     return 0;
   }
-  char *param1 = malloc(n);
+  char *param1 = malloc(buffer_len);
   if (param1 == NULL)
   {
     perror("malloc");
     free(param0);
     return 0;
   }
-  char *param2 = malloc(n);
+  char *param2 = malloc(buffer_len);
   if (param2 == NULL)
   {
     perror("malloc");
@@ -285,7 +288,9 @@ int connstring_decode(const nfc_connstring connstring, const char *driver_name, 
   }
 
   char format[32];
-  snprintf(format, sizeof(format), "%%%i[^:]:%%%i[^:]:%%%i[^:]", n - 1, n - 1, n - 1);
+  const int width = (buffer_len > INT_MAX) ? INT_MAX : (int)buffer_len;
+  const int max_field = (width > 0) ? width - 1 : 0;
+  snprintf(format, sizeof(format), "%%%i[^:]:%%%i[^:]:%%%i[^:]", max_field, max_field, max_field);
   int res = sscanf(connstring, format, param0, param1, param2);
 
   if (res < 1 || ((0 != strcmp(param0, driver_name)) &&

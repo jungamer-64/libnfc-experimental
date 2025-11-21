@@ -64,6 +64,10 @@
 #include "nfc-utils.h"
 #include "nfc-secure.h"
 
+#ifndef PATH_MAX
+#  define PATH_MAX 1024
+#endif
+
 #if defined(WIN32) /* mingw compiler */
 #include <getopt.h>
 #endif
@@ -98,7 +102,7 @@ static void stop_select(int sig)
 static void
 build_felica_frame(const nfc_felica_info nfi, const uint8_t command, const uint8_t *payload, const size_t payload_len, uint8_t *frame, size_t *frame_len)
 {
-  frame[0] = 1 + 1 + 8 + payload_len;
+  frame[0] = (uint8_t)(1 + 1 + 8 + payload_len);
   *frame_len = frame[0];
   frame[1] = command;
   if (nfc_safe_memcpy(frame + 2, 8, nfi.abtId, 8) < 0)
@@ -125,7 +129,7 @@ nfc_forum_tag_type3_check(nfc_device *dev, const nfc_target *nt, const uint16_t 
       0x00, // NFC Forum Tag Type 3's Service code
       block_count,
       0x80,
-      block, // block 0
+      (uint8_t)block, // block 0
   };
 
   size_t payload_len = 1 + 2 + 1;
@@ -134,13 +138,13 @@ nfc_forum_tag_type3_check(nfc_device *dev, const nfc_target *nt, const uint16_t 
     if (block < 0x100)
     {
       payload[payload_len++] = 0x80;
-      payload[payload_len++] = block + b;
+      payload[payload_len++] = (uint8_t)(block + b);
     }
     else
     {
       payload[payload_len++] = 0x00;
-      payload[payload_len++] = (block + b) >> 8;
-      payload[payload_len++] = (block + b) & 0xff;
+      payload[payload_len++] = (uint8_t)((block + b) >> 8);
+      payload[payload_len++] = (uint8_t)((block + b) & 0xff);
     }
   }
 
@@ -192,7 +196,11 @@ nfc_forum_tag_type3_check(nfc_device *dev, const nfc_target *nt, const uint16_t 
     ERR("Failed to copy FeliCa block data");
     return -1;
   }
-  return *data_len;
+  if (*data_len > (size_t)INT_MAX)
+  {
+    return NFC_EOVFLOW;
+  }
+  return (int)(*data_len);
 }
 
 int main(int argc, char *argv[])

@@ -215,7 +215,8 @@ acr122s_send_frame(nfc_device *pnd, uint8_t *frame, int timeout)
 #ifndef WIN32
   abort_p = &(DRIVER_DATA(pnd)->abort_fds[1]);
 #else
-  abort_p = &(DRIVER_DATA(pnd)->abort_flag);
+  volatile bool *abort_flag_p = &(DRIVER_DATA(pnd)->abort_flag);
+  abort_p = (void *)abort_flag_p;
 #endif
 
   if ((ret = uart_send(port, frame, frame_size, timeout)) < 0)
@@ -329,7 +330,8 @@ acr122s_build_frame(nfc_device *pnd,
 
   struct xfr_block_req *req = (struct xfr_block_req *)&frame[1];
   req->message_type = XFR_BLOCK_REQ_MSG;
-  req->length = le32(5 + data_size + should_prefix);
+  const uint32_t payload_len = (uint32_t)(5 + data_size + (size_t)should_prefix);
+  req->length = le32(payload_len);
   req->slot = 0;
   req->seq = DRIVER_DATA(pnd)->seq;
   req->bwi = 0;
@@ -341,7 +343,7 @@ acr122s_build_frame(nfc_device *pnd,
   header->ins = 0;
   header->p1 = p1;
   header->p2 = p2;
-  header->length = data_size + should_prefix;
+  header->length = (uint8_t)(data_size + (size_t)should_prefix);
 
   uint8_t *buf = (uint8_t *)&frame[16];
   if (should_prefix)
@@ -776,7 +778,8 @@ acr122s_receive(nfc_device *pnd, uint8_t *buf, size_t buf_len, int timeout)
 #ifndef WIN32
   abort_p = &(DRIVER_DATA(pnd)->abort_fds[1]);
 #else
-  abort_p = &(DRIVER_DATA(pnd)->abort_flag);
+  volatile bool *abort_flag_p = &(DRIVER_DATA(pnd)->abort_flag);
+  abort_p = (void *)abort_flag_p;
 #endif
 
   uint8_t tmp[MAX_FRAME_SIZE];
@@ -811,7 +814,7 @@ acr122s_receive(nfc_device *pnd, uint8_t *buf, size_t buf_len, int timeout)
     return pnd->last_error;
   }
 
-  return data_len;
+  return (int)data_len;
 }
 
 static int

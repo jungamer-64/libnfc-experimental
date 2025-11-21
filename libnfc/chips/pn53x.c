@@ -35,6 +35,7 @@
 #endif // HAVE_CONFIG_H
 
 #include <inttypes.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,6 +59,15 @@ static const uint8_t pn53x_error_frame[] = {0x00, 0x00, 0xff, 0x01, 0xff, 0x7f, 
 const nfc_baud_rate pn532_iso14443a_supported_baud_rates[] = {NBR_424, NBR_212, NBR_106, 0};
 const nfc_baud_rate pn533_iso14443a_supported_baud_rates[] = {NBR_847, NBR_424, NBR_212, NBR_106, 0};
 const nfc_baud_rate pn53x_felica_supported_baud_rates[] = {NBR_424, NBR_212, 0};
+
+static inline int checked_size_to_int(size_t value)
+{
+  if (value > (size_t)INT_MAX)
+  {
+    return NFC_EOVFLOW;
+  }
+  return (int)value;
+}
 const nfc_baud_rate pn53x_dep_supported_baud_rates[] = {NBR_424, NBR_212, NBR_106, 0};
 const nfc_baud_rate pn53x_jewel_supported_baud_rates[] = {NBR_106, 0};
 const nfc_baud_rate pn53x_barcode_supported_baud_rates[] = {NBR_106, 0};
@@ -570,7 +580,7 @@ int pn53x_wrap_frame(const uint8_t *pbtTx, const size_t szTxBits, const uint8_t 
   {
     *pbtFrame = *pbtTx;
     szFrameBits = szTxBits;
-    return szFrameBits;
+    return checked_size_to_int(szFrameBits);
   }
   // We start by calculating the frame length in bits
   szFrameBits = szTxBits + (szTxBits / 8);
@@ -602,7 +612,7 @@ int pn53x_wrap_frame(const uint8_t *pbtTx, const size_t szTxBits, const uint8_t 
       uiDataPos++;
       // Test if we are done
       if (szBitsLeft < 9)
-        return szFrameBits;
+        return checked_size_to_int(szFrameBits);
       szBitsLeft -= 8;
     }
     // Every 8 data bytes we lose one frame byte to the parities
@@ -629,7 +639,7 @@ int pn53x_unwrap_frame(const uint8_t *pbtFrame, const size_t szFrameBits, uint8_
   {
     *pbtRx = *pbtFrame;
     szRxBits = szFrameBits;
-    return szRxBits;
+    return checked_size_to_int(szRxBits);
   }
   // Calculate the data length in bits
   szRxBits = szFrameBits - (szFrameBits / 9);
@@ -651,7 +661,7 @@ int pn53x_unwrap_frame(const uint8_t *pbtFrame, const size_t szFrameBits, uint8_
       uiDataPos++;
       // Test if we are done
       if (szBitsLeft < 9)
-        return szRxBits;
+        return checked_size_to_int(szRxBits);
       szBitsLeft -= 9;
     }
     // Every 8 data bytes we lose one frame byte to the parities
@@ -948,7 +958,7 @@ int pn53x_writeback_register(struct nfc_device *pnd)
     if ((CHIP_DATA(pnd)->wb_mask[n]) && (CHIP_DATA(pnd)->wb_mask[n] != 0xff))
     {
       // This register needs to be read: mask is present but does not cover full data width (ie. mask != 0xff)
-      const uint16_t pn53x_register_address = PN53X_CACHE_REGISTER_MIN_ADDRESS + n;
+      const uint16_t pn53x_register_address = (uint16_t)(PN53X_CACHE_REGISTER_MIN_ADDRESS + n);
       BUFFER_APPEND(abtReadRegisterCmd, pn53x_register_address >> 8);
       BUFFER_APPEND(abtReadRegisterCmd, pn53x_register_address & 0xff);
     }
@@ -995,7 +1005,7 @@ int pn53x_writeback_register(struct nfc_device *pnd)
   {
     if (CHIP_DATA(pnd)->wb_mask[n] == 0xff)
     {
-      const uint16_t pn53x_register_address = PN53X_CACHE_REGISTER_MIN_ADDRESS + n;
+      const uint16_t pn53x_register_address = (uint16_t)(PN53X_CACHE_REGISTER_MIN_ADDRESS + n);
       PNREG_TRACE(pn53x_register_address);
       BUFFER_APPEND(abtWriteRegisterCmd, pn53x_register_address >> 8);
       BUFFER_APPEND(abtWriteRegisterCmd, pn53x_register_address & 0xff);
@@ -2125,7 +2135,7 @@ int pn53x_initiator_transceive_bits(struct nfc_device *pnd, const uint8_t *pbtTx
     }
   }
   // Everything went successful
-  return szRxBits;
+  return checked_size_to_int(szRxBits);
 }
 
 int pn53x_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t *pbtTx, const size_t szTx, uint8_t *pbtRx,
@@ -2189,7 +2199,7 @@ int pn53x_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t *pbtT
       return NFC_ECHIP;
   }
   // Everything went successful, we return received bytes count
-  return szRxLen;
+  return checked_size_to_int(szRxLen);
 }
 
 static void __pn53x_init_timer(struct nfc_device *pnd, const uint32_t max_cycles)
@@ -2397,7 +2407,7 @@ int pn53x_initiator_transceive_bits_timed(struct nfc_device *pnd, const uint8_t 
   // Recv corrected timer value
   *cycles = __pn53x_get_timer(pnd, pbtTx[szTxBits / 8]);
 
-  return szRxBits;
+  return checked_size_to_int(szRxBits);
 }
 
 // Helper: Prepare and send FIFO buffer for timed transceive
@@ -2537,7 +2547,6 @@ pn53x_timed_compute_cycles(struct nfc_device *pnd, const uint8_t *pbtTx, size_t 
 
 int pn53x_initiator_transceive_bytes_timed(struct nfc_device *pnd, const uint8_t *pbtTx, const size_t szTx, uint8_t *pbtRx, const size_t szRx, uint32_t *cycles)
 {
-  uint16_t i;
   uint8_t sz = 0;
   int res;
   size_t szRxLen = 0;
@@ -2593,7 +2602,7 @@ int pn53x_initiator_transceive_bytes_timed(struct nfc_device *pnd, const uint8_t
     *cycles = __pn53x_get_timer(pnd, pbtTx[szTx - 1]);
   }
 
-  return szRxLen;
+  return checked_size_to_int(szRxLen);
 }
 
 int pn53x_initiator_deselect_target(struct nfc_device *pnd)
@@ -2852,7 +2861,6 @@ static int pn53x_ISO14443B_I_is_present(struct nfc_device *pnd)
 
 static int pn53x_ISO14443B_SR_is_present(struct nfc_device *pnd)
 {
-  int ret;
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "target_is_present(): Ping B2 ST SRx");
   // Sending Get_UID in raw: (EASY_FRAMING is already supposed to be false)
   const uint8_t abtCmd[] = {0x0b};
@@ -2887,7 +2895,6 @@ static int pn53x_ISO14443B_ICLASS_is_present(struct nfc_device *pnd)
 
 static int pn53x_ISO14443B_CT_is_present(struct nfc_device *pnd)
 {
-  int ret;
   log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "%s", "target_is_present(): Ping B2 ASK CTx");
   // Sending SELECT in raw: (EASY_FRAMING is already supposed to be false)
   uint8_t abtCmd[3] = {0x9f};
@@ -3328,7 +3335,7 @@ int pn53x_target_init(struct nfc_device *pnd, nfc_target *pnt, uint8_t *pbtRx, c
     }
   }
 
-  return szRx;
+  return checked_size_to_int(szRx);
 }
 
 int pn53x_target_receive_bits(struct nfc_device *pnd, uint8_t *pbtRx, const size_t szRxLen, uint8_t *pbtRxPar)
@@ -3374,7 +3381,7 @@ int pn53x_target_receive_bits(struct nfc_device *pnd, uint8_t *pbtRx, const size
       return NFC_ECHIP;
   }
   // Everyting seems ok, return received bits count
-  return szRxBits;
+  return checked_size_to_int(szRxBits);
 }
 
 int pn53x_target_receive_bytes(struct nfc_device *pnd, uint8_t *pbtRx, const size_t szRxLen, int timeout)
@@ -3445,7 +3452,7 @@ int pn53x_target_receive_bytes(struct nfc_device *pnd, uint8_t *pbtRx, const siz
     return NFC_ECHIP;
 
   // Everyting seems ok, return received bytes count
-  return szRx;
+  return checked_size_to_int(szRx);
 }
 
 int pn53x_target_send_bits(struct nfc_device *pnd, const uint8_t *pbtTx, const size_t szTxBits, const uint8_t *pbtTxPar)
@@ -3491,7 +3498,7 @@ int pn53x_target_send_bits(struct nfc_device *pnd, const uint8_t *pbtTx, const s
     return res;
 
   // Everyting seems ok, return return sent bits count
-  return szTxBits;
+  return checked_size_to_int(szTxBits);
 }
 
 int pn53x_target_send_bytes(struct nfc_device *pnd, const uint8_t *pbtTx, const size_t szTx, int timeout)
@@ -3558,7 +3565,7 @@ int pn53x_target_send_bytes(struct nfc_device *pnd, const uint8_t *pbtTx, const 
     return res;
 
   // Everyting seems ok, return sent byte count
-  return szTx;
+  return checked_size_to_int(szTx);
 }
 
 static struct sErrorMessage
@@ -3933,7 +3940,7 @@ int pn53x_InAutoPoll(struct nfc_device *pnd,
       }
     }
   }
-  return szTargetFound;
+  return checked_size_to_int(szTargetFound);
 }
 
 /**
@@ -4231,7 +4238,7 @@ int pn53x_TgInitAsTarget(struct nfc_device *pnd, pn53x_target_mode ptm,
   if (nfc_safe_memcpy(pbtRx, szRxLen, abtRx + 1, szRx) < 0)
     return NFC_ECHIP;
 
-  return szRx;
+  return checked_size_to_int(szRx);
 }
 
 int pn53x_check_ack_frame(struct nfc_device *pnd, const uint8_t *pbtRxFrame, const size_t szRxFrameLen)
@@ -4281,9 +4288,9 @@ int pn53x_build_frame(uint8_t *pbtFrame, size_t *pszFrame, const uint8_t *pbtDat
   if (szData <= PN53x_NORMAL_FRAME__DATA_MAX_LEN)
   {
     // LEN - Packet length = data length (len) + checksum (1) + end of stream marker (1)
-    pbtFrame[3] = szData + 1;
+    pbtFrame[3] = (uint8_t)(szData + 1);
     // LCS - Packet length checksum
-    pbtFrame[4] = 256 - (szData + 1);
+    pbtFrame[4] = (uint8_t)(256 - (szData + 1));
     // TFI
     pbtFrame[5] = 0xD4;
     // DATA - Copy the PN53X command into the packet buffer - Safe copy with offset +6
@@ -4310,11 +4317,11 @@ int pn53x_build_frame(uint8_t *pbtFrame, size_t *pszFrame, const uint8_t *pbtDat
     pbtFrame[3] = 0xff;
     pbtFrame[4] = 0xff;
     // LENm
-    pbtFrame[5] = (szData + 1) >> 8;
+    pbtFrame[5] = (uint8_t)((szData + 1) >> 8);
     // LENl
-    pbtFrame[6] = (szData + 1) & 0xff;
+    pbtFrame[6] = (uint8_t)((szData + 1) & 0xff);
     // LCS
-    pbtFrame[7] = 256 - ((pbtFrame[5] + pbtFrame[6]) & 0xff);
+    pbtFrame[7] = (uint8_t)(256 - ((pbtFrame[5] + pbtFrame[6]) & 0xff));
     // TFI
     pbtFrame[8] = 0xD4;
     // DATA - Copy the PN53X command into the packet buffer - Safe copy with offset +9

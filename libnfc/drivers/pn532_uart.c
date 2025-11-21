@@ -39,6 +39,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include <nfc/nfc.h>
 
@@ -499,7 +500,11 @@ pn532_uart_receive(nfc_device *pnd, uint8_t *pbtData, const size_t szDataLen, in
     goto error;
   }
   // The PN53x command is done and we successfully received the reply
-  return len;
+  if (len > INT_MAX) {
+    pnd->last_error = NFC_EOVFLOW;
+    return pnd->last_error;
+  }
+  return (int)len;
 error:
   uart_flush_input(DRIVER_DATA(pnd)->port, true);
   return pnd->last_error;
