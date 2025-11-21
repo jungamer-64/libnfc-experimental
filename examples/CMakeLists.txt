@@ -36,8 +36,7 @@ FOREACH(source ${EXAMPLES-SOURCES})
   ENDIF(WIN32)
 
   ADD_EXECUTABLE(${source} ${TARGETS})
-  TARGET_LINK_LIBRARIES(${source} nfc)
-  TARGET_LINK_LIBRARIES(${source} nfcutils)
+  TARGET_LINK_LIBRARIES(${source} nfc nfcutils)
   INSTALL(TARGETS ${source} RUNTIME DESTINATION bin COMPONENT examples)
 ENDFOREACH(source)
 
