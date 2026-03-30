@@ -11,10 +11,7 @@ if DRIVER_PCSC_ENABLED
 libnfcdrivers_la_SOURCES += pcsc.c pcsc.h
 endif
 
-# Removed drivers (deleted files):
-# - acr122_pcsc (use pcsc driver instead)
-# - acr122_usb (use pn53x_usb driver instead)
-# - acr122s (serial version, rarely used)
+# Legacy ACR122 PC/SC variant removed from this tree; use pcsc driver instead.
 
 if DRIVER_ARYGON_ENABLED
 libnfcdrivers_la_SOURCES += arygon.c arygon.h

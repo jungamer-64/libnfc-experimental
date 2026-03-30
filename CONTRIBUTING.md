@@ -142,7 +142,7 @@ Use conventional commit messages:
 
 ```bash
 git commit -m "feat: Add new driver support for XYZ"
-git commit -m "fix: Resolve buffer overflow in acr122_usb_receive"
+git commit -m "fix: Simplify pn53x_usb_open timeout handling"
 git commit -m "docs: Update installation instructions"
 git commit -m "test: Add unit tests for nfc_initiator_init"
 ```
@@ -198,7 +198,6 @@ Target: Reduce cyclomatic complexity (CC) of complex functions
 
 **High Priority Functions**:
 
-* `acr122_usb_receive` (CC: 26 → 12)
 * `pn53x_usb_open` (CC: 25 → 10)
 * `pn532_uart_receive` (CC: 22 → 10)
 * `pn53x_usb_set_property_bool` (CC: 20 → 8)
@@ -207,24 +206,24 @@ Target: Reduce cyclomatic complexity (CC) of complex functions
 **Strategy**: Extract Method refactoring
 
 ```c
-// Before: Complex function (CC: 26)
-int acr122_usb_receive(nfc_device *pnd, ...) {
+// Before: Complex function (CC: 25)
+int pn53x_usb_open(const nfc_context *context, const nfc_connstring connstring) {
     // 26 decision points
-    // Frame validation
-    // Timeout handling
-    // Error codes
+    // Device discovery
+    // Descriptor validation
+    // Error handling
 }
 
-// After: Helper functions (CC: 12)
-static int acr122_validate_frame_header(...);
-static int acr122_handle_timeout(...);
-static int acr122_process_response(...);
+// After: Helper functions (CC: 10)
+static int pn53x_usb_validate_candidate(...);
+static int pn53x_usb_open_device(...);
+static int pn53x_usb_configure_device(...);
 
-int acr122_usb_receive(nfc_device *pnd, ...) {
+int pn53x_usb_open(const nfc_context *context, const nfc_connstring connstring) {
     // 12 decision points
-    if (!acr122_validate_frame_header(...)) return NFC_EINVARG;
-    if (acr122_handle_timeout(...) < 0) return NFC_ETIMEOUT;
-    return acr122_process_response(...);
+    if (!pn53x_usb_validate_candidate(...)) return NULL;
+    if (pn53x_usb_open_device(...) < 0) return NULL;
+    return pn53x_usb_configure_device(...);
 }
 ```
 
