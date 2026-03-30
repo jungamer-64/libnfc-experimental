@@ -42,7 +42,7 @@ if args.features:
 pattern = re.compile(r"Missing \`\[defines\]\` entry for `(.+?)` in cbindgen config\.")
 
 print("Running cbindgen to discover missing defines...")
-proc = subprocess.run(CMD, capture_output=True, text=True)
+proc = subprocess.run(CMD, capture_output=True, text=True, cwd=ROOT)
 stderr = proc.stderr
 
 found = set()

@@ -19,7 +19,7 @@ mod tests {
     // integration test binary links cleanly. The production build
     // links to a real logging implementation; integration tests only
     // need a stub.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn log_put_message(
         _group: u8,
         _category: *const c_char,
@@ -178,7 +178,7 @@ mod tests_windows {
 
     // Windows API bindings we need for allocation/protection
     #[link(name = "kernel32")]
-    extern "system" {
+    unsafe extern "system" {
         fn VirtualAlloc(
             lpAddress: *mut c_void,
             dwSize: usize,
@@ -202,7 +202,7 @@ mod tests_windows {
     const PAGE_NOACCESS: u32 = 0x01;
 
     // Provide a no-op logging symbol for the integration test binary.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn log_put_message(
         _group: u8,
         _category: *const c_char,

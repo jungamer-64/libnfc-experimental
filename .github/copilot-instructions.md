@@ -2,14 +2,15 @@
 
 - **Core Layout**: `libnfc/` holds the C entry points (`nfc_refator.c`, `nfc-common.cpp`, `log.cpp`) and driver glue under `libnfc/drivers/`; shared headers live in `include/nfc/`, while CLI tools sit in `utils/` and sample apps in `examples/`.
 - **Rust Bridge**: `rust/libnfc-rs/src/lib.rs` exposes connstring helpers and thread-local error buffers; CMake/autotools always build the Rust staticlib via the `libnfc_rs_build` custom target (see top-level `CMakeLists.txt` or `rust/Makefile.am`). Respect the contract described in `FFI_POLICY.md` whenever editing FFI.
-- **FFI Safety Rules**: Exported Rust entry points must apply the `no_mangle` + `extern "C"` ABI, wrap logic with `ffi_catch_unwind`, return NULL (or sentinel errno) on panic/error for pointer/handle APIs, and avoid handing back borrowed buffers. Regenerate the public header with an explicit command, for example:
+- **FFI Safety Rules**: Exported Rust entry points must apply the Rust 2024 `#[unsafe(no_mangle)] extern "C"` ABI (or the equivalent for the active edition), wrap logic with `ffi_catch_unwind`, return NULL (or sentinel errno) on panic/error for pointer/handle APIs, and avoid handing back borrowed buffers. Regenerate the public header with the project wrapper, for example:
 
 	```sh
-	cbindgen --config rust/libnfc-rs/cbindgen.toml --crate libnfc-rs --output rust/libnfc-rs/include/libnfc_rs.h
+	python3 rust/libnfc-rs/tools/generate_cbindgen_header.py --output rust/libnfc-rs/include/libnfc_rs.h
 	```
 
 	CI includes a header-check script at `scripts/check-cbindgen.sh` which verifies the generated header matches the tracked `rust/libnfc-rs/include/libnfc_rs.h`. Mirror any ABI notes into `FFI_POLICY.md`.
 - **Thread-Local Errors**: `nfc_get_last_error`/`nfc_clear_last_error` surface Rust thread-local buffers; always call `nfc_set_last_error` on failure paths and clear it before returning success. When adding error codes, register them through the mapping rules in `FFI_POLICY.md` and avoid sharing buffers across threads.
+- **Lifecycle Slice**: The current Phase 4 slice moves `nfc_context_alloc_defaults`, `nfc_device_new`, and `nfc_device_free` into Rust behind `nfc_lifecycle` / `USE_RUST_NFC_LIFECYCLE` / `--enable-rust-lifecycle`. Keep `nfc_context_new()` as the C wrapper that still owns env/config/log setup, and keep `nfc_context_free()` in C while it owns `log_exit()`.
 - **Safe Memory Utilities**: Default to `NFC_SAFE_MEMCPY` / `NFC_SECURE_MEMSET` from `libnfc/nfc-secure.h`. Only fall back to raw `memcpy` in documented hot paths, backed by a benchmark note explaining the regression risk. The usage guide (`libnfc/NFC_SECURE_USAGE_GUIDE.md`) covers escalation patterns for both C and Rust ports.
 - **Driver Discovery**: `nfc_list_devices` merges config files (`/etc/nfc/devices.d`) with runtime env vars (`LIBNFC_*`); keep that priority order intact. "Optional devices must stay silent" means: do not surface probe failures to callers (no ERROR-level logging, no addition to the device list) unless a probe succeeds; emit debug-level diagnostics only behind `LIBNFC_LOG`.
 
@@ -42,7 +43,7 @@ Short definitions (to remove ambiguous phrasing used elsewhere):
 Recommended minimum tool versions (baseline):
 
 - CMake >= 3.20
-- Rust toolchain >= 1.70.0 (pin via `rust-toolchain.toml` in the repo)
+- Rust stable toolchain (tracked via `rust-toolchain.toml` in the repo and kept aligned with CI)
 - cbindgen >= 0.24
 
 Escalation path: if implementers cannot follow any rule for a valid technical reason, open an issue and RFC; tag the PR with `FFI-exception` and obtain explicit approval from the FFI Maintainer and a Security reviewer.

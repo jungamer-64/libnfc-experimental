@@ -43,12 +43,12 @@ jobs:
         env:
           # Tell ASan to abort on error so CI fails fast and provides diagnostics
           ASAN_OPTIONS: "detect_leaks=1:abort_on_error=1:symbolize=1"
-          # Nightly-only sanitizer flag — instruct cargo to instrument std as well
-          RUSTFLAGS: "-Z sanitizer=address"
+          # Nightly-only sanitizer flag — instrument both the crate and std.
+          RUSTFLAGS: "-Zsanitizer=address"
+          RUSTDOCFLAGS: "-Zsanitizer=address"
         run: |
-          # Ensure we use nightly cargo invocation explicitly
-          cargo +nightly test -Z build-std --target x86_64-unknown-linux-gnu -Z sanitizer=address \
-            --manifest-path rust/libnfc-rs/Cargo.toml --features "nfc_secure nfc_secure_debug test_helpers" -- --nocapture || true
+          cargo +nightly test -Z build-std --target x86_64-unknown-linux-gnu \
+            --manifest-path rust/libnfc-rs/Cargo.toml --features "nfc_secure nfc_secure_debug test_helpers asan_tests" -- --nocapture
 
       - name: Configure and build C components with ASan
         working-directory: .

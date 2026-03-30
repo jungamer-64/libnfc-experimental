@@ -24,10 +24,18 @@ fn have_function_in_libc(func: &str) -> bool {
     let out_dir = env::var("OUT_DIR").unwrap_or_else(|_| ".".into());
 
     let snippet = match func {
-        "explicit_bzero" => "#define _GNU_SOURCE\n#include <string.h>\nint main(void) { explicit_bzero((void*)0, 0); return 0; }\n",
-        "memset_s" => "#define __STDC_WANT_LIB_EXT1__ 1\n#include <string.h>\nint main(void) { size_t s = 0; return memset_s((void*)0, s, 0, s); }\n",
-        "memset_explicit" => "#include <string.h>\nint main(void) { memset_explicit((void*)0, 0, 0); return 0; }\n",
-        "secure_zero_memory" => "#include <windows.h>\nint main(void) { SecureZeroMemory((void*)0, 0); return 0; }\n",
+        "explicit_bzero" => {
+            "#define _GNU_SOURCE\n#include <string.h>\nint main(void) { explicit_bzero((void*)0, 0); return 0; }\n"
+        }
+        "memset_s" => {
+            "#define __STDC_WANT_LIB_EXT1__ 1\n#include <string.h>\nint main(void) { size_t s = 0; return memset_s((void*)0, s, 0, s); }\n"
+        }
+        "memset_explicit" => {
+            "#include <string.h>\nint main(void) { memset_explicit((void*)0, 0, 0); return 0; }\n"
+        }
+        "secure_zero_memory" => {
+            "#include <windows.h>\nint main(void) { SecureZeroMemory((void*)0, 0); return 0; }\n"
+        }
         _ => return false,
     };
 

@@ -13,7 +13,7 @@ If this PR touches the FFI boundary (Rust ⇄ C), complete the FFI checklist bel
 
 - [ ] I regenerated and committed the cbindgen header if FFI symbols/signatures changed:
 
-      cbindgen --config rust/libnfc-rs/cbindgen.toml --crate libnfc-rs --output rust/libnfc-rs/include/libnfc_rs.h
+      python3 rust/libnfc-rs/tools/generate_cbindgen_header.py --output rust/libnfc-rs/include/libnfc_rs.h
 
 - [ ] The PR contains a clear ownership table for any returned buffers (who allocates, who frees).
 - [ ] `scripts/check-cbindgen.sh` and `scripts/check_callerfree_usage.sh` pass locally.

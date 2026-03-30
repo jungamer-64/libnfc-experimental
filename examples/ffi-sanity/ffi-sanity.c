@@ -1,7 +1,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
-#include "libnfc_rs.h"
+#include <nfc/nfc.h>
+
+int nfc_parse_connstring(const char *connstring,
+                         const char *prefix,
+                         const char *param_name,
+                         char *param_value,
+                         size_t param_value_size);
 
 static char last_msg[1024];
 
@@ -23,9 +29,18 @@ void log_put_message(uint8_t group, const char *category, uint8_t priority, cons
 
 int main(void)
 {
+    nfc_context *context = NULL;
     char buf[128];
     const char *conn = "pn53x_usb:/dev/usb";
     const char *prefix = "pn532"; // mismatching prefix to force debug message
+
+    nfc_init(&context);
+    if (!context)
+    {
+        fprintf(stderr, "Expected nfc_init to allocate a context\n");
+        return 1;
+    }
+    nfc_exit(context);
 
     int rc = nfc_parse_connstring(conn, prefix, "param", buf, sizeof(buf));
     if (rc == 0)

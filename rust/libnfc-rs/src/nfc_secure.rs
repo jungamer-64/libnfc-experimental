@@ -18,7 +18,7 @@ use std::ptr;
 // `memset`-style primitives are available (i.e. we must rely on the
 // libc fallback to prevent the compiler optimizing away the write).
 #[cfg(not(any(have_memset_explicit, have_memset_s)))]
-use std::sync::atomic::{compiler_fence, Ordering};
+use std::sync::atomic::{Ordering, compiler_fence};
 
 #[cfg(feature = "nfc_secure_debug")]
 use std::ffi::CStr;
@@ -231,7 +231,7 @@ fn memset_fuzz_random_lengths() {
             seed ^= seed >> 17;
             seed ^= seed << 5;
             let len = (seed as usize % MAX_LEN) + 1; // [1, MAX_LEN]
-                                                     // allocate a slightly larger buffer so we can test unaligned offsets
+            // allocate a slightly larger buffer so we can test unaligned offsets
             let mut buf = vec![0u8; len + 3];
             let offset = (seed as usize) % 3; // 0,1,2 to vary alignment
             let p = buf.as_mut_ptr().add(offset) as *mut libc::c_void;
@@ -403,7 +403,7 @@ fn validate_params(
 /// }
 /// ```
 #[must_use = "Return value must be checked for errors"]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_safe_memcpy(
     dst: *mut libc::c_void,
     dst_size: size_t,
@@ -465,12 +465,12 @@ pub unsafe extern "C" fn nfc_safe_memcpy(
 ///
 /// void example_memmove(void) {
 ///     char buf[64];
-///     /* prepare buf */
+///     // prepare buf contents
 ///     nfc_safe_memmove(buf + 2, 32, buf, 32);
 /// }
 /// ```
 #[must_use = "Return value must be checked for errors"]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_safe_memmove(
     dst: *mut libc::c_void,
     dst_size: size_t,
@@ -551,12 +551,12 @@ pub unsafe extern "C" fn nfc_safe_memmove(
 ///
 /// void scrub_secret(void *ptr, size_t len) {
 ///     if (nfc_secure_memset(ptr, 0, len) != NFC_SECURE_SUCCESS) {
-///         /* handle error */
+///         // handle error
 ///     }
 /// }
 /// ```
 #[must_use = "Return value must be checked for errors"]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_secure_memset(
     ptr: *mut libc::c_void,
     val: libc::c_int,
@@ -586,7 +586,7 @@ pub unsafe extern "C" fn nfc_secure_memset(
         // also cover the zeroing case):
         #[cfg(have_memset_explicit)]
         {
-            extern "C" {
+            unsafe extern "C" {
                 fn memset_explicit(s: *mut libc::c_void, c: libc::c_int, n: libc::size_t);
             }
             unsafe { memset_explicit(ptr as *mut _, _val as libc::c_int, size as libc::size_t) };
@@ -595,7 +595,7 @@ pub unsafe extern "C" fn nfc_secure_memset(
 
         #[cfg(have_memset_s)]
         {
-            extern "C" {
+            unsafe extern "C" {
                 fn memset_s(
                     dest: *mut libc::c_void,
                     destsz: libc::size_t,
@@ -663,7 +663,7 @@ pub unsafe extern "C" fn nfc_secure_memset(
             // Consume `val` to silence unused-variable warnings when
             // explicit_bzero is the only available primitive.
             let _ = val;
-            extern "C" {
+            unsafe extern "C" {
                 fn explicit_bzero(s: *mut libc::c_void, n: libc::size_t);
             }
             unsafe { explicit_bzero(ptr as *mut _, size as libc::size_t) };
@@ -675,7 +675,7 @@ pub unsafe extern "C" fn nfc_secure_memset(
             // Consume `val` to silence unused-variable warnings when
             // SecureZeroMemory is the chosen primitive.
             let _ = val;
-            extern "system" {
+            unsafe extern "system" {
                 fn SecureZeroMemory(ptr: *mut libc::c_void, cnt: libc::size_t);
             }
             unsafe { SecureZeroMemory(ptr as *mut _, size as libc::size_t) };
@@ -730,7 +730,7 @@ pub unsafe extern "C" fn nfc_secure_memset(
 ///   to provide cryptographic constant-time semantics beyond avoiding
 ///   secret-dependent control flow during validation.
 #[must_use = "Return value must be checked for errors"]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_secure_zero(ptr: *mut libc::c_void, size: size_t) -> c_int {
     crate::ffi_catch_unwind_int("nfc_secure_zero", NFC_SECURE_ERROR_INTERNAL, || {
         if ptr.is_null() {
@@ -746,7 +746,7 @@ pub unsafe extern "C" fn nfc_secure_zero(ptr: *mut libc::c_void, size: size_t) -
 
         #[cfg(have_memset_explicit)]
         {
-            extern "C" {
+            unsafe extern "C" {
                 fn memset_explicit(s: *mut libc::c_void, c: libc::c_int, n: libc::size_t);
             }
             unsafe { memset_explicit(ptr as *mut _, 0 as libc::c_int, size as libc::size_t) };
@@ -755,7 +755,7 @@ pub unsafe extern "C" fn nfc_secure_zero(ptr: *mut libc::c_void, size: size_t) -
 
         #[cfg(have_memset_s)]
         {
-            extern "C" {
+            unsafe extern "C" {
                 fn memset_s(
                     dest: *mut libc::c_void,
                     destsz: libc::size_t,
@@ -774,7 +774,7 @@ pub unsafe extern "C" fn nfc_secure_zero(ptr: *mut libc::c_void, size: size_t) -
 
         #[cfg(have_explicit_bzero)]
         {
-            extern "C" {
+            unsafe extern "C" {
                 fn explicit_bzero(s: *mut libc::c_void, n: libc::size_t);
             }
             unsafe { explicit_bzero(ptr as *mut _, size as libc::size_t) };
@@ -783,7 +783,7 @@ pub unsafe extern "C" fn nfc_secure_zero(ptr: *mut libc::c_void, size: size_t) -
 
         #[cfg(have_secure_zero_memory)]
         {
-            extern "system" {
+            unsafe extern "system" {
                 fn SecureZeroMemory(ptr: *mut libc::c_void, cnt: libc::size_t);
             }
             unsafe { SecureZeroMemory(ptr as *mut _, size as libc::size_t) };
@@ -834,7 +834,7 @@ pub unsafe extern "C" fn nfc_secure_zero(ptr: *mut libc::c_void, size: size_t) -
 ///     printf("error: %s\n", nfc_secure_strerror(code));
 /// }
 /// ```
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nfc_secure_strerror(code: c_int) -> *const c_char {
     match code {
         NFC_SECURE_SUCCESS => b"Success\0".as_ptr() as *const c_char,
@@ -876,7 +876,7 @@ pub extern "C" fn nfc_secure_strerror(code: c_int) -> *const c_char {
 ///     printf("len=%zu\n", l);
 /// }
 /// ```
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_safe_strlen(str: *const c_char, maxlen: size_t) -> size_t {
     if str.is_null() {
         return 0;
@@ -917,7 +917,7 @@ pub unsafe extern "C" fn nfc_safe_strlen(str: *const c_char, maxlen: size_t) -> 
 ///     return nfc_is_null_terminated(buf, size);
 /// }
 /// ```
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_is_null_terminated(buf: *const c_char, bufsize: size_t) -> c_int {
     if buf.is_null() || bufsize == 0 {
         return 0;
@@ -956,7 +956,7 @@ pub unsafe extern "C" fn nfc_is_null_terminated(buf: *const c_char, bufsize: siz
 ///     nfc_ensure_null_terminated(buf, size);
 /// }
 /// ```
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_ensure_null_terminated(buf: *mut c_char, bufsize: size_t) {
     if buf.is_null() || bufsize == 0 {
         return;
@@ -983,7 +983,7 @@ pub unsafe extern "C" fn nfc_ensure_null_terminated(buf: *mut c_char, bufsize: s
 /// # Safety
 /// Pointers must be valid for the provided sizes or NULL.
 #[cfg(feature = "nfc_secure_debug")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_buffers_overlap(
     dst: *const libc::c_void,
     dst_size: size_t,
@@ -1093,7 +1093,7 @@ pub unsafe fn nfc_memset_and_fence(ptr: *mut libc::c_void, c: libc::c_int, len: 
 /// Enabled only when the crate is compiled with
 /// `--features nfc_secure_debug`.
 #[cfg(feature = "nfc_secure_debug")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_check_suspicious_size(dst_size: size_t, func_name: *const c_char) {
     // Helper: small utility to detect power-of-two sizes
     fn is_power_of_2(n: usize) -> bool {
@@ -1389,9 +1389,12 @@ mod asan_tests {
         const TEST_NAME: &str = "asan_tests::asan_buffer_overflow_detected";
 
         if std::env::var("ASAN_TEST_CHILD").is_ok() {
-            let mut buf = vec![0u8; 8];
+            let mut buf = [0u8; 8];
             unsafe {
-                ptr::write_volatile(buf.as_mut_ptr().add(16), 0u8);
+                // Use a stack buffer and step well past the end so ASan
+                // reliably lands in a poisoned redzone instead of allocator
+                // slack space from a heap allocation.
+                ptr::write(buf.as_mut_ptr().add(32), 0u8);
             }
             // Reaching this exit means ASan did not abort; return success so
             // the parent can detect the lack of sanitizer intervention.

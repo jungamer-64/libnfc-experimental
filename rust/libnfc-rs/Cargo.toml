@@ -14,8 +14,12 @@ libc = "0.2"
 [features]
 # Feature gate for replacing the C nfc-secure implementation with the Rust one
 nfc_secure = []
+# Feature gate for replacing the C lifecycle alloc/free helpers with Rust.
+nfc_lifecycle = []
 # Debug helpers for nfc-secure (buffers overlap checks, suspicious size warnings)
 nfc_secure_debug = []
+# Feature used by the nightly ASan job to compile sanitizer-only tests cleanly.
+asan_tests = []
 # Opt-in test feature to disable the panic-catching wrapper so tests can
 # observe panics directly. Enable in test runs only: e.g.
 # `cargo test --features test_no_catch`
@@ -27,3 +31,8 @@ test_helpers = []
 
 [dev-dependencies]
 criterion = "0.8"
+
+[[test]]
+name = "mprotect"
+path = "tests/mprotect.rs"
+required-features = ["nfc_secure"]

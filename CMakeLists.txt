@@ -23,6 +23,7 @@ SET(PACKAGE_VERSION ${VERSION})
 SET(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
 
 option (USE_RUST_NFC_SECURE "Use Rust implementation of nfc-secure" OFF)
+option (USE_RUST_NFC_LIFECYCLE "Use Rust implementation of nfc context/device lifecycle alloc/free helpers" OFF)
 
 # Optional: features to pass to cbindgen when generating the public Rust header.
 # By default this is empty which generates a stable header without debug helpers.
@@ -49,8 +50,14 @@ set(RUST_LIB_PATH ${RUST_TARGET_DIR}/release/${RUST_LIB_FILENAME} CACHE INTERNAL
 
 set(RUST_CARGO_FEATURES)
 if(USE_RUST_NFC_SECURE)
-  # Pass features as separate arguments so cargo receives them correctly
   set(RUST_CARGO_FEATURES --features nfc_secure)
+endif()
+if(USE_RUST_NFC_LIFECYCLE)
+  list(APPEND RUST_CARGO_FEATURES --features nfc_lifecycle)
+endif()
+
+if(USE_RUST_NFC_LIFECYCLE)
+  add_definitions(-DUSE_RUST_NFC_LIFECYCLE)
 endif()
 
 add_custom_command(

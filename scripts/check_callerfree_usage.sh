@@ -10,9 +10,11 @@ echo "[check_callerfree_usage] Scanning for direct free() usage in Rust code and
 FOUND=0
 for d in "${SEARCH_DIRS[@]}"; do
   if [ -d "$d" ]; then
-    # Look for the literal token free( in source files under these directories
+    # Look for the literal token free( in source files under these directories.
     # Limit to Rust sources to avoid reporting C examples that legitimately call free().
-    matches=$(grep -R --line-number --binary-files=without-match -E "\bfree\s*\(" --exclude-dir=target --exclude-dir=build --include "*.rs" "$d" || true)
+    # The sanctioned helper path uses `c_free(...)` specifically so it will not
+    # match this pattern.
+    matches=$(rg -n --glob '*.rs' --glob '!target/**' --glob '!build/**' '\bfree\s*\(' "$d" || true)
     if [ -n "$matches" ]; then
       echo "[check_callerfree_usage] Found potential free() uses in $d:" >&2
       echo "$matches" >&2

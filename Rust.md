@@ -140,6 +140,16 @@
 
 **目的:** 長期的に最も価値がある部分（状態管理・I/O層）をRustで書き換える。
 
+#### 現在の適用方針（foundation-first）
+
+- `rust-toolchain.toml` は CI と同じ `stable` を追従し、feature なしの `cargo test` が通る入口を維持する。
+- ビルド切替は Cargo `nfc_lifecycle`、CMake `USE_RUST_NFC_LIFECYCLE`、Autotools `--enable-rust-lifecycle` で揃える。
+- このバッチで Rust へ移すのは `nfc_context_alloc_defaults()`、`nfc_device_new()`、`nfc_device_free()` の allocator/defaults slice のみ。
+- `nfc_context_new()` は C の薄い wrapper として残し、env/config/log 初期化は C が継続して所有する。
+- `nfc_context_free()` は `log_exit()` を持つため C のまま据え置く。
+- `nfc_open()`、`nfc_list_devices()`、`conf_load()`、各ドライバ実装は Phase 4 の後続バッチで分離して扱う。
+- Nightly/ASan 向けには `asan_tests` feature を追加し、`tests/mprotect.rs` は `nfc_secure` 前提で gate する。
+
 **主要タスク**
 
 * `nfc_device` の所有権管理をRustで行う（`Box`, `Arc<Mutex<...>>`等の利用は注意）。
@@ -215,7 +225,7 @@
 * cbindgenヘッダ生成:
 
 ```bash
-cbindgen --config rust/libnfc-rs/cbindgen.toml --crate libnfc_rs --output rust/libnfc-rs/include/libnfc_rs.h
+python3 rust/libnfc-rs/tools/generate_cbindgen_header.py --output rust/libnfc-rs/include/libnfc_rs.h
 ```
 
 * Cargoを静的ライブラリでビルド:

@@ -11,12 +11,12 @@
 
 ## 絶対禁止事項（FFI 移行の三種の神器）
 
-1. **panic を FFI 境界の外へ漏らさないこと** — すべての公開 `#[no_mangle] extern "C"` 関数は `ffi_catch_unwind`（または同等のラッパー）でトップレベルを防御し、パニックを NULL もしくは規定の errno に正規化する。`unwrap()` や panic を起こし得る操作をラッパー外で実行することを禁止する。
+1. **panic を FFI 境界の外へ漏らさないこと** — すべての公開 `#[unsafe(no_mangle)] extern "C"` 関数（Rust edition に応じた等価記法を含む）は `ffi_catch_unwind`（または同等のラッパー）でトップレベルを防御し、パニックを NULL もしくは規定の errno に正規化する。`unwrap()` や panic を起こし得る操作をラッパー外で実行することを禁止する。
 2. **CallerFree ポインタを生の `free()` で解放しないこと** — Rust 側で確保して `CString::into_raw` 等で C に渡したメモリは、対応する `*_free` ラッパーのみで解放する。C テスト・サンプルを含むどのコードでも `free(ptr)` は使用禁止。
 3. **cbindgen で再生成したヘッダをコミットせずに ABI を変更しないこと** — FFI のシグネチャや `#[repr(C)]` 構造体に変更がある場合、必ず次のように `cbindgen` を実行してヘッダを再生成し、`rust/libnfc-rs/include/libnfc_rs.h` の差分を PR に含める:
 
 ```sh
-cbindgen --config rust/libnfc-rs/cbindgen.toml --crate libnfc-rs --output rust/libnfc-rs/include/libnfc_rs.h
+python3 rust/libnfc-rs/tools/generate_cbindgen_header.py --output rust/libnfc-rs/include/libnfc_rs.h
 ```
 
 レビューチェックリスト（§7）に従い ABI 互換性の証跡を添付すること。
@@ -51,6 +51,11 @@ cbindgen --config rust/libnfc-rs/cbindgen.toml --crate libnfc-rs --output rust/l
 - CallerFree を採用する API では、必ず対応する `nfc_free_XXX_string(const char *ptr)` のような専用の解放関数を公開すること。C 側の利用者は **直接** `free()` を呼んではならず、常にこの解放ラッパーを使用することを義務付ける。
 - ラッパー実装は内部で確実に Rust が利用するアロケータ/ランタイムと同一の解放方法を用いる（例: `CString::from_raw` を使うか、libc の `free` をラップする）。
 - CI では CallerFree を採用する API の一覧を生成し、テスト/サンプルコードで直接 `free()` を呼んでいないかを静的にチェックするルールを導入することを推奨する（例: `scripts/check_callerfree_usage.sh` を作成して grep/AST 解析で検出）。
+
+### Rust 側の sanctioned deallocator helper
+
+- Rust 実装内で `libc::free` 相当を直接呼んでよい場所は、単一の私有 helper に限定すること。現行の基準線では `release_allocated_ptr()` から `c_free()` を呼ぶ経路だけを許可し、`nfc_rs_free`、`connstring_decode` の失敗 cleanup、lifecycle の `nfc_device_free` も必ずそこを経由する。
+- 新しい FFI 実装で解放ロジックが必要になった場合も、sanctioned helper を再利用し、別名の raw `free()` 呼び出しを増やさないこと。
 
 ### ビルド時アロケータ情報の記録とランタイムチェック
 
@@ -128,6 +133,8 @@ impl NfcError {
 
 - すべての `#[no_mangle] extern "C"` 公開関数は、エントリポイントで `ffi_catch_unwind`（またはプロジェクト標準の等価ラッパ）を用いて panic を吸収し、必ず整数のエラーコードで戻ることを義務付ける。
 - CI では簡易的な静的チェックを導入し、`#[no_mangle] extern "C"` 関数が `ffi_catch_unwind` を呼んでいるかを検査するルールを設ける（不適合は PR チェックで失敗させる）。
+
+ポインタ戻り値と `void` 戻り値についても同様であり、現行実装では `ffi_catch_unwind_ptr` と `ffi_catch_unwind_void` を標準のラッパーとして扱う。panic 時はそれぞれ `NULL` / no-op に正規化し、詳細は `nfc_get_last_error()` で回収できるようにすること。
 
 ## 5) 不変条件と unsafe の扱い
 
@@ -239,6 +246,13 @@ extern "C" fn my_c_callback(event_data: i32, user_data: *mut std::ffi::c_void) {
 - 利用者には `nfc_context_new()` / `nfc_context_free()` などのコンストラクタ/デストラクタ関数を提供し、メモリ生存期間と所有権を明確にする。
 - `#[repr(C)]` でレイアウトを共有するのは、フィールドを直接公開する必要がある単純なデータ構造に限定する。その場合はパディングや順序を含む不変条件をドキュメント化する。
 - 将来的にフィールドを追加・変更する際は、このセクションのルールに照らして ABI 安全性をレビューし、必要であればバージョンを更新する。
+
+### 13.1) Phase 4 lifecycle slice の ownership 境界
+
+- foundation-first の初手では、Rust が所有するのは `nfc_context_alloc_defaults()`、`nfc_device_new()`、`nfc_device_free()` の allocator/defaults slice に限定する。
+- `nfc_context_new()` は C 側の薄い wrapper とし、env 読み込み、`conf_load()`、`string_as_boolean()`、`log_init()`、driver list の管理は引き続き C が所有する。
+- `nfc_context_free()` は `log_exit()` の責務を持つため、このフェーズでは C 実装のまま維持する。
+- `nfc_open()`、`nfc_list_devices()`、各 driver 実装の Rust 化は次バッチ以降に分離して扱う。
 
 ## 秘密データの消去（Secure zeroing）ポリシー
 

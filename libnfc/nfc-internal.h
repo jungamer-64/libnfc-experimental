@@ -198,6 +198,7 @@ extern "C"
 
   nfc_context *nfc_context_new(void);
   void nfc_context_free(nfc_context *context);
+  nfc_context *nfc_context_alloc_defaults(void);
 
   /**
    * @struct nfc_device

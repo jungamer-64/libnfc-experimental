@@ -84,8 +84,12 @@ void string_as_boolean(const char *s, bool *value)
 nfc_context *
 nfc_context_new(void)
 {
-  nfc_context *res = malloc(sizeof(*res));
+  nfc_context *res;
 
+#ifdef USE_RUST_NFC_LIFECYCLE
+  res = nfc_context_alloc_defaults();
+#else
+  res = malloc(sizeof(*res));
   if (!res)
   {
     return NULL;
@@ -108,6 +112,12 @@ nfc_context_new(void)
     res->user_defined_devices[i].optional = false;
   }
   res->user_defined_device_count = 0;
+#endif
+
+  if (!res)
+  {
+    return NULL;
+  }
 
 #ifdef ENVVARS
   // Load user defined device from environment variable at first

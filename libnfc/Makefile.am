@@ -9,7 +9,7 @@ libnfc_la_SOURCES = \
 		    iso14443-subr.c \
 		    mirror-subr.c \
 		    nfc.c \
-		    nfc-device.c \
+		    @USE_RUST_NFC_LIFECYCLE_FALSE@ \
 		    nfc-emulation.c \
 		    nfc-internal.c \
 			@USE_RUST_NFC_SECURE_FALSE@ \

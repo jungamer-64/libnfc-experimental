@@ -13,7 +13,6 @@ fn tracked_cbindgen_header_is_up_to_date() {
     }
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let config = manifest_dir.join("cbindgen.toml");
     let tracked = manifest_dir.join("include/libnfc_rs.h");
     let generated = std::env::temp_dir().join("libnfc_rs.generated.h");
 
@@ -25,6 +24,7 @@ fn tracked_cbindgen_header_is_up_to_date() {
         .arg("tools/generate_cbindgen_header.py")
         .arg("--output")
         .arg(&generated)
+        .current_dir(&manifest_dir)
         .status()
         .expect("failed to execute header generation wrapper");
 
@@ -50,8 +50,9 @@ fn tracked_cbindgen_header_is_up_to_date() {
             eprintln!("Generated header:\n{}\n", b);
         }
         panic!(
-            "Tracked cbindgen header is out-of-date. Regenerate with:\n  cbindgen --config {} --crate libnfc-rs --output {}",
-            config.display(), tracked.display()
+            "Tracked cbindgen header is out-of-date. Regenerate with:\n  python3 {}/tools/generate_cbindgen_header.py --output {}",
+            manifest_dir.display(),
+            tracked.display()
         );
     }
 }

@@ -56,7 +56,7 @@ if args.features:
 cmd.extend(["--output", str(generated)])
 
 print("Running cbindgen...")
-proc = subprocess.run(cmd, capture_output=True, text=True)
+proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
 stderr = proc.stderr
 stdout = proc.stdout
 
@@ -87,7 +87,7 @@ if missing and args.verbose:
             updater_cmd = [sys.executable, str(updater)]
             if args.features:
                 updater_cmd.extend(["--features", args.features])
-            r = subprocess.run(updater_cmd, capture_output=True, text=True)
+            r = subprocess.run(updater_cmd, capture_output=True, text=True, cwd=ROOT)
             print(r.stdout)
             if r.stderr:
                 print(r.stderr, file=sys.stderr)

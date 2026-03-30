@@ -68,6 +68,10 @@ if(USE_RUST_NFC_SECURE)
   # Remove C implementation from sources when using Rust replacement
   list(REMOVE_ITEM LIBRARY_SOURCES nfc-secure.c)
 endif()
+if(USE_RUST_NFC_LIFECYCLE)
+  # Remove C lifecycle helpers when using the Rust replacement.
+  list(REMOVE_ITEM LIBRARY_SOURCES nfc-device.c)
+endif()
 
 IF(LIBNFC_LOG)
   IF(WIN32)

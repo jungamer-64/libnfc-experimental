@@ -200,6 +200,22 @@ else
   AC_SUBST([USE_RUST_NFC_SECURE_FALSE], [nfc-secure.c])
 fi
 
+# Option to enable Rust lifecycle alloc/free helpers
+AC_ARG_ENABLE([rust-lifecycle],AS_HELP_STRING([--enable-rust-lifecycle],[Enable Rust implementation of nfc context/device lifecycle alloc/free helpers]),[enable_rust_lifecycle=$enableval],[enable_rust_lifecycle="no"])
+AC_MSG_CHECKING(for rust-lifecycle flag)
+AC_MSG_RESULT($enable_rust_lifecycle)
+AM_CONDITIONAL([USE_RUST_NFC_LIFECYCLE], [test "$enable_rust_lifecycle" != "no"])
+if test x"$enable_rust_lifecycle" = x"xyes"
+then
+  AC_DEFINE([USE_RUST_NFC_LIFECYCLE], [1], [Use Rust implementation for nfc context/device lifecycle helpers])
+fi
+if test x"$enable_rust_lifecycle" = x"xyes"
+then
+  AC_SUBST([USE_RUST_NFC_LIFECYCLE_FALSE], [])
+else
+  AC_SUBST([USE_RUST_NFC_LIFECYCLE_FALSE], [nfc-device.c])
+fi
+
 # Dependencies
 PKG_CONFIG_REQUIRES=""
 

@@ -2,7 +2,8 @@ RUST_TARGET_DIR = $(abs_top_builddir)/rust/target
 RUST_RELEASE_LIB = $(RUST_TARGET_DIR)/release/liblibnfc_rs.a
 
 RUST_SOURCES = \
-	libnfc-rs/src/lib.rs
+	libnfc-rs/src/lib.rs \
+	libnfc-rs/src/lifecycle.rs
 
 EXTRA_DIST = \
 	libnfc-rs/Cargo.toml \
@@ -15,9 +16,17 @@ $(RUST_RELEASE_LIB): libnfc-rs/Cargo.toml $(RUST_SOURCES)
 		CARGO_TARGET_DIR=$(RUST_TARGET_DIR) $(CARGO) build --release $(RUST_CARGO_FEATURES)
 
 if USE_RUST_NFC_SECURE
+if USE_RUST_NFC_LIFECYCLE
+RUST_CARGO_FEATURES = --features nfc_secure,nfc_lifecycle
+else
 RUST_CARGO_FEATURES = --features nfc_secure
+endif
+else
+if USE_RUST_NFC_LIFECYCLE
+RUST_CARGO_FEATURES = --features nfc_lifecycle
 else
 RUST_CARGO_FEATURES =
+endif
 endif
 
 clean-local:
