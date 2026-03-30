@@ -26,4 +26,4 @@ test_no_catch = []
 test_helpers = []
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.8"
