@@ -49,6 +49,15 @@ bash scripts/check_callerfree_usage.sh
 cargo test --manifest-path rust/libnfc-rs/Cargo.toml --features nfc_secure -- --nocapture
 ```
 
+If you touch the Rust lifecycle/core bridge, also verify the Rust-owned core slice:
+
+```bash
+cargo test --manifest-path rust/libnfc-rs/Cargo.toml --features "nfc_core nfc_lifecycle" -- --nocapture
+cmake -S . -B build-rust-core -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON -DUSE_RUST_NFC_SECURE=ON -DUSE_RUST_NFC_LIFECYCLE=ON -DUSE_RUST_NFC_CORE=ON
+cmake --build build-rust-core -j"$(nproc)"
+ctest --test-dir build-rust-core --output-on-failure
+```
+
 If you change exported CMake/package behavior, verify all of the following:
 
 1. Shared build configure/build/install succeeds.

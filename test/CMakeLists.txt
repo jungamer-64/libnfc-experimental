@@ -25,6 +25,14 @@ add_executable(ffi-sanity
 target_link_libraries(ffi-sanity nfc)
 add_test(NAME ffi_sanity COMMAND ffi-sanity)
 
+if(USE_RUST_NFC_CORE)
+  add_executable(test_rust_core_registry
+    test_rust_core_registry.c
+  )
+  target_link_libraries(test_rust_core_registry nfc)
+  add_test(NAME rust_core_registry COMMAND test_rust_core_registry)
+endif()
+
 if(LIBUSB_FOUND)
   add_executable(test_usbbus_helpers
     test_usbbus_helpers.c

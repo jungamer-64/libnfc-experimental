@@ -6,8 +6,8 @@
 ## 現在の基準線（2026-03-31）
 
 - Rust の公開 FFI 成果物は `staticlib` を基準にし、`rlib` は Rust 側テスト/内部リンク補助として併存する。
-- 現在 Rust が所有する lifecycle slice は `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()` である。
-- `nfc_context_new()` は Rust が env/config hydration と `log_init()` 呼び出し順を所有するが、`conf_load()` の parser / file I/O 本体、`nfc_context_free()`、`log_exit()`、driver list 管理は C 側が責務を持つ。
+- 現在 Rust が所有する lifecycle slice は `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()` である。`nfc_core` を有効にした構成では `nfc_register_driver()`、`nfc_open()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_close()` も Rust が所有する。
+- `nfc_context_new()` は Rust が env/config hydration と `log_init()` 呼び出し順を所有し、`nfc_core` 有効時は driver registry / open / list / init / exit / close の制御も Rust が担う。一方で `conf_load()` の parser / file I/O 本体、`nfc_context_free()`、`log_exit()`、実ドライバ実装は C 側が責務を持つ。
 - 現在の CI / チェックは `scripts/check-cbindgen.sh`、`scripts/check_callerfree_usage.sh`、`cargo test`、Nightly ASan を中核とする。専用 `ffi-test` crate や追加 governance は将来の hardening 案として扱う。
 
 ## 適用範囲
@@ -257,13 +257,13 @@ extern "C" fn my_c_callback(event_data: i32, user_data: *mut std::ffi::c_void) {
 - `#[repr(C)]` でレイアウトを共有するのは、フィールドを直接公開する必要がある単純なデータ構造に限定する。その場合はパディングや順序を含む不変条件をドキュメント化する。
 - 将来的にフィールドを追加・変更する際は、このセクションのルールに照らして ABI 安全性をレビューし、必要であればバージョンを更新する。
 
-### 13.1) Phase 4 lifecycle slice の ownership 境界
+### 13.1) Phase 4 lifecycle/core slice の ownership 境界
 
-- 現在の foundation-first slice では、Rust が `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()` を所有する。
+- 現在の foundation-first slice では、Rust が `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()` を所有する。`nfc_core` を有効にした構成では `nfc_register_driver()`、`nfc_open()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_close()` も Rust 側の実装に切り替わる。
 - `nfc_context_new()` は Rust 実装だが、`conf_load()` と `log_init()` は常設の内部 C bridge を介して呼び出し、config parser / file I/O 本体と C の logging backend を再利用する。
 - env 読み込み、`string_as_boolean()` 相当の値解釈、`log_init()` までの初期化順序は Rust が責務を持つ。
 - `nfc_context_free()` は `log_exit()` の責務を持つため、このフェーズでは C 実装のまま維持する。
-- `nfc_open()`、`nfc_list_devices()`、各 driver 実装の Rust 化は次バッチ以降に分離して扱う。
+- `nfc_core` は registry / open / list / init / exit / close の制御層を Rust へ寄せる段階であり、各 driver 実装の Rust 化は次バッチ以降に分離して扱う。
 
 ## 秘密データの消去（Secure zeroing）ポリシー
 
