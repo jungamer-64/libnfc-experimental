@@ -44,6 +44,7 @@
 
 #include <nfc/nfc.h>
 
+#include "drivers/acr122-core.h"
 #include "drivers.h"
 #include "nfc-internal.h"
 #include "nfc-secure.h"
@@ -79,13 +80,13 @@ const struct pn53x_io acr122s_io;
 #define MAX_FRAME_SIZE (FRAME_OVERHEAD + 5 + 255)
 
 enum {
-  ICC_POWER_ON_REQ_MSG = 0x62,
-  ICC_POWER_OFF_REQ_MSG = 0x63,
-  XFR_BLOCK_REQ_MSG = 0x6F,
+  ICC_POWER_ON_REQ_MSG = ACR122_CCID_PC_TO_RDR_ICC_POWER_ON,
+  ICC_POWER_OFF_REQ_MSG = ACR122_CCID_PC_TO_RDR_ICC_POWER_OFF,
+  XFR_BLOCK_REQ_MSG = ACR122_CCID_PC_TO_RDR_XFR_BLOCK,
 
-  ICC_POWER_ON_RES_MSG = 0x80,
-  ICC_POWER_OFF_RES_MSG = 0x81,
-  XFR_BLOCK_RES_MSG = 0x80,
+  ICC_POWER_ON_RES_MSG = ACR122_CCID_RDR_TO_PC_DATABLOCK,
+  ICC_POWER_OFF_RES_MSG = ACR122_CCID_RDR_TO_PC_SLOTSTATUS,
+  XFR_BLOCK_RES_MSG = ACR122_CCID_RDR_TO_PC_DATABLOCK,
 };
 
 enum {
@@ -151,14 +152,6 @@ struct xfr_block_res {
   uint8_t status;
   uint8_t error;
   uint8_t chain_parameter;
-};
-
-struct apdu_header {
-  uint8_t class;
-  uint8_t ins;
-  uint8_t p1;
-  uint8_t p2;
-  uint8_t length;
 };
 
 #pragma pack(pop)
@@ -308,38 +301,32 @@ acr122s_build_frame(nfc_device *pnd,
 {
   if (frame_size < data_size + APDU_OVERHEAD + should_prefix)
     return false;
-  if (data_size + should_prefix > 255)
-    return false;
-  if (data == NULL)
+  if (data == NULL && data_size != 0)
     return false;
 
   struct xfr_block_req *req = (struct xfr_block_req *)&frame[1];
+  uint8_t *apdu = &frame[11];
+  size_t apdu_len;
+
+  if (should_prefix) {
+    apdu_len =
+        acr122_build_direct_transmit_apdu(apdu, frame_size - FRAME_OVERHEAD,
+                                          data, data_size);
+  } else {
+    apdu_len =
+        acr122_build_apdu(apdu, frame_size - FRAME_OVERHEAD, 0x00, p1, p2,
+                          data, data_size, 0);
+  }
+  if (apdu_len == 0)
+    return false;
+
   req->message_type = XFR_BLOCK_REQ_MSG;
-  req->length = le32(5 + data_size + should_prefix);
+  req->length = le32((uint32_t)apdu_len);
   req->slot = 0;
   req->seq = DRIVER_DATA(pnd)->seq;
   req->bwi = 0;
   req->rfu[0] = 0;
   req->rfu[1] = 0;
-
-  struct apdu_header *header = (struct apdu_header *)&frame[11];
-  header->class = 0xff;
-  header->ins = 0;
-  header->p1 = p1;
-  header->p2 = p2;
-  header->length = data_size + should_prefix;
-
-  uint8_t *buf = (uint8_t *)&frame[16];
-  if (should_prefix)
-    *buf++ = 0xD4;
-
-  // Safe copy APDU data to ACR122S frame
-  size_t available = frame_size - (buf - frame);
-  if (nfc_safe_memcpy(buf, available, data, data_size) < 0) {
-    log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR,
-            "Failed to copy APDU data to frame");
-    return false;
-  }
 
   acr122s_fix_frame(frame);
 
@@ -515,7 +502,7 @@ acr122s_scan(const nfc_context *context, nfc_connstring connstrings[], const siz
 
       char version[32];
       int ret = acr122s_get_firmware_version(pnd, version, sizeof(version));
-      if (ret == 0 && strncmp("ACR122S", version, 7) != 0) {
+      if (ret == 0 && !acr122_is_acr122s_firmware(version)) {
         ret = -1;
       }
 
@@ -671,7 +658,7 @@ acr122s_open(const nfc_context *context, const nfc_connstring connstring)
     return NULL;
   }
 
-  if (strncmp(version, "ACR122S", 7) != 0) {
+  if (!acr122_is_acr122s_firmware(version)) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_ERROR, "Invalid firmware version: %s",
             version);
     acr122s_close(pnd);

@@ -5,6 +5,7 @@ if (NOT DEFINED CMAKE_BUILD_TYPE)
 endif ()
 
 project (libnfc C CXX)
+include(CTest)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -244,6 +245,8 @@ IF(MINGW)
   ENDIF (NOT DLLTOOL)
 ENDIF(MINGW)
 
+INCLUDE(LibnfcDrivers)
+
 IF(NOT WIN32)
   # Set some pkg-config variables
   SET(prefix ${CMAKE_INSTALL_PREFIX})
@@ -258,13 +261,14 @@ IF(NOT WIN32)
   IF(LIBNFC_DRIVER_ACR122_PCSC)
     SET(PKG_REQ ${PKG_REQ} "libpcsclite")
   ENDIF(LIBNFC_DRIVER_ACR122_PCSC)
+  IF(LIBNFC_DRIVER_ACR122_USB)
+    SET(PKG_REQ ${PKG_REQ} "libusb")
+  ENDIF(LIBNFC_DRIVER_ACR122_USB)
   # CMake lists are separated by a semi colon, replace with colon
   STRING(REPLACE ";" "," PKG_CONFIG_REQUIRES "${PKG_REQ}")
   CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/libnfc.pc.in ${CMAKE_CURRENT_BINARY_DIR}/libnfc.pc @ONLY)
   INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/libnfc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 ENDIF(NOT WIN32)
-
-INCLUDE(LibnfcDrivers)
 
 IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     IF(I2C_REQUIRED)
@@ -315,6 +319,10 @@ endif ()
 
 if (BUILD_EXAMPLES)
   add_subdirectory (examples)
+endif ()
+
+if (BUILD_TESTING)
+  add_subdirectory(test)
 endif ()
 
 if (NOT MSVC)

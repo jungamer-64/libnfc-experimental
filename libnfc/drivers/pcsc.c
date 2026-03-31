@@ -41,6 +41,7 @@
 
 #include <nfc/nfc.h>
 
+#include "drivers/acr122-core.h"
 #include "drivers/pcsc.h"
 #include "nfc-internal.h"
 #include "nfc-secure.h"
@@ -87,15 +88,6 @@
 
 #define LOG_GROUP NFC_LOG_GROUP_DRIVER
 #define LOG_CATEGORY "libnfc.driver.pcsc"
-
-static const char *supported_devices[] = {
-  "ACS ACR122",       // ACR122U & Touchatag, last version
-  "ACS ACR 38U-CCID", // Touchatag, early version
-  "ACS ACR38U-CCID",  // Touchatag, early version, under MacOSX
-  "ACS AET65",        // Touchatag using CCID driver version >= 1.4.6
-  "    CCID USB",     // ??
-  NULL
-};
 
 struct pcsc_data {
   SCARDHANDLE hCard;
@@ -517,16 +509,7 @@ static int pcsc_props_to_target(struct nfc_device *pnd, uint8_t icc_type, const 
 
 static bool pcsc_is_supported_reader(const char *reader_name)
 {
-  if (!reader_name)
-    return false;
-
-  for (int i = 0; supported_devices[i]; i++) {
-    size_t prefix_len = nfc_safe_strlen(supported_devices[i], 256);
-    if (strncmp(supported_devices[i], reader_name, prefix_len) == 0)
-      return true;
-  }
-
-  return false;
+  return reader_name != NULL && !acr122_is_pcsc_reader_name(reader_name);
 }
 /**
  * @brief List opened devices
@@ -689,6 +672,8 @@ pcsc_open(const nfc_context *context, const nfc_connstring connstring)
   nfc_device *pnd = NULL;
 
   if (!resolve_pcsc_connection(context, connstring, &descriptor, resolved_connstring))
+    goto error;
+  if (acr122_is_pcsc_reader_name(descriptor.pcsc_device_name))
     goto error;
 
   pnd = nfc_device_new(context, resolved_connstring);

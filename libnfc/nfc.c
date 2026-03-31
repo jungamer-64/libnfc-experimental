@@ -51,6 +51,12 @@ extern size_t strnlen(const char *s, size_t maxlen);
 #if defined(DRIVER_PCSC_ENABLED)
 #include "drivers/pcsc.h"
 #endif
+#if defined(DRIVER_ACR122_PCSC_ENABLED)
+#include "drivers/acr122_pcsc.h"
+#endif
+#if defined(DRIVER_ACR122_USB_ENABLED)
+#include "drivers/acr122_usb.h"
+#endif
 #if defined(DRIVER_ACR122S_ENABLED)
 #include "drivers/acr122s.h"
 #endif
@@ -295,6 +301,15 @@ nfc_drivers_init(void)
 #endif
 #if defined(DRIVER_PCSC_ENABLED)
   nfc_register_driver(&pcsc_driver);
+#endif
+#if defined(DRIVER_ACR122_PCSC_ENABLED)
+  nfc_register_driver(&acr122_pcsc_driver);
+#endif
+#if defined(DRIVER_ACR122_USB_ENABLED)
+  nfc_register_driver(&acr122_usb_driver);
+#endif
+#if defined(DRIVER_ACR122S_ENABLED)
+  nfc_register_driver(&acr122s_driver);
 #endif
 #if defined(DRIVER_PN532_UART_ENABLED)
   nfc_register_driver(&pn532_uart_driver);
