@@ -3,6 +3,12 @@
 この文書は libnfc の Rust への段階的移行における FFI（C ⇄ Rust）ルールと運用方針を定めます。
 目的は ABI/メモリ所有権/エンコーディング/エラー伝搬等の曖昧さを排除し、安全に移行を進めることです。
 
+## 現在の基準線（2026-03-31）
+
+- Rust の公開 FFI 成果物は `staticlib` を基準にし、`rlib` は Rust 側テスト/内部リンク補助として併存する。
+- 現在 Rust が所有する lifecycle slice は `nfc_context_alloc_defaults()`、`nfc_device_new()`、`nfc_device_free()` のみで、`nfc_context_new()` / `nfc_context_free()` は C 側 wrapper が責務を持つ。
+- 現在の CI / チェックは `scripts/check-cbindgen.sh`、`scripts/check_callerfree_usage.sh`、`cargo test`、Nightly ASan を中核とする。専用 `ffi-test` crate や追加 governance は将来の hardening 案として扱う。
+
 ## 適用範囲
 
 この方針はリポジトリ内のすべての Rust/FFI 境界に適用します。既存 C API を Rust 実装で置き換える場合も、本方針に従ってください。
@@ -26,7 +32,7 @@ python3 rust/libnfc-rs/tools/generate_cbindgen_header.py --output rust/libnfc-rs
 ## 1) 基本原則（契約）
 
 - C 側と Rust 側は明確な契約（入力: 型と所有権、出力: 型と所有権、エラー/副作用）を持つこと。
-- すべての公開 FFI 関数は `extern "C"` + `#[no_mangle]` を使い、ドキュメントで所有権ルールを明記する。
+- すべての公開 FFI 関数は `extern "C"` + `#[unsafe(no_mangle)]`（または edition に応じた等価記法）を使い、ドキュメントで所有権ルールを明記する。
 - C 側に渡すポインタは NULL チェックを行うこと。NULL を許す場合はその意味を明示する。
 
 ## 2) 文字列（重要）
@@ -34,11 +40,11 @@ python3 rust/libnfc-rs/tools/generate_cbindgen_header.py --output rust/libnfc-rs
 - すべての public C API で用いられるテキストは UTF-8 を推奨する（入出力ともに）。古い API の互換で他エンコーディングを受け付ける場合は明示する。
 - Rust 側では外部から受け取る `const char *` を `CStr` で受け取り、UTF-8 ではない場合はエラーを返す（エンコーディングの選択は API ドキュメントで明記）。
 - 文字列を C に返す場合は、次の所有権ポリシーのどれかを採用する（API ごとに明記）:
-  - CallerFree: Rust が `malloc` 互換の関数で確保し、C 呼び出し元が `free()` で解放する（互換性のため、alloc は libc の malloc を使うラッパを用意）
+  - CallerFree: 呼び出し元が解放責任を持つが、解放手段は生の `free()` ではなく、対応する `*_free` か `nfc_rs_free()` に限定する
   - CalleeFree: 呼び出し元が渡したバッファに書く（バッファ長を受け取る）
   - ThreadLastError: エラー文字列はスレッドローカルに格納し、`nfc_get_last_error()` で取り出す
 - NUL 終端は常に保証すること。バイト列が NUL を含む場合の扱いも API ドキュメントで定義する。
-- Rust から C に返す文字列は `CString::into_raw` でポインタ化し、対応する `*_free` 関数で `CString::from_raw` を用いて解放する。
+- Rust から C に返す文字列は `CString::into_raw` でポインタ化し、対応する `*_free` 関数で `CString::from_raw` を用いて解放する。`libc::malloc` 経由の汎用バッファを返す場合も、C 側には `nfc_rs_free()` などの明示的な解放関数を案内する。
 
 ## 2.5) メモリアロケータの一貫性
 
@@ -57,15 +63,15 @@ python3 rust/libnfc-rs/tools/generate_cbindgen_header.py --output rust/libnfc-rs
 - Rust 実装内で `libc::free` 相当を直接呼んでよい場所は、単一の私有 helper に限定すること。現行の基準線では `release_allocated_ptr()` から `c_free()` を呼ぶ経路だけを許可し、`nfc_rs_free`、`connstring_decode` の失敗 cleanup、lifecycle の `nfc_device_free` も必ずそこを経由する。
 - 新しい FFI 実装で解放ロジックが必要になった場合も、sanctioned helper を再利用し、別名の raw `free()` 呼び出しを増やさないこと。
 
-### ビルド時アロケータ情報の記録とランタイムチェック
+### 将来のアロケータ監視案（planned）
 
-- `build.rs` は、ビルド対象のターゲットやリンクされる libc の識別（glibc/musl/その他）を検出し、`cargo:rustc-env=LIBC_IMPLEMENTATION=...` のように出力してビルド成果物に記録することを推奨する。
-- `ffi-test` 起動時にこの環境変数を読み、実行時に簡易なアロケータ一致チェック（例えば、Rust 側で malloc したポインタを専用の free ラッパーで解放して成功するかの確認）を行い、一致しない場合はテストを失敗させる仕組みを推奨する。
+- `build.rs` で、ビルド対象のターゲットやリンクされる libc の識別（glibc/musl/その他）を検出し、`cargo:rustc-env=LIBC_IMPLEMENTATION=...` のように成果物へ記録する案を維持する。
+- 将来 dedicated な FFI テスト基盤を導入する場合は、その環境変数を読み取って簡易なアロケータ一致チェック（例: Rust 側で確保したポインタを専用 free ラッパーで解放できるか）を行う。
 
 ## 3) メモリと所有権
 
 - FFI 境界を越えるポインタは、「誰が割当て」「誰が解放するか」を必ずコメント/ドキュメント化すること。
-- Rust 側で確保したメモリを C 側で解放させる必要がある場合、libc の `malloc`/`free` を用いるか、明示的な `nfc_free()` を提供する。直接 `Box::into_raw` を渡す場合は、対応する `Box::from_raw` を必ず用意する wrapper を公開する。
+- Rust 側で確保したメモリを C 側で解放させる必要がある場合、libc の `malloc` 互換確保と組み合わせた明示的な解放 API（`nfc_rs_free()` や型付き `*_free`）を提供する。直接 `Box::into_raw` を渡す場合も、対応する `Box::from_raw` を必ず用意する wrapper を公開し、raw `free()` は禁止する。
 - 不透明ポインタ（opaque pointer）を原則とする。C 側には内部構造を公開せず、操作は関数経由に限定する（例: `struct nfc_context;` を外部公開し、`nfc_context_new()` / `nfc_context_free()` を用意）。これにより内部実装の自由度が高まる。
 
 ## 4) エラーハンドリング
@@ -88,16 +94,17 @@ python3 rust/libnfc-rs/tools/generate_cbindgen_header.py --output rust/libnfc-rs
 実装例（擬似 Rust / C 表現）:
 
 ```rust
-// Rust 側 FFI エントリポイントの先頭でのパターン
-#[no_mangle]
-pub extern "C" fn nfc_do_something(arg: *const c_char) -> i32 {
-  ffi_catch_unwind(|| {
+// Rust 側 FFI エントリポイント先頭での現在のパターン
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nfc_do_something(arg: *const c_char) -> i32 {
+  ffi_catch_unwind_int("nfc_do_something", NFC_COMMON_ERROR, || {
     if arg.is_null() {
-      unsafe { nfc_set_last_error(NfcError::InvalidArg.as_errno(), "arg is NULL\0".as_ptr() as *const _); }
-      return Err(NfcError::InvalidArg);
+      set_last_error_message("arg is NULL".to_string());
+      return NFC_EINVARG;
     }
-    // ... normal path ...
-    Ok(())
+
+    reset_last_error();
+    NFC_SUCCESS
   })
 }
 ```
@@ -131,8 +138,8 @@ impl NfcError {
 
 ### ffi_catch_unwind の必須化と静的チェック
 
-- すべての `#[no_mangle] extern "C"` 公開関数は、エントリポイントで `ffi_catch_unwind`（またはプロジェクト標準の等価ラッパ）を用いて panic を吸収し、必ず整数のエラーコードで戻ることを義務付ける。
-- CI では簡易的な静的チェックを導入し、`#[no_mangle] extern "C"` 関数が `ffi_catch_unwind` を呼んでいるかを検査するルールを設ける（不適合は PR チェックで失敗させる）。
+- すべての `#[unsafe(no_mangle)] extern "C"` 公開関数は、エントリポイントで `ffi_catch_unwind`（またはプロジェクト標準の等価ラッパ）を用いて panic を吸収し、必ず整数のエラーコードで戻ることを義務付ける。
+- CI では簡易的な静的チェックを導入し、`#[unsafe(no_mangle)] extern "C"` 関数が `ffi_catch_unwind` を呼んでいるかを検査するルールを設ける（不適合は PR チェックで失敗させる）。
 
 ポインタ戻り値と `void` 戻り値についても同様であり、現行実装では `ffi_catch_unwind_ptr` と `ffi_catch_unwind_void` を標準のラッパーとして扱う。panic 時はそれぞれ `NULL` / no-op に正規化し、詳細は `nfc_get_last_error()` で回収できるようにすること。
 
@@ -171,7 +178,7 @@ unsafe {
 }
 
 // C から呼ばれるコールバック関数（Rust 側実装）
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn my_c_callback(event_data: i32, user_data: *mut std::ffi::c_void) {
   // user_data を Arc に戻して使用し、所有権を戻すために forget する
   let state_arc = unsafe { std::sync::Arc::<std::sync::Mutex<MyState>>::from_raw(user_data as *const _ ) };
@@ -190,7 +197,7 @@ extern "C" fn my_c_callback(event_data: i32, user_data: *mut std::ffi::c_void) {
 
 - `register_callback` に対しては必ず対応する `unregister_callback`（または `nfc_context_free` 等の終了関数）を実装し、そこで `user_data` に対して一度だけ `Arc::from_raw` を呼び出し、適切に drop（所有権の解放）することを義務化する。
 - コールバック内で一時的に `Arc::from_raw` を使って所有権を取得するパターンを許容するが、最終的な解放責任は必ず unregister 側で担うこと。複数回の unregister 呼び出しに対して安全（idempotent）であることを API 設計で考慮する。
-- unregister の呼び出し時期と責任範囲をドキュメント化し、ffi-test に cleanup の検証ケースを追加することを推奨する。
+- unregister の呼び出し時期と責任範囲をドキュメント化し、将来導入する dedicated FFI テスト基盤に cleanup の検証ケースを追加することを推奨する。
 
 ## 8) ABI 検証と自動テスト
 
@@ -198,16 +205,14 @@ extern "C" fn my_c_callback(event_data: i32, user_data: *mut std::ffi::c_void) {
 - 可能なら `bindgen` を用いて C ヘッダから Rust 側の型を自動生成し、既存の `#[repr(C)]` 構造体と比較するテスト（サイズ/オフセットの検証）を追加する。これらの検証は CI の自動ジョブとして常時実行し、ABI 崩壊をビルド時に検出する。
 - nightly で ASan/TSan による検査ジョブと、cargo-fuzz を用いた Fuzz テストを導入することを推奨する（Phase 1 以降の Nightly ジョブ）。
 
-## 8.5) FFI Test Crate Policy
+## 8.5) 将来の FFI Test Crate 案（planned）
 
-- FFI 境界の統合テストはメインの crate から分離し、専用の `ffi-test` crate（`rust/libnfc-ffi-test` 等）として配置することを推奨する。
-- `ffi-test` crate の目的は、Rust 側テストと C 側の小さなテストバイナリを同一の `cargo test` 流れでビルド/実行し、リンクやランタイムの不整合（アロケータ、シンボル、ABI）を検出することにある。
-- 実装指針:
+- FFI 境界の統合テストをメイン crate から分離し、専用の `ffi-test` crate（`rust/libnfc-ffi-test` 等）として配置する案を維持する。
+- 目的は、Rust 側テストと C 側の小さなテストバイナリを同一の `cargo test` フローでビルド/実行し、リンクやランタイムの不整合（アロケータ、シンボル、ABI）を検出すること。
+- 実装する場合の指針:
   - `ffi-test/build.rs` で `cc` crate を使い、必要な C テストコードをビルドしてリンクする。
-  - `ffi-test` のテストは `cargo test -p ffi-test` で実行できること。
-  - CI では `cargo test -p ffi-test -- --nocapture` を Nightly + ASan 環境で実行し、メモリ/UB 不整合を検出する。
-
-これにより、C と Rust が混在する移行期間において、テストが分離され保守が容易になります。
+  - `ffi-test` のテストは `cargo test -p ffi-test` で実行できるようにする。
+  - CI では Nightly + ASan 環境で `cargo test -p ffi-test -- --nocapture` を実行する。
 
 ## 9) ドライバ層（ハードウェアアクセス）固有の注意点
 
@@ -220,18 +225,22 @@ extern "C" fn my_c_callback(event_data: i32, user_data: *mut std::ffi::c_void) {
 
 ## 11) ドキュメントと PR 要件
 
-- 各 FFI を変更する PR は次を満たすこと：
+### 現在の最低要件
+
+- 各 FFI を変更する PR は、少なくとも次を満たすこと:
   - 所有権ポリシーの明記
   - unsafe の根拠と不変条件
   - ABI 互換性のエビデンス（cbindgen 出力や readelf/nm の抜粋）
-  - 対応する単体テスト / FFI サニティテスト
- 
-  FFI 固有の追記（PR 要件）:
+  - 実行した単体テスト / C テスト / 手動チェックの記録
+- `cbindgen` で生成したヘッダと追跡中のヘッダが一致すること（`scripts/check-cbindgen.sh` または `tests/cbindgen_diff.rs` で確認）。
+- CallerFree を採用する場合、`*_free` / `nfc_rs_free()` のどちらを使うのかを PR に明記し、使用例も添付する。
+- standalone の `examples/ffi-sanity/` を手動で回した場合は、コマンドと結果を PR に残す。専用 CI job はまだ常設ではない。
 
-  - 変更モジュールに対して最低 80% の行カバレッジを満たすこと（重要なパスは 100% を推奨）
-  - `ffi-sanity` 統合テストが成功すること（CI で実行）
-  - `cbindgen` で生成したヘッダと追跡中のヘッダが一致すること（CI の `cbindgen` チェック）
-  - CallerFree を採用する場合、`*_free` ヘルパと使用例が PR に含まれていること
+### 将来追加したい hardening（planned）
+
+- 変更モジュールに対する高い行カバレッジ目標（例: 80% 以上）
+- `ffi-sanity` の専用 CI job
+- より厳格な承認フローやチェックリストの自動化
 
 ## 12) 付録: 推奨ツール一覧
 
@@ -286,7 +295,7 @@ if (nfc_secure_memset(buf, 0xFF, len) != NFC_SECURE_SUCCESS) {
 
 ---
 
-このファイルは移行計画の living document として更新してください。重大な方針変更がある場合は、RFC として議論・承認を得た上で更新します。
+このファイルは移行計画の living document として更新してください。重大な方針変更がある場合は、少なくとも PR / issue 上に rationale を残し、将来 dedicated governance を導入する場合はその承認フローへ寄せます。
 
 ## 14) 定数とEnumの管理
 
@@ -319,14 +328,14 @@ where
 
 ### CI Failure Policy（日本語）
 
-- `ffi-test` crate のテストが失敗した場合、その変更はリリースブランチへマージ禁止とする。
-- 既知の未移行箇所については `#[ignore]` を使い、ドキュメント化されたテストのみを一時的に除外できる（ただしマージ時には解消を要求する）。
-- FFI テスト失敗時は、CI ログを `--show-output` で再実行し、`readelf -Ws` / `nm` によるシンボル確認を行うことを必須手順とする。
+- 現在の基準線では、`scripts/check-cbindgen.sh`、`scripts/check_callerfree_usage.sh`、関連する `cargo test`、Nightly ASan の失敗を解消するまでマージしない。
+- standalone の `examples/ffi-sanity/` を使って確認した場合は、失敗時にコマンドとログを添えて再現経路を残す。
+- 将来 dedicated な `ffi-test` crate や専用 CI job を導入した場合は、その失敗も同じ扱いで gate する。
 
 ### Governance（運用ルール）
 
-- 本方針の変更は `RFC: FFI Policy Update` として PR で提案し、FFI Maintainer または Rust Maintainer のレビュー承認を必須とする。
-- 承認者は `CODEOWNERS` ファイルに `rust/`, `include/`, `ffi/` を含む行で明示すること。
+- 現時点では repo 標準の review フローに従い、`FFI_POLICY.md` を更新する PR では変更理由と影響範囲を本文に明記する。
+- 将来、FFI Maintainer / Rust Maintainer と `CODEOWNERS` を導入する場合は、その専用承認フローへ移行する。
 
 ---
 
@@ -354,14 +363,14 @@ Apply this wrapper at the entrypoint of every FFI-exposed function to ensure all
 
 ### CI Failure Policy (English)
 
-- Tests in the `ffi-test` crate must pass before a change can be merged into a release branch.
-- Tests annotated with `#[ignore]` (documented, known-to-be-broken cases) may be temporarily skipped, but merging requires a plan and eventual resolution.
-- Upon `ffi-test` failures, CI must re-run failing cases with `--show-output` and the reviewers must perform symbol checks with `readelf -Ws` / `nm` to rule out ABI or symbol issues.
+- In the current baseline, do not merge while `scripts/check-cbindgen.sh`, `scripts/check_callerfree_usage.sh`, relevant `cargo test` invocations, or the nightly ASan job are failing.
+- If the standalone `examples/ffi-sanity/` check was used during validation, include the failing command and logs in the PR for reproduction.
+- If a dedicated `ffi-test` crate or `ffi-sanity` CI job is added later, treat those failures as equivalent merge blockers.
 
 ### Governance
 
-- Changes to this policy must be proposed as `RFC: FFI Policy Update` via a pull request, and must be approved by the FFI Maintainer or Rust Maintainer.
-- Add the maintainers to `CODEOWNERS` covering `rust/`, `include/`, and `ffi/` paths to make approvals explicit.
+- For now, follow the repository's normal review flow and document the rationale and blast radius in any PR that updates this policy.
+- If the repository later introduces FFI Maintainer / Rust Maintainer ownership and `CODEOWNERS`, move this policy onto that explicit approval path.
 
 ## English FFI Policy
 
@@ -371,11 +380,11 @@ FFI boundary must link back to the relevant items below.
 
 ## 1. ABI and Symbol Conventions
 
-- All Rust functions exported to C **must** use `#[no_mangle]` and
-  `extern "C"`.
+- All Rust functions exported to C **must** use `#[unsafe(no_mangle)]`
+  (or the edition-appropriate equivalent) and `extern "C"`.
 - Exports are placed in the `libnfc_rs` crate. The crate `lib` stanza remains
-  `crate-type = ["staticlib"]` until the final deprecation of the pure C
-  implementation.
+  centered on `staticlib` for the public FFI artifact; the current manifest also
+  keeps `rlib` for Rust-side tests and internal linking convenience.
 - Stable symbol names follow the existing C naming scheme. When a Rust function
   replaces a former C implementation, the symbol name is kept identical so that
   existing binaries continue to link.
@@ -419,9 +428,9 @@ FFI boundary must link back to the relevant items below.
   opaque handles. C headers forward-declare `struct nfc_context;` and expose
   constructor/destructor-style functions such as `nfc_context_new()` and
   `nfc_context_free()`.
-- Rust owns the underlying structure; internal fields may change without
-  breaking the ABI as long as the pointer size and lifetime contract stay
-  stable.
+- In the current Phase 4 slice, Rust owns the allocations behind
+  `nfc_context_alloc_defaults()`, `nfc_device_new()`, and `nfc_device_free()`,
+  while `nfc_context_new()` / `nfc_context_free()` remain C-owned wrappers.
 - Only simple data-transfer structs that require direct field access should use
   `#[repr(C)]`. Any such structs must have their layout locked down and be
   mirrored in the public C headers.
@@ -431,8 +440,9 @@ FFI boundary must link back to the relevant items below.
 ## 5. Header Generation (cbindgen)
 
 - The canonical C declarations for Rust functions are generated by
-  `cbindgen`. Manual header edits are forbidden; regenerate via the provided CI
-  job or `make ffi-headers` (to be introduced in Phase 0).
+  `cbindgen`. Manual header edits are forbidden; regenerate via the provided
+  wrapper script or CI/header-check flow. A `make ffi-headers` alias may be
+  added later, but it is not a current prerequisite.
 - The generated header lives in `rust/libnfc-rs/include/libnfc_rs.h` and is
   versioned in Git to keep the build reproducible.
 
@@ -441,7 +451,8 @@ FFI boundary must link back to the relevant items below.
 - Each FFI-facing function must have:
   - A Rust unit test that exercises success and failure paths.
   - A C integration test (or reuse of an existing one) that validates the
-    exported ABI under `-fsanitize=address` in nightly CI.
+    exported ABI; today this is split across existing C tests, the standalone
+    `examples/ffi-sanity/` check, and the nightly `-fsanitize=address` job.
 - Behavioural differences between the legacy and Rust implementations must be
   documented in the release notes before merging the change that introduces
   them.

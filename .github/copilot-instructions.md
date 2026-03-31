@@ -1,7 +1,7 @@
 # Copilot Instructions for libnfc
 
 - **Core Layout**: `libnfc/` holds the C entry points (`nfc_refator.c`, `nfc-common.cpp`, `log.cpp`) and driver glue under `libnfc/drivers/`; shared headers live in `include/nfc/`, while CLI tools sit in `utils/` and sample apps in `examples/`.
-- **Rust Bridge**: `rust/libnfc-rs/src/lib.rs` exposes connstring helpers and thread-local error buffers; CMake/autotools always build the Rust staticlib via the `libnfc_rs_build` custom target (see top-level `CMakeLists.txt` or `rust/Makefile.am`). Respect the contract described in `FFI_POLICY.md` whenever editing FFI.
+- **Rust Bridge**: `rust/libnfc-rs/src/lib.rs` exposes connstring helpers and thread-local error buffers; the repo builds the Rust staticlib as part of the normal CMake/Autotools flow (`libnfc_rs_build` in CMake, `all-local` in `rust/Makefile.am`). Respect the contract described in `FFI_POLICY.md` whenever editing FFI.
 - **FFI Safety Rules**: Exported Rust entry points must apply the Rust 2024 `#[unsafe(no_mangle)] extern "C"` ABI (or the equivalent for the active edition), wrap logic with `ffi_catch_unwind`, return NULL (or sentinel errno) on panic/error for pointer/handle APIs, and avoid handing back borrowed buffers. Regenerate the public header with the project wrapper, for example:
 
 	```sh
@@ -20,9 +20,9 @@
 	- Cargo feature: `driver-<drivername>` (e.g. `driver-pn53x`)
 
 	When adding a driver, update both CMake `option()` and `Cargo.toml` `features` and add a CI job matrix entry to exercise the new flag combination.
-- **Build Workflow**: Standard loop is `cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo`, `cmake --build build`, and `cmake --build build --target libnfc_rs_build` when touching Rust. Keep all generated artifacts under `build/` and place Rust-specific generated artifacts under `build/rust/` (never under `rust/libnfc-rs/include/` except for the single tracked header `rust/libnfc-rs/include/libnfc_rs.h`). Autotools users run `autoreconf -vis`, `./configure`, `make`, relying on a working `cargo`.
-- **Testing**: Run `ctest --test-dir build --output-on-failure` for the C suite, `cargo test -p libnfc-rs` for Rust, and `examples/ffi-sanity/` to exercise C → Rust → C loops (PRs touching FFI must pass this). Extend the ffi-sanity scripts whenever new externs or drivers land.
-- **CI Expectations**: The planned pipelines (`ci/rust-sanity`, `ci/ffi-sanity`, `ci/full`) assume regenerated headers and artifacts live in `build/rust/`. Never commit generated outputs except the cbindgen header tracked under `rust/libnfc-rs/include/`.
+- **Build Workflow**: Standard loop is `cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo`, `cmake --build build`, and `cmake --build build --target libnfc_rs_build` when touching Rust. CMake writes Rust artifacts under `build/rust-target/`; Autotools writes them under `<builddir>/rust/target/`. Never commit generated outputs except the single tracked cbindgen header `rust/libnfc-rs/include/libnfc_rs.h`.
+- **Testing**: Run `ctest --test-dir build --output-on-failure` for the C suite, `cargo test --manifest-path rust/libnfc-rs/Cargo.toml` for Rust, and build/run the standalone `examples/ffi-sanity/` check locally when touching FFI. Extend that check whenever new externs or drivers land; a dedicated CI job is still planned rather than current.
+- **CI Expectations**: Current GitHub Actions baselines are `build-and-test`, `rust-sanity`, and `asan`. Planned additions such as `ci/ffi-sanity` / `ci/full` should keep generated artifacts in build directories, never in the source tree except for the tracked cbindgen header.
 
 Document precedence when multiple documents conflict: follow this ordered priority:
 
@@ -32,7 +32,7 @@ Document precedence when multiple documents conflict: follow this ordered priori
 4. `libnfc/NFC_SECURE_USAGE_GUIDE.md`
 5. Other repository documentation
 
-If a conflict requires deviation from higher-priority guidance, open an `RFC: ...` PR and obtain explicit approval from the FFI Maintainer.
+If a conflict requires deviation from higher-priority guidance, document it in the PR/RFC. If the repo later introduces an FFI Maintainer / CODEOWNERS flow, obtain that explicit approval there.
 
 Short definitions (to remove ambiguous phrasing used elsewhere):
 
@@ -46,7 +46,7 @@ Recommended minimum tool versions (baseline):
 - Rust stable toolchain (tracked via `rust-toolchain.toml` in the repo and kept aligned with CI)
 - cbindgen >= 0.24
 
-Escalation path: if implementers cannot follow any rule for a valid technical reason, open an issue and RFC; tag the PR with `FFI-exception` and obtain explicit approval from the FFI Maintainer and a Security reviewer.
+Escalation path: if implementers cannot follow any rule for a valid technical reason, open an issue and RFC and document the exception in the PR. If the repo later adopts dedicated FFI Maintainer / Security approval gates, route the exception through that flow.
 - **Logging**: Prefer the structured `log_put`/`log_put_message` helpers (`libnfc/log.cpp`), guard every call against null devices, and register new categories via `LOG_CATEGORY` before emitting. Keep debug-only logs behind `LIBNFC_LOG` so CI log tests stay noise-free.
 - **Docs to Consult**: `Rust.md` outlines the staged migration roadmap; scan it before large refactors to stay aligned with current phase. Security-sensitive changes should reference `SECURITY.md` and the memory guidelines above.
 - **Absolute Prohibitions** *(break any and the migration backslides immediately)*:

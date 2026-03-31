@@ -17,8 +17,8 @@ If this PR touches the FFI boundary (Rust ⇄ C), complete the FFI checklist bel
 
 - [ ] The PR contains a clear ownership table for any returned buffers (who allocates, who frees).
 - [ ] `scripts/check-cbindgen.sh` and `scripts/check_callerfree_usage.sh` pass locally.
-- [ ] `ffi-sanity` integration tests pass and are included in CI.
-- [ ] If this is an ABI-breaking change, an RFC issue/PR is linked and approved by the FFI Maintainer.
+- [ ] If I ran the standalone `examples/ffi-sanity/` check locally, I included the command/results below. If/when CI gains an `ffi-sanity` job, it must pass there as well.
+- [ ] If this is an ABI-breaking change, an RFC issue/PR is linked and any project-specific approval flow is noted below.
 
 ## Related issues
 

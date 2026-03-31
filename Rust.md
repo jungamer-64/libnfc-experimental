@@ -17,6 +17,18 @@
 | Phase 5 — 凍結・後始末       | 2026-05-04 — 2026-05-31 (4週) | Cレガシー凍結、統合テスト完了、ドキュメント最終化、削除準備                      |
 
 > 合計期間（目安）: 約7〜8ヶ月（状況次第で前後）
+>
+> 注: 上記の日付は移行計画上の目安です。現在の実装済みスライス、CI の既成事実、ビルド出力パスについては、下記の「現在の基準線（2026-03-31）」を優先してください。
+
+---
+
+## 現在の基準線（2026-03-31）
+
+* Rust の公開 FFI 成果物は `staticlib` を基準にし、`Cargo.toml` では Rust 側のテスト/内部リンク都合で `rlib` も併記している。`cdylib` は未採用で、必要になった場合は別途扱う。
+* 現在 Rust 化済みの lifecycle slice は `nfc_context_alloc_defaults()`、`nfc_device_new()`、`nfc_device_free()` のみ。
+* `nfc_context_new()` と `nfc_context_free()` は引き続き C 側が責務を持つ。
+* GitHub Actions の既成事実は `build-and-test`、`rust-sanity`、`asan`。`ci/ffi-sanity` と `ci/full` は追加候補であり、まだ常設ジョブではない。
+* Rust ビルド出力は CMake では `build/rust-target/`、Autotools では `<builddir>/rust/target/` を基準にする。
 
 ---
 
@@ -29,7 +41,7 @@
 **主要タスク**
 
 * FFI方針文書を作成（呼び出し方向、エラーコードマッピング、型規約）。
-* `Cargo.toml` の `crate-type = ["staticlib","cdylib"]` を確定。
+* `Cargo.toml` の public FFI artifact を `staticlib` 基準で確定し、Rust 側のテスト/内部リンク用に `rlib` を併記する。
 * `cbindgen.toml` のテンプレ作成、ヘッダ出力パスを `rust/libnfc-rs/include/` に設定。
 * CIにRustビルドを追加（CMake/Autotoolsと統合）。
 
@@ -88,13 +100,13 @@
 **主要タスク**
 
 * Rust実装を書く（`nfc_secure_rs.rs` 等）。
-* `#[no_mangle] extern "C"` 関数を用意してCから利用可能にする。
+* `#[unsafe(no_mangle)] extern "C"` 関数（または edition に応じた等価記法）を用意してCから利用可能にする。
 * `cbindgen`でヘッダを生成、C側でインクルードして並列ビルド。
 * ユニットテスト（Rust）＋既存Cの単体テストを両方実行し比較。自動差分チェックを整備。
 
 **成果物**
 
-* `libnfc_rs` のリリース候補アーティファクト（静的/共有ライブラリ）
+* `libnfc_rs` のリリース候補アーティファクト（静的ライブラリ + 追跡中の FFI ヘッダ）
 * `nfc-secure`のRust実装 + C互換ヘッダ
 
 **受入基準**
@@ -116,7 +128,7 @@
 **主要タスク**
 
 * 各構造体を `#[repr(C)]` でミラーリングしつつ、内部実装は安全型で書く。
-* CのAPIは薄いラッパ関数で保持（`nfc_context_new()` 等はRust内部実装の薄ラッパ）。
+* CのAPIは薄いラッパ関数で保持しつつ ownership 境界を段階的に移す（現時点では `nfc_context_new()` / `nfc_context_free()` は C が所有）。
 * Cargoテスト（境界条件・エラーパス）を拡充。
 
 **成果物**
@@ -195,13 +207,20 @@
 
 ---
 
-## CI / テスト戦略（必須）
+## CI / テスト戦略（現在 + 計画）
 
-1. **パイプライン分岐:** `ci/rust-sanity`, `ci/ffi-sanity`, `ci/full` の3段構成。
-2. **ビルド順序:** Rustライブラリビルド → cbindgenヘッダ出力 → Cビルド → 統合テスト。
-3. **自動ABIチェック:** `cbindgen`出力と既存ヘッダの差分をチェックするジョブ。
-4. **性能ゲート:** 重要ユニットにはbenchを追加。性能劣化が `>10%` なら要レビュー。
-5. **メモリ保護:** sanitizer（ASan/TSan）をNightlyで回すジョブを用意。
+**現在の基準線**
+
+1. GitHub Actions では `build-and-test`、`rust-sanity`、`asan` を運用中。
+2. ビルド順序は「Rustライブラリビルド → cbindgen ヘッダ生成/差分確認 → Cビルド → 実行可能なテスト」を基準にする。
+3. 自動 ABI チェックは `scripts/check-cbindgen.sh` と `rust/libnfc-rs/tests/cbindgen_diff.rs` を中心に回す。
+4. メモリ保護は Nightly の ASan ジョブで継続確認する。
+
+**追加予定**
+
+1. `ci/ffi-sanity` を導入し、standalone の `examples/ffi-sanity/` を常設 CI で実行する。
+2. `ci/full` のような統合ジョブを導入し、より広い C/Rust 統合テストと性能ゲートを集約する。
+3. TSan や `cargo-fuzz` など、Nightly hardening を段階的に追加する。
 
 ---
 
@@ -233,22 +252,25 @@ python3 rust/libnfc-rs/tools/generate_cbindgen_header.py --output rust/libnfc-rs
 ```toml
 # Cargo.toml
 [lib]
-crate-type = ["staticlib", "cdylib"]
+crate-type = ["staticlib", "rlib"]
 ```
 
 * CMakeでRustライブラリを組み込む（例）:
 
 ```cmake
-add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/rust/liblibnfc_rs.a
-  COMMAND cargo build --manifest-path=${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml --release --target-dir ${CMAKE_BINARY_DIR}/rust
+set(RUST_TARGET_DIR ${CMAKE_BINARY_DIR}/rust-target)
+add_custom_command(OUTPUT ${RUST_TARGET_DIR}/release/liblibnfc_rs.a
+  COMMAND cargo build --manifest-path=${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml --release --target-dir ${RUST_TARGET_DIR}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/rust/libnfc-rs
   COMMENT "Building libnfc_rs"
 )
 add_library(libnfc_rs STATIC IMPORTED GLOBAL)
-set_target_properties(libnfc_rs PROPERTIES IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/rust/release/liblibnfc_rs.a)
-add_dependencies(libnfc_rs ${CMAKE_BINARY_DIR}/rust/liblibnfc_rs.a)
+set_target_properties(libnfc_rs PROPERTIES IMPORTED_LOCATION ${RUST_TARGET_DIR}/release/liblibnfc_rs.a)
+add_dependencies(libnfc_rs ${RUST_TARGET_DIR}/release/liblibnfc_rs.a)
 target_link_libraries(nfc PRIVATE libnfc_rs)
 ```
+
+* Autotools では `CARGO_TARGET_DIR=$(abs_top_builddir)/rust/target` を基準にする。
 
 ---
 
