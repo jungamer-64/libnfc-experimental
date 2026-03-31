@@ -657,18 +657,13 @@ unsafe fn nfc_init_impl(context: *mut *mut nfc_context, builtin_drivers: &[*cons
     register_builtin_drivers_if_needed(builtin_drivers);
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_register_driver(driver: *const nfc_driver) -> c_int {
+pub unsafe fn nfc_register_driver(driver: *const nfc_driver) -> c_int {
     ffi_catch_unwind_int("nfc_register_driver", NFC_ESOFT, || unsafe {
         push_driver(driver)
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_open(
-    context: *mut nfc_context,
-    connstring: *const c_char,
-) -> *mut nfc_device {
+pub unsafe fn nfc_open(context: *mut nfc_context, connstring: *const c_char) -> *mut nfc_device {
     ffi_catch_unwind_ptr("nfc_open", || unsafe { nfc_open_impl(context, connstring) })
 }
 
@@ -695,8 +690,7 @@ where
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_list_devices(
+pub unsafe fn nfc_list_devices(
     context: *mut nfc_context,
     connstrings: *mut nfc_connstring,
     connstrings_len: size_t,
@@ -706,16 +700,14 @@ pub unsafe extern "C" fn nfc_list_devices(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_init(context: *mut *mut nfc_context) {
+pub unsafe fn nfc_init(context: *mut *mut nfc_context) {
     ffi_catch_unwind_void("nfc_init", || unsafe {
         let builtin_drivers = builtin_driver_ptrs();
         nfc_init_impl(context, &builtin_drivers);
     });
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_exit(context: *mut nfc_context) {
+pub unsafe fn nfc_exit(context: *mut nfc_context) {
     ffi_catch_unwind_void("nfc_exit", || unsafe {
         clear_registry();
         crate::lifecycle::nfc_context_free(context);
@@ -747,8 +739,7 @@ fn snapshot_core_bridge_test_state() -> CoreBridgeTestState {
 }
 
 #[cfg(test)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_close(device: *mut nfc_device) {
+pub unsafe fn nfc_close(device: *mut nfc_device) {
     CORE_BRIDGE_TEST_STATE.with(|cell| {
         cell.borrow_mut().close_calls += 1;
     });

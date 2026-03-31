@@ -25,11 +25,11 @@
 ## 現在の基準線（2026-03-31）
 
 * Rust の公開 FFI 成果物は `staticlib` を基準にし、`Cargo.toml` では Rust 側のテスト/内部リンク都合で `rlib` も併記している。`cdylib` は未採用で、必要になった場合は別途扱う。
-* 現在 Rust 化済みの lifecycle slice は `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()`。`nfc_core` を有効にした構成では `nfc_register_driver()`、`nfc_open()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_device_set_property_*()`、`nfc_initiator_*()` の orchestration entrypoints に加え、`nfc_target_*()`、`nfc_abort_command()`、`nfc_idle()`、`nfc_device_get_*()`、`nfc_strerror*()`、`nfc_perror()` も Rust が所有する。
-* `nfc_context_new()` の env/config hydration、config parser / file I/O、`log_init()` 呼び出し順、ならびに `nfc_core` 有効時の driver registry / open / list / init / exit と control-plane wrapper 制御は Rust が所有する。`nfc_context_free()` も Rust が所有し、`log_exit()` の backend のみ内部 C bridge を介して再利用する。実ドライバ実装と `nfc_close()` / `str_nfc_*()` / `nfc_version()` / `nfc_free()` は引き続き C 側が責務を持つ。
+* 現在 Rust 化済みの lifecycle slice は `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()`。Cargo `orchestration` / CMake `PROXIMATE_ORCHESTRATION` を有効にした構成では `nfc_register_driver()`、`nfc_open()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_device_set_property_*()`、`nfc_initiator_*()` の orchestration entrypoints に加え、`nfc_target_*()`、`nfc_abort_command()`、`nfc_idle()`、`nfc_device_get_*()`、`nfc_strerror*()`、`nfc_perror()` も Rust が所有する。
+* `nfc_context_new()` の env/config hydration、config parser / file I/O、`log_init()` 呼び出し順、ならびに Cargo `orchestration` / CMake `PROXIMATE_ORCHESTRATION` 有効時の driver registry / open / list / init / exit と control-plane wrapper 制御は Rust が所有する。`nfc_context_free()` も Rust が所有し、`log_exit()` の backend のみ内部 C bridge を介して再利用する。実ドライバ実装と `nfc_close()` / `str_nfc_*()` / `nfc_version()` / `nfc_free()` は引き続き C 側が責務を持つ。
 * GitHub Actions の既成事実は `build-and-test`、`rust-sanity`、`asan`。`ci/ffi-sanity` と `ci/full` は追加候補であり、まだ常設ジョブではない。
 * Rust ビルド出力は CMake では `build/rust-target/` を基準にする。
-* CMake は `LIBNFC_RS_WITH_ENVVARS`、`LIBNFC_RS_WITH_CONFFILES`、`LIBNFC_RS_WITH_LOG`、`LIBNFC_RS_WITH_DEBUG` を `build.rs` へ渡し、Rust 側 cfg を C のビルド設定と揃える。
+* CMake は `PROXIMATE_WITH_ENVVARS`、`PROXIMATE_WITH_CONFFILES`、`PROXIMATE_WITH_LOG`、`PROXIMATE_WITH_DEBUG` を `build.rs` へ渡し、Rust 側 cfg を C のビルド設定と揃える。
 
 ---
 
@@ -43,7 +43,7 @@
 
 * FFI方針文書を作成（呼び出し方向、エラーコードマッピング、型規約）。
 * `Cargo.toml` の FFI artifact を `staticlib` 基準で確定し、Rust 側のテスト/内部リンク用に `rlib` を併記する。
-* `cbindgen.toml` のテンプレ作成、ヘッダ出力パスを `rust/libnfc-rs/include/` に設定。
+* `cbindgen.toml` のテンプレ作成、ヘッダ出力パスを `rust/proximate-sys/include/` に設定。
 * CIにRustビルドを追加（CMakeと統合）。
 
 **成果物（Deliverables）**
@@ -107,7 +107,7 @@
 
 **成果物**
 
-* `libnfc_rs` のリリース候補アーティファクト（静的ライブラリ + 追跡中の FFI ヘッダ）
+* Cargo package / lib crate は `proximate` / `proximate_sys` を用い、tracked な FFI ヘッダ名のみ `libnfc_rs.h` を維持する。
 * `nfc-secure`のRust実装 + C互換ヘッダ
 
 **受入基準**
@@ -156,12 +156,12 @@
 #### 現在の適用方針（foundation-first）
 
 - `rust-toolchain.toml` は CI と同じ `stable` を追従し、feature なしの `cargo test` が通る入口を維持する。
-- ビルド切替は Cargo `nfc_lifecycle` / `nfc_core` と CMake `USE_RUST_NFC_LIFECYCLE` / `USE_RUST_NFC_CORE` で揃える。`USE_RUST_NFC_CORE` は lifecycle slice を前提にする。
+- ビルド切替は Cargo `lifecycle` / `orchestration` / `c_ffi` と CMake `PROXIMATE_LIFECYCLE` / `PROXIMATE_ORCHESTRATION` で揃える。CMake から Rust-backed C ABI を使う場合は `c_ffi` を内部的に付与し、`PROXIMATE_ORCHESTRATION` は lifecycle slice を前提にする。
 - 現在の基準線では Rust が `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()` に加え、`nfc_register_driver()`、`nfc_open()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_device_set_property_*()`、`nfc_initiator_*()`、`nfc_target_*()`、`nfc_abort_command()`、`nfc_idle()`、`nfc_device_get_*()`、`nfc_strerror*()`、`nfc_perror()` を所有する。`nfc_close()` と `str_nfc_*()` / `nfc_version()` / `nfc_free()` は C が継続して所有する。
 - `nfc_context_new()` は Rust 実装とし、env/config hydration と `log_init()` 呼び出し順を Rust が所有する。
 - `conf_load()` の parser / file I/O 本体は Rust へ移行済みで、`nfc_context_free()` も Rust 実装へ切り替わった。`log_init()` / `log_exit()` backend と実ドライバ実装は C が継続して所有する。
-- `nfc_core` は実ドライバを Rust に移したわけではなく、registry / open / list / init / exit / close と initiator-flow の薄い制御層を Rust へ寄せた段階と位置付ける。各ドライバ実装の移行は Phase 4 の後続バッチで分離して扱う。
-- Nightly/ASan 向けには `asan_tests` feature を追加し、`tests/mprotect.rs` は `nfc_secure` 前提で gate する。
+- `orchestration` は実ドライバを Rust に移したわけではなく、registry / open / list / init / exit / close と initiator-flow の薄い制御層を Rust へ寄せた段階と位置付ける。各ドライバ実装の移行は Phase 4 の後続バッチで分離して扱う。
+- Nightly/ASan 向けには `asan_tests` feature を追加し、`tests/mprotect.rs` は `secure` 前提で gate する。
 
 **主要タスク**
 
@@ -214,7 +214,7 @@
 
 1. GitHub Actions では `build-and-test`、`rust-sanity`、`asan` を運用中。
 2. ビルド順序は「Rustライブラリビルド → cbindgen ヘッダ生成/差分確認 → Cビルド → 実行可能なテスト」を基準にする。
-3. 自動 ABI チェックは `scripts/check-cbindgen.sh` と `rust/libnfc-rs/tests/cbindgen_diff.rs` を中心に回す。
+3. 自動 ABI チェックは `scripts/check-cbindgen.sh` と `rust/proximate-sys/tests/cbindgen_diff.rs` を中心に回す。
 4. メモリ保護は Nightly の ASan ジョブで継続確認する。
 
 **追加予定**
@@ -245,7 +245,7 @@
 * cbindgenヘッダ生成:
 
 ```bash
-python3 rust/libnfc-rs/tools/generate_cbindgen_header.py --output rust/libnfc-rs/include/libnfc_rs.h
+python3 rust/proximate-sys/tools/generate_cbindgen_header.py --output rust/proximate-sys/include/libnfc_rs.h
 ```
 
 * Cargoを静的ライブラリでビルド:
@@ -260,15 +260,15 @@ crate-type = ["staticlib", "rlib"]
 
 ```cmake
 set(RUST_TARGET_DIR ${CMAKE_BINARY_DIR}/rust-target)
-add_custom_command(OUTPUT ${RUST_TARGET_DIR}/release/liblibnfc_rs.a
-  COMMAND cargo build --manifest-path=${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml --release --target-dir ${RUST_TARGET_DIR}
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/rust/libnfc-rs
-  COMMENT "Building libnfc_rs"
+add_custom_command(OUTPUT ${RUST_TARGET_DIR}/release/libproximate_sys.a
+  COMMAND cargo build --manifest-path=${CMAKE_SOURCE_DIR}/rust/Cargo.toml --package proximate-sys --release --target-dir ${RUST_TARGET_DIR} --no-default-features --features c_ffi,secure,lifecycle,orchestration
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  COMMENT "Building proximate_sys"
 )
-add_library(libnfc_rs STATIC IMPORTED GLOBAL)
-set_target_properties(libnfc_rs PROPERTIES IMPORTED_LOCATION ${RUST_TARGET_DIR}/release/liblibnfc_rs.a)
-add_dependencies(libnfc_rs ${RUST_TARGET_DIR}/release/liblibnfc_rs.a)
-target_link_libraries(nfc PRIVATE libnfc_rs)
+add_library(proximate_sys STATIC IMPORTED GLOBAL)
+set_target_properties(proximate_sys PROPERTIES IMPORTED_LOCATION ${RUST_TARGET_DIR}/release/libproximate_sys.a)
+add_dependencies(proximate_sys ${RUST_TARGET_DIR}/release/libproximate_sys.a)
+target_link_libraries(nfc PRIVATE proximate_sys)
 ```
 
 * Rust の補助アーティファクトは `CMAKE_BINARY_DIR/rust-target` を基準にする。

@@ -30,9 +30,9 @@ use libc::{c_char, c_int, c_uint, c_void};
 use std::mem::size_of;
 use std::ptr;
 
-pub(crate) const DEVICE_NAME_LENGTH: usize = 256;
-pub(crate) const MAX_USER_DEFINED_DEVICES: usize = 4;
-pub(crate) const NFC_DRIVER_NAME_MAX: usize = 64;
+pub const DEVICE_NAME_LENGTH: usize = 256;
+pub const MAX_USER_DEFINED_DEVICES: usize = 4;
+pub const NFC_DRIVER_NAME_MAX: usize = 64;
 const DEFAULT_CONTEXT_LOG_LEVEL: u32 = if cfg!(libnfc_debug) { 3 } else { 1 };
 const USER_DEFINED_DEFAULT_DEVICE_NAME: &[u8] = b"user defined default device";
 const USER_DEFINED_DEVICE_NAME: &[u8] = b"user defined device";
@@ -43,7 +43,7 @@ const ENV_LIBNFC_INTRUSIVE_SCAN: &[u8] = b"LIBNFC_INTRUSIVE_SCAN\0";
 const ENV_LIBNFC_LOG_LEVEL: &[u8] = b"LIBNFC_LOG_LEVEL\0";
 
 #[allow(non_camel_case_types)]
-pub(crate) type nfc_connstring = [c_char; NFC_BUFSIZE_CONNSTRING];
+pub type nfc_connstring = [c_char; NFC_BUFSIZE_CONNSTRING];
 
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -520,20 +520,17 @@ unsafe fn nfc_context_new_impl() -> *mut nfc_context {
     context
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_context_alloc_defaults() -> *mut nfc_context {
+pub unsafe fn nfc_context_alloc_defaults() -> *mut nfc_context {
     ffi_catch_unwind_ptr("nfc_context_alloc_defaults", || unsafe {
         nfc_context_alloc_defaults_impl()
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_context_new() -> *mut nfc_context {
+pub unsafe fn nfc_context_new() -> *mut nfc_context {
     ffi_catch_unwind_ptr("nfc_context_new", || unsafe { nfc_context_new_impl() })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_device_new(
+pub unsafe fn nfc_device_new(
     context: *const nfc_context,
     connstring: *const c_char,
 ) -> *mut nfc_device {
@@ -542,8 +539,7 @@ pub unsafe extern "C" fn nfc_device_new(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_device_free(device: *mut nfc_device) {
+pub unsafe fn nfc_device_free(device: *mut nfc_device) {
     ffi_catch_unwind_void("nfc_device_free", || unsafe {
         if device.is_null() {
             return;
@@ -554,8 +550,7 @@ pub unsafe extern "C" fn nfc_device_free(device: *mut nfc_device) {
     });
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_context_free(context: *mut nfc_context) {
+pub unsafe fn nfc_context_free(context: *mut nfc_context) {
     ffi_catch_unwind_void("nfc_context_free", || unsafe {
         increment_context_free_count_for_tests();
         bridge_context_log_exit();
@@ -601,8 +596,7 @@ fn increment_context_free_count_for_tests() {
 fn increment_context_free_count_for_tests() {}
 
 #[cfg(test)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_rs_context_log_init(_context: *const nfc_context) {
+pub unsafe fn nfc_rs_context_log_init(_context: *const nfc_context) {
     TEST_LIFECYCLE_STATE.with(|cell| {
         let mut state = cell.borrow_mut();
         state.log_init_calls += 1;
@@ -611,8 +605,7 @@ pub unsafe extern "C" fn nfc_rs_context_log_init(_context: *const nfc_context) {
 }
 
 #[cfg(test)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_rs_context_log_exit() {
+pub unsafe fn nfc_rs_context_log_exit() {
     TEST_LIFECYCLE_STATE.with(|cell| {
         let mut state = cell.borrow_mut();
         state.log_exit_calls += 1;
@@ -686,7 +679,7 @@ mod tests {
         fn new() -> Self {
             static COUNTER: AtomicUsize = AtomicUsize::new(0);
             let root = std::env::temp_dir().join(format!(
-                "libnfc-rs-conf-{}-{}",
+                "proximate-conf-{}-{}",
                 process::id(),
                 COUNTER.fetch_add(1, Ordering::Relaxed)
             ));

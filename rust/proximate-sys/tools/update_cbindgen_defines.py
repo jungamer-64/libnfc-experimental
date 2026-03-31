@@ -2,7 +2,7 @@
 """
 Helper script: run cbindgen, collect missing `[defines]` warnings and
 append corresponding entries to cbindgen.toml mapping them to
-`NFC_SECURE` when the missing expression mentions the `nfc_secure`
+`RUST_SECURE` when the missing expression mentions the `secure`
 feature. This is a convenience to iteratively add mappings discovered
 by cbindgen.
 
@@ -22,22 +22,21 @@ ROOT = Path(__file__).resolve().parents[1]
 CDB_TOML = ROOT / "cbindgen.toml"
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--features", required=False, help="Comma-separated features to pass to cbindgen")
+parser.add_argument("--features", required=False, help="Accepted for compatibility; cbindgen feature forwarding is not used on stable")
 args = parser.parse_args()
 
-# Build cbindgen invocation; include features if requested so discovery
-# matches the same feature-set as the generation step.
+# Build cbindgen invocation. Feature forwarding is intentionally not
+# used here because stable cbindgen does not accept Cargo feature flags
+# on the command line.
 CMD = [
     "cbindgen",
     "--config",
     str(CDB_TOML),
     "--crate",
-    "libnfc-rs",
+    "proximate-sys",
     "--output",
-    "/tmp/libnfc_rs.generated.h",
+    "/tmp/proximate_sys.generated.h",
 ]
-if args.features:
-    CMD.extend(["--features", args.features])
 
 pattern = re.compile(r"Missing \`\[defines\]\` entry for `(.+?)` in cbindgen config\.")
 
@@ -62,8 +61,10 @@ def derive_macro_for_expr(expr: str):
     # Prefer explicit known mappings
     if 'nfc_secure_debug' in expr:
         return 'NFC_SECURE_DEBUG'
+    if 'feature = "secure"' in expr or 'feature="secure"' in expr:
+        return 'RUST_SECURE'
     if 'nfc_secure' in expr:
-        return 'NFC_SECURE'
+        return 'RUST_SECURE'
     # feature = "..." pattern -> uppercased macro name
     feat = re.search(r'feature\s*=\s*"([^"]+)"', expr)
     if feat:

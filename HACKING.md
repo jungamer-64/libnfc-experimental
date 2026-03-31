@@ -36,9 +36,9 @@ If you touch the Rust bridge, also run:
 ```sh
 bash scripts/check-cbindgen.sh
 bash scripts/check_callerfree_usage.sh
-cargo test --manifest-path rust/libnfc-rs/Cargo.toml --features nfc_secure -- --nocapture
-cargo test --manifest-path rust/libnfc-rs/Cargo.toml --features "nfc_core nfc_lifecycle" -- --nocapture
-cmake -S . -B build-rust-core -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON -DUSE_RUST_NFC_SECURE=ON -DUSE_RUST_NFC_LIFECYCLE=ON -DUSE_RUST_NFC_CORE=ON
+cargo test --manifest-path rust/Cargo.toml -p proximate -- --nocapture
+cargo test --manifest-path rust/Cargo.toml -p proximate-sys --no-default-features --features "c_ffi,secure,lifecycle,orchestration" -- --nocapture
+cmake -S . -B build-rust-core -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON -DPROXIMATE_SECURE=ON -DPROXIMATE_LIFECYCLE=ON -DPROXIMATE_ORCHESTRATION=ON
 cmake --build build-rust-core -j"$(nproc)"
 ctest --test-dir build-rust-core --output-on-failure
 ```

@@ -33,7 +33,7 @@ parser.add_argument("--auto-update", action="store_true", help="Auto-update cbin
 parser.add_argument("--verbose", action="store_true", help="Print suppressed cbindgen warnings and details")
 args = parser.parse_args()
 
-generated = Path(args.output)
+generated = Path(args.output).resolve()
 if not CDB_TOML.exists():
     print(f"cbindgen config not found at {CDB_TOML}", file=sys.stderr)
     sys.exit(2)
@@ -43,16 +43,13 @@ cmd = [
     "--config",
     str(CDB_TOML),
     "--crate",
-    "libnfc-rs",
+    "proximate-sys",
 ]
 
-# Optionally pass explicit feature list through to cbindgen so callers
-# can request a feature-gated header (for example, to include
-# debug-only helpers). cbindgen expects a comma-separated list of
-# feature names, e.g. --features nfc_secure_debug
-if args.features:
-    cmd.extend(["--features", args.features])
-
+# cbindgen generation itself stays stable-friendly and does not rely on
+# passing Cargo features on the command line. The optional --features
+# flag is kept only for compatibility with helper tooling such as the
+# define auto-updater below.
 cmd.extend(["--output", str(generated)])
 
 print("Running cbindgen...")

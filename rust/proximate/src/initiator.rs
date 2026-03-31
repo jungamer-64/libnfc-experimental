@@ -776,8 +776,7 @@ fn modulation_requires_single_attempt(nm: nfc_modulation) -> bool {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_device_set_property_int(
+pub unsafe fn nfc_device_set_property_int(
     device: *mut nfc_device,
     property: nfc_property,
     value: c_int,
@@ -792,8 +791,7 @@ pub unsafe extern "C" fn nfc_device_set_property_int(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_device_set_property_bool(
+pub unsafe fn nfc_device_set_property_bool(
     device: *mut nfc_device,
     property: nfc_property,
     enable: bool,
@@ -808,8 +806,7 @@ pub unsafe extern "C" fn nfc_device_set_property_bool(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_initiator_init(device: *mut nfc_device) -> c_int {
+pub unsafe fn nfc_initiator_init(device: *mut nfc_device) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_init", NFC_ESOFT, || {
         const INITIATOR_SETTINGS: [PropertyBoolSetting; 8] = [
             PropertyBoolSetting {
@@ -855,15 +852,13 @@ pub unsafe extern "C" fn nfc_initiator_init(device: *mut nfc_device) -> c_int {
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_initiator_init_secure_element(device: *mut nfc_device) -> c_int {
+pub unsafe fn nfc_initiator_init_secure_element(device: *mut nfc_device) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_init_secure_element", NFC_ESOFT, || unsafe {
         call_initiator_init_secure_element_impl(device)
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_initiator_select_passive_target(
+pub unsafe fn nfc_initiator_select_passive_target(
     device: *mut nfc_device,
     nm: nfc_modulation,
     init_data: *const u8,
@@ -922,8 +917,7 @@ pub unsafe extern "C" fn nfc_initiator_select_passive_target(
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_initiator_list_passive_targets(
+pub unsafe fn nfc_initiator_list_passive_targets(
     device: *mut nfc_device,
     nm: nfc_modulation,
     targets: *mut nfc_target,
@@ -970,8 +964,7 @@ pub unsafe extern "C" fn nfc_initiator_list_passive_targets(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_initiator_poll_target(
+pub unsafe fn nfc_initiator_poll_target(
     device: *mut nfc_device,
     modulations: *const nfc_modulation,
     modulations_len: size_t,
@@ -991,8 +984,7 @@ pub unsafe extern "C" fn nfc_initiator_poll_target(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_initiator_select_dep_target(
+pub unsafe fn nfc_initiator_select_dep_target(
     device: *mut nfc_device,
     ndm: nfc_dep_mode,
     nbr: nfc_baud_rate,
@@ -1005,8 +997,7 @@ pub unsafe extern "C" fn nfc_initiator_select_dep_target(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_initiator_poll_dep_target(
+pub unsafe fn nfc_initiator_poll_dep_target(
     device: *mut nfc_device,
     ndm: nfc_dep_mode,
     nbr: nfc_baud_rate,
@@ -1044,15 +1035,13 @@ pub unsafe extern "C" fn nfc_initiator_poll_dep_target(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_initiator_deselect_target(device: *mut nfc_device) -> c_int {
+pub unsafe fn nfc_initiator_deselect_target(device: *mut nfc_device) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_deselect_target", NFC_ESOFT, || unsafe {
         call_initiator_deselect_target_impl(device)
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_initiator_target_is_present(
+pub unsafe fn nfc_initiator_target_is_present(
     device: *mut nfc_device,
     target: *const nfc_target,
 ) -> c_int {
@@ -1061,8 +1050,7 @@ pub unsafe extern "C" fn nfc_initiator_target_is_present(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_target_init(
+pub unsafe fn nfc_target_init(
     device: *mut nfc_device,
     target: *mut nfc_target,
     rx: *mut u8,
@@ -1114,8 +1102,7 @@ pub unsafe extern "C" fn nfc_target_init(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_initiator_transceive_bytes(
+pub unsafe fn nfc_initiator_transceive_bytes(
     device: *mut nfc_device,
     tx: *const u8,
     tx_len: size_t,
@@ -1128,8 +1115,7 @@ pub unsafe extern "C" fn nfc_initiator_transceive_bytes(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_initiator_transceive_bits(
+pub unsafe fn nfc_initiator_transceive_bits(
     device: *mut nfc_device,
     tx: *const u8,
     tx_bits_len: size_t,
@@ -1144,8 +1130,7 @@ pub unsafe extern "C" fn nfc_initiator_transceive_bits(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_initiator_transceive_bytes_timed(
+pub unsafe fn nfc_initiator_transceive_bytes_timed(
     device: *mut nfc_device,
     tx: *const u8,
     tx_len: size_t,
@@ -1162,8 +1147,7 @@ pub unsafe extern "C" fn nfc_initiator_transceive_bytes_timed(
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_initiator_transceive_bits_timed(
+pub unsafe fn nfc_initiator_transceive_bits_timed(
     device: *mut nfc_device,
     tx: *const u8,
     tx_bits_len: size_t,
@@ -1191,8 +1175,7 @@ pub unsafe extern "C" fn nfc_initiator_transceive_bits_timed(
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_target_send_bytes(
+pub unsafe fn nfc_target_send_bytes(
     device: *mut nfc_device,
     tx: *const u8,
     tx_len: size_t,
@@ -1203,8 +1186,7 @@ pub unsafe extern "C" fn nfc_target_send_bytes(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_target_receive_bytes(
+pub unsafe fn nfc_target_receive_bytes(
     device: *mut nfc_device,
     rx: *mut u8,
     rx_len: size_t,
@@ -1215,8 +1197,7 @@ pub unsafe extern "C" fn nfc_target_receive_bytes(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_target_send_bits(
+pub unsafe fn nfc_target_send_bits(
     device: *mut nfc_device,
     tx: *const u8,
     tx_bits_len: size_t,
@@ -1227,8 +1208,7 @@ pub unsafe extern "C" fn nfc_target_send_bits(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_target_receive_bits(
+pub unsafe fn nfc_target_receive_bits(
     device: *mut nfc_device,
     rx: *mut u8,
     rx_len: size_t,
@@ -1239,20 +1219,17 @@ pub unsafe extern "C" fn nfc_target_receive_bits(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_abort_command(device: *mut nfc_device) -> c_int {
+pub unsafe fn nfc_abort_command(device: *mut nfc_device) -> c_int {
     ffi_catch_unwind_int("nfc_abort_command", NFC_ESOFT, || unsafe {
         call_abort_command_impl(device)
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_idle(device: *mut nfc_device) -> c_int {
+pub unsafe fn nfc_idle(device: *mut nfc_device) -> c_int {
     ffi_catch_unwind_int("nfc_idle", NFC_ESOFT, || unsafe { call_idle_impl(device) })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_device_get_name(device: *mut nfc_device) -> *const c_char {
+pub unsafe fn nfc_device_get_name(device: *mut nfc_device) -> *const c_char {
     ffi_catch_unwind_ptr("nfc_device_get_name", || unsafe {
         as_ref(device)
             .map(|device| device.name.as_ptr().cast_mut())
@@ -1260,8 +1237,7 @@ pub unsafe extern "C" fn nfc_device_get_name(device: *mut nfc_device) -> *const 
     }) as *const c_char
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_device_get_connstring(device: *mut nfc_device) -> *const c_char {
+pub unsafe fn nfc_device_get_connstring(device: *mut nfc_device) -> *const c_char {
     ffi_catch_unwind_ptr("nfc_device_get_connstring", || unsafe {
         as_ref(device)
             .map(|device| device.connstring.as_ptr().cast_mut())
@@ -1269,8 +1245,7 @@ pub unsafe extern "C" fn nfc_device_get_connstring(device: *mut nfc_device) -> *
     }) as *const c_char
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_device_get_supported_modulation(
+pub unsafe fn nfc_device_get_supported_modulation(
     device: *mut nfc_device,
     mode: nfc_mode,
     supported: *mut *const nfc_modulation_type,
@@ -1282,8 +1257,7 @@ pub unsafe extern "C" fn nfc_device_get_supported_modulation(
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_device_get_supported_baud_rate(
+pub unsafe fn nfc_device_get_supported_baud_rate(
     device: *mut nfc_device,
     modulation_type: nfc_modulation_type,
     supported: *mut *const nfc_baud_rate,
@@ -1293,8 +1267,7 @@ pub unsafe extern "C" fn nfc_device_get_supported_baud_rate(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_device_get_supported_baud_rate_target_mode(
+pub unsafe fn nfc_device_get_supported_baud_rate_target_mode(
     device: *mut nfc_device,
     modulation_type: nfc_modulation_type,
     supported: *mut *const nfc_baud_rate,
@@ -1308,8 +1281,7 @@ pub unsafe extern "C" fn nfc_device_get_supported_baud_rate_target_mode(
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_device_get_information_about(
+pub unsafe fn nfc_device_get_information_about(
     device: *mut nfc_device,
     buf: *mut *mut c_char,
 ) -> c_int {
@@ -1318,26 +1290,19 @@ pub unsafe extern "C" fn nfc_device_get_information_about(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_device_get_last_error(device: *const nfc_device) -> c_int {
+pub unsafe fn nfc_device_get_last_error(device: *const nfc_device) -> c_int {
     ffi_catch_unwind_int("nfc_device_get_last_error", NFC_ESOFT, || unsafe {
         device_last_error(device)
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_strerror(device: *const nfc_device) -> *const c_char {
+pub unsafe fn nfc_strerror(device: *const nfc_device) -> *const c_char {
     ffi_catch_unwind_ptr("nfc_strerror", || unsafe {
         error_message_ptr(device_last_error(device)).cast_mut()
     }) as *const c_char
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_strerror_r(
-    device: *const nfc_device,
-    buf: *mut c_char,
-    buflen: size_t,
-) -> c_int {
+pub unsafe fn nfc_strerror_r(device: *const nfc_device, buf: *mut c_char, buflen: size_t) -> c_int {
     ffi_catch_unwind_int("nfc_strerror_r", NFC_ESOFT, || unsafe {
         if buf.is_null() && buflen > 0 {
             return -1;
@@ -1348,8 +1313,7 @@ pub unsafe extern "C" fn nfc_strerror_r(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_perror(device: *const nfc_device, message: *const c_char) {
+pub unsafe fn nfc_perror(device: *const nfc_device, message: *const c_char) {
     ffi_catch_unwind_void("nfc_perror", || unsafe {
         let prefix = if message.is_null() {
             c_string_ptr_to_string(NULL_ERROR_PREFIX, 6)

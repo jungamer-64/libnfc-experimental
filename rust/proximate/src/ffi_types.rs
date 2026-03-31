@@ -9,7 +9,7 @@ use libc::size_t;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(C)]
-pub(crate) enum nfc_property {
+pub enum nfc_property {
     NP_TIMEOUT_COMMAND = 0,
     NP_TIMEOUT_ATR = 1,
     NP_TIMEOUT_COM = 2,
@@ -29,7 +29,7 @@ pub(crate) enum nfc_property {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(C)]
-pub(crate) enum nfc_dep_mode {
+pub enum nfc_dep_mode {
     NDM_UNDEFINED = 0,
     NDM_PASSIVE = 1,
     NDM_ACTIVE = 2,
@@ -37,7 +37,7 @@ pub(crate) enum nfc_dep_mode {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(C)]
-pub(crate) enum nfc_baud_rate {
+pub enum nfc_baud_rate {
     NBR_UNDEFINED = 0,
     NBR_106 = 1,
     NBR_212 = 2,
@@ -47,7 +47,7 @@ pub(crate) enum nfc_baud_rate {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(C)]
-pub(crate) enum nfc_modulation_type {
+pub enum nfc_modulation_type {
     NMT_UNDEFINED = 0,
     NMT_ISO14443A = 1,
     NMT_JEWEL = 2,
@@ -63,14 +63,14 @@ pub(crate) enum nfc_modulation_type {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(C)]
-pub(crate) enum nfc_mode {
+pub enum nfc_mode {
     N_TARGET = 0,
     N_INITIATOR = 1,
 }
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub(crate) struct nfc_dep_info {
+pub struct nfc_dep_info {
     pub abtNFCID3: [u8; 10],
     pub btDID: u8,
     pub btBS: u8,
@@ -84,7 +84,7 @@ pub(crate) struct nfc_dep_info {
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub(crate) struct nfc_iso14443a_info {
+pub struct nfc_iso14443a_info {
     pub abtAtqa: [u8; 2],
     pub btSak: u8,
     pub szUidLen: size_t,
@@ -95,7 +95,7 @@ pub(crate) struct nfc_iso14443a_info {
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub(crate) struct nfc_felica_info {
+pub struct nfc_felica_info {
     pub szLen: size_t,
     pub btResCode: u8,
     pub abtId: [u8; 8],
@@ -105,7 +105,7 @@ pub(crate) struct nfc_felica_info {
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub(crate) struct nfc_iso14443b_info {
+pub struct nfc_iso14443b_info {
     pub abtPupi: [u8; 4],
     pub abtApplicationData: [u8; 4],
     pub abtProtocolInfo: [u8; 3],
@@ -114,7 +114,7 @@ pub(crate) struct nfc_iso14443b_info {
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub(crate) struct nfc_iso14443bi_info {
+pub struct nfc_iso14443bi_info {
     pub abtDIV: [u8; 4],
     pub btVerLog: u8,
     pub btConfig: u8,
@@ -124,19 +124,19 @@ pub(crate) struct nfc_iso14443bi_info {
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub(crate) struct nfc_iso14443biclass_info {
+pub struct nfc_iso14443biclass_info {
     pub abtUID: [u8; 8],
 }
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub(crate) struct nfc_iso14443b2sr_info {
+pub struct nfc_iso14443b2sr_info {
     pub abtUID: [u8; 8],
 }
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub(crate) struct nfc_iso14443b2ct_info {
+pub struct nfc_iso14443b2ct_info {
     pub abtUID: [u8; 4],
     pub btProdCode: u8,
     pub btFabCode: u8,
@@ -144,21 +144,21 @@ pub(crate) struct nfc_iso14443b2ct_info {
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub(crate) struct nfc_jewel_info {
+pub struct nfc_jewel_info {
     pub btSensRes: [u8; 2],
     pub btId: [u8; 4],
 }
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub(crate) struct nfc_barcode_info {
+pub struct nfc_barcode_info {
     pub szDataLen: size_t,
     pub abtData: [u8; 32],
 }
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub(crate) union nfc_target_info {
+pub union nfc_target_info {
     pub nai: nfc_iso14443a_info,
     pub nfi: nfc_felica_info,
     pub nbi: nfc_iso14443b_info,
@@ -173,14 +173,14 @@ pub(crate) union nfc_target_info {
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub(crate) struct nfc_modulation {
+pub struct nfc_modulation {
     pub nmt: nfc_modulation_type,
     pub nbr: nfc_baud_rate,
 }
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub(crate) struct nfc_target {
+pub struct nfc_target {
     pub nti: nfc_target_info,
     pub nm: nfc_modulation,
 }

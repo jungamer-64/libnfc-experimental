@@ -396,7 +396,7 @@ fn conf_devices_load(dirname: &Path, context: &mut nfc_context) {
 
 #[cfg(not(test))]
 fn compiled_conf_root() -> PathBuf {
-    if let Some(path) = option_env!("LIBNFC_RS_CONFDIR") {
+    if let Some(path) = option_env!("PROXIMATE_CONFDIR") {
         PathBuf::from(path)
     } else if cfg!(windows) {
         PathBuf::from(DEFAULT_WINDOWS_CONFDIR)

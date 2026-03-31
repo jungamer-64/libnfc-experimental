@@ -41,9 +41,9 @@ endif()
 option(BUILD_SHARED_LIBS "Build libnfc as a shared library" ON)
 option(BUILD_EXAMPLES "Build examples" ON)
 option(BUILD_UTILS "Build utilities" ON)
-option(USE_RUST_NFC_SECURE "Use Rust implementation of nfc-secure" OFF)
-option(USE_RUST_NFC_LIFECYCLE "Use Rust implementation of nfc context/device lifecycle alloc/free helpers" OFF)
-option(USE_RUST_NFC_CORE "Use Rust implementation of nfc driver registry/open/list/init/exit/close and initiator orchestration helpers" OFF)
+option(PROXIMATE_SECURE "Use the Rust-backed secure helpers in the C library" OFF)
+option(PROXIMATE_LIFECYCLE "Use the Rust-backed context/device lifecycle helpers in the C library" OFF)
+option(PROXIMATE_ORCHESTRATION "Use the Rust-backed registry/open/list/init/exit and initiator orchestration helpers in the C library" OFF)
 option(LIBNFC_LOG "Enable log facility (errors, warning, info and debug messages)" ON)
 option(LIBNFC_ENVVARS "Enable envvars facility" ON)
 option(LIBNFC_CONFFILES_MODE "Enable configuration files" ON)
@@ -56,8 +56,13 @@ else()
   option(BUILD_MANUAL "Install man pages" ON)
 endif()
 
-if(USE_RUST_NFC_CORE)
-  set(USE_RUST_NFC_LIFECYCLE ON)
+if(PROXIMATE_ORCHESTRATION)
+  set(PROXIMATE_LIFECYCLE ON)
+endif()
+
+set(PROXIMATE_C_FFI OFF)
+if(PROXIMATE_SECURE OR PROXIMATE_LIFECYCLE OR PROXIMATE_ORCHESTRATION)
+  set(PROXIMATE_C_FFI ON)
 endif()
 
 set(RUST_CBINDGEN_FEATURES "" CACHE STRING "Features to pass to cbindgen when generating the Rust FFI header (comma-separated)")
@@ -68,151 +73,13 @@ endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/modules")
 
-find_program(CARGO_EXECUTABLE cargo)
-if(NOT CARGO_EXECUTABLE)
-  message(FATAL_ERROR "cargo executable is required to build the Rust components")
-endif()
-
-find_program(CBINDGEN_EXECUTABLE cbindgen)
-find_program(PYTHON3_EXECUTABLE python3)
-
-include(LibnfcDrivers)
-
-set(LIBNFC_RS_ENABLED_DRIVERS)
-if(LIBNFC_DRIVER_PCSC)
-  list(APPEND LIBNFC_RS_ENABLED_DRIVERS pcsc)
-endif()
-if(LIBNFC_DRIVER_ACR122_PCSC)
-  list(APPEND LIBNFC_RS_ENABLED_DRIVERS acr122_pcsc)
-endif()
-if(LIBNFC_DRIVER_ACR122_USB)
-  list(APPEND LIBNFC_RS_ENABLED_DRIVERS acr122_usb)
-endif()
-if(LIBNFC_DRIVER_ACR122S)
-  list(APPEND LIBNFC_RS_ENABLED_DRIVERS acr122s)
-endif()
-if(LIBNFC_DRIVER_PN53X_USB)
-  list(APPEND LIBNFC_RS_ENABLED_DRIVERS pn53x_usb)
-endif()
-if(LIBNFC_DRIVER_ARYGON)
-  list(APPEND LIBNFC_RS_ENABLED_DRIVERS arygon)
-endif()
-if(LIBNFC_DRIVER_PN532_UART)
-  list(APPEND LIBNFC_RS_ENABLED_DRIVERS pn532_uart)
-endif()
-if(LIBNFC_DRIVER_PN532_SPI)
-  list(APPEND LIBNFC_RS_ENABLED_DRIVERS pn532_spi)
-endif()
-if(LIBNFC_DRIVER_PN532_I2C)
-  list(APPEND LIBNFC_RS_ENABLED_DRIVERS pn532_i2c)
-endif()
-if(LIBNFC_DRIVER_PN71XX)
-  list(APPEND LIBNFC_RS_ENABLED_DRIVERS pn71xx)
-endif()
-string(JOIN "," LIBNFC_RS_ENABLED_DRIVERS_ENV ${LIBNFC_RS_ENABLED_DRIVERS})
-
-set(RUST_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-target")
-file(GLOB_RECURSE LIBNFC_RUST_SOURCES
-  "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/src/*.rs")
-list(APPEND LIBNFC_RUST_SOURCES "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/build.rs")
-
-set(RUST_CRATE_NAME libnfc_rs)
-set(RUST_LIB_FILENAME "${CMAKE_STATIC_LIBRARY_PREFIX}${RUST_CRATE_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
-set(RUST_LIB_PATH "${RUST_TARGET_DIR}/release/${RUST_LIB_FILENAME}" CACHE INTERNAL "Path to Rust support library")
-
-set(RUST_CARGO_FEATURES)
-if(USE_RUST_NFC_SECURE)
-  list(APPEND RUST_CARGO_FEATURES --features nfc_secure)
-endif()
-if(USE_RUST_NFC_LIFECYCLE)
-  list(APPEND RUST_CARGO_FEATURES --features nfc_lifecycle)
-endif()
-if(USE_RUST_NFC_CORE)
-  list(APPEND RUST_CARGO_FEATURES --features nfc_core)
-endif()
-
-if(USE_RUST_NFC_LIFECYCLE)
-  add_compile_definitions(USE_RUST_NFC_LIFECYCLE)
-endif()
-if(USE_RUST_NFC_CORE)
-  add_compile_definitions(USE_RUST_NFC_CORE)
-endif()
-
-add_custom_command(
-  OUTPUT "${RUST_LIB_PATH}"
-  COMMAND
-    ${CMAKE_COMMAND} -E env
-      LIBNFC_RS_WITH_ENVVARS=${LIBNFC_ENVVARS}
-      LIBNFC_RS_WITH_CONFFILES=${LIBNFC_CONFFILES_MODE}
-      LIBNFC_RS_WITH_LOG=${LIBNFC_LOG}
-      LIBNFC_RS_WITH_DEBUG=${LIBNFC_DEBUG_MODE}
-      LIBNFC_RS_EXTERNAL_BRIDGES=1
-      LIBNFC_RS_CONFDIR=${LIBNFC_CONFDIR}
-      LIBNFC_RS_ENABLED_DRIVERS=${LIBNFC_RS_ENABLED_DRIVERS_ENV}
-      ${CARGO_EXECUTABLE} build --release
-      --manifest-path "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml"
-      --target-dir "${RUST_TARGET_DIR}"
-      ${RUST_CARGO_FEATURES}
-  DEPENDS "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml" ${LIBNFC_RUST_SOURCES}
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-  COMMENT "Building Rust support library"
-  VERBATIM)
-
-add_custom_target(libnfc_rs_build ALL DEPENDS "${RUST_LIB_PATH}")
-
-if(CBINDGEN_EXECUTABLE)
-  set(RUST_HEADER "${RUST_TARGET_DIR}/include/libnfc_rs.h")
-  if(RUST_CBINDGEN_FEATURES)
-    set(RUST_CBINDGEN_FEATURE_FLAGS --features "${RUST_CBINDGEN_FEATURES}")
-  else()
-    set(RUST_CBINDGEN_FEATURE_FLAGS)
-  endif()
-
-  if(PYTHON3_EXECUTABLE AND EXISTS "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/tools/generate_cbindgen_header.py")
-    add_custom_command(
-      OUTPUT "${RUST_HEADER}"
-      COMMAND
-        ${PYTHON3_EXECUTABLE}
-        "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/tools/generate_cbindgen_header.py"
-        ${RUST_CBINDGEN_FEATURE_FLAGS}
-        --output "${RUST_HEADER}"
-      DEPENDS "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml" ${LIBNFC_RUST_SOURCES}
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/libnfc-rs"
-      COMMENT "Generating C header for Rust FFI (libnfc_rs.h) via wrapper"
-      VERBATIM)
-  else()
-    add_custom_command(
-      OUTPUT "${RUST_HEADER}"
-      COMMAND
-        ${CBINDGEN_EXECUTABLE}
-        --config "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/cbindgen.toml"
-        --crate libnfc-rs
-        ${RUST_CBINDGEN_FEATURE_FLAGS}
-        --output "${RUST_HEADER}"
-      DEPENDS "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml" ${LIBNFC_RUST_SOURCES}
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/libnfc-rs"
-      COMMENT "Generating C header for Rust FFI (libnfc_rs.h)"
-      VERBATIM)
-  endif()
-
-  add_custom_target(libnfc_rs_headers DEPENDS "${RUST_HEADER}")
-  add_dependencies(libnfc_rs_build libnfc_rs_headers)
-else()
-  message(STATUS "cbindgen not found: rust FFI header will not be auto-generated")
-endif()
-
 if(WIN32)
   if(DEFINED LIBNFC_SYSCONFDIR AND NOT LIBNFC_SYSCONFDIR STREQUAL "")
     set(_LIBNFC_DEFAULT_CONFDIR "${LIBNFC_SYSCONFDIR}")
   else()
     set(_LIBNFC_DEFAULT_CONFDIR "./config")
   endif()
-  include_directories("${CMAKE_CURRENT_SOURCE_DIR}/contrib/win32")
-  if(NOT MINGW)
-    add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
-  endif()
 else()
-  set(_XOPEN_SOURCE 600)
   if(DEFINED SYSCONFDIR AND NOT SYSCONFDIR STREQUAL "")
     set(_LIBNFC_DEFAULT_CONFDIR "${SYSCONFDIR}/nfc")
   else()
@@ -221,6 +88,166 @@ else()
 endif()
 set(LIBNFC_CONFDIR "${_LIBNFC_DEFAULT_CONFDIR}" CACHE STRING "libnfc configuration directory")
 unset(_LIBNFC_DEFAULT_CONFDIR)
+
+include(LibnfcDrivers)
+
+set(PROXIMATE_ENABLED_DRIVERS)
+if(LIBNFC_DRIVER_PCSC)
+  list(APPEND PROXIMATE_ENABLED_DRIVERS pcsc)
+endif()
+if(LIBNFC_DRIVER_ACR122_PCSC)
+  list(APPEND PROXIMATE_ENABLED_DRIVERS acr122_pcsc)
+endif()
+if(LIBNFC_DRIVER_ACR122_USB)
+  list(APPEND PROXIMATE_ENABLED_DRIVERS acr122_usb)
+endif()
+if(LIBNFC_DRIVER_ACR122S)
+  list(APPEND PROXIMATE_ENABLED_DRIVERS acr122s)
+endif()
+if(LIBNFC_DRIVER_PN53X_USB)
+  list(APPEND PROXIMATE_ENABLED_DRIVERS pn53x_usb)
+endif()
+if(LIBNFC_DRIVER_ARYGON)
+  list(APPEND PROXIMATE_ENABLED_DRIVERS arygon)
+endif()
+if(LIBNFC_DRIVER_PN532_UART)
+  list(APPEND PROXIMATE_ENABLED_DRIVERS pn532_uart)
+endif()
+if(LIBNFC_DRIVER_PN532_SPI)
+  list(APPEND PROXIMATE_ENABLED_DRIVERS pn532_spi)
+endif()
+if(LIBNFC_DRIVER_PN532_I2C)
+  list(APPEND PROXIMATE_ENABLED_DRIVERS pn532_i2c)
+endif()
+if(LIBNFC_DRIVER_PN71XX)
+  list(APPEND PROXIMATE_ENABLED_DRIVERS pn71xx)
+endif()
+string(JOIN "," PROXIMATE_ENABLED_DRIVERS_ENV ${PROXIMATE_ENABLED_DRIVERS})
+
+if(PROXIMATE_SECURE)
+  add_compile_definitions(PROXIMATE_SECURE)
+endif()
+if(PROXIMATE_LIFECYCLE)
+  add_compile_definitions(PROXIMATE_LIFECYCLE)
+endif()
+if(PROXIMATE_ORCHESTRATION)
+  add_compile_definitions(PROXIMATE_ORCHESTRATION)
+endif()
+
+if(PROXIMATE_C_FFI)
+  find_program(CARGO_EXECUTABLE cargo)
+  if(NOT CARGO_EXECUTABLE)
+    message(FATAL_ERROR "cargo executable is required to build the Rust-backed C ABI facade")
+  endif()
+
+  find_program(CBINDGEN_EXECUTABLE cbindgen)
+  find_program(PYTHON3_EXECUTABLE python3)
+
+  set(RUST_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-target")
+  file(GLOB_RECURSE LIBNFC_RUST_SOURCES
+    "${CMAKE_SOURCE_DIR}/rust/proximate/src/*.rs"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/src/*.rs")
+  list(APPEND LIBNFC_RUST_SOURCES
+    "${CMAKE_SOURCE_DIR}/rust/Cargo.toml"
+    "${CMAKE_SOURCE_DIR}/rust/proximate/Cargo.toml"
+    "${CMAKE_SOURCE_DIR}/rust/proximate/build.rs"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/Cargo.toml"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/build.rs"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/cbindgen.toml"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/tools/generate_cbindgen_header.py"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/tools/update_cbindgen_defines.py")
+
+  set(RUST_CRATE_NAME proximate_sys)
+  set(RUST_LIB_FILENAME "${CMAKE_STATIC_LIBRARY_PREFIX}${RUST_CRATE_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(RUST_LIB_PATH "${RUST_TARGET_DIR}/release/${RUST_LIB_FILENAME}" CACHE INTERNAL "Path to Rust support library")
+
+  set(RUST_CARGO_FEATURE_LIST c_ffi)
+  if(PROXIMATE_SECURE)
+    list(APPEND RUST_CARGO_FEATURE_LIST secure)
+  endif()
+  if(PROXIMATE_LIFECYCLE)
+    list(APPEND RUST_CARGO_FEATURE_LIST lifecycle)
+  endif()
+  if(PROXIMATE_ORCHESTRATION)
+    list(APPEND RUST_CARGO_FEATURE_LIST orchestration)
+  endif()
+  list(JOIN RUST_CARGO_FEATURE_LIST "," RUST_CARGO_FEATURES)
+
+  add_custom_command(
+    OUTPUT "${RUST_LIB_PATH}"
+    COMMAND
+      ${CMAKE_COMMAND} -E env
+        PROXIMATE_WITH_ENVVARS=${LIBNFC_ENVVARS}
+        PROXIMATE_WITH_CONFFILES=${LIBNFC_CONFFILES_MODE}
+        PROXIMATE_WITH_LOG=${LIBNFC_LOG}
+        PROXIMATE_WITH_DEBUG=${LIBNFC_DEBUG_MODE}
+        PROXIMATE_EXTERNAL_BRIDGES=1
+        PROXIMATE_CONFDIR=${LIBNFC_CONFDIR}
+        PROXIMATE_ENABLED_DRIVERS=${PROXIMATE_ENABLED_DRIVERS_ENV}
+        ${CARGO_EXECUTABLE} build --release
+        --manifest-path "${CMAKE_SOURCE_DIR}/rust/Cargo.toml"
+        --package proximate-sys
+        --target-dir "${RUST_TARGET_DIR}"
+        --no-default-features
+        --features "${RUST_CARGO_FEATURES}"
+    DEPENDS ${LIBNFC_RUST_SOURCES}
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    COMMENT "Building Rust-backed C ABI facade"
+    VERBATIM)
+
+  add_custom_target(proximate_sys_build ALL DEPENDS "${RUST_LIB_PATH}")
+
+  if(CBINDGEN_EXECUTABLE)
+    set(RUST_HEADER "${RUST_TARGET_DIR}/include/libnfc_rs.h")
+    if(RUST_CBINDGEN_FEATURES)
+      set(RUST_CBINDGEN_FEATURE_FLAGS --features "${RUST_CBINDGEN_FEATURES}")
+    else()
+      set(RUST_CBINDGEN_FEATURE_FLAGS)
+    endif()
+
+    if(PYTHON3_EXECUTABLE AND EXISTS "${CMAKE_SOURCE_DIR}/rust/proximate-sys/tools/generate_cbindgen_header.py")
+      add_custom_command(
+        OUTPUT "${RUST_HEADER}"
+        COMMAND
+          ${PYTHON3_EXECUTABLE}
+          "${CMAKE_SOURCE_DIR}/rust/proximate-sys/tools/generate_cbindgen_header.py"
+          ${RUST_CBINDGEN_FEATURE_FLAGS}
+          --output "${RUST_HEADER}"
+        DEPENDS ${LIBNFC_RUST_SOURCES}
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/proximate-sys"
+        COMMENT "Generating C header for the Rust facade (libnfc_rs.h) via wrapper"
+        VERBATIM)
+    else()
+      add_custom_command(
+        OUTPUT "${RUST_HEADER}"
+        COMMAND
+          ${CBINDGEN_EXECUTABLE}
+          --config "${CMAKE_SOURCE_DIR}/rust/proximate-sys/cbindgen.toml"
+          --crate proximate-sys
+          --output "${RUST_HEADER}"
+        DEPENDS ${LIBNFC_RUST_SOURCES}
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/proximate-sys"
+        COMMENT "Generating C header for the Rust facade (libnfc_rs.h)"
+        VERBATIM)
+    endif()
+
+    add_custom_target(proximate_sys_headers DEPENDS "${RUST_HEADER}")
+    add_dependencies(proximate_sys_build proximate_sys_headers)
+  else()
+    message(STATUS "cbindgen not found: Rust facade header will not be auto-generated")
+  endif()
+else()
+  add_custom_target(proximate_sys_build)
+endif()
+
+if(WIN32)
+  include_directories("${CMAKE_CURRENT_SOURCE_DIR}/contrib/win32")
+  if(NOT MINGW)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
+  endif()
+else()
+  set(_XOPEN_SOURCE 600)
+endif()
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/config.h.in" "${CMAKE_CURRENT_BINARY_DIR}/config.h")
 
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")

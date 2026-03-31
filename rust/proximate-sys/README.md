@@ -1,11 +1,11 @@
-libnfc-rs: C FFI helpers for libnfc
+proximate-sys: C FFI helpers for libnfc
 
 This crate exposes a set of small utility functions intended to replace
 and harden existing C implementations in libnfc. The functions are
 exported with a stable C ABI and are safe to call from C code when the
 caller follows the documented safety preconditions.
 
-The tracked header `rust/libnfc-rs/include/libnfc_rs.h` is used as an ABI
+The tracked header `rust/proximate-sys/include/libnfc_rs.h` is used as an ABI
 snapshot for this repository's checks. It is not installed as part of the
 orig-compatible public header surface.
 

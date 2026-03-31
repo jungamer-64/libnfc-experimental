@@ -90,7 +90,7 @@ extern size_t strnlen(const char *s, size_t maxlen);
 
 #define LOG_CATEGORY "libnfc.general"
 #define LOG_GROUP NFC_LOG_GROUP_GENERAL
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 #define NFC_DRIVER_NAME_MAX 64
 
 /* Device open results - improved type safety */
@@ -102,7 +102,7 @@ typedef enum
 } nfc_driver_open_result_t;
 #endif
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 /* Property setting structure for bulk configuration */
 typedef struct
 {
@@ -122,7 +122,7 @@ typedef struct
  * DRIVER LIST MANAGEMENT TYPES
  * ========================================================================== */
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 struct nfc_driver_list
 {
   const struct nfc_driver_list *next;
@@ -134,11 +134,11 @@ struct nfc_driver_list
  * STATIC DATA
  * ========================================================================== */
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 const struct nfc_driver_list *nfc_drivers = NULL;
 #endif
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 static const char *nfc_property_name[] = {
     "NP_TIMEOUT_COMMAND",
     "NP_TIMEOUT_ATR",
@@ -157,7 +157,7 @@ static const char *nfc_property_name[] = {
     "NP_FORCE_SPEED_106"};
 #endif
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 static const error_message_t ERROR_MESSAGES[] = {
     {NFC_SUCCESS, "Success"},
     {NFC_EIO, "Input / Output Error"},
@@ -198,7 +198,7 @@ static const modulation_type_name_t MODULATION_TYPE_NAMES[] = {
  * FORWARD DECLARATIONS
  * ========================================================================== */
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 static int nfc_device_validate_modulation(
     nfc_device *pnd,
     const nfc_mode mode,
@@ -209,7 +209,7 @@ static int nfc_device_validate_modulation(
  * STRING VALIDATION UTILITIES
  * ========================================================================== */
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 static inline bool
 string_contains_control_chars(const char *value, size_t length)
 {
@@ -313,7 +313,7 @@ static void
 nfc_drivers_init(void)
 {
   /*
-   * Keep insertion order aligned with rust/libnfc-rs/src/core.rs so that both
+   * Keep insertion order aligned with rust/proximate/src/core.rs so that both
    * backends probe drivers in the same order.
    */
 #if defined(DRIVER_PN71XX_ENABLED)
@@ -762,13 +762,13 @@ nfc_list_devices(
 
   return autoscan_devices(context, connstrings, device_found, connstrings_len);
 }
-#endif /* USE_RUST_NFC_CORE */
+#endif /* PROXIMATE_ORCHESTRATION */
 
 /* ============================================================================
  * PROPERTY MANAGEMENT
  * ========================================================================== */
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 static int
 apply_property_sequence(
     nfc_device *pnd,
@@ -788,7 +788,7 @@ apply_property_sequence(
 }
 #endif
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 int nfc_device_set_property_int(
     nfc_device *pnd,
     const nfc_property property,
@@ -938,7 +938,7 @@ int nfc_initiator_init_secure_element(nfc_device *pnd)
 {
   return HAL(initiator_init_secure_element, pnd);
 }
-#endif /* USE_RUST_NFC_CORE */
+#endif /* PROXIMATE_ORCHESTRATION */
 
 /* Continues with remaining initiator functions... */
 
@@ -946,7 +946,7 @@ int nfc_initiator_init_secure_element(nfc_device *pnd)
  * TARGET MODE FUNCTIONS
  * ========================================================================== */
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 int nfc_target_init(
     nfc_device *pnd,
     nfc_target *pnt,
@@ -980,7 +980,7 @@ int nfc_target_init(
  * ERROR HANDLING
  * ========================================================================== */
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 const char *
 nfc_strerror(const nfc_device *pnd)
 {
@@ -1069,7 +1069,7 @@ int str_nfc_target(char **buf, const nfc_target *pnt, bool verbose)
  * TARGET SELECTION AND LISTING
  * ========================================================================== */
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 static inline bool
 target_already_seen(const nfc_target *targets, size_t count, const nfc_target *candidate)
 {
@@ -1294,13 +1294,13 @@ end:
   }
   return result;
 }
-#endif /* USE_RUST_NFC_CORE */
+#endif /* PROXIMATE_ORCHESTRATION */
 
 /* ============================================================================
  * DATA TRANSMISSION FUNCTIONS
  * ========================================================================== */
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 int nfc_initiator_transceive_bytes(
     nfc_device *pnd,
     const uint8_t *pbtTx,
@@ -1351,12 +1351,12 @@ int nfc_initiator_transceive_bits_timed(
              pbtRx, pbtRxPar, cycles);
 }
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 int nfc_initiator_target_is_present(nfc_device *pnd, const nfc_target *pnt)
 {
   return HAL(initiator_target_is_present, pnd, pnt);
 }
-#endif /* USE_RUST_NFC_CORE */
+#endif /* PROXIMATE_ORCHESTRATION */
 
 /* ============================================================================
  * TARGET MODE DATA TRANSMISSION
@@ -1411,7 +1411,7 @@ void nfc_close(nfc_device *pnd)
   }
 }
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 int nfc_idle(nfc_device *pnd)
 {
   return HAL(idle, pnd);
@@ -1427,7 +1427,7 @@ int nfc_abort_command(nfc_device *pnd)
  * LIBRARY INITIALIZATION AND CLEANUP
  * ========================================================================== */
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 void nfc_init(nfc_context **context)
 {
   *context = nfc_context_new();
@@ -1448,13 +1448,13 @@ void nfc_exit(nfc_context *context)
   nfc_drivers_exit();
   nfc_context_free(context);
 }
-#endif /* USE_RUST_NFC_CORE */
+#endif /* PROXIMATE_ORCHESTRATION */
 
 /* ============================================================================
  * DEVICE INFORMATION AND DATA ACCESSORS
  * ========================================================================== */
 
-#ifndef USE_RUST_NFC_CORE
+#ifndef PROXIMATE_ORCHESTRATION
 const char *
 nfc_device_get_name(nfc_device *pnd)
 {

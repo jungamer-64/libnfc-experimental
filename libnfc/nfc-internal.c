@@ -99,7 +99,7 @@ nfc_rs_log_message(uint8_t group, const char *category, uint8_t priority, const 
   log_put_message(group, category, priority, message);
 }
 
-#ifndef USE_RUST_NFC_LIFECYCLE
+#ifndef PROXIMATE_LIFECYCLE
 nfc_context *
 nfc_context_new(void)
 {
@@ -237,7 +237,7 @@ nfc_context_new(void)
 }
 #endif
 
-#ifndef USE_RUST_NFC_LIFECYCLE
+#ifndef PROXIMATE_LIFECYCLE
 void nfc_context_free(nfc_context *context)
 {
   log_exit();

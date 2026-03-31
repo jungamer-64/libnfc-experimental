@@ -42,7 +42,7 @@
 #define LOG_GROUP NFC_LOG_GROUP_GENERAL
 #define LOG_CATEGORY "libnfc.general"
 
-#ifndef USE_RUST_NFC_LIFECYCLE
+#ifndef PROXIMATE_LIFECYCLE
 nfc_device *
 nfc_device_new(const nfc_context *context, const nfc_connstring connstring)
 {

@@ -552,7 +552,7 @@ fn secure_zero_bytes(ptr: *mut libc::c_void, len: usize) -> c_int {
 ///
 /// # Example (Rust, no_run)
 /// ```no_run
-/// use libnfc_rs::nfc_safe_memcpy;
+/// use proximate::nfc_safe_memcpy;
 /// let mut dst = [0u8; 16];
 /// let src = [1u8, 2, 3, 4];
 /// let rc = unsafe {
@@ -585,8 +585,7 @@ fn secure_zero_bytes(ptr: *mut libc::c_void, len: usize) -> c_int {
 /// }
 /// ```
 #[must_use = "Return value must be checked for errors"]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_safe_memcpy(
+pub unsafe fn nfc_safe_memcpy(
     dst: *mut libc::c_void,
     dst_size: size_t,
     src: *const libc::c_void,
@@ -635,7 +634,7 @@ pub unsafe extern "C" fn nfc_safe_memcpy(
 ///
 /// # Example (Rust, no_run)
 /// ```no_run
-/// use libnfc_rs::nfc_safe_memmove;
+/// use proximate::nfc_safe_memmove;
 /// let mut buf = [0u8; 32];
 /// // Move 8 bytes forward within same buffer
 /// let rc = unsafe { nfc_safe_memmove(buf.as_mut_ptr() as *mut _, 8, buf.as_ptr() as *const _, 8) };
@@ -653,8 +652,7 @@ pub unsafe extern "C" fn nfc_safe_memcpy(
 /// }
 /// ```
 #[must_use = "Return value must be checked for errors"]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_safe_memmove(
+pub unsafe fn nfc_safe_memmove(
     dst: *mut libc::c_void,
     dst_size: size_t,
     src: *const libc::c_void,
@@ -723,7 +721,7 @@ pub unsafe extern "C" fn nfc_safe_memmove(
 ///
 /// # Example (Rust, no_run)
 /// ```no_run
-/// use libnfc_rs::nfc_secure_memset;
+/// use proximate::nfc_secure_memset;
 /// let mut secret = [0xFFu8; 64];
 /// let rc = unsafe { nfc_secure_memset(secret.as_mut_ptr() as *mut _, 0, secret.len()) };
 /// assert_eq!(rc, 0);
@@ -740,12 +738,7 @@ pub unsafe extern "C" fn nfc_safe_memmove(
 /// }
 /// ```
 #[must_use = "Return value must be checked for errors"]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_secure_memset(
-    ptr: *mut libc::c_void,
-    val: libc::c_int,
-    size: size_t,
-) -> c_int {
+pub unsafe fn nfc_secure_memset(ptr: *mut libc::c_void, val: libc::c_int, size: size_t) -> c_int {
     crate::ffi_catch_unwind_int("nfc_secure_memset", NFC_SECURE_ERROR_INTERNAL, || {
         let len = match validate_fill_target(ptr, size) {
             Ok(len) => len,
@@ -776,8 +769,7 @@ pub unsafe extern "C" fn nfc_secure_memset(
 ///   to provide cryptographic constant-time semantics beyond avoiding
 ///   secret-dependent control flow during validation.
 #[must_use = "Return value must be checked for errors"]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_secure_zero(ptr: *mut libc::c_void, size: size_t) -> c_int {
+pub unsafe fn nfc_secure_zero(ptr: *mut libc::c_void, size: size_t) -> c_int {
     crate::ffi_catch_unwind_int("nfc_secure_zero", NFC_SECURE_ERROR_INTERNAL, || {
         let len = match validate_fill_target(ptr, size) {
             Ok(len) => len,
@@ -798,7 +790,7 @@ pub unsafe extern "C" fn nfc_secure_zero(ptr: *mut libc::c_void, size: size_t) -
 ///
 /// # Example (Rust, no_run)
 /// ```no_run
-/// use libnfc_rs::nfc_secure_strerror;
+/// use proximate::nfc_secure_strerror;
 /// let msg = unsafe { nfc_secure_strerror(0) };
 /// // msg points to a static C string; don't free it from Rust
 /// ```
@@ -812,8 +804,7 @@ pub unsafe extern "C" fn nfc_secure_zero(ptr: *mut libc::c_void, size: size_t) -
 ///     printf("error: %s\n", nfc_secure_strerror(code));
 /// }
 /// ```
-#[unsafe(no_mangle)]
-pub extern "C" fn nfc_secure_strerror(code: c_int) -> *const c_char {
+pub fn nfc_secure_strerror(code: c_int) -> *const c_char {
     match code {
         NFC_SECURE_SUCCESS => b"Success\0".as_ptr() as *const c_char,
         NFC_SECURE_ERROR_INVALID => {
@@ -838,7 +829,7 @@ pub extern "C" fn nfc_secure_strerror(code: c_int) -> *const c_char {
 ///
 /// # Example (Rust, no_run)
 /// ```no_run
-/// use libnfc_rs::nfc_safe_strlen;
+/// use proximate::nfc_safe_strlen;
 /// let s = std::ffi::CString::new("hello").unwrap();
 /// let len = unsafe { nfc_safe_strlen(s.as_ptr(), 100) };
 /// assert_eq!(len as usize, 5);
@@ -854,8 +845,7 @@ pub extern "C" fn nfc_secure_strerror(code: c_int) -> *const c_char {
 ///     printf("len=%zu\n", l);
 /// }
 /// ```
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_safe_strlen(str: *const c_char, maxlen: size_t) -> size_t {
+pub unsafe fn nfc_safe_strlen(str: *const c_char, maxlen: size_t) -> size_t {
     bounded_strlen(str, maxlen as usize) as size_t
 }
 
@@ -870,7 +860,7 @@ pub unsafe extern "C" fn nfc_safe_strlen(str: *const c_char, maxlen: size_t) -> 
 ///
 /// # Example (Rust, no_run)
 /// ```no_run
-/// use libnfc_rs::nfc_is_null_terminated;
+/// use proximate::nfc_is_null_terminated;
 /// let buf = ['A' as i8, 0, 'B' as i8];
 /// let ok = unsafe { nfc_is_null_terminated(buf.as_ptr() as *const _, 3) };
 /// assert_eq!(ok, 1);
@@ -884,8 +874,7 @@ pub unsafe extern "C" fn nfc_safe_strlen(str: *const c_char, maxlen: size_t) -> 
 ///     return nfc_is_null_terminated(buf, size);
 /// }
 /// ```
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_is_null_terminated(buf: *const c_char, bufsize: size_t) -> c_int {
+pub unsafe fn nfc_is_null_terminated(buf: *const c_char, bufsize: size_t) -> c_int {
     if buf.is_null() || bufsize == 0 {
         return 0;
     }
@@ -905,7 +894,7 @@ pub unsafe extern "C" fn nfc_is_null_terminated(buf: *const c_char, bufsize: siz
 ///
 /// # Example (Rust, no_run)
 /// ```no_run
-/// use libnfc_rs::nfc_ensure_null_terminated;
+/// use proximate::nfc_ensure_null_terminated;
 /// let mut buf = [b'A' as i8; 4];
 /// unsafe { nfc_ensure_null_terminated(buf.as_mut_ptr() as *mut _, 4) };
 /// ```
@@ -918,8 +907,7 @@ pub unsafe extern "C" fn nfc_is_null_terminated(buf: *const c_char, bufsize: siz
 ///     nfc_ensure_null_terminated(buf, size);
 /// }
 /// ```
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_ensure_null_terminated(buf: *mut c_char, bufsize: size_t) {
+pub unsafe fn nfc_ensure_null_terminated(buf: *mut c_char, bufsize: size_t) {
     if buf.is_null() || bufsize == 0 {
         return;
     }
@@ -939,8 +927,7 @@ pub unsafe extern "C" fn nfc_ensure_null_terminated(buf: *mut c_char, bufsize: s
 /// # Safety
 /// Pointers must be valid for the provided sizes or NULL.
 #[cfg(feature = "nfc_secure_debug")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_buffers_overlap(
+pub unsafe fn nfc_buffers_overlap(
     dst: *const libc::c_void,
     dst_size: size_t,
     src: *const libc::c_void,
@@ -1053,8 +1040,7 @@ pub unsafe fn nfc_memset_and_fence(ptr: *mut libc::c_void, c: libc::c_int, len: 
 /// Enabled only when the crate is compiled with
 /// `--features nfc_secure_debug`.
 #[cfg(feature = "nfc_secure_debug")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_check_suspicious_size(dst_size: size_t, func_name: *const c_char) {
+pub unsafe fn nfc_check_suspicious_size(dst_size: size_t, func_name: *const c_char) {
     // Helper: small utility to detect power-of-two sizes
     fn is_power_of_2(n: usize) -> bool {
         n != 0 && (n & (n - 1)) == 0

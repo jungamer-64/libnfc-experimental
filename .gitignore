@@ -65,9 +65,9 @@ utils/nfc-relay-picc
 utils/nfc-scan-device
 
 rust/target/
-rust/libnfc-rs/target/
-rust/libnfc-rs/include/libnfc_rs.generated.h
-rust/libnfc-rs/rust/
+rust/proximate-sys/target/
+rust/proximate-sys/include/proximate_sys.generated.h
+rust/proximate-sys/rust/
 */target
 #Ignore insiders AI rules
 .github/instructions/codacy.instructions.md
@@ -75,3 +75,4 @@ rust/libnfc-rs/rust/
 /libnfc_orig
 build-*
 .serena
+cargo.lock

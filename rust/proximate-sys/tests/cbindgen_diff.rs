@@ -14,7 +14,7 @@ fn tracked_cbindgen_header_is_up_to_date() {
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let tracked = manifest_dir.join("include/libnfc_rs.h");
-    let generated = std::env::temp_dir().join("libnfc_rs.generated.h");
+    let generated = std::env::temp_dir().join("proximate_sys.generated.h");
 
     // Use the stable wrapper script to generate the header. The wrapper
     // centralizes cbindgen invocation, suppresses a known class of

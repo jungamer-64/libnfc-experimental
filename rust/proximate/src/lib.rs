@@ -21,31 +21,72 @@ use std::ffi::{CStr, CString};
 use std::panic;
 use std::ptr;
 
-#[cfg(feature = "nfc_lifecycle")]
+#[cfg(feature = "lifecycle")]
 mod conf;
-#[cfg(feature = "nfc_core")]
+#[cfg(feature = "orchestration")]
 mod core;
 mod ffi_support;
-#[cfg(feature = "nfc_lifecycle")]
+#[cfg(feature = "lifecycle")]
 mod ffi_types;
-#[cfg(feature = "nfc_core")]
+#[cfg(feature = "orchestration")]
 mod initiator;
-#[cfg(feature = "nfc_lifecycle")]
+#[cfg(feature = "lifecycle")]
 mod lifecycle;
-#[cfg(feature = "nfc_secure")]
+#[cfg(feature = "secure")]
 mod nfc_secure;
+pub mod rust_api;
 use crate::ffi_support::{bounded_strlen, copy_bytes_to_c_buffer};
-#[cfg(feature = "nfc_secure")]
-pub use nfc_secure::{
-    NFC_SECURE_SUCCESS, nfc_ensure_null_terminated, nfc_is_null_terminated, nfc_safe_memcpy,
-    nfc_safe_memmove, nfc_safe_strlen, nfc_secure_memset, nfc_secure_strerror,
+#[cfg(feature = "orchestration")]
+pub use core::{nfc_exit, nfc_init, nfc_list_devices, nfc_open, nfc_register_driver};
+#[cfg(feature = "lifecycle")]
+pub use ffi_types::{
+    nfc_barcode_info, nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_felica_info,
+    nfc_iso14443a_info, nfc_iso14443b_info, nfc_iso14443b2ct_info, nfc_iso14443b2sr_info,
+    nfc_iso14443bi_info, nfc_iso14443biclass_info, nfc_jewel_info, nfc_mode, nfc_modulation,
+    nfc_modulation_type, nfc_property, nfc_target, nfc_target_info,
 };
+#[cfg(feature = "orchestration")]
+pub use initiator::{
+    nfc_abort_command, nfc_device_get_connstring, nfc_device_get_information_about,
+    nfc_device_get_last_error, nfc_device_get_name, nfc_device_get_supported_baud_rate,
+    nfc_device_get_supported_baud_rate_target_mode, nfc_device_get_supported_modulation,
+    nfc_device_set_property_bool, nfc_device_set_property_int, nfc_idle,
+    nfc_initiator_deselect_target, nfc_initiator_init, nfc_initiator_init_secure_element,
+    nfc_initiator_list_passive_targets, nfc_initiator_poll_dep_target, nfc_initiator_poll_target,
+    nfc_initiator_select_dep_target, nfc_initiator_select_passive_target,
+    nfc_initiator_target_is_present, nfc_initiator_transceive_bits,
+    nfc_initiator_transceive_bits_timed, nfc_initiator_transceive_bytes,
+    nfc_initiator_transceive_bytes_timed, nfc_perror, nfc_strerror, nfc_strerror_r,
+    nfc_target_init, nfc_target_receive_bits, nfc_target_receive_bytes, nfc_target_send_bits,
+    nfc_target_send_bytes,
+};
+#[cfg(feature = "lifecycle")]
+pub use lifecycle::{
+    DEVICE_NAME_LENGTH, MAX_USER_DEFINED_DEVICES, NFC_DRIVER_NAME_MAX, nfc_connstring, nfc_context,
+    nfc_context_alloc_defaults, nfc_context_free, nfc_context_new, nfc_device, nfc_device_free,
+    nfc_device_new, nfc_driver, nfc_user_defined_device, scan_type_enum,
+};
+#[cfg(feature = "secure")]
+pub use nfc_secure::{
+    NFC_SECURE_ERROR_INVALID, NFC_SECURE_ERROR_OVERFLOW, NFC_SECURE_ERROR_RANGE,
+    NFC_SECURE_ERROR_ZERO_SIZE, NFC_SECURE_SUCCESS, nfc_ensure_null_terminated,
+    nfc_is_null_terminated, nfc_safe_memcpy, nfc_safe_memmove, nfc_safe_strlen, nfc_secure_memset,
+    nfc_secure_strerror, nfc_secure_zero,
+};
+pub use rust_api::{
+    BaudRate, ConnectionString, Context, ContextConfig, DecodedConnectionString, DepMode, Device,
+    Driver, DriverRegistry, Error as RustError, Logger, Mode, Modulation, ModulationType,
+    OpenedDevice, Property, ScanType, SecureError, Target, UserDefinedDevice, build_connstring,
+    decode_connstring, parse_connstring,
+};
+#[cfg(feature = "secure")]
+pub use rust_api::{safe_memcpy, safe_memmove, secure_zero};
 
 // Public test helpers module. Enabled by the `test_helpers` feature and
-// requires `nfc_secure` so internal helpers can be re-exported. This is
+// requires `secure` so internal helpers can be re-exported. This is
 // intended for integration tests that need access to small, well-audited
 // helpers without making them part of the production API surface.
-#[cfg(all(any(test, feature = "test_helpers"), feature = "nfc_secure"))]
+#[cfg(all(any(test, feature = "test_helpers"), feature = "secure"))]
 pub(crate) mod test_helpers {
     //! Test-only helpers. Enabled with `--features test_helpers`.
     #[allow(unused_imports)]
@@ -73,7 +114,7 @@ pub const NFC_COMMON_ERROR: c_int = -1;
 pub const NFC_COMMON_INVALID: c_int = -(libc::EINVAL as c_int);
 
 pub const LOG_GROUP_GENERAL: u8 = 1;
-#[cfg(feature = "nfc_lifecycle")]
+#[cfg(feature = "lifecycle")]
 const LOG_PRIORITY_NONE: u8 = 0;
 pub const LOG_PRIORITY_ERROR: u8 = 1;
 pub const LOG_PRIORITY_DEBUG: u8 = 3;
@@ -95,8 +136,7 @@ thread_local! {
 }
 
 #[cfg(test)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_rs_log_message(
+pub unsafe fn nfc_rs_log_message(
     _group: u8,
     _category: *const c_char,
     _priority: u8,
@@ -450,8 +490,7 @@ where
     operation()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_parse_connstring(
+pub unsafe fn nfc_parse_connstring(
     connstring: *const c_char,
     prefix: *const c_char,
     param_name: *const c_char,
@@ -534,8 +573,7 @@ pub unsafe extern "C" fn nfc_parse_connstring(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_build_connstring(
+pub unsafe fn nfc_build_connstring(
     dest: *mut c_char,
     dest_size: size_t,
     driver_name: *const c_char,
@@ -611,21 +649,18 @@ pub unsafe extern "C" fn nfc_build_connstring(
     }
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn nfc_get_last_error() -> *const c_char {
+pub fn nfc_get_last_error() -> *const c_char {
     LAST_ERROR.with(|cell| match cell.borrow().as_ref() {
         Some(message) => message.as_ptr(),
         None => ptr::null(),
     })
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn nfc_clear_last_error() {
+pub fn nfc_clear_last_error() {
     ffi_catch_unwind_void("nfc_clear_last_error", reset_last_error);
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_set_last_error(message: *const c_char) {
+pub unsafe fn nfc_set_last_error(message: *const c_char) {
     ffi_catch_unwind_void("nfc_set_last_error", || {
         if message.is_null() {
             reset_last_error();
@@ -639,8 +674,7 @@ pub unsafe extern "C" fn nfc_set_last_error(message: *const c_char) {
 }
 
 /// Free memory allocated by Rust FFI helpers
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_rs_free(ptr: *mut c_void) {
+pub unsafe fn nfc_rs_free(ptr: *mut c_void) {
     ffi_catch_unwind_void("nfc_rs_free", || unsafe {
         release_allocated_ptr(ptr);
     });
@@ -722,8 +756,7 @@ unsafe fn connstring_decode_impl(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn connstring_decode(
+pub unsafe fn connstring_decode(
     connstring: *const c_char,
     driver_name: *const c_char,
     bus_name: *const c_char,

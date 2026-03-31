@@ -31,7 +31,7 @@ add_executable(test_core_registry
 target_link_libraries(test_core_registry nfc)
 add_test(NAME core_registry COMMAND test_core_registry)
 
-if(USE_RUST_NFC_CORE)
+if(PROXIMATE_ORCHESTRATION)
   add_executable(test_core_initiator
     test_rust_core_initiator.c
   )

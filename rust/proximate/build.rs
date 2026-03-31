@@ -16,9 +16,9 @@ fn env_flag_enabled(name: &str, default_enabled: bool) -> bool {
 }
 
 fn emit_enabled_driver_cfgs() {
-    println!("cargo:rerun-if-env-changed=LIBNFC_RS_ENABLED_DRIVERS");
+    println!("cargo:rerun-if-env-changed=PROXIMATE_ENABLED_DRIVERS");
 
-    let Ok(value) = env::var("LIBNFC_RS_ENABLED_DRIVERS") else {
+    let Ok(value) = env::var("PROXIMATE_ENABLED_DRIVERS") else {
         return;
     };
 
@@ -141,25 +141,25 @@ fn main() {
         println!("cargo:rustc-check-cfg=cfg({})", cfg_name);
     }
 
-    if env_flag_enabled("LIBNFC_RS_WITH_ENVVARS", true) {
+    if env_flag_enabled("PROXIMATE_WITH_ENVVARS", true) {
         println!("cargo:rustc-cfg=libnfc_envvars");
     }
-    if env_flag_enabled("LIBNFC_RS_WITH_CONFFILES", true) {
+    if env_flag_enabled("PROXIMATE_WITH_CONFFILES", true) {
         println!("cargo:rustc-cfg=libnfc_conffiles");
     }
-    if env_flag_enabled("LIBNFC_RS_WITH_LOG", true) {
+    if env_flag_enabled("PROXIMATE_WITH_LOG", true) {
         println!("cargo:rustc-cfg=libnfc_log");
     }
-    if env_flag_enabled("LIBNFC_RS_WITH_DEBUG", false) {
+    if env_flag_enabled("PROXIMATE_WITH_DEBUG", false) {
         println!("cargo:rustc-cfg=libnfc_debug");
     }
-    if env_flag_enabled("LIBNFC_RS_EXTERNAL_BRIDGES", false) {
+    if env_flag_enabled("PROXIMATE_EXTERNAL_BRIDGES", false) {
         println!("cargo:rustc-cfg=libnfc_external_bridges");
     }
 
-    println!("cargo:rerun-if-env-changed=LIBNFC_RS_CONFDIR");
-    if let Ok(confdir) = env::var("LIBNFC_RS_CONFDIR") {
-        println!("cargo:rustc-env=LIBNFC_RS_CONFDIR={}", confdir);
+    println!("cargo:rerun-if-env-changed=PROXIMATE_CONFDIR");
+    if let Ok(confdir) = env::var("PROXIMATE_CONFDIR") {
+        println!("cargo:rustc-env=PROXIMATE_CONFDIR={}", confdir);
     }
 
     emit_enabled_driver_cfgs();

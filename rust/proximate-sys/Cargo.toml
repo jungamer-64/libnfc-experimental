@@ -1,0 +1,29 @@
+[package]
+name = "proximate-sys"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+
+[lib]
+name = "proximate_sys"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+libc = "0.2"
+proximate = { path = "../proximate", default-features = false }
+
+[features]
+default = ["secure", "lifecycle", "orchestration"]
+secure = ["proximate/secure"]
+lifecycle = ["proximate/lifecycle"]
+orchestration = ["lifecycle", "proximate/orchestration"]
+c_ffi = ["proximate/c_ffi_support"]
+nfc_secure_debug = ["proximate/nfc_secure_debug"]
+asan_tests = ["proximate/asan_tests"]
+test_no_catch = ["proximate/test_no_catch"]
+test_helpers = ["proximate/test_helpers"]
+
+[[test]]
+name = "cbindgen_diff"
+path = "tests/cbindgen_diff.rs"
+required-features = ["c_ffi"]

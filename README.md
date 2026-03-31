@@ -104,13 +104,13 @@ Useful options:
 
 * `-DBUILD_SHARED_LIBS=OFF` for a static library build
 * `-DLIBNFC_DRIVER_PCSC=ON` to enable the PC/SC driver
-* `-DUSE_RUST_NFC_SECURE=ON` to use the Rust `nfc-secure` implementation
-* `-DUSE_RUST_NFC_LIFECYCLE=ON` to move lifecycle helpers to Rust
-* `-DUSE_RUST_NFC_CORE=ON` to move the core driver registry/open/list/init/exit/close and initiator orchestration entrypoints to Rust; this implies `-DUSE_RUST_NFC_LIFECYCLE=ON`
+* `-DPROXIMATE_SECURE=ON` to use the Rust-backed `nfc-secure` implementation from the `proximate-sys` package
+* `-DPROXIMATE_LIFECYCLE=ON` to move lifecycle helpers to the Rust facade
+* `-DPROXIMATE_ORCHESTRATION=ON` to move the registry/open/list/init/exit and initiator orchestration entrypoints to the Rust facade; this implies `-DPROXIMATE_LIFECYCLE=ON`
 
-Recommended Rust-core validation build:
+Recommended Rust-facade validation build:
 
-    cmake -S . -B build-rust-core -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON -DUSE_RUST_NFC_SECURE=ON -DUSE_RUST_NFC_LIFECYCLE=ON -DUSE_RUST_NFC_CORE=ON
+    cmake -S . -B build-rust-core -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON -DPROXIMATE_SECURE=ON -DPROXIMATE_LIFECYCLE=ON -DPROXIMATE_ORCHESTRATION=ON
     cmake --build build-rust-core -j"$(nproc)"
     ctest --test-dir build-rust-core --output-on-failure
 
