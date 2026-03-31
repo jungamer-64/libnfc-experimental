@@ -26,6 +26,8 @@ mod compat;
 #[cfg(feature = "lifecycle")]
 mod conf;
 #[cfg(feature = "orchestration")]
+mod drivers;
+#[cfg(feature = "orchestration")]
 mod core;
 mod ffi_support;
 #[cfg(feature = "lifecycle")]

@@ -10,6 +10,8 @@ use crate::ffi_support::{
     as_ref, bounded_strlen, c_string_ptr_to_string, copy_c_string_to_c_buffer,
     fixed_c_buffer_to_string,
 };
+#[cfg(all(not(test), libnfc_driver_pn71xx))]
+use crate::drivers::pn71xx::builtin_driver_ptr as pn71xx_builtin_driver_ptr;
 use crate::lifecycle::{
     DEVICE_NAME_LENGTH, NFC_DRIVER_NAME_MAX, nfc_connstring, nfc_context, nfc_context_new,
     nfc_device, nfc_driver, scan_type_enum,
@@ -510,17 +512,12 @@ unsafe extern "C" {
 unsafe extern "C" {
     static pn532_i2c_driver: nfc_driver;
 }
-#[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pn71xx))]
-unsafe extern "C" {
-    static pn71xx_driver: nfc_driver;
-}
-
 fn builtin_driver_ptrs() -> Vec<*const nfc_driver> {
     #[allow(unused_mut)]
     let mut drivers = Vec::new();
 
-    #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pn71xx))]
-    drivers.push(ptr::addr_of!(pn71xx_driver));
+    #[cfg(all(not(test), libnfc_driver_pn71xx))]
+    drivers.push(pn71xx_builtin_driver_ptr());
     #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pn53x_usb))]
     drivers.push(ptr::addr_of!(pn53x_usb_driver));
     #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pcsc))]
