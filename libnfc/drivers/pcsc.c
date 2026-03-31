@@ -89,6 +89,10 @@
 #define LOG_GROUP NFC_LOG_GROUP_DRIVER
 #define LOG_CATEGORY "libnfc.driver.pcsc"
 
+#ifndef MAX_ATR_SIZE
+#define MAX_ATR_SIZE 33
+#endif
+
 struct pcsc_data {
   SCARDHANDLE hCard;
   SCARD_IO_REQUEST ioCard;
@@ -168,7 +172,9 @@ static int pcsc_get_status(struct nfc_device *pnd, int *target_present, uint8_t 
   DWORD dw_atr_len = *atr_len, reader_len, state, protocol;
 
   data->last_error = SCardStatus(data->hCard, NULL, &reader_len, &state, &protocol, atr, &dw_atr_len);
-  if (data->last_error != SCARD_S_SUCCESS && data->last_error != SCARD_W_RESET_CARD) {
+  if (data->last_error != SCARD_S_SUCCESS &&
+      data->last_error != SCARD_W_RESET_CARD &&
+      data->last_error != SCARD_W_REMOVED_CARD) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Get status failed");
     return NFC_EIO;
   }
@@ -184,7 +190,9 @@ static int pcsc_reconnect(struct nfc_device *pnd, DWORD share_mode, DWORD protoc
   struct pcsc_data *data = pnd->driver_data;
 
   data->last_error = SCardReconnect(data->hCard, share_mode, protocol, disposition, &data->ioCard.dwProtocol);
-  if (data->last_error != SCARD_S_SUCCESS && data->last_error != SCARD_W_RESET_CARD) {
+  if (data->last_error != SCARD_S_SUCCESS &&
+      data->last_error != SCARD_W_RESET_CARD &&
+      data->last_error != SCARD_E_NO_SMARTCARD) {
     log_put(LOG_GROUP, LOG_CATEGORY, NFC_LOG_PRIORITY_DEBUG, "Reconnect failed");
     return NFC_EIO;
   }
@@ -1029,6 +1037,35 @@ static int pcsc_initiator_transceive_bytes(struct nfc_device *pnd, const uint8_t
   return (int)resp_len;
 }
 
+static int
+pcsc_initiator_poll_target(struct nfc_device *pnd,
+                           const nfc_modulation *pnmModulations, const size_t szModulations,
+                           const uint8_t uiPollNr, const uint8_t uiPeriod,
+                           nfc_target *pnt)
+{
+  const unsigned long period = (unsigned long)uiPeriod * 150000UL;
+
+  if (pnd == NULL)
+    return 0;
+
+  for (uint8_t poll_index = 0; poll_index < uiPollNr; poll_index++) {
+    for (size_t modulation_index = 0; modulation_index < szModulations; modulation_index++) {
+      nfc_target nt;
+      int res = pcsc_initiator_select_passive_target(
+        pnd, pnmModulations[modulation_index], NULL, 0, &nt);
+      if (res > 0) {
+        if (pnt != NULL)
+          memcpy(pnt, &nt, sizeof(nt));
+        return res;
+      }
+    }
+
+    pcsc_delay(period);
+  }
+
+  return 0;
+}
+
 static int pcsc_initiator_target_is_present(struct nfc_device *pnd, const nfc_target *pnt)
 {
   uint8_t atr[MAX_ATR_SIZE];
@@ -1075,7 +1112,7 @@ static int pcsc_device_set_property_bool(struct nfc_device *pnd, const nfc_prope
     case NP_ACTIVATE_FIELD:
       if (!enable) {
         struct pcsc_data *data = pnd->driver_data;
-        pcsc_reconnect(pnd, data->dwShareMode, data->ioCard.dwProtocol, SCARD_RESET_CARD);
+        pcsc_reconnect(pnd, data->dwShareMode, data->ioCard.dwProtocol, SCARD_LEAVE_CARD);
       }
       return NFC_SUCCESS;
     default:
@@ -1226,7 +1263,7 @@ const struct nfc_driver pcsc_driver = {
   .initiator_init = pcsc_initiator_init,
   .initiator_init_secure_element = NULL, // No secure-element support
   .initiator_select_passive_target = pcsc_initiator_select_passive_target,
-  .initiator_poll_target = NULL,
+  .initiator_poll_target = pcsc_initiator_poll_target,
   .initiator_select_dep_target = NULL,
   .initiator_deselect_target = NULL,
   .initiator_transceive_bytes = pcsc_initiator_transceive_bytes,

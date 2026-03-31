@@ -3,9 +3,20 @@ if(WIN32)
   set(WINDOWS_SOURCES ../contrib/win32/stdlib.c)
   include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32")
 
-  list(APPEND WINDOWS_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/../windows/libnfc.rc")
-  if(NOT MINGW)
-    list(APPEND WINDOWS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/nfc_msvc.def")
+  set(RC_COMMENT "${PACKAGE_NAME} library")
+  set(RC_INTERNAL_NAME "libnfc")
+  set(RC_ORIGINAL_NAME "libnfc.dll")
+  set(RC_FILE_TYPE VFT_DLL)
+  set(RC_FILE_FLAGS 0x0)
+  if(LIBNFC_DEBUG_MODE)
+    set(RC_FILE_FLAGS VS_FF_DEBUG)
+  endif()
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/version.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/libnfc.rc" @ONLY)
+  list(APPEND WINDOWS_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/libnfc.rc")
+
+  if(BUILD_SHARED_LIBS)
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/libnfc.def.in" "${CMAKE_CURRENT_BINARY_DIR}/libnfc.def" @ONLY)
+    list(APPEND WINDOWS_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/libnfc.def")
   endif()
 endif()
 
@@ -76,9 +87,6 @@ endif()
 
 if(LIBNFC_LOG)
   if(WIN32)
-    if(MINGW)
-      set(CMAKE_C_FLAGS "-fgnu89-inline ${CMAKE_C_FLAGS}")
-    endif()
     list(APPEND LIBRARY_SOURCES log.cpp ../contrib/win32/libnfc/log-internal.c)
   else()
     list(APPEND LIBRARY_SOURCES log.cpp log-internal.c)
@@ -151,12 +159,16 @@ set_target_properties(nfc PROPERTIES
   VERSION 6.0.0
   SOVERSION 6)
 
+if(WIN32)
+  set_target_properties(nfc PROPERTIES PREFIX lib)
+endif()
+
 if(WIN32 AND BUILD_SHARED_LIBS)
   if(MINGW)
     add_custom_command(
       OUTPUT libnfc.lib
-      COMMAND ${DLLTOOL} -d "${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/nfc.def" -l "${CMAKE_CURRENT_BINARY_DIR}/libnfc.lib" "${CMAKE_CURRENT_BINARY_DIR}/libnfc.dll"
-      DEPENDS nfc "${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/nfc.def")
+      COMMAND ${DLLTOOL} -d "${CMAKE_CURRENT_BINARY_DIR}/libnfc.def" -l "${CMAKE_CURRENT_BINARY_DIR}/libnfc.lib" "${CMAKE_CURRENT_BINARY_DIR}/libnfc.dll"
+      DEPENDS nfc "${CMAKE_CURRENT_BINARY_DIR}/libnfc.def")
     add_custom_target(win32lib ALL DEPENDS libnfc.lib)
   endif()
 endif()

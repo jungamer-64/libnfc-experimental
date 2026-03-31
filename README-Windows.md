@@ -45,7 +45,10 @@ cmake --install build --config Release
 
 The default Windows configuration directory is `./config` relative to the
 installed binaries. If you want a different location, set
-`-DLIBNFC_SYSCONFDIR=...` when configuring the build.
+`-DLIBNFC_CONFDIR=...` when configuring the build.
+
+For compatibility with older build scripts, `-DLIBNFC_SYSCONFDIR=...` is still
+accepted and mapped to `LIBNFC_CONFDIR`.
 
 References
 ==========

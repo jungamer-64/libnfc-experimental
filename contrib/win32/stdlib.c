@@ -31,45 +31,31 @@
  * @brief Windows System compatibility
  */
 
-// Handle platform specific includes
+#include <stddef.h>
+#include <stdlib.h>
+
 #include "contrib/windows.h"
 
-// There is no setenv()and unsetenv() in windows,but we can use putenv() instead.
+// Use _putenv_s() as the underlying implementation for POSIX-style wrappers.
 int setenv(const char *name, const char *value, int overwrite)
 {
-  if (!name || !value) {
+  if (!name || !value)
     return -1;
+
+  if (!overwrite) {
+    size_t size = 0;
+    getenv_s(&size, NULL, 0, name);
+    if (size != 0)
+      return 0;
   }
 
-  char *env = getenv(name);
-  if ((env && overwrite) || (!env)) {
-    // Calculate required buffer size: name + "=" + value + null terminator
-    size_t len = strlen(name) + strlen(value) + 2;
-    char *str = malloc(len);
-    if (!str) {
-      return -1;
-    }
-    snprintf(str, len, "%s=%s", name, value);
-    int result = putenv(str);
-    // Note: Do not free str as putenv takes ownership of the string
-    return result;
-  }
-  return -1;
+  return _putenv_s(name, value);
 }
 
-void unsetenv(const char *name)
+int unsetenv(const char *name)
 {
-  if (!name) {
-    return;
-  }
+  if (!name)
+    return -1;
 
-  // Calculate required buffer size: name + "=" + null terminator
-  size_t len = strlen(name) + 2;
-  char *str = malloc(len);
-  if (!str) {
-    return;
-  }
-  snprintf(str, len, "%s=", name);
-  putenv(str);
-  // Note: Do not free str as putenv takes ownership of the string
+  return _putenv_s(name, "");
 }

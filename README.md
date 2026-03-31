@@ -135,14 +135,14 @@ Configuration
 =============
 
 In order to change the default behavior of the library, the libnfc uses a
-configuration file located in `SYSCONFDIR` as chosen when CMake configured the
+configuration file located in `LIBNFC_CONFDIR` as chosen when CMake configured the
 build.
 
 A sample commented file is available in sources: libnfc.conf.sample
 
 If you configure the project like this:
 
-    cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DSYSCONFDIR=/etc
+    cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DLIBNFC_CONFDIR=/etc/nfc
     cmake --build build
     sudo cmake --install build
 
@@ -150,6 +150,9 @@ you can make configuration directory and copy the sample file:
 
     sudo mkdir /etc/nfc
     sudo cp libnfc.conf.sample /etc/nfc/libnfc.conf
+
+For compatibility with older build scripts, `-DSYSCONFDIR=/etc` is still
+accepted and resolves to the same default `/etc/nfc` configuration directory.
 
 To configure multiple devices, you can either modify libnfc.conf or create a
 file per device in a nfc/devices.d directory:
