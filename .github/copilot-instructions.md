@@ -1,6 +1,6 @@
 # Copilot Instructions for libnfc
 
-- **Core Layout**: `libnfc/` holds the C entry points (`nfc_refator.c`, `nfc-common.cpp`, `log.cpp`) and driver glue under `libnfc/drivers/`; shared headers live in `include/nfc/`, while CLI tools sit in `utils/` and sample apps in `examples/`.
+- **Core Layout**: `libnfc/` holds the C entry points (`nfc.c`, `nfc-common.cpp`, `log.cpp`) and driver glue under `libnfc/drivers/`; shared headers live in `include/nfc/`, while CLI tools sit in `utils/` and sample apps in `examples/`.
 - **Rust Bridge**: `rust/libnfc-rs/src/lib.rs` exposes connstring helpers and thread-local error buffers; the repo builds the Rust staticlib as part of the normal CMake/Autotools flow (`libnfc_rs_build` in CMake, `all-local` in `rust/Makefile.am`). Respect the contract described in `FFI_POLICY.md` whenever editing FFI.
 - **FFI Safety Rules**: Exported Rust entry points must apply the Rust 2024 `#[unsafe(no_mangle)] extern "C"` ABI (or the equivalent for the active edition), wrap logic with `ffi_catch_unwind`, return NULL (or sentinel errno) on panic/error for pointer/handle APIs, and avoid handing back borrowed buffers. Regenerate the tracked ABI header snapshot with the project wrapper, for example:
 

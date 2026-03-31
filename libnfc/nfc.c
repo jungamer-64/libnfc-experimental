@@ -10,6 +10,7 @@
  * See AUTHORS file for a more comprehensive list of contributors.
  * Additional contributors of this file:
  * Copyright (C) 2020      Adam Laurie
+ * Copyright (C) 2025-2026 jungamer-64
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published by the
@@ -303,6 +304,13 @@ prepare_connstring(
 static void
 nfc_drivers_init(void)
 {
+  /*
+   * Keep insertion order aligned with rust/libnfc-rs/src/core.rs so that both
+   * backends probe drivers in the same order.
+   */
+#if defined(DRIVER_PN71XX_ENABLED)
+  nfc_register_driver(&pn71xx_driver);
+#endif
 #if defined(DRIVER_PN53X_USB_ENABLED)
   nfc_register_driver(&pn53x_usb_driver);
 #endif
@@ -330,6 +338,17 @@ nfc_drivers_init(void)
 #if defined(DRIVER_ARYGON_ENABLED)
   nfc_register_driver(&arygon_driver);
 #endif
+}
+
+static void
+nfc_drivers_exit(void)
+{
+  while (nfc_drivers)
+  {
+    struct nfc_driver_list *pndl = (struct nfc_driver_list *)nfc_drivers;
+    nfc_drivers = pndl->next;
+    free(pndl);
+  }
 }
 
 int nfc_register_driver(const struct nfc_driver *ndr)
@@ -1402,13 +1421,7 @@ void nfc_init(nfc_context **context)
 
 void nfc_exit(nfc_context *context)
 {
-  while (nfc_drivers)
-  {
-    struct nfc_driver_list *pndl = (struct nfc_driver_list *)nfc_drivers;
-    nfc_drivers = pndl->next;
-    free(pndl);
-  }
-
+  nfc_drivers_exit();
   nfc_context_free(context);
 }
 #endif /* USE_RUST_NFC_CORE */
