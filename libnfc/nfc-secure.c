@@ -505,6 +505,11 @@ int nfc_secure_memset(void *ptr, int val, size_t size)
   return NFC_SECURE_SUCCESS;
 }
 
+int nfc_secure_zero(void *ptr, size_t size)
+{
+  return nfc_secure_memset(ptr, 0, size);
+}
+
 /**
  * @brief Safe strlen that prevents buffer over-read
  *

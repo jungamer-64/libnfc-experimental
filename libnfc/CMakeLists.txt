@@ -64,6 +64,12 @@ ENDIF(LIBUSB_FOUND)
 SET(LIBRARY_SOURCES nfc.c nfc-device.c nfc-emulation.c nfc-internal.c nfc-secure.c nfc-common.cpp conf.c iso14443-subr.c mirror-subr.c target-subr.c target-subr-helpers.c target-subr-helpers2.c ${DRIVERS_SOURCES} ${BUSES_SOURCES} ${CHIPS_SOURCES} ${WINDOWS_SOURCES})
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 
+set(LIBNFC_EXPORTS_FILE ${CMAKE_SOURCE_DIR}/libnfc/libnfc.exports)
+set(LIBNFC_VERSION_SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/libnfc.map)
+if(EXISTS ${LIBNFC_EXPORTS_FILE})
+  file(STRINGS ${LIBNFC_EXPORTS_FILE} LIBNFC_EXPORT_SYMBOLS)
+endif()
+
 if(USE_RUST_NFC_SECURE)
   # Remove C implementation from sources when using Rust replacement
   list(REMOVE_ITEM LIBRARY_SOURCES nfc-secure.c)
@@ -87,6 +93,15 @@ ADD_LIBRARY(nfc SHARED ${LIBRARY_SOURCES})
 add_dependencies(nfc libnfc_rs_build)
 set_property(TARGET nfc APPEND PROPERTY LINK_DEPENDS ${RUST_LIB_PATH})
 TARGET_LINK_LIBRARIES(nfc ${RUST_LIB_PATH})
+
+if(UNIX AND NOT APPLE)
+  file(WRITE ${LIBNFC_VERSION_SCRIPT} "LIBNFC_6 {\n  global:\n")
+  foreach(symbol ${LIBNFC_EXPORT_SYMBOLS})
+    file(APPEND ${LIBNFC_VERSION_SCRIPT} "    ${symbol};\n")
+  endforeach()
+  file(APPEND ${LIBNFC_VERSION_SCRIPT} "  local:\n    *;\n};\n")
+  set_property(TARGET nfc APPEND_STRING PROPERTY LINK_FLAGS " -Wl,--version-script=${LIBNFC_VERSION_SCRIPT}")
+endif()
 
 IF(PCSC_FOUND)
   TARGET_LINK_LIBRARIES(nfc ${PCSC_LIBRARIES})

@@ -282,6 +282,19 @@ int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_siz
 NFC_NODISCARD
 int nfc_secure_memset(void *ptr, int val, size_t size);
 
+/**
+ * @brief Securely zero memory that may contain sensitive data
+ *
+ * This is a convenience wrapper around nfc_secure_memset() for the
+ * common case of clearing secrets with zero bytes.
+ *
+ * @param[out] ptr Pointer to memory to clear (must be non-NULL)
+ * @param[in] size Number of bytes to clear
+ * @return NFC_SECURE_SUCCESS (0) on success
+ */
+NFC_NODISCARD
+int nfc_secure_zero(void *ptr, size_t size);
+
 #ifdef __cplusplus
 }
 #endif

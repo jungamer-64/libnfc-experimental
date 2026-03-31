@@ -28,7 +28,7 @@ libnfc_la_SOURCES = \
 		    target-subr.h \
 		    target-subr-internal.h
 
-libnfc_la_LDFLAGS = -no-undefined -version-info 6:0:0 -export-symbols-regex '^nfc_|^iso14443a_|^iso14443b_|^str_nfc_|pn53x_transceive|pn532_SAMConfiguration|pn53x_read_register|pn53x_write_register|^nfc_safe_|^nfc_secure_'
+libnfc_la_LDFLAGS = -no-undefined -version-info 6:0:0 -export-symbols $(top_srcdir)/libnfc/libnfc.exports
 libnfc_la_CFLAGS = @DRIVERS_CFLAGS@
 libnfc_la_LIBADD = \
 	$(top_builddir)/libnfc/chips/libnfcchips.la \
@@ -52,4 +52,5 @@ endif
 
 EXTRA_DIST = \
 	CMakeLists.txt \
-	additional-pages.dox
+	additional-pages.dox \
+	libnfc.exports

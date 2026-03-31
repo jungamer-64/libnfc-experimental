@@ -48,4 +48,4 @@ echo-cutter:
 CLEANFILES = *.gcno
 
 endif
-EXTRA_DIST = run-test.sh
+EXTRA_DIST = run-test.sh test_public_compat_smoke.c
