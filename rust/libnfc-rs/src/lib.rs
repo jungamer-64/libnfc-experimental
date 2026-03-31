@@ -24,6 +24,8 @@ use std::ptr;
 #[cfg(feature = "nfc_core")]
 mod core;
 #[cfg(feature = "nfc_lifecycle")]
+mod conf;
+#[cfg(feature = "nfc_lifecycle")]
 mod lifecycle;
 #[cfg(feature = "nfc_secure")]
 mod nfc_secure;
@@ -77,7 +79,7 @@ unsafe extern "C" {
 
 #[cfg(test)]
 thread_local! {
-    static TEST_LAST_LOG: RefCell<Option<CString>> = RefCell::new(None);
+    static TEST_LOG_MESSAGES: RefCell<Vec<CString>> = const { RefCell::new(Vec::new()) };
 }
 
 #[cfg(test)]
@@ -93,24 +95,34 @@ pub unsafe extern "C" fn nfc_rs_log_message(
         // Store a cloned CString so tests can inspect it
         let stored =
             CString::new(c.to_bytes()).unwrap_or_else(|_| CString::new("<invalid>").unwrap());
-        TEST_LAST_LOG.with(|cell| {
-            *cell.borrow_mut() = Some(stored);
+        TEST_LOG_MESSAGES.with(|cell| {
+            cell.borrow_mut().push(stored);
         });
     }
 }
 
 #[cfg(test)]
 pub fn test_get_last_log() -> Option<String> {
-    TEST_LAST_LOG.with(|cell| {
+    TEST_LOG_MESSAGES.with(|cell| {
         cell.borrow()
-            .as_ref()
+            .last()
             .map(|c| c.to_string_lossy().into_owned())
     })
 }
 
 #[cfg(test)]
+pub fn test_get_logs() -> Vec<String> {
+    TEST_LOG_MESSAGES.with(|cell| {
+        cell.borrow()
+            .iter()
+            .map(|entry| entry.to_string_lossy().into_owned())
+            .collect()
+    })
+}
+
+#[cfg(test)]
 pub fn test_clear_last_log() {
-    TEST_LAST_LOG.with(|cell| cell.borrow_mut().take());
+    TEST_LOG_MESSAGES.with(|cell| cell.borrow_mut().clear());
 }
 
 fn log_message(priority: u8, message: &str) {
@@ -120,7 +132,7 @@ fn log_message(priority: u8, message: &str) {
 }
 
 #[cfg(all(not(test), libnfc_external_bridges))]
-unsafe fn emit_log_message(
+pub(crate) unsafe fn emit_log_message(
     group: u8,
     category: *const c_char,
     priority: u8,
@@ -130,7 +142,7 @@ unsafe fn emit_log_message(
 }
 
 #[cfg(any(test, not(libnfc_external_bridges)))]
-unsafe fn emit_log_message(
+pub(crate) unsafe fn emit_log_message(
     group: u8,
     category: *const c_char,
     priority: u8,

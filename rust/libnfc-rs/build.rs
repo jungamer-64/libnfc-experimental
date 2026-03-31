@@ -157,6 +157,11 @@ fn main() {
         println!("cargo:rustc-cfg=libnfc_external_bridges");
     }
 
+    println!("cargo:rerun-if-env-changed=LIBNFC_RS_CONFDIR");
+    if let Ok(confdir) = env::var("LIBNFC_RS_CONFDIR") {
+        println!("cargo:rustc-env=LIBNFC_RS_CONFDIR={}", confdir);
+    }
+
     emit_enabled_driver_cfgs();
 
     // Conservative default: do not assume availability.

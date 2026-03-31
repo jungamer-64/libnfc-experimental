@@ -441,27 +441,7 @@ unsafe fn push_driver(driver: *const nfc_driver) -> c_int {
 
 #[cfg(all(not(test), libnfc_external_bridges))]
 unsafe extern "C" {
-    fn nfc_context_free(context: *mut nfc_context);
     fn nfc_close(device: *mut nfc_device);
-}
-
-#[cfg(all(not(test), libnfc_external_bridges))]
-unsafe fn bridge_context_free(context: *mut nfc_context) {
-    unsafe { nfc_context_free(context) };
-}
-
-#[cfg(any(test, not(libnfc_external_bridges)))]
-unsafe fn bridge_context_free(context: *mut nfc_context) {
-    #[cfg(test)]
-    unsafe {
-        nfc_context_free(context);
-        return;
-    }
-
-    #[cfg(not(test))]
-    unsafe {
-        crate::release_allocated_ptr(context as *mut libc::c_void);
-    }
 }
 
 #[cfg(any(test, not(libnfc_external_bridges)))]
@@ -735,7 +715,7 @@ pub unsafe extern "C" fn nfc_init(context: *mut *mut nfc_context) {
 pub unsafe extern "C" fn nfc_exit(context: *mut nfc_context) {
     ffi_catch_unwind_void("nfc_exit", || unsafe {
         clear_registry();
-        bridge_context_free(context);
+        crate::lifecycle::nfc_context_free(context);
     });
 }
 
@@ -743,7 +723,6 @@ pub unsafe extern "C" fn nfc_exit(context: *mut nfc_context) {
 #[derive(Clone, Default)]
 struct CoreBridgeTestState {
     close_calls: usize,
-    context_free_calls: usize,
 }
 
 #[cfg(test)]
@@ -766,16 +745,6 @@ fn snapshot_core_bridge_test_state() -> CoreBridgeTestState {
 
 #[cfg(test)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_context_free(context: *mut nfc_context) {
-    CORE_BRIDGE_TEST_STATE.with(|cell| {
-        cell.borrow_mut().context_free_calls += 1;
-    });
-
-    unsafe { crate::release_allocated_ptr(context as *mut libc::c_void) };
-}
-
-#[cfg(test)]
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_close(device: *mut nfc_device) {
     CORE_BRIDGE_TEST_STATE.with(|cell| {
         cell.borrow_mut().close_calls += 1;
@@ -787,7 +756,10 @@ pub unsafe extern "C" fn nfc_close(device: *mut nfc_device) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lifecycle::{nfc_context_alloc_defaults, nfc_device_free};
+    use crate::lifecycle::{
+        nfc_context_alloc_defaults, nfc_device_free, reset_lifecycle_test_state,
+        snapshot_lifecycle_test_state,
+    };
     use crate::{test_clear_last_log, test_get_last_log};
     use std::ffi::CString;
     use std::sync::{Mutex, MutexGuard};
@@ -1172,6 +1144,7 @@ mod tests {
         clear_registry();
         reset_fake_driver_state();
         reset_core_bridge_test_state();
+        reset_lifecycle_test_state();
         test_clear_last_log();
     }
 
@@ -1260,7 +1233,7 @@ mod tests {
         }
 
         assert!(registry_snapshot().is_empty());
-        assert_eq!(snapshot_core_bridge_test_state().context_free_calls, 1);
+        assert_eq!(snapshot_lifecycle_test_state().context_free_calls, 1);
     }
 
     #[test]

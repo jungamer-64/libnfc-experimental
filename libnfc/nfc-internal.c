@@ -82,19 +82,15 @@ void string_as_boolean(const char *s, bool *value)
 }
 
 void
-nfc_rs_context_conf_load(nfc_context *context)
-{
-#ifdef CONFFILES
-  conf_load(context);
-#else
-  (void)context;
-#endif
-}
-
-void
 nfc_rs_context_log_init(const nfc_context *context)
 {
   log_init(context);
+}
+
+void
+nfc_rs_context_log_exit(void)
+{
+  log_exit();
 }
 
 void
@@ -241,11 +237,13 @@ nfc_context_new(void)
 }
 #endif
 
+#ifndef USE_RUST_NFC_LIFECYCLE
 void nfc_context_free(nfc_context *context)
 {
   log_exit();
   free(context);
 }
+#endif
 
 void prepare_initiator_data(const nfc_modulation nm, uint8_t **ppbtInitiatorData, size_t *pszInitiatorData)
 {

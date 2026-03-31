@@ -137,24 +137,8 @@ pub struct nfc_device {
 
 #[cfg(all(not(test), libnfc_external_bridges))]
 unsafe extern "C" {
-    fn nfc_rs_context_conf_load(context: *mut nfc_context);
     fn nfc_rs_context_log_init(context: *const nfc_context);
-}
-
-#[cfg(all(not(test), libnfc_external_bridges))]
-unsafe fn bridge_context_conf_load(context: *mut nfc_context) {
-    unsafe { nfc_rs_context_conf_load(context) };
-}
-
-#[cfg(any(test, not(libnfc_external_bridges)))]
-unsafe fn bridge_context_conf_load(context: *mut nfc_context) {
-    #[cfg(test)]
-    unsafe {
-        nfc_rs_context_conf_load(context);
-    }
-
-    #[cfg(not(test))]
-    let _ = context;
+    fn nfc_rs_context_log_exit();
 }
 
 #[cfg(all(not(test), libnfc_external_bridges))]
@@ -171,6 +155,23 @@ unsafe fn bridge_context_log_init(context: *const nfc_context) {
 
     #[cfg(not(test))]
     let _ = context;
+}
+
+#[cfg(all(not(test), libnfc_external_bridges))]
+unsafe fn bridge_context_log_exit() {
+    unsafe { nfc_rs_context_log_exit() };
+}
+
+#[cfg(any(test, not(libnfc_external_bridges)))]
+unsafe fn bridge_context_log_exit() {
+    #[cfg(test)]
+    unsafe {
+        nfc_rs_context_log_exit();
+        return;
+    }
+
+    #[cfg(not(test))]
+    {}
 }
 
 unsafe fn allocate_zeroed<T>(label: &str) -> *mut T {
@@ -424,7 +425,7 @@ unsafe fn nfc_context_new_impl() -> *mut nfc_context {
     }
 
     if cfg!(libnfc_conffiles) {
-        unsafe { bridge_context_conf_load(context) };
+        unsafe { crate::conf::load_context_config(context) };
     }
 
     if cfg!(libnfc_envvars) {
@@ -504,105 +505,56 @@ pub unsafe extern "C" fn nfc_device_free(device: *mut nfc_device) {
     });
 }
 
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nfc_context_free(context: *mut nfc_context) {
+    ffi_catch_unwind_void("nfc_context_free", || unsafe {
+        increment_context_free_count_for_tests();
+        bridge_context_log_exit();
+        free_context_allocation(context);
+    });
+}
+
 #[cfg(test)]
 #[derive(Clone, Default)]
-struct BridgeTestState {
-    conf_load_calls: usize,
-    log_init_calls: usize,
-    events: Vec<&'static str>,
-    configured_devices: Vec<(Vec<u8>, Vec<u8>, bool)>,
-    configured_allow_autoscan: Option<bool>,
-    configured_allow_intrusive_scan: Option<bool>,
-    configured_log_level: Option<u32>,
+pub(crate) struct LifecycleBridgeTestState {
+    pub(crate) log_init_calls: usize,
+    pub(crate) log_exit_calls: usize,
+    pub(crate) context_free_calls: usize,
+    pub(crate) events: Vec<&'static str>,
 }
 
 #[cfg(test)]
 thread_local! {
-    static TEST_BRIDGE_STATE: std::cell::RefCell<BridgeTestState> =
-        std::cell::RefCell::new(BridgeTestState::default());
+    static TEST_LIFECYCLE_STATE: std::cell::RefCell<LifecycleBridgeTestState> =
+        std::cell::RefCell::new(LifecycleBridgeTestState::default());
 }
 
 #[cfg(test)]
-fn reset_test_bridge_state() {
-    TEST_BRIDGE_STATE.with(|cell| {
-        *cell.borrow_mut() = BridgeTestState::default();
+pub(crate) fn reset_lifecycle_test_state() {
+    TEST_LIFECYCLE_STATE.with(|cell| {
+        *cell.borrow_mut() = LifecycleBridgeTestState::default();
     });
 }
 
 #[cfg(test)]
-fn update_test_bridge_state<F>(update: F)
-where
-    F: FnOnce(&mut BridgeTestState),
-{
-    TEST_BRIDGE_STATE.with(|cell| update(&mut cell.borrow_mut()));
+pub(crate) fn snapshot_lifecycle_test_state() -> LifecycleBridgeTestState {
+    TEST_LIFECYCLE_STATE.with(|cell| cell.borrow().clone())
 }
 
 #[cfg(test)]
-fn snapshot_test_bridge_state() -> BridgeTestState {
-    TEST_BRIDGE_STATE.with(|cell| cell.borrow().clone())
-}
-
-#[cfg(test)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_rs_context_conf_load(context: *mut nfc_context) {
-    let snapshot = TEST_BRIDGE_STATE.with(|cell| {
-        let mut state = cell.borrow_mut();
-        state.conf_load_calls += 1;
-        state.events.push("conf_load");
-        state.clone()
+fn increment_context_free_count_for_tests() {
+    TEST_LIFECYCLE_STATE.with(|cell| {
+        cell.borrow_mut().context_free_calls += 1;
     });
-
-    if context.is_null() {
-        return;
-    }
-
-    unsafe {
-        if let Some(value) = snapshot.configured_allow_autoscan {
-            (*context).allow_autoscan = value;
-        }
-        if let Some(value) = snapshot.configured_allow_intrusive_scan {
-            (*context).allow_intrusive_scan = value;
-        }
-        if let Some(value) = snapshot.configured_log_level {
-            (*context).log_level = value;
-        }
-
-        for (index, (name, connstring, optional)) in snapshot
-            .configured_devices
-            .iter()
-            .enumerate()
-            .take(MAX_USER_DEFINED_DEVICES)
-        {
-            let device = &mut (*context).user_defined_devices[index];
-            let _ = copy_bytes_to_buffer(
-                device.name.as_mut_ptr(),
-                DEVICE_NAME_LENGTH,
-                name,
-                "test name copy failed",
-            );
-            let _ = copy_bytes_to_buffer(
-                device.connstring.as_mut_ptr(),
-                NFC_BUFSIZE_CONNSTRING,
-                connstring,
-                "test connstring copy failed",
-            );
-            device.optional = *optional;
-        }
-
-        if !snapshot.configured_devices.is_empty() {
-            (*context).user_defined_device_count = snapshot
-                .configured_devices
-                .len()
-                .min(MAX_USER_DEFINED_DEVICES)
-                as c_uint;
-        }
-    }
 }
+
+#[cfg(not(test))]
+fn increment_context_free_count_for_tests() {}
 
 #[cfg(test)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_rs_context_log_init(_context: *const nfc_context) {
-    TEST_BRIDGE_STATE.with(|cell| {
+    TEST_LIFECYCLE_STATE.with(|cell| {
         let mut state = cell.borrow_mut();
         state.log_init_calls += 1;
         state.events.push("log_init");
@@ -610,9 +562,24 @@ pub unsafe extern "C" fn nfc_rs_context_log_init(_context: *const nfc_context) {
 }
 
 #[cfg(test)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nfc_rs_context_log_exit() {
+    TEST_LIFECYCLE_STATE.with(|cell| {
+        let mut state = cell.borrow_mut();
+        state.log_exit_calls += 1;
+        state.events.push("log_exit");
+    });
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::conf::set_test_conf_root;
     use std::ffi::{CStr, CString, OsString};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Mutex, OnceLock};
 
     fn release_context(context: *mut nfc_context) {
@@ -662,6 +629,41 @@ mod tests {
         }
     }
 
+    struct TempConfigDir {
+        root: PathBuf,
+    }
+
+    impl TempConfigDir {
+        fn new() -> Self {
+            static COUNTER: AtomicUsize = AtomicUsize::new(0);
+            let root = std::env::temp_dir().join(format!(
+                "libnfc-rs-conf-{}-{}",
+                process::id(),
+                COUNTER.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir_all(&root).unwrap();
+            Self { root }
+        }
+
+        fn install(&self) {
+            set_test_conf_root(Some(self.root.clone()));
+        }
+
+        fn write_file(&self, relative: &str, contents: &str) {
+            let path = self.root.join(relative);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::write(path, contents).unwrap();
+        }
+    }
+
+    impl Drop for TempConfigDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
     fn clear_env(env: &mut ScopedEnv) {
         for key in [
             "LIBNFC_DEFAULT_DEVICE",
@@ -672,6 +674,12 @@ mod tests {
         ] {
             env.remove(key);
         }
+    }
+
+    fn reset_test_world() {
+        reset_lifecycle_test_state();
+        set_test_conf_root(None);
+        crate::test_clear_last_log();
     }
 
     #[test]
@@ -693,12 +701,11 @@ mod tests {
     }
 
     #[test]
-    fn context_new_applies_defaults_and_bridge_order() {
+    fn context_new_applies_defaults_and_initializes_logging() {
         let _env_guard = env_lock().lock().unwrap();
         let mut env = ScopedEnv::new();
         clear_env(&mut env);
-        reset_test_bridge_state();
-        crate::test_clear_last_log();
+        reset_test_world();
 
         let context = unsafe { nfc_context_new() };
         assert!(!context.is_null());
@@ -710,10 +717,10 @@ mod tests {
             assert_eq!((*context).user_defined_device_count, 0);
         }
 
-        let bridge_state = snapshot_test_bridge_state();
-        assert_eq!(bridge_state.conf_load_calls, 1);
+        let bridge_state = snapshot_lifecycle_test_state();
         assert_eq!(bridge_state.log_init_calls, 1);
-        assert_eq!(bridge_state.events, vec!["conf_load", "log_init"]);
+        assert_eq!(bridge_state.log_exit_calls, 0);
+        assert_eq!(bridge_state.events, vec!["log_init"]);
         assert_eq!(
             crate::test_get_last_log().as_deref(),
             Some("0 device(s) defined by user")
@@ -728,7 +735,7 @@ mod tests {
         let mut env = ScopedEnv::new();
         clear_env(&mut env);
         env.set("LIBNFC_DEFAULT_DEVICE", "pn532_uart:/dev/ttyUSB0");
-        reset_test_bridge_state();
+        reset_test_world();
 
         let context = unsafe { nfc_context_new() };
         assert!(!context.is_null());
@@ -750,25 +757,139 @@ mod tests {
     }
 
     #[test]
+    fn context_new_loads_config_files_and_devices_d_entries() {
+        let _env_guard = env_lock().lock().unwrap();
+        let mut env = ScopedEnv::new();
+        clear_env(&mut env);
+        reset_test_world();
+
+        let confdir = TempConfigDir::new();
+        confdir.write_file(
+            "libnfc.conf",
+            concat!(
+                "allow_autoscan = false\n",
+                "allow_intrusive_scan = true\n",
+                "log_level = 7\n",
+                "device.name = \"config device\"\n",
+                "device.connstring = pn532_spi:/dev/spidev0.0\n",
+                "device.optional = True\n"
+            ),
+        );
+        confdir.write_file(
+            "devices.d/extra.conf",
+            concat!(
+                "name = \"extra device\"\n",
+                "connstring = pn532_i2c:/dev/i2c-1\n",
+                "optional = 1\n"
+            ),
+        );
+        confdir.install();
+
+        let context = unsafe { nfc_context_new() };
+        assert!(!context.is_null());
+
+        unsafe {
+            assert!(!(*context).allow_autoscan);
+            assert!((*context).allow_intrusive_scan);
+            assert_eq!((*context).log_level, 7);
+            assert_eq!((*context).user_defined_device_count, 2);
+
+            let first = &(*context).user_defined_devices[0];
+            assert_eq!(
+                CStr::from_ptr(first.name.as_ptr()).to_bytes(),
+                b"config device"
+            );
+            assert_eq!(
+                CStr::from_ptr(first.connstring.as_ptr()).to_bytes(),
+                b"pn532_spi:/dev/spidev0.0"
+            );
+            assert!(first.optional);
+
+            let second = &(*context).user_defined_devices[1];
+            assert_eq!(
+                CStr::from_ptr(second.name.as_ptr()).to_bytes(),
+                b"extra device"
+            );
+            assert_eq!(
+                CStr::from_ptr(second.connstring.as_ptr()).to_bytes(),
+                b"pn532_i2c:/dev/i2c-1"
+            );
+            assert!(second.optional);
+        }
+
+        let logs = crate::test_get_logs();
+        assert!(logs.iter().any(|entry| entry.contains("key: [allow_autoscan], value: [false]")));
+
+        release_context(context);
+    }
+
+    #[test]
+    fn context_new_logs_parse_errors_and_caps_device_count() {
+        let _env_guard = env_lock().lock().unwrap();
+        let mut env = ScopedEnv::new();
+        clear_env(&mut env);
+        reset_test_world();
+
+        let confdir = TempConfigDir::new();
+        confdir.write_file(
+            "libnfc.conf",
+            concat!(
+                "unknown.key = value\n",
+                "broken line\n",
+                "device.name = first\n",
+                "device.connstring = pn532_uart:/dev/ttyUSB0\n",
+                "device.name = second\n",
+                "device.connstring = pn53x_usb:001:002\n",
+                "device.name = third\n",
+                "device.connstring = pn532_spi:/dev/spidev0.0\n",
+                "device.name = fourth\n",
+                "device.connstring = pn532_i2c:/dev/i2c-1\n",
+                "device.name = fifth\n",
+                "device.connstring = pn71xx:/dev/nfc0\n"
+            ),
+        );
+        confdir.install();
+
+        let context = unsafe { nfc_context_new() };
+        assert!(!context.is_null());
+
+        unsafe {
+            assert_eq!((*context).user_defined_device_count as usize, MAX_USER_DEFINED_DEVICES);
+        }
+
+        let logs = crate::test_get_logs();
+        assert!(logs
+            .iter()
+            .any(|entry| entry.contains("Unknown key in config line: unknown.key = value")));
+        assert!(logs
+            .iter()
+            .any(|entry| entry.contains("Parse error on line #2: broken line")));
+        assert!(logs
+            .iter()
+            .any(|entry| entry.contains("Configuration exceeded maximum user-defined devices.")));
+
+        release_context(context);
+    }
+
+    #[test]
     fn context_new_libnfc_device_overrides_config_and_default_device() {
         let _env_guard = env_lock().lock().unwrap();
         let mut env = ScopedEnv::new();
         clear_env(&mut env);
         env.set("LIBNFC_DEFAULT_DEVICE", "pn532_uart:/dev/ttyUSB0");
         env.set("LIBNFC_DEVICE", "pn53x_usb:001:002");
-        reset_test_bridge_state();
-        update_test_bridge_state(|state| {
-            state.configured_devices.push((
-                b"config device".to_vec(),
-                b"pn532_spi:/dev/spidev0.0".to_vec(),
-                true,
-            ));
-            state.configured_devices.push((
-                b"config device 2".to_vec(),
-                b"pn532_i2c:/dev/i2c-1".to_vec(),
-                false,
-            ));
-        });
+        reset_test_world();
+
+        let confdir = TempConfigDir::new();
+        confdir.write_file(
+            "libnfc.conf",
+            concat!(
+                "device.name = \"config device\"\n",
+                "device.connstring = pn532_spi:/dev/spidev0.0\n",
+                "device.optional = true\n"
+            ),
+        );
+        confdir.install();
 
         let context = unsafe { nfc_context_new() };
         assert!(!context.is_null());
@@ -797,12 +918,18 @@ mod tests {
         env.set("LIBNFC_AUTO_SCAN", "false");
         env.set("LIBNFC_INTRUSIVE_SCAN", "true");
         env.set("LIBNFC_LOG_LEVEL", "42");
-        reset_test_bridge_state();
-        update_test_bridge_state(|state| {
-            state.configured_allow_autoscan = Some(true);
-            state.configured_allow_intrusive_scan = Some(false);
-            state.configured_log_level = Some(7);
-        });
+        reset_test_world();
+
+        let confdir = TempConfigDir::new();
+        confdir.write_file(
+            "libnfc.conf",
+            concat!(
+                "allow_autoscan = true\n",
+                "allow_intrusive_scan = false\n",
+                "log_level = 7\n"
+            ),
+        );
+        confdir.install();
 
         let context = unsafe { nfc_context_new() };
         assert!(!context.is_null());
@@ -822,7 +949,7 @@ mod tests {
         let mut env = ScopedEnv::new();
         clear_env(&mut env);
         env.set("LIBNFC_INTRUSIVE_SCAN", "True");
-        reset_test_bridge_state();
+        reset_test_world();
 
         let context = unsafe { nfc_context_new() };
         assert!(!context.is_null());
@@ -832,6 +959,31 @@ mod tests {
         }
 
         release_context(context);
+    }
+
+    #[test]
+    fn context_free_calls_log_exit_and_accepts_null() {
+        let _env_guard = env_lock().lock().unwrap();
+        let mut env = ScopedEnv::new();
+        clear_env(&mut env);
+        reset_test_world();
+
+        let confdir = TempConfigDir::new();
+        confdir.write_file("libnfc.conf", "");
+        confdir.install();
+
+        let context = unsafe { nfc_context_new() };
+        assert!(!context.is_null());
+
+        unsafe {
+            nfc_context_free(context);
+            nfc_context_free(ptr::null_mut());
+        }
+
+        let state = snapshot_lifecycle_test_state();
+        assert_eq!(state.context_free_calls, 2);
+        assert_eq!(state.log_exit_calls, 2);
+        assert_eq!(state.events, vec!["log_init", "log_exit", "log_exit"]);
     }
 
     #[test]

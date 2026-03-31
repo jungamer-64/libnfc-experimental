@@ -26,7 +26,7 @@
 
 * Rust の公開 FFI 成果物は `staticlib` を基準にし、`Cargo.toml` では Rust 側のテスト/内部リンク都合で `rlib` も併記している。`cdylib` は未採用で、必要になった場合は別途扱う。
 * 現在 Rust 化済みの lifecycle slice は `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()`。`nfc_core` を有効にした構成では `nfc_register_driver()`、`nfc_open()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_close()` も Rust が所有する。
-* `nfc_context_new()` の env/config hydration と `log_init()` 呼び出し順、ならびに `nfc_core` 有効時の driver registry / open / list / init / exit / close の制御は Rust が所有する。一方で config parser 本体（`conf_load()` のファイル I/O）、`nfc_context_free()`、`log_exit()`、実ドライバ実装は引き続き C 側が責務を持つ。
+* `nfc_context_new()` の env/config hydration、config parser / file I/O、`log_init()` 呼び出し順、ならびに `nfc_core` 有効時の driver registry / open / list / init / exit / close の制御は Rust が所有する。`nfc_context_free()` も Rust が所有し、`log_exit()` の backend のみ内部 C bridge を介して再利用する。実ドライバ実装は引き続き C 側が責務を持つ。
 * GitHub Actions の既成事実は `build-and-test`、`rust-sanity`、`asan`。`ci/ffi-sanity` と `ci/full` は追加候補であり、まだ常設ジョブではない。
 * Rust ビルド出力は CMake では `build/rust-target/` を基準にする。
 * CMake は `LIBNFC_RS_WITH_ENVVARS`、`LIBNFC_RS_WITH_CONFFILES`、`LIBNFC_RS_WITH_LOG`、`LIBNFC_RS_WITH_DEBUG` を `build.rs` へ渡し、Rust 側 cfg を C のビルド設定と揃える。
@@ -129,7 +129,7 @@
 **主要タスク**
 
 * 各構造体を `#[repr(C)]` でミラーリングしつつ、内部実装は安全型で書く。
-* CのAPIは薄いラッパ関数で保持しつつ ownership 境界を段階的に移す（現時点では `nfc_context_free()` は C が所有し、`nfc_context_new()` は Rust が内部 bridge を介して config/log 初期化をオーケストレーションする）。
+* CのAPIは薄いラッパ関数で保持しつつ ownership 境界を段階的に移す（現時点では `nfc_context_new()` と `nfc_context_free()` を Rust が所有し、config parser / file I/O と teardown の主導権も Rust が持つ一方、`log_init()` / `log_exit()` backend は内部 C bridge を介して再利用する）。
 * Cargoテスト（境界条件・エラーパス）を拡充。
 
 **成果物**
@@ -159,9 +159,8 @@
 - ビルド切替は Cargo `nfc_lifecycle` / `nfc_core` と CMake `USE_RUST_NFC_LIFECYCLE` / `USE_RUST_NFC_CORE` で揃える。`USE_RUST_NFC_CORE` は lifecycle slice を前提にする。
 - 現在の基準線では Rust が `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()` に加え、`nfc_register_driver()`、`nfc_open()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_close()` を所有する。
 - `nfc_context_new()` は Rust 実装とし、env/config hydration と `log_init()` 呼び出し順を Rust が所有する。
-- `conf_load()` の parser / file I/O 本体、`nfc_context_free()`、`log_exit()` は C が継続して所有する。
-- `nfc_context_free()` は `log_exit()` を持つため C のまま据え置く。
-- `nfc_core` は実ドライバを Rust に移したわけではなく、registry / open / list / init / exit / close の薄い制御層を Rust へ寄せた段階と位置付ける。`conf_load()` と各ドライバ実装は Phase 4 の後続バッチで分離して扱う。
+- `conf_load()` の parser / file I/O 本体は Rust へ移行済みで、`nfc_context_free()` も Rust 実装へ切り替わった。`log_init()` / `log_exit()` backend と実ドライバ実装は C が継続して所有する。
+- `nfc_core` は実ドライバを Rust に移したわけではなく、registry / open / list / init / exit / close の薄い制御層を Rust へ寄せた段階と位置付ける。各ドライバ実装の移行は Phase 4 の後続バッチで分離して扱う。
 - Nightly/ASan 向けには `asan_tests` feature を追加し、`tests/mprotect.rs` は `nfc_secure` 前提で gate する。
 
 **主要タスク**

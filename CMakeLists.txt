@@ -147,6 +147,7 @@ add_custom_command(
       LIBNFC_RS_WITH_LOG=${LIBNFC_LOG}
       LIBNFC_RS_WITH_DEBUG=${LIBNFC_DEBUG_MODE}
       LIBNFC_RS_EXTERNAL_BRIDGES=1
+      LIBNFC_RS_CONFDIR=${LIBNFC_CONFDIR}
       LIBNFC_RS_ENABLED_DRIVERS=${LIBNFC_RS_ENABLED_DRIVERS_ENV}
       ${CARGO_EXECUTABLE} build --release
       --manifest-path "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml"

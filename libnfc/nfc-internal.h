@@ -199,8 +199,8 @@ extern "C"
   nfc_context *nfc_context_new(void);
   void nfc_context_free(nfc_context *context);
   nfc_context *nfc_context_alloc_defaults(void);
-  void nfc_rs_context_conf_load(nfc_context *context);
   void nfc_rs_context_log_init(const nfc_context *context);
+  void nfc_rs_context_log_exit(void);
   void nfc_rs_log_message(uint8_t group, const char *category, uint8_t priority, const char *message);
 
   /**
