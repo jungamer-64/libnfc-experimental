@@ -77,3 +77,4 @@ build-*
 .serena
 cargo.lock
 /tmp
+.codex
