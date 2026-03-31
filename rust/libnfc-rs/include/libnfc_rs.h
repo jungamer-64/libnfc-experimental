@@ -106,6 +106,13 @@ int connstring_decode(const char *connstring,
                       char **pparam1,
                       char **pparam2);
 
+#if !defined(RUST_TEST)
+extern void iso14443_cascade_uid(const uint8_t *abt_uid,
+                                 size_t sz_uid,
+                                 uint8_t *pbt_cascaded_uid,
+                                 size_t *psz_cascaded_uid);
+#endif
+
 struct nfc_context *nfc_context_alloc_defaults(void);
 
 struct nfc_device *nfc_device_new(const struct nfc_context *context, const char *connstring);

@@ -18,6 +18,10 @@ use crate::{
     ffi_catch_unwind_void, log_error, log_message, release_allocated_ptr, reset_last_error,
     set_last_error_message,
 };
+use crate::ffi_types::{
+    nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_mode, nfc_modulation,
+    nfc_modulation_type, nfc_property, nfc_target,
+};
 use libc::{c_char, c_int, c_uint, c_void};
 use std::mem::size_of;
 use std::ptr;
@@ -58,6 +62,60 @@ type nfc_driver_close_fn = unsafe extern "C" fn(*mut nfc_device);
 type nfc_driver_strerror_fn = unsafe extern "C" fn(*const nfc_device) -> *const c_char;
 #[allow(non_camel_case_types)]
 type nfc_driver_void_fn = unsafe extern "C" fn();
+#[allow(non_camel_case_types)]
+type nfc_driver_initiator_init_fn = unsafe extern "C" fn(*mut nfc_device) -> c_int;
+#[allow(non_camel_case_types)]
+type nfc_driver_initiator_init_secure_element_fn = unsafe extern "C" fn(*mut nfc_device) -> c_int;
+#[allow(non_camel_case_types)]
+type nfc_driver_initiator_select_passive_target_fn = unsafe extern "C" fn(
+    *mut nfc_device,
+    nfc_modulation,
+    *const u8,
+    usize,
+    *mut nfc_target,
+) -> c_int;
+#[allow(non_camel_case_types)]
+type nfc_driver_initiator_poll_target_fn = unsafe extern "C" fn(
+    *mut nfc_device,
+    *const nfc_modulation,
+    usize,
+    u8,
+    u8,
+    *mut nfc_target,
+) -> c_int;
+#[allow(non_camel_case_types)]
+type nfc_driver_initiator_select_dep_target_fn = unsafe extern "C" fn(
+    *mut nfc_device,
+    nfc_dep_mode,
+    nfc_baud_rate,
+    *const nfc_dep_info,
+    *mut nfc_target,
+    c_int,
+) -> c_int;
+#[allow(non_camel_case_types)]
+type nfc_driver_initiator_deselect_target_fn = unsafe extern "C" fn(*mut nfc_device) -> c_int;
+#[allow(non_camel_case_types)]
+type nfc_driver_initiator_target_is_present_fn =
+    unsafe extern "C" fn(*mut nfc_device, *const nfc_target) -> c_int;
+#[allow(non_camel_case_types)]
+type nfc_driver_target_init_fn =
+    unsafe extern "C" fn(*mut nfc_device, *mut nfc_target, *mut u8, usize, c_int) -> c_int;
+#[allow(non_camel_case_types)]
+type nfc_driver_device_set_property_bool_fn =
+    unsafe extern "C" fn(*mut nfc_device, nfc_property, bool) -> c_int;
+#[allow(non_camel_case_types)]
+type nfc_driver_device_set_property_int_fn =
+    unsafe extern "C" fn(*mut nfc_device, nfc_property, c_int) -> c_int;
+#[allow(non_camel_case_types)]
+type nfc_driver_get_supported_modulation_fn =
+    unsafe extern "C" fn(*mut nfc_device, nfc_mode, *mut *const nfc_modulation_type) -> c_int;
+#[allow(non_camel_case_types)]
+type nfc_driver_get_supported_baud_rate_fn = unsafe extern "C" fn(
+    *mut nfc_device,
+    nfc_mode,
+    nfc_modulation_type,
+    *mut *const nfc_baud_rate,
+) -> c_int;
 
 #[allow(non_camel_case_types)]
 #[repr(C)]
@@ -68,26 +126,26 @@ pub struct nfc_driver {
     pub open: Option<nfc_driver_open_fn>,
     pub close: Option<nfc_driver_close_fn>,
     pub strerror: Option<nfc_driver_strerror_fn>,
-    pub initiator_init: Option<nfc_driver_void_fn>,
-    pub initiator_init_secure_element: Option<nfc_driver_void_fn>,
-    pub initiator_select_passive_target: Option<nfc_driver_void_fn>,
-    pub initiator_poll_target: Option<nfc_driver_void_fn>,
-    pub initiator_select_dep_target: Option<nfc_driver_void_fn>,
-    pub initiator_deselect_target: Option<nfc_driver_void_fn>,
+    pub initiator_init: Option<nfc_driver_initiator_init_fn>,
+    pub initiator_init_secure_element: Option<nfc_driver_initiator_init_secure_element_fn>,
+    pub initiator_select_passive_target: Option<nfc_driver_initiator_select_passive_target_fn>,
+    pub initiator_poll_target: Option<nfc_driver_initiator_poll_target_fn>,
+    pub initiator_select_dep_target: Option<nfc_driver_initiator_select_dep_target_fn>,
+    pub initiator_deselect_target: Option<nfc_driver_initiator_deselect_target_fn>,
     pub initiator_transceive_bytes: Option<nfc_driver_void_fn>,
     pub initiator_transceive_bits: Option<nfc_driver_void_fn>,
     pub initiator_transceive_bytes_timed: Option<nfc_driver_void_fn>,
     pub initiator_transceive_bits_timed: Option<nfc_driver_void_fn>,
-    pub initiator_target_is_present: Option<nfc_driver_void_fn>,
-    pub target_init: Option<nfc_driver_void_fn>,
+    pub initiator_target_is_present: Option<nfc_driver_initiator_target_is_present_fn>,
+    pub target_init: Option<nfc_driver_target_init_fn>,
     pub target_send_bytes: Option<nfc_driver_void_fn>,
     pub target_receive_bytes: Option<nfc_driver_void_fn>,
     pub target_send_bits: Option<nfc_driver_void_fn>,
     pub target_receive_bits: Option<nfc_driver_void_fn>,
-    pub device_set_property_bool: Option<nfc_driver_void_fn>,
-    pub device_set_property_int: Option<nfc_driver_void_fn>,
-    pub get_supported_modulation: Option<nfc_driver_void_fn>,
-    pub get_supported_baud_rate: Option<nfc_driver_void_fn>,
+    pub device_set_property_bool: Option<nfc_driver_device_set_property_bool_fn>,
+    pub device_set_property_int: Option<nfc_driver_device_set_property_int_fn>,
+    pub get_supported_modulation: Option<nfc_driver_get_supported_modulation_fn>,
+    pub get_supported_baud_rate: Option<nfc_driver_get_supported_baud_rate_fn>,
     pub device_get_information_about: Option<nfc_driver_void_fn>,
     pub abort_command: Option<nfc_driver_void_fn>,
     pub idle: Option<nfc_driver_void_fn>,

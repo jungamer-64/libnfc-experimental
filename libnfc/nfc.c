@@ -136,6 +136,7 @@ struct nfc_driver_list
 const struct nfc_driver_list *nfc_drivers = NULL;
 #endif
 
+#ifndef USE_RUST_NFC_CORE
 static const char *nfc_property_name[] = {
     "NP_TIMEOUT_COMMAND",
     "NP_TIMEOUT_ATR",
@@ -152,6 +153,7 @@ static const char *nfc_property_name[] = {
     "NP_FORCE_ISO14443_A",
     "NP_FORCE_ISO14443_B",
     "NP_FORCE_SPEED_106"};
+#endif
 
 static const error_message_t ERROR_MESSAGES[] = {
     {NFC_SUCCESS, "Success"},
@@ -192,10 +194,12 @@ static const modulation_type_name_t MODULATION_TYPE_NAMES[] = {
  * FORWARD DECLARATIONS
  * ========================================================================== */
 
+#ifndef USE_RUST_NFC_CORE
 static int nfc_device_validate_modulation(
     nfc_device *pnd,
     const nfc_mode mode,
     const nfc_modulation *nm);
+#endif
 
 /* ============================================================================
  * STRING VALIDATION UTILITIES
@@ -778,6 +782,7 @@ apply_property_sequence(
   return NFC_SUCCESS;
 }
 
+#ifndef USE_RUST_NFC_CORE
 int nfc_device_set_property_int(
     nfc_device *pnd,
     const nfc_property property,
@@ -927,6 +932,7 @@ int nfc_initiator_init_secure_element(nfc_device *pnd)
 {
   return HAL(initiator_init_secure_element, pnd);
 }
+#endif /* USE_RUST_NFC_CORE */
 
 /* Continues with remaining initiator functions... */
 
@@ -1053,6 +1059,7 @@ int str_nfc_target(char **buf, const nfc_target *pnt, bool verbose)
  * TARGET SELECTION AND LISTING
  * ========================================================================== */
 
+#ifndef USE_RUST_NFC_CORE
 static inline bool
 target_already_seen(const nfc_target *targets, size_t count, const nfc_target *candidate)
 {
@@ -1277,6 +1284,7 @@ end:
   }
   return result;
 }
+#endif /* USE_RUST_NFC_CORE */
 
 /* ============================================================================
  * DATA TRANSMISSION FUNCTIONS
@@ -1332,10 +1340,12 @@ int nfc_initiator_transceive_bits_timed(
              pbtRx, pbtRxPar, cycles);
 }
 
+#ifndef USE_RUST_NFC_CORE
 int nfc_initiator_target_is_present(nfc_device *pnd, const nfc_target *pnt)
 {
   return HAL(initiator_target_is_present, pnd, pnt);
 }
+#endif /* USE_RUST_NFC_CORE */
 
 /* ============================================================================
  * TARGET MODE DATA TRANSMISSION

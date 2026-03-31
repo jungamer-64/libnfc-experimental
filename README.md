@@ -106,7 +106,7 @@ Useful options:
 * `-DLIBNFC_DRIVER_PCSC=ON` to enable the PC/SC driver
 * `-DUSE_RUST_NFC_SECURE=ON` to use the Rust `nfc-secure` implementation
 * `-DUSE_RUST_NFC_LIFECYCLE=ON` to move lifecycle helpers to Rust
-* `-DUSE_RUST_NFC_CORE=ON` to move the core driver registry/open/list/init/exit/close entrypoints to Rust; this implies `-DUSE_RUST_NFC_LIFECYCLE=ON`
+* `-DUSE_RUST_NFC_CORE=ON` to move the core driver registry/open/list/init/exit/close and initiator orchestration entrypoints to Rust; this implies `-DUSE_RUST_NFC_LIFECYCLE=ON`
 
 Recommended Rust-core validation build:
 

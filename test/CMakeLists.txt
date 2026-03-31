@@ -31,6 +31,14 @@ add_executable(test_core_registry
 target_link_libraries(test_core_registry nfc)
 add_test(NAME core_registry COMMAND test_core_registry)
 
+if(USE_RUST_NFC_CORE)
+  add_executable(test_core_initiator
+    test_rust_core_initiator.c
+  )
+  target_link_libraries(test_core_initiator nfc)
+  add_test(NAME core_initiator COMMAND test_core_initiator)
+endif()
+
 find_package(LIBNFC_NCI QUIET)
 set(PN71XX_SMOKE_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/pn71xx-smoke")
 set(PN71XX_SMOKE_CONFIGURE_ARGS

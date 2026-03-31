@@ -24,7 +24,11 @@ use std::ptr;
 #[cfg(feature = "nfc_core")]
 mod core;
 #[cfg(feature = "nfc_lifecycle")]
+mod ffi_types;
+#[cfg(feature = "nfc_lifecycle")]
 mod conf;
+#[cfg(feature = "nfc_core")]
+mod initiator;
 #[cfg(feature = "nfc_lifecycle")]
 mod lifecycle;
 #[cfg(feature = "nfc_secure")]
