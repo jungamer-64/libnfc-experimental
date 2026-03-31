@@ -16,6 +16,8 @@ libc = "0.2"
 nfc_secure = []
 # Feature gate for replacing the C lifecycle alloc/free helpers with Rust.
 nfc_lifecycle = []
+# Feature gate for replacing the C core registry/open/list/init helpers with Rust.
+nfc_core = ["nfc_lifecycle"]
 # Debug helpers for nfc-secure (buffers overlap checks, suspicious size warnings)
 nfc_secure_debug = []
 # Feature used by the nightly ASan job to compile sanitizer-only tests cleanly.

@@ -22,8 +22,9 @@ use libc::{c_char, c_int, c_uint, c_void};
 use std::mem::size_of;
 use std::ptr;
 
-const DEVICE_NAME_LENGTH: usize = 256;
-const MAX_USER_DEFINED_DEVICES: usize = 4;
+pub(crate) const DEVICE_NAME_LENGTH: usize = 256;
+pub(crate) const MAX_USER_DEFINED_DEVICES: usize = 4;
+pub(crate) const NFC_DRIVER_NAME_MAX: usize = 64;
 const DEFAULT_CONTEXT_LOG_LEVEL: u32 = if cfg!(libnfc_debug) { 3 } else { 1 };
 const USER_DEFINED_DEFAULT_DEVICE_NAME: &[u8] = b"user defined default device";
 const USER_DEFINED_DEVICE_NAME: &[u8] = b"user defined device";
@@ -34,10 +35,66 @@ const ENV_LIBNFC_INTRUSIVE_SCAN: &[u8] = b"LIBNFC_INTRUSIVE_SCAN\0";
 const ENV_LIBNFC_LOG_LEVEL: &[u8] = b"LIBNFC_LOG_LEVEL\0";
 
 #[allow(non_camel_case_types)]
+pub(crate) type nfc_connstring = [c_char; NFC_BUFSIZE_CONNSTRING];
+
+#[allow(non_camel_case_types)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(C)]
+pub enum scan_type_enum {
+    NOT_INTRUSIVE = 0,
+    INTRUSIVE = 1,
+    NOT_AVAILABLE = 2,
+}
+
+#[allow(non_camel_case_types)]
+type nfc_driver_scan_fn =
+    unsafe extern "C" fn(*const nfc_context, *mut nfc_connstring, usize) -> usize;
+#[allow(non_camel_case_types)]
+type nfc_driver_open_fn =
+    unsafe extern "C" fn(*const nfc_context, *const c_char) -> *mut nfc_device;
+#[allow(non_camel_case_types)]
+type nfc_driver_close_fn = unsafe extern "C" fn(*mut nfc_device);
+#[allow(non_camel_case_types)]
+type nfc_driver_strerror_fn = unsafe extern "C" fn(*const nfc_device) -> *const c_char;
+#[allow(non_camel_case_types)]
+type nfc_driver_void_fn = unsafe extern "C" fn();
+
+#[allow(non_camel_case_types)]
 #[repr(C)]
 pub struct nfc_driver {
-    _private: [u8; 0],
+    pub name: *const c_char,
+    pub scan_type: scan_type_enum,
+    pub scan: Option<nfc_driver_scan_fn>,
+    pub open: Option<nfc_driver_open_fn>,
+    pub close: Option<nfc_driver_close_fn>,
+    pub strerror: Option<nfc_driver_strerror_fn>,
+    pub initiator_init: Option<nfc_driver_void_fn>,
+    pub initiator_init_secure_element: Option<nfc_driver_void_fn>,
+    pub initiator_select_passive_target: Option<nfc_driver_void_fn>,
+    pub initiator_poll_target: Option<nfc_driver_void_fn>,
+    pub initiator_select_dep_target: Option<nfc_driver_void_fn>,
+    pub initiator_deselect_target: Option<nfc_driver_void_fn>,
+    pub initiator_transceive_bytes: Option<nfc_driver_void_fn>,
+    pub initiator_transceive_bits: Option<nfc_driver_void_fn>,
+    pub initiator_transceive_bytes_timed: Option<nfc_driver_void_fn>,
+    pub initiator_transceive_bits_timed: Option<nfc_driver_void_fn>,
+    pub initiator_target_is_present: Option<nfc_driver_void_fn>,
+    pub target_init: Option<nfc_driver_void_fn>,
+    pub target_send_bytes: Option<nfc_driver_void_fn>,
+    pub target_receive_bytes: Option<nfc_driver_void_fn>,
+    pub target_send_bits: Option<nfc_driver_void_fn>,
+    pub target_receive_bits: Option<nfc_driver_void_fn>,
+    pub device_set_property_bool: Option<nfc_driver_void_fn>,
+    pub device_set_property_int: Option<nfc_driver_void_fn>,
+    pub get_supported_modulation: Option<nfc_driver_void_fn>,
+    pub get_supported_baud_rate: Option<nfc_driver_void_fn>,
+    pub device_get_information_about: Option<nfc_driver_void_fn>,
+    pub abort_command: Option<nfc_driver_void_fn>,
+    pub idle: Option<nfc_driver_void_fn>,
+    pub powerdown: Option<nfc_driver_void_fn>,
 }
+
+unsafe impl Sync for nfc_driver {}
 
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]

@@ -25,10 +25,15 @@ SET(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
 
 option (USE_RUST_NFC_SECURE "Use Rust implementation of nfc-secure" OFF)
 option (USE_RUST_NFC_LIFECYCLE "Use Rust implementation of nfc context/device lifecycle alloc/free helpers" OFF)
+option (USE_RUST_NFC_CORE "Use Rust implementation of nfc driver registry/open/list/init helpers" OFF)
 option (LIBNFC_LOG "Enable log facility (errors, warning, info and debug messages)" ON)
 option (LIBNFC_ENVVARS "Enable envvars facility" ON)
 set(LIBNFC_DEBUG_MODE OFF CACHE BOOL "Debug mode")
 option (LIBNFC_CONFFILES_MODE "Enable configuration files" ON)
+
+if(USE_RUST_NFC_CORE)
+  set(USE_RUST_NFC_LIFECYCLE ON)
+endif()
 
 # Optional: features to pass to cbindgen when generating the public Rust header.
 # By default this is empty which generates a stable header without debug helpers.
@@ -46,6 +51,43 @@ if(NOT CARGO_EXECUTABLE)
   message(FATAL_ERROR "cargo executable is required to build the Rust components")
 endif()
 
+# make it easy to locate CMake modules for finding libraries
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/modules/")
+INCLUDE(LibnfcDrivers)
+
+set(LIBNFC_RS_ENABLED_DRIVERS)
+if(LIBNFC_DRIVER_PCSC)
+  list(APPEND LIBNFC_RS_ENABLED_DRIVERS pcsc)
+endif()
+if(LIBNFC_DRIVER_ACR122_PCSC)
+  list(APPEND LIBNFC_RS_ENABLED_DRIVERS acr122_pcsc)
+endif()
+if(LIBNFC_DRIVER_ACR122_USB)
+  list(APPEND LIBNFC_RS_ENABLED_DRIVERS acr122_usb)
+endif()
+if(LIBNFC_DRIVER_ACR122S)
+  list(APPEND LIBNFC_RS_ENABLED_DRIVERS acr122s)
+endif()
+if(LIBNFC_DRIVER_PN53X_USB)
+  list(APPEND LIBNFC_RS_ENABLED_DRIVERS pn53x_usb)
+endif()
+if(LIBNFC_DRIVER_ARYGON)
+  list(APPEND LIBNFC_RS_ENABLED_DRIVERS arygon)
+endif()
+if(LIBNFC_DRIVER_PN532_UART)
+  list(APPEND LIBNFC_RS_ENABLED_DRIVERS pn532_uart)
+endif()
+if(LIBNFC_DRIVER_PN532_SPI)
+  list(APPEND LIBNFC_RS_ENABLED_DRIVERS pn532_spi)
+endif()
+if(LIBNFC_DRIVER_PN532_I2C)
+  list(APPEND LIBNFC_RS_ENABLED_DRIVERS pn532_i2c)
+endif()
+if(LIBNFC_DRIVER_PN71XX)
+  list(APPEND LIBNFC_RS_ENABLED_DRIVERS pn71xx)
+endif()
+string(JOIN "," LIBNFC_RS_ENABLED_DRIVERS_ENV ${LIBNFC_RS_ENABLED_DRIVERS})
+
 set(RUST_TARGET_DIR ${CMAKE_BINARY_DIR}/rust-target)
 file(GLOB_RECURSE LIBNFC_RUST_SOURCES
   ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/src/*.rs)
@@ -61,9 +103,15 @@ endif()
 if(USE_RUST_NFC_LIFECYCLE)
   list(APPEND RUST_CARGO_FEATURES --features nfc_lifecycle)
 endif()
+if(USE_RUST_NFC_CORE)
+  list(APPEND RUST_CARGO_FEATURES --features nfc_core)
+endif()
 
 if(USE_RUST_NFC_LIFECYCLE)
   add_definitions(-DUSE_RUST_NFC_LIFECYCLE)
+endif()
+if(USE_RUST_NFC_CORE)
+  add_definitions(-DUSE_RUST_NFC_CORE)
 endif()
 
 add_custom_command(
@@ -74,6 +122,7 @@ add_custom_command(
           LIBNFC_RS_WITH_LOG=${LIBNFC_LOG}
           LIBNFC_RS_WITH_DEBUG=${LIBNFC_DEBUG_MODE}
           LIBNFC_RS_EXTERNAL_BRIDGES=1
+          LIBNFC_RS_ENABLED_DRIVERS=${LIBNFC_RS_ENABLED_DRIVERS_ENV}
           ${CARGO_EXECUTABLE} build --release --manifest-path ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml --target-dir ${RUST_TARGET_DIR} ${RUST_CARGO_FEATURES}
   DEPENDS ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml ${LIBNFC_RUST_SOURCES}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -141,9 +190,6 @@ INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR})
 ADD_DEFINITIONS("-DHAVE_CONFIG_H")
 
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-# make it easy to locate CMake modules for finding libraries
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/modules/")
 
 # Options
 IF(LIBNFC_LOG)
@@ -248,8 +294,6 @@ IF(MINGW)
     MESSAGE(FATAL_ERROR "Could not find dlltool command")
   ENDIF (NOT DLLTOOL)
 ENDIF(MINGW)
-
-INCLUDE(LibnfcDrivers)
 
 IF(NOT WIN32)
   # Set some pkg-config variables

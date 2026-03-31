@@ -89,6 +89,7 @@ extern size_t strnlen(const char *s, size_t maxlen);
 
 #define LOG_CATEGORY "libnfc.general"
 #define LOG_GROUP NFC_LOG_GROUP_GENERAL
+#ifndef USE_RUST_NFC_CORE
 #define NFC_DRIVER_NAME_MAX 64
 
 /* Device open results - improved type safety */
@@ -98,6 +99,7 @@ typedef enum
   NFC_DRIVER_OPENED,
   NFC_DRIVER_ABORT
 } nfc_driver_open_result_t;
+#endif
 
 /* Property setting structure for bulk configuration */
 typedef struct
@@ -117,17 +119,21 @@ typedef struct
  * DRIVER LIST MANAGEMENT TYPES
  * ========================================================================== */
 
+#ifndef USE_RUST_NFC_CORE
 struct nfc_driver_list
 {
   const struct nfc_driver_list *next;
   const struct nfc_driver *driver;
 };
+#endif
 
 /* ============================================================================
  * STATIC DATA
  * ========================================================================== */
 
+#ifndef USE_RUST_NFC_CORE
 const struct nfc_driver_list *nfc_drivers = NULL;
+#endif
 
 static const char *nfc_property_name[] = {
     "NP_TIMEOUT_COMMAND",
@@ -194,6 +200,7 @@ static int nfc_device_validate_modulation(
  * STRING VALIDATION UTILITIES
  * ========================================================================== */
 
+#ifndef USE_RUST_NFC_CORE
 static inline bool
 string_contains_control_chars(const char *value, size_t length)
 {
@@ -728,6 +735,7 @@ nfc_list_devices(
 
   return autoscan_devices(context, connstrings, device_found, connstrings_len);
 }
+#endif /* USE_RUST_NFC_CORE */
 
 /* ============================================================================
  * PROPERTY MANAGEMENT
@@ -1376,6 +1384,7 @@ int nfc_abort_command(nfc_device *pnd)
  * LIBRARY INITIALIZATION AND CLEANUP
  * ========================================================================== */
 
+#ifndef USE_RUST_NFC_CORE
 void nfc_init(nfc_context **context)
 {
   *context = nfc_context_new();
@@ -1402,6 +1411,7 @@ void nfc_exit(nfc_context *context)
 
   nfc_context_free(context);
 }
+#endif /* USE_RUST_NFC_CORE */
 
 /* ============================================================================
  * DEVICE INFORMATION AND DATA ACCESSORS

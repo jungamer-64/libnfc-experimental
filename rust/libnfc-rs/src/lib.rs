@@ -21,6 +21,8 @@ use std::ffi::{CStr, CString};
 use std::panic;
 use std::ptr;
 
+#[cfg(feature = "nfc_core")]
+mod core;
 #[cfg(feature = "nfc_lifecycle")]
 mod lifecycle;
 #[cfg(feature = "nfc_secure")]

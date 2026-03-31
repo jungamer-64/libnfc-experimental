@@ -200,10 +200,24 @@ else
   AC_SUBST([USE_RUST_NFC_SECURE_FALSE], [nfc-secure.c])
 fi
 
+# Option to enable Rust registry/open/list/init helpers
+AC_ARG_ENABLE([rust-core],AS_HELP_STRING([--enable-rust-core],[Enable Rust implementation of nfc driver registry/open/list/init helpers]),[enable_rust_core=$enableval],[enable_rust_core="no"])
+AC_MSG_CHECKING(for rust-core flag)
+AC_MSG_RESULT($enable_rust_core)
+if test x"$enable_rust_core" = x"xyes"
+then
+  AC_DEFINE([USE_RUST_NFC_CORE], [1], [Use Rust implementation for nfc core registry/open/list/init helpers])
+fi
+
 # Option to enable Rust lifecycle alloc/free helpers
 AC_ARG_ENABLE([rust-lifecycle],AS_HELP_STRING([--enable-rust-lifecycle],[Enable Rust implementation of nfc context/device lifecycle alloc/free helpers]),[enable_rust_lifecycle=$enableval],[enable_rust_lifecycle="no"])
 AC_MSG_CHECKING(for rust-lifecycle flag)
 AC_MSG_RESULT($enable_rust_lifecycle)
+if test x"$enable_rust_core" = x"xyes"
+then
+  enable_rust_lifecycle="yes"
+fi
+AM_CONDITIONAL([USE_RUST_NFC_CORE], [test "$enable_rust_core" != "no"])
 AM_CONDITIONAL([USE_RUST_NFC_LIFECYCLE], [test "$enable_rust_lifecycle" != "no"])
 if test x"$enable_rust_lifecycle" = x"xyes"
 then

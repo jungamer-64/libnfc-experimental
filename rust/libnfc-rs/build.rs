@@ -15,6 +15,37 @@ fn env_flag_enabled(name: &str, default_enabled: bool) -> bool {
     }
 }
 
+fn emit_enabled_driver_cfgs() {
+    println!("cargo:rerun-if-env-changed=LIBNFC_RS_ENABLED_DRIVERS");
+
+    let Ok(value) = env::var("LIBNFC_RS_ENABLED_DRIVERS") else {
+        return;
+    };
+
+    for raw_driver in value.split(',') {
+        let driver = raw_driver.trim();
+        if driver.is_empty() {
+            continue;
+        }
+
+        let cfg_name = match driver {
+            "pcsc" => "libnfc_driver_pcsc",
+            "acr122_pcsc" => "libnfc_driver_acr122_pcsc",
+            "acr122_usb" => "libnfc_driver_acr122_usb",
+            "acr122s" => "libnfc_driver_acr122s",
+            "pn53x_usb" => "libnfc_driver_pn53x_usb",
+            "arygon" => "libnfc_driver_arygon",
+            "pn532_uart" => "libnfc_driver_pn532_uart",
+            "pn532_spi" => "libnfc_driver_pn532_spi",
+            "pn532_i2c" => "libnfc_driver_pn532_i2c",
+            "pn71xx" => "libnfc_driver_pn71xx",
+            _ => continue,
+        };
+
+        println!("cargo:rustc-cfg={}", cfg_name);
+    }
+}
+
 fn pick_compiler_for_target() -> String {
     // Prefer an explicit CC if provided; otherwise pick a reasonable
     // default based on the TARGET triple so cross-compilation attempts
@@ -96,6 +127,16 @@ fn main() {
         "libnfc_envvars",
         "libnfc_external_bridges",
         "libnfc_log",
+        "libnfc_driver_pcsc",
+        "libnfc_driver_acr122_pcsc",
+        "libnfc_driver_acr122_usb",
+        "libnfc_driver_acr122s",
+        "libnfc_driver_pn53x_usb",
+        "libnfc_driver_arygon",
+        "libnfc_driver_pn532_uart",
+        "libnfc_driver_pn532_spi",
+        "libnfc_driver_pn532_i2c",
+        "libnfc_driver_pn71xx",
     ] {
         println!("cargo:rustc-check-cfg=cfg({})", cfg_name);
     }
@@ -115,6 +156,8 @@ fn main() {
     if env_flag_enabled("LIBNFC_RS_EXTERNAL_BRIDGES", false) {
         println!("cargo:rustc-cfg=libnfc_external_bridges");
     }
+
+    emit_enabled_driver_cfgs();
 
     // Conservative default: do not assume availability.
     // Check for explicit_bzero, memset_s and SecureZeroMemory by trying to compile.

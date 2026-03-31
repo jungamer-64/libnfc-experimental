@@ -44,6 +44,13 @@ exclude = [
     "nfc_rs_context_conf_load",
     "nfc_rs_context_log_init",
     "nfc_rs_log_message",
+    "nfc_context_free",
+    "nfc_close",
+    "nfc_register_driver",
+    "nfc_open",
+    "nfc_list_devices",
+    "nfc_init",
+    "nfc_exit",
 ]
 
 [defines]
@@ -69,6 +76,11 @@ exclude = [
 "feature=\"nfc_lifecycle\"" = "NFC_LIFECYCLE"
 "cfg(feature = \"nfc_lifecycle\")" = "NFC_LIFECYCLE"
 "cfg(feature=\"nfc_lifecycle\")" = "NFC_LIFECYCLE"
+
+"feature = \"nfc_core\"" = "NFC_CORE"
+"feature=\"nfc_core\"" = "NFC_CORE"
+"cfg(feature = \"nfc_core\")" = "NFC_CORE"
+"cfg(feature=\"nfc_core\")" = "NFC_CORE"
 
 "feature = \"asan_tests\"" = "ASAN_TESTS"
 "feature=\"asan_tests\"" = "ASAN_TESTS"
