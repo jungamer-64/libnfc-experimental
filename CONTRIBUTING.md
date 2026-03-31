@@ -53,10 +53,14 @@ If you touch the Rust lifecycle/core bridge, also verify the Rust-owned core sli
 
 ```bash
 cargo test --manifest-path rust/Cargo.toml -p proximate-sys --no-default-features --features "c_ffi,secure,lifecycle,orchestration" -- --nocapture
-cmake -S . -B build-rust-core -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON -DPROXIMATE_SECURE=ON -DPROXIMATE_LIFECYCLE=ON -DPROXIMATE_ORCHESTRATION=ON
+cmake -S . -B build-rust-core -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON
 cmake --build build-rust-core -j"$(nproc)"
 ctest --test-dir build-rust-core --output-on-failure
 ```
+
+In this experimental branch, Rust is the only supported core implementation. The
+`PROXIMATE_SECURE`, `PROXIMATE_LIFECYCLE`, and `PROXIMATE_ORCHESTRATION` CMake options
+are deprecated no-ops kept for one compatibility cycle.
 
 If you change exported CMake/package behavior, verify all of the following:
 

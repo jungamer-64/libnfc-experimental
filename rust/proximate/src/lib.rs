@@ -22,6 +22,8 @@ use std::panic;
 use std::ptr;
 
 #[cfg(feature = "lifecycle")]
+mod compat;
+#[cfg(feature = "lifecycle")]
 mod conf;
 #[cfg(feature = "orchestration")]
 mod core;
@@ -36,6 +38,10 @@ mod lifecycle;
 mod nfc_secure;
 pub mod rust_api;
 use crate::ffi_support::{bounded_strlen, copy_bytes_to_c_buffer};
+#[cfg(feature = "lifecycle")]
+pub use compat::{
+    nfc_close, nfc_free, nfc_version, str_nfc_baud_rate, str_nfc_modulation_type, str_nfc_target,
+};
 #[cfg(feature = "orchestration")]
 pub use core::{nfc_exit, nfc_init, nfc_list_devices, nfc_open, nfc_register_driver};
 #[cfg(feature = "lifecycle")]

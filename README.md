@@ -104,13 +104,16 @@ Useful options:
 
 * `-DBUILD_SHARED_LIBS=OFF` for a static library build
 * `-DLIBNFC_DRIVER_PCSC=ON` to enable the PC/SC driver
-* `-DPROXIMATE_SECURE=ON` to use the Rust-backed `nfc-secure` implementation from the `proximate-sys` package
-* `-DPROXIMATE_LIFECYCLE=ON` to move lifecycle helpers to the Rust facade
-* `-DPROXIMATE_ORCHESTRATION=ON` to move the registry/open/list/init/exit and initiator orchestration entrypoints to the Rust facade; this implies `-DPROXIMATE_LIFECYCLE=ON`
+* `-DPROXIMATE_SECURE=...`, `-DPROXIMATE_LIFECYCLE=...`, and `-DPROXIMATE_ORCHESTRATION=...` are accepted as deprecated no-op compatibility flags in this experimental branch
 
-Recommended Rust-facade validation build:
+Rust core baseline in this branch:
 
-    cmake -S . -B build-rust-core -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON -DPROXIMATE_SECURE=ON -DPROXIMATE_LIFECYCLE=ON -DPROXIMATE_ORCHESTRATION=ON
+* Rust is the only supported core path for lifecycle, orchestration, and public control-plane entrypoints
+* C remains for driver implementations plus selected backend helpers that Rust still calls through internal bridges
+
+Recommended validation build:
+
+    cmake -S . -B build-rust-core -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON
     cmake --build build-rust-core -j"$(nproc)"
     ctest --test-dir build-rust-core --output-on-failure
 

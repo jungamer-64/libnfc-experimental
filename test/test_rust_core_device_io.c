@@ -330,12 +330,19 @@ fake_get_supported_baud_rate(nfc_device *pnd, const nfc_mode mode,
 static int
 fake_device_get_information_about(nfc_device *pnd, char **buf)
 {
-  static char info[] = "driver-info";
+  static const char info[] = "driver-info";
+  char *copy;
 
   (void)pnd;
   state.information_about_call_count++;
   if (buf) {
-    *buf = info;
+    copy = malloc(sizeof(info));
+    if (!copy) {
+      *buf = NULL;
+      return -1;
+    }
+    memcpy(copy, info, sizeof(info));
+    *buf = copy;
   }
   return 40;
 }
@@ -550,6 +557,8 @@ main(void)
         "device information callback should run once");
   CHECK(info != NULL && strcmp(info, "driver-info") == 0,
         "device information should be returned");
+  nfc_free(info);
+  info = NULL;
   CHECK(nfc_abort_command(device) == 41, "nfc_abort_command() should dispatch");
   CHECK(nfc_idle(device) == 42, "nfc_idle() should dispatch");
   CHECK(state.abort_call_count == 1, "abort callback should run once");

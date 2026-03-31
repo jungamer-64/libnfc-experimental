@@ -33,6 +33,30 @@ typedef struct nfc_driver nfc_driver;
 #include <stdint.h>
 #include <stdlib.h>
 
+typedef enum nfc_baud_rate {
+  NBR_UNDEFINED = 0,
+  NBR_106 = 1,
+  NBR_212 = 2,
+  NBR_424 = 3,
+  NBR_847 = 4,
+} nfc_baud_rate;
+
+typedef enum nfc_modulation_type {
+  NMT_UNDEFINED = 0,
+  NMT_ISO14443A = 1,
+  NMT_JEWEL = 2,
+  NMT_ISO14443B = 3,
+  NMT_ISO14443BI = 4,
+  NMT_ISO14443B2SR = 5,
+  NMT_ISO14443B2CT = 6,
+  NMT_FELICA = 7,
+  NMT_DEP = 8,
+  NMT_BARCODE = 9,
+  NMT_ISO14443BICLASS = 10,
+} nfc_modulation_type;
+
+typedef struct nfc_target nfc_target;
+
 typedef struct nfc_user_defined_device {
   char name[DEVICE_NAME_LENGTH];
   char connstring[NFC_BUFSIZE_CONNSTRING];
@@ -90,6 +114,18 @@ struct nfc_context *nfc_context_alloc_defaults(void);
 struct nfc_device *nfc_device_new(const struct nfc_context *context, const char *connstring);
 
 void nfc_device_free(struct nfc_device *device);
+
+void nfc_close(struct nfc_device *device);
+
+void nfc_free(void *ptr);
+
+const char *nfc_version(void);
+
+const char *str_nfc_baud_rate(enum nfc_baud_rate value);
+
+const char *str_nfc_modulation_type(enum nfc_modulation_type value);
+
+int str_nfc_target(char **buf, const struct nfc_target *target, bool verbose);
 
 int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size);
 

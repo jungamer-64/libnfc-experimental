@@ -150,6 +150,48 @@ pub unsafe extern "C" fn nfc_exit(context: *mut nfc_context) {
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn nfc_close(device: *mut nfc_device) {
+    unsafe { proximate::nfc_close(device) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nfc_free(ptr: *mut libc::c_void) {
+    unsafe { proximate::nfc_free(ptr) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nfc_version() -> *const libc::c_char {
+    unsafe { proximate::nfc_version() }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn str_nfc_baud_rate(value: nfc_baud_rate) -> *const libc::c_char {
+    unsafe { proximate::str_nfc_baud_rate(value) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn str_nfc_modulation_type(
+    value: nfc_modulation_type,
+) -> *const libc::c_char {
+    unsafe { proximate::str_nfc_modulation_type(value) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn str_nfc_target(
+    buf: *mut *mut libc::c_char,
+    target: *const nfc_target,
+    verbose: bool,
+) -> libc::c_int {
+    unsafe { proximate::str_nfc_target(buf, target, verbose) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_device_set_property_int(
     device: *mut nfc_device,
     property: nfc_property,

@@ -474,7 +474,7 @@ int nfc_secure_zero(void *ptr, size_t size);
  * size_t len = nfc_safe_strlen(buffer, sizeof(buffer));
  * ```
  */
-// Implementation in nfc-secure.c (not inline due to export requirements)
+// Exported by libnfc's core implementation (not inline due to export requirements)
 size_t nfc_safe_strlen(const char *str, size_t maxlen);
 
 /**

@@ -41,9 +41,9 @@ endif()
 option(BUILD_SHARED_LIBS "Build libnfc as a shared library" ON)
 option(BUILD_EXAMPLES "Build examples" ON)
 option(BUILD_UTILS "Build utilities" ON)
-option(PROXIMATE_SECURE "Use the Rust-backed secure helpers in the C library" OFF)
-option(PROXIMATE_LIFECYCLE "Use the Rust-backed context/device lifecycle helpers in the C library" OFF)
-option(PROXIMATE_ORCHESTRATION "Use the Rust-backed registry/open/list/init/exit and initiator orchestration helpers in the C library" OFF)
+option(PROXIMATE_SECURE "Deprecated no-op: Rust secure helpers are always enabled in this branch" ON)
+option(PROXIMATE_LIFECYCLE "Deprecated no-op: Rust lifecycle/core helpers are always enabled in this branch" ON)
+option(PROXIMATE_ORCHESTRATION "Deprecated no-op: Rust orchestration entrypoints are always enabled in this branch" ON)
 option(LIBNFC_LOG "Enable log facility (errors, warning, info and debug messages)" ON)
 option(LIBNFC_ENVVARS "Enable envvars facility" ON)
 option(LIBNFC_CONFFILES_MODE "Enable configuration files" ON)
@@ -56,14 +56,13 @@ else()
   option(BUILD_MANUAL "Install man pages" ON)
 endif()
 
-if(PROXIMATE_ORCHESTRATION)
-  set(PROXIMATE_LIFECYCLE ON)
+if(NOT PROXIMATE_SECURE OR NOT PROXIMATE_LIFECYCLE OR NOT PROXIMATE_ORCHESTRATION)
+  message(DEPRECATION
+    "PROXIMATE_SECURE, PROXIMATE_LIFECYCLE, and PROXIMATE_ORCHESTRATION are ignored in this branch; "
+    "the Rust core is always enabled.")
 endif()
 
-set(PROXIMATE_C_FFI OFF)
-if(PROXIMATE_SECURE OR PROXIMATE_LIFECYCLE OR PROXIMATE_ORCHESTRATION)
-  set(PROXIMATE_C_FFI ON)
-endif()
+set(PROXIMATE_C_FFI ON)
 
 set(RUST_CBINDGEN_FEATURES "" CACHE STRING "Features to pass to cbindgen when generating the Rust FFI header (comma-separated)")
 option(RUST_CBINDGEN_DEBUG_HEADER "Generate Rust FFI header including debug helpers (nfc_secure_debug)" OFF)
@@ -124,20 +123,10 @@ if(LIBNFC_DRIVER_PN71XX)
 endif()
 string(JOIN "," PROXIMATE_ENABLED_DRIVERS_ENV ${PROXIMATE_ENABLED_DRIVERS})
 
-if(PROXIMATE_SECURE)
-  add_compile_definitions(PROXIMATE_SECURE)
-endif()
-if(PROXIMATE_LIFECYCLE)
-  add_compile_definitions(PROXIMATE_LIFECYCLE)
-endif()
-if(PROXIMATE_ORCHESTRATION)
-  add_compile_definitions(PROXIMATE_ORCHESTRATION)
-endif()
-
 if(PROXIMATE_C_FFI)
   find_program(CARGO_EXECUTABLE cargo)
   if(NOT CARGO_EXECUTABLE)
-    message(FATAL_ERROR "cargo executable is required to build the Rust-backed C ABI facade")
+    message(FATAL_ERROR "cargo executable is required to build the Rust core-backed C ABI layer")
   endif()
 
   find_program(CBINDGEN_EXECUTABLE cbindgen)
@@ -161,29 +150,26 @@ if(PROXIMATE_C_FFI)
   set(RUST_LIB_FILENAME "${CMAKE_STATIC_LIBRARY_PREFIX}${RUST_CRATE_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(RUST_LIB_PATH "${RUST_TARGET_DIR}/release/${RUST_LIB_FILENAME}" CACHE INTERNAL "Path to Rust support library")
 
-  set(RUST_CARGO_FEATURE_LIST c_ffi)
-  if(PROXIMATE_SECURE)
-    list(APPEND RUST_CARGO_FEATURE_LIST secure)
-  endif()
-  if(PROXIMATE_LIFECYCLE)
-    list(APPEND RUST_CARGO_FEATURE_LIST lifecycle)
-  endif()
-  if(PROXIMATE_ORCHESTRATION)
-    list(APPEND RUST_CARGO_FEATURE_LIST orchestration)
-  endif()
+  set(RUST_CARGO_FEATURE_LIST c_ffi secure lifecycle orchestration)
   list(JOIN RUST_CARGO_FEATURE_LIST "," RUST_CARGO_FEATURES)
+  set(PROXIMATE_RUST_ENV
+    PROXIMATE_WITH_ENVVARS=${LIBNFC_ENVVARS}
+    PROXIMATE_WITH_CONFFILES=${LIBNFC_CONFFILES_MODE}
+    PROXIMATE_WITH_LOG=${LIBNFC_LOG}
+    PROXIMATE_WITH_DEBUG=${LIBNFC_DEBUG_MODE}
+    PROXIMATE_EXTERNAL_BRIDGES=1
+    PROXIMATE_CONFDIR=${LIBNFC_CONFDIR}
+    PROXIMATE_ENABLED_DRIVERS=${PROXIMATE_ENABLED_DRIVERS_ENV}
+    PROXIMATE_PACKAGE_VERSION=${PROJECT_VERSION})
+  if(GIT_REVISION)
+    list(APPEND PROXIMATE_RUST_ENV PROXIMATE_GIT_REVISION=${GIT_REVISION})
+  endif()
 
   add_custom_command(
     OUTPUT "${RUST_LIB_PATH}"
     COMMAND
       ${CMAKE_COMMAND} -E env
-        PROXIMATE_WITH_ENVVARS=${LIBNFC_ENVVARS}
-        PROXIMATE_WITH_CONFFILES=${LIBNFC_CONFFILES_MODE}
-        PROXIMATE_WITH_LOG=${LIBNFC_LOG}
-        PROXIMATE_WITH_DEBUG=${LIBNFC_DEBUG_MODE}
-        PROXIMATE_EXTERNAL_BRIDGES=1
-        PROXIMATE_CONFDIR=${LIBNFC_CONFDIR}
-        PROXIMATE_ENABLED_DRIVERS=${PROXIMATE_ENABLED_DRIVERS_ENV}
+        ${PROXIMATE_RUST_ENV}
         ${CARGO_EXECUTABLE} build --release
         --manifest-path "${CMAKE_SOURCE_DIR}/rust/Cargo.toml"
         --package proximate-sys
@@ -192,7 +178,7 @@ if(PROXIMATE_C_FFI)
         --features "${RUST_CARGO_FEATURES}"
     DEPENDS ${LIBNFC_RUST_SOURCES}
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    COMMENT "Building Rust-backed C ABI facade"
+    COMMENT "Building Rust core-backed C ABI layer"
     VERBATIM)
 
   add_custom_target(proximate_sys_build ALL DEPENDS "${RUST_LIB_PATH}")
@@ -215,7 +201,7 @@ if(PROXIMATE_C_FFI)
           --output "${RUST_HEADER}"
         DEPENDS ${LIBNFC_RUST_SOURCES}
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/proximate-sys"
-        COMMENT "Generating C header for the Rust facade (libnfc_rs.h) via wrapper"
+        COMMENT "Generating C header for the Rust core bridge (libnfc_rs.h) via wrapper"
         VERBATIM)
     else()
       add_custom_command(
@@ -227,14 +213,14 @@ if(PROXIMATE_C_FFI)
           --output "${RUST_HEADER}"
         DEPENDS ${LIBNFC_RUST_SOURCES}
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/proximate-sys"
-        COMMENT "Generating C header for the Rust facade (libnfc_rs.h)"
+        COMMENT "Generating C header for the Rust core bridge (libnfc_rs.h)"
         VERBATIM)
     endif()
 
     add_custom_target(proximate_sys_headers DEPENDS "${RUST_HEADER}")
     add_dependencies(proximate_sys_build proximate_sys_headers)
   else()
-    message(STATUS "cbindgen not found: Rust facade header will not be auto-generated")
+    message(STATUS "cbindgen not found: Rust core bridge header will not be auto-generated")
   endif()
 else()
   add_custom_target(proximate_sys_build)

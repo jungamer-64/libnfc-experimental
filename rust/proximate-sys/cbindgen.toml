@@ -22,6 +22,9 @@ include = [
     "nfc_context_alloc_defaults",
     "nfc_device_new",
     "nfc_device_free",
+    "nfc_close",
+    "nfc_free",
+    "nfc_version",
     "nfc_safe_memcpy",
     "nfc_safe_memmove",
     "nfc_secure_memset",
@@ -30,6 +33,9 @@ include = [
     "nfc_safe_strlen",
     "nfc_is_null_terminated",
     "nfc_ensure_null_terminated",
+    "str_nfc_baud_rate",
+    "str_nfc_modulation_type",
+    "str_nfc_target",
 
     "nfc_rs_free",
 ]
@@ -48,7 +54,6 @@ exclude = [
     "nfc_rs_context_log_exit",
     "nfc_rs_log_message",
     "nfc_context_free",
-    "nfc_close",
     "nfc_register_driver",
     "nfc_open",
     "nfc_list_devices",

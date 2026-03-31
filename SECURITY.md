@@ -189,7 +189,7 @@ make && ./run-tests
 
 Fuzzing is planned for:
 
-- Connection string parsing (conf.c)
+- Connection string and config parsing in the Rust core loader
 - NDEF message parsing
 - Driver-specific protocol handlers
 

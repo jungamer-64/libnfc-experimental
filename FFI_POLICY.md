@@ -6,8 +6,8 @@
 ## 現在の基準線（2026-03-31）
 
 - Rust の公開 FFI 成果物は `staticlib` を基準にし、`rlib` は Rust 側テスト/内部リンク補助として併存する。
-- 現在 Rust が所有する lifecycle slice は `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()` である。Cargo `orchestration` / CMake `PROXIMATE_ORCHESTRATION` を有効にした構成では `nfc_register_driver()`、`nfc_open()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_device_set_property_*()`、`nfc_initiator_*()`、`nfc_target_*()`、`nfc_abort_command()`、`nfc_idle()`、`nfc_device_get_*()`、`nfc_strerror*()`、`nfc_perror()` も Rust が所有する。
-- `nfc_context_new()` は Rust が env/config hydration、`conf_load()` 相当の parser / file I/O、`log_init()` 呼び出し順を所有し、Cargo `orchestration` / CMake `PROXIMATE_ORCHESTRATION` 有効時は driver registry / open / list / init / exit と control-plane wrapper 制御も Rust が担う。`nfc_context_free()` も Rust が所有し、`log_exit()` backend、実ドライバ実装、`nfc_close()`、`str_nfc_*()`、`nfc_version()`、`nfc_free()` は C 側が責務を持つ。
+- この experimental ブランチでは Rust core が唯一の supported core path である。Rust は `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_context_free()`、`nfc_device_new()`、`nfc_device_free()`、`nfc_register_driver()`、`nfc_open()`、`nfc_close()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_device_set_property_*()`、`nfc_initiator_*()`、`nfc_target_*()`、`nfc_abort_command()`、`nfc_idle()`、`nfc_device_get_*()`、`nfc_strerror*()`、`nfc_perror()`、`nfc_version()`、`nfc_free()`、`str_nfc_*()` を所有する。
+- `nfc_context_new()` は Rust が env/config hydration、`conf_load()` 相当の parser / file I/O、`log_init()` 呼び出し順、driver registry / open / list / init / exit、control-plane wrapper 制御、caller-free buffer の割当/解放契約を所有する。C は `log_exit()` backend、実ドライバ実装、`str_nfc_target()` が再利用する formatter backend など、内部 bridge 越しに必要な backend/helper に限定して責務を持つ。
 - 現在の CI / チェックは `scripts/check-cbindgen.sh`、`scripts/check_callerfree_usage.sh`、`cargo test`、Nightly ASan を中核とする。専用 `ffi-test` crate や追加 governance は将来の hardening 案として扱う。
 
 ## 適用範囲
@@ -259,11 +259,11 @@ extern "C" fn my_c_callback(event_data: i32, user_data: *mut std::ffi::c_void) {
 
 ### 13.1) Phase 4 lifecycle/core slice の ownership 境界
 
-- 現在の foundation-first slice では、Rust が `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()` を所有する。Cargo `orchestration` / CMake `PROXIMATE_ORCHESTRATION` を有効にした構成では `nfc_register_driver()`、`nfc_open()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_device_set_property_*()`、`nfc_initiator_*()`、`nfc_target_*()`、`nfc_abort_command()`、`nfc_idle()`、`nfc_device_get_*()`、`nfc_strerror*()`、`nfc_perror()` も Rust 側の実装に切り替わる。
+- 現在の foundation-first slice では、Rust が `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_context_free()`、`nfc_device_new()`、`nfc_device_free()`、`nfc_register_driver()`、`nfc_open()`、`nfc_close()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_device_set_property_*()`、`nfc_initiator_*()`、`nfc_target_*()`、`nfc_abort_command()`、`nfc_idle()`、`nfc_device_get_*()`、`nfc_strerror*()`、`nfc_perror()`、`nfc_version()`、`nfc_free()`、`str_nfc_*()` を所有する。
 - `nfc_context_new()` は Rust 実装であり、config parser / file I/O も Rust が所有する。`log_init()` は常設の内部 C bridge を介して呼び出し、C の logging backend を再利用する。
 - env 読み込み、`string_as_boolean()` 相当の値解釈、`log_init()` までの初期化順序は Rust が責務を持つ。
 - `nfc_context_free()` は Rust 実装であり、`log_exit()` backend のみ内部 C bridge を介して呼び出す。
-- `orchestration` は registry / open / list / init / exit と control-plane wrapper 群を Rust へ寄せる段階であり、各 driver 実装の Rust 化は次バッチ以降に分離して扱う。`nfc_close()` と `str_nfc_*()` / `nfc_version()` / `nfc_free()` は現時点では C が所有する。
+- `orchestration` は registry / open / list / init / exit と control-plane wrapper 群を Rust へ寄せる段階であり、各 driver 実装の Rust 化は次バッチ以降に分離して扱う。C は driver 実装と backend/helper に限定して残す。
 
 ## 秘密データの消去（Secure zeroing）ポリシー
 

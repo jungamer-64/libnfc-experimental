@@ -25,8 +25,8 @@
 ## 現在の基準線（2026-03-31）
 
 * Rust の公開 FFI 成果物は `staticlib` を基準にし、`Cargo.toml` では Rust 側のテスト/内部リンク都合で `rlib` も併記している。`cdylib` は未採用で、必要になった場合は別途扱う。
-* 現在 Rust 化済みの lifecycle slice は `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()`。Cargo `orchestration` / CMake `PROXIMATE_ORCHESTRATION` を有効にした構成では `nfc_register_driver()`、`nfc_open()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_device_set_property_*()`、`nfc_initiator_*()` の orchestration entrypoints に加え、`nfc_target_*()`、`nfc_abort_command()`、`nfc_idle()`、`nfc_device_get_*()`、`nfc_strerror*()`、`nfc_perror()` も Rust が所有する。
-* `nfc_context_new()` の env/config hydration、config parser / file I/O、`log_init()` 呼び出し順、ならびに Cargo `orchestration` / CMake `PROXIMATE_ORCHESTRATION` 有効時の driver registry / open / list / init / exit と control-plane wrapper 制御は Rust が所有する。`nfc_context_free()` も Rust が所有し、`log_exit()` の backend のみ内部 C bridge を介して再利用する。実ドライバ実装と `nfc_close()` / `str_nfc_*()` / `nfc_version()` / `nfc_free()` は引き続き C 側が責務を持つ。
+* この experimental ブランチでは Rust core が唯一の supported core path であり、`nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_context_free()`、`nfc_device_new()`、`nfc_device_free()`、`nfc_register_driver()`、`nfc_open()`、`nfc_close()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_device_set_property_*()`、`nfc_initiator_*()`、`nfc_target_*()`、`nfc_abort_command()`、`nfc_idle()`、`nfc_device_get_*()`、`nfc_strerror*()`、`nfc_perror()`、`nfc_version()`、`nfc_free()`、`str_nfc_*()` を Rust が所有する。
+* `nfc_context_new()` の env/config hydration、config parser / file I/O、`log_init()` 呼び出し順、driver registry / open / list / init / exit、control-plane wrapper、ならびに public caller-free buffer の解放契約は Rust が所有する。C は実ドライバ実装に加え、`log_init()` / `log_exit()` backend と `str_nfc_target()` が再利用する formatter backend など、内部 bridge 越しの backend/helper に限定して残す。
 * GitHub Actions の既成事実は `build-and-test`、`rust-sanity`、`asan`。`ci/ffi-sanity` と `ci/full` は追加候補であり、まだ常設ジョブではない。
 * Rust ビルド出力は CMake では `build/rust-target/` を基準にする。
 * CMake は `PROXIMATE_WITH_ENVVARS`、`PROXIMATE_WITH_CONFFILES`、`PROXIMATE_WITH_LOG`、`PROXIMATE_WITH_DEBUG` を `build.rs` へ渡し、Rust 側 cfg を C のビルド設定と揃える。
@@ -156,8 +156,8 @@
 #### 現在の適用方針（foundation-first）
 
 - `rust-toolchain.toml` は CI と同じ `stable` を追従し、feature なしの `cargo test` が通る入口を維持する。
-- ビルド切替は Cargo `lifecycle` / `orchestration` / `c_ffi` と CMake `PROXIMATE_LIFECYCLE` / `PROXIMATE_ORCHESTRATION` で揃える。CMake から Rust-backed C ABI を使う場合は `c_ffi` を内部的に付与し、`PROXIMATE_ORCHESTRATION` は lifecycle slice を前提にする。
-- 現在の基準線では Rust が `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()` に加え、`nfc_register_driver()`、`nfc_open()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_device_set_property_*()`、`nfc_initiator_*()`、`nfc_target_*()`、`nfc_abort_command()`、`nfc_idle()`、`nfc_device_get_*()`、`nfc_strerror*()`、`nfc_perror()` を所有する。`nfc_close()` と `str_nfc_*()` / `nfc_version()` / `nfc_free()` は C が継続して所有する。
+- CMake からは Rust core を常時有効にし、`proximate-sys` は常に `c_ffi,secure,lifecycle,orchestration` を付けて build する。`PROXIMATE_LIFECYCLE` / `PROXIMATE_ORCHESTRATION` / `PROXIMATE_SECURE` は 1 サイクルだけ受理する deprecated no-op とする。
+- 現在の基準線では Rust が `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_context_free()`、`nfc_device_new()`、`nfc_device_free()`、`nfc_register_driver()`、`nfc_open()`、`nfc_close()`、`nfc_list_devices()`、`nfc_init()`、`nfc_exit()`、`nfc_device_set_property_*()`、`nfc_initiator_*()`、`nfc_target_*()`、`nfc_abort_command()`、`nfc_idle()`、`nfc_device_get_*()`、`nfc_strerror*()`、`nfc_perror()`、`nfc_version()`、`nfc_free()`、`str_nfc_*()` を所有する。
 - `nfc_context_new()` は Rust 実装とし、env/config hydration と `log_init()` 呼び出し順を Rust が所有する。
 - `conf_load()` の parser / file I/O 本体は Rust へ移行済みで、`nfc_context_free()` も Rust 実装へ切り替わった。`log_init()` / `log_exit()` backend と実ドライバ実装は C が継続して所有する。
 - `orchestration` は実ドライバを Rust に移したわけではなく、registry / open / list / init / exit / close と initiator-flow の薄い制御層を Rust へ寄せた段階と位置付ける。各ドライバ実装の移行は Phase 4 の後続バッチで分離して扱う。
