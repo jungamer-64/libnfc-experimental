@@ -76,3 +76,4 @@ rust/proximate-sys/rust/
 build-*
 .serena
 cargo.lock
+/tmp
