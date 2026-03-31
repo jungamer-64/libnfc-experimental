@@ -70,3 +70,4 @@ rust/libnfc-rs/target/
 .github/instructions/codacy.instructions.md
 .codacy/
 /libnfc_orig
+build-*
