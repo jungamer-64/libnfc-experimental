@@ -1,11 +1,14 @@
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required(VERSION 3.16)
 
-if (NOT DEFINED CMAKE_BUILD_TYPE)
-  set (CMAKE_BUILD_TYPE Release CACHE STRING "Build type")
-endif ()
+if(NOT DEFINED CMAKE_BUILD_TYPE AND NOT DEFINED CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type")
+endif()
 
-project (libnfc C CXX)
+project(libnfc VERSION 1.8.0 LANGUAGES C CXX)
+
 include(CTest)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -13,47 +16,51 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-SET(VERSION_MAJOR "1")
-SET(VERSION_MINOR "8")
-SET(VERSION_PATCH "0")
+set(PACKAGE_NAME "${PROJECT_NAME}")
+set(PACKAGE_VERSION "${PROJECT_VERSION}")
+set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
+set(PACKAGE_DESCRIPTION "Near Field Communication (NFC) library")
+set(VERSION "${PROJECT_VERSION}")
 
-SET(VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
-
-SET(PACKAGE_NAME "libnfc")
-SET(PACKAGE_VERSION ${VERSION})
-SET(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
-
-option (USE_RUST_NFC_SECURE "Use Rust implementation of nfc-secure" OFF)
-option (USE_RUST_NFC_LIFECYCLE "Use Rust implementation of nfc context/device lifecycle alloc/free helpers" OFF)
-option (USE_RUST_NFC_CORE "Use Rust implementation of nfc driver registry/open/list/init helpers" OFF)
-option (LIBNFC_LOG "Enable log facility (errors, warning, info and debug messages)" ON)
-option (LIBNFC_ENVVARS "Enable envvars facility" ON)
+option(BUILD_SHARED_LIBS "Build libnfc as a shared library" ON)
+option(BUILD_EXAMPLES "Build examples" ON)
+option(BUILD_UTILS "Build utilities" ON)
+option(USE_RUST_NFC_SECURE "Use Rust implementation of nfc-secure" OFF)
+option(USE_RUST_NFC_LIFECYCLE "Use Rust implementation of nfc context/device lifecycle alloc/free helpers" OFF)
+option(USE_RUST_NFC_CORE "Use Rust implementation of nfc driver registry/open/list/init helpers" OFF)
+option(LIBNFC_LOG "Enable log facility (errors, warning, info and debug messages)" ON)
+option(LIBNFC_ENVVARS "Enable envvars facility" ON)
+option(LIBNFC_CONFFILES_MODE "Enable configuration files" ON)
+option(INSTALL_BUNDLE "Assemble a standalone Windows bundle" OFF)
 set(LIBNFC_DEBUG_MODE OFF CACHE BOOL "Debug mode")
-option (LIBNFC_CONFFILES_MODE "Enable configuration files" ON)
+
+if(MSVC)
+  option(BUILD_MANUAL "Install man pages" OFF)
+else()
+  option(BUILD_MANUAL "Install man pages" ON)
+endif()
 
 if(USE_RUST_NFC_CORE)
   set(USE_RUST_NFC_LIFECYCLE ON)
 endif()
 
-# Optional: features to pass to cbindgen when generating the public Rust header.
-# By default this is empty which generates a stable header without debug helpers.
 set(RUST_CBINDGEN_FEATURES "" CACHE STRING "Features to pass to cbindgen when generating the Rust FFI header (comma-separated)")
-# Convenience switch to generate a debug header that includes debug-only helpers
 option(RUST_CBINDGEN_DEBUG_HEADER "Generate Rust FFI header including debug helpers (nfc_secure_debug)" OFF)
 if(RUST_CBINDGEN_DEBUG_HEADER)
-  # When the debug header option is enabled, request the feature that exposes
-  # debug helpers inside the generated header.
   set(RUST_CBINDGEN_FEATURES "nfc_secure_debug")
 endif()
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/modules")
 
 find_program(CARGO_EXECUTABLE cargo)
 if(NOT CARGO_EXECUTABLE)
   message(FATAL_ERROR "cargo executable is required to build the Rust components")
 endif()
 
-# make it easy to locate CMake modules for finding libraries
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/modules/")
-INCLUDE(LibnfcDrivers)
+find_program(CBINDGEN_EXECUTABLE cbindgen)
+find_program(PYTHON3_EXECUTABLE python3)
+
+include(LibnfcDrivers)
 
 set(LIBNFC_RS_ENABLED_DRIVERS)
 if(LIBNFC_DRIVER_PCSC)
@@ -88,17 +95,18 @@ if(LIBNFC_DRIVER_PN71XX)
 endif()
 string(JOIN "," LIBNFC_RS_ENABLED_DRIVERS_ENV ${LIBNFC_RS_ENABLED_DRIVERS})
 
-set(RUST_TARGET_DIR ${CMAKE_BINARY_DIR}/rust-target)
+set(RUST_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-target")
 file(GLOB_RECURSE LIBNFC_RUST_SOURCES
-  ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/src/*.rs)
-list(APPEND LIBNFC_RUST_SOURCES ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/build.rs)
+  "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/src/*.rs")
+list(APPEND LIBNFC_RUST_SOURCES "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/build.rs")
+
 set(RUST_CRATE_NAME libnfc_rs)
-set(RUST_LIB_FILENAME ${CMAKE_STATIC_LIBRARY_PREFIX}${RUST_CRATE_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX})
-set(RUST_LIB_PATH ${RUST_TARGET_DIR}/release/${RUST_LIB_FILENAME} CACHE INTERNAL "Path to Rust support library")
+set(RUST_LIB_FILENAME "${CMAKE_STATIC_LIBRARY_PREFIX}${RUST_CRATE_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
+set(RUST_LIB_PATH "${RUST_TARGET_DIR}/release/${RUST_LIB_FILENAME}" CACHE INTERNAL "Path to Rust support library")
 
 set(RUST_CARGO_FEATURES)
 if(USE_RUST_NFC_SECURE)
-  set(RUST_CARGO_FEATURES --features nfc_secure)
+  list(APPEND RUST_CARGO_FEATURES --features nfc_secure)
 endif()
 if(USE_RUST_NFC_LIFECYCLE)
   list(APPEND RUST_CARGO_FEATURES --features nfc_lifecycle)
@@ -108,371 +116,320 @@ if(USE_RUST_NFC_CORE)
 endif()
 
 if(USE_RUST_NFC_LIFECYCLE)
-  add_definitions(-DUSE_RUST_NFC_LIFECYCLE)
+  add_compile_definitions(USE_RUST_NFC_LIFECYCLE)
 endif()
 if(USE_RUST_NFC_CORE)
-  add_definitions(-DUSE_RUST_NFC_CORE)
+  add_compile_definitions(USE_RUST_NFC_CORE)
 endif()
 
 add_custom_command(
-  OUTPUT ${RUST_LIB_PATH}
-  COMMAND ${CMAKE_COMMAND} -E env
-          LIBNFC_RS_WITH_ENVVARS=${LIBNFC_ENVVARS}
-          LIBNFC_RS_WITH_CONFFILES=${LIBNFC_CONFFILES_MODE}
-          LIBNFC_RS_WITH_LOG=${LIBNFC_LOG}
-          LIBNFC_RS_WITH_DEBUG=${LIBNFC_DEBUG_MODE}
-          LIBNFC_RS_EXTERNAL_BRIDGES=1
-          LIBNFC_RS_ENABLED_DRIVERS=${LIBNFC_RS_ENABLED_DRIVERS_ENV}
-          ${CARGO_EXECUTABLE} build --release --manifest-path ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml --target-dir ${RUST_TARGET_DIR} ${RUST_CARGO_FEATURES}
-  DEPENDS ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml ${LIBNFC_RUST_SOURCES}
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  OUTPUT "${RUST_LIB_PATH}"
+  COMMAND
+    ${CMAKE_COMMAND} -E env
+      LIBNFC_RS_WITH_ENVVARS=${LIBNFC_ENVVARS}
+      LIBNFC_RS_WITH_CONFFILES=${LIBNFC_CONFFILES_MODE}
+      LIBNFC_RS_WITH_LOG=${LIBNFC_LOG}
+      LIBNFC_RS_WITH_DEBUG=${LIBNFC_DEBUG_MODE}
+      LIBNFC_RS_EXTERNAL_BRIDGES=1
+      LIBNFC_RS_ENABLED_DRIVERS=${LIBNFC_RS_ENABLED_DRIVERS_ENV}
+      ${CARGO_EXECUTABLE} build --release
+      --manifest-path "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml"
+      --target-dir "${RUST_TARGET_DIR}"
+      ${RUST_CARGO_FEATURES}
+  DEPENDS "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml" ${LIBNFC_RUST_SOURCES}
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
   COMMENT "Building Rust support library"
   VERBATIM)
 
-add_custom_target(libnfc_rs_build ALL DEPENDS ${RUST_LIB_PATH})
+add_custom_target(libnfc_rs_build ALL DEPENDS "${RUST_LIB_PATH}")
 
-# Generate C header from Rust sources (cbindgen) into the rust target dir
-find_program(CBINDGEN_EXECUTABLE cbindgen)
-find_program(PYTHON3_EXECUTABLE python3)
 if(CBINDGEN_EXECUTABLE)
-  set(RUST_HEADER ${RUST_TARGET_DIR}/include/libnfc_rs.h)
-  # Build command accepts optional feature flags which are passed through
-  # to cbindgen to include feature-gated symbols when explicitly requested.
+  set(RUST_HEADER "${RUST_TARGET_DIR}/include/libnfc_rs.h")
   if(RUST_CBINDGEN_FEATURES)
-    set(RUST_CBINDGEN_FEATURE_FLAGS --features ${RUST_CBINDGEN_FEATURES})
+    set(RUST_CBINDGEN_FEATURE_FLAGS --features "${RUST_CBINDGEN_FEATURES}")
   else()
-    set(RUST_CBINDGEN_FEATURE_FLAGS "")
+    set(RUST_CBINDGEN_FEATURE_FLAGS)
   endif()
 
-  # Prefer using the stable Python wrapper around cbindgen when available.
-  # The wrapper centralizes invocation, suppresses known benign warnings
-  # and can optionally auto-update the cbindgen defines mapping.
-  if(PYTHON3_EXECUTABLE AND EXISTS ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/tools/generate_cbindgen_header.py)
+  if(PYTHON3_EXECUTABLE AND EXISTS "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/tools/generate_cbindgen_header.py")
     add_custom_command(
-      OUTPUT ${RUST_HEADER}
-      COMMAND ${PYTHON3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/tools/generate_cbindgen_header.py ${RUST_CBINDGEN_FEATURE_FLAGS} --output ${RUST_HEADER}
-      DEPENDS ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml ${LIBNFC_RUST_SOURCES}
-      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/rust/libnfc-rs
+      OUTPUT "${RUST_HEADER}"
+      COMMAND
+        ${PYTHON3_EXECUTABLE}
+        "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/tools/generate_cbindgen_header.py"
+        ${RUST_CBINDGEN_FEATURE_FLAGS}
+        --output "${RUST_HEADER}"
+      DEPENDS "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml" ${LIBNFC_RUST_SOURCES}
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/libnfc-rs"
       COMMENT "Generating C header for Rust FFI (libnfc_rs.h) via wrapper"
       VERBATIM)
   else()
     add_custom_command(
-      OUTPUT ${RUST_HEADER}
-      COMMAND ${CBINDGEN_EXECUTABLE} --config ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/cbindgen.toml --crate libnfc-rs ${RUST_CBINDGEN_FEATURE_FLAGS} --output ${RUST_HEADER}
-      DEPENDS ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml ${LIBNFC_RUST_SOURCES}
-      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/rust/libnfc-rs
+      OUTPUT "${RUST_HEADER}"
+      COMMAND
+        ${CBINDGEN_EXECUTABLE}
+        --config "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/cbindgen.toml"
+        --crate libnfc-rs
+        ${RUST_CBINDGEN_FEATURE_FLAGS}
+        --output "${RUST_HEADER}"
+      DEPENDS "${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml" ${LIBNFC_RUST_SOURCES}
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/libnfc-rs"
       COMMENT "Generating C header for Rust FFI (libnfc_rs.h)"
       VERBATIM)
   endif()
 
-  add_custom_target(libnfc_rs_headers DEPENDS ${RUST_HEADER})
+  add_custom_target(libnfc_rs_headers DEPENDS "${RUST_HEADER}")
   add_dependencies(libnfc_rs_build libnfc_rs_headers)
-  include_directories(${RUST_TARGET_DIR}/include)
 else()
   message(STATUS "cbindgen not found: rust FFI header will not be auto-generated")
 endif()
 
-# config.h
-IF(WIN32)
-  SET(LIBNFC_SYSCONFDIR "./config" CACHE PATH "libnfc configuration directory")
-  CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/cmake/config_windows.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
-  INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/contrib/win32)
-    IF(NOT MINGW)
-      SET(CMAKE_C_FLAGS "-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_DEPRECATE ${CMAKE_C_FLAGS}")
-    ENDIF(NOT MINGW)
-ELSE(WIN32)
-  SET(_XOPEN_SOURCE 600)
-  SET(SYSCONFDIR "/etc" CACHE PATH "System configuration directory")
-  CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/cmake/config_posix.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
-ENDIF(WIN32)
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR})
+if(WIN32)
+  set(LIBNFC_SYSCONFDIR "./config" CACHE PATH "libnfc configuration directory")
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/config_windows.h.cmake" "${CMAKE_CURRENT_BINARY_DIR}/config.h")
+  include_directories("${CMAKE_CURRENT_SOURCE_DIR}/contrib/win32")
+  if(NOT MINGW)
+    set(CMAKE_C_FLAGS "-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_DEPRECATE ${CMAKE_C_FLAGS}")
+  endif()
+else()
+  set(_XOPEN_SOURCE 600)
+  set(SYSCONFDIR "${CMAKE_INSTALL_FULL_SYSCONFDIR}" CACHE PATH "System configuration directory")
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/config_posix.h.cmake" "${CMAKE_CURRENT_BINARY_DIR}/config.h")
+endif()
 
-ADD_DEFINITIONS("-DHAVE_CONFIG_H")
+include_directories("${CMAKE_CURRENT_BINARY_DIR}")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/include")
+add_compile_definitions(HAVE_CONFIG_H)
 
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(LIBNFC_LOG)
+  add_compile_definitions(LOG)
+endif()
 
-# Options
-IF(LIBNFC_LOG)
-  ADD_DEFINITIONS(-DLOG)
-ENDIF(LIBNFC_LOG)
+if(LIBNFC_ENVVARS)
+  add_compile_definitions(ENVVARS)
+endif()
 
-IF(LIBNFC_ENVVARS)
-  ADD_DEFINITIONS(-DENVVARS)
-ENDIF(LIBNFC_ENVVARS)
+if(LIBNFC_DEBUG_MODE)
+  add_compile_definitions(DEBUG)
+  set(CMAKE_C_FLAGS "-g3 ${CMAKE_C_FLAGS}")
+  set(CMAKE_CXX_FLAGS "-g3 ${CMAKE_CXX_FLAGS}")
+  set(WIN32_MODE "debug")
+  set(CMAKE_RC_FLAGS "-D_DEBUG ${CMAKE_RC_FLAGS}")
+else()
+  set(WIN32_MODE "release")
+endif()
 
-IF(LIBNFC_DEBUG_MODE)
-  ADD_DEFINITIONS(-DDEBUG)
-  SET(CMAKE_C_FLAGS "-g3 ${CMAKE_C_FLAGS}")
-  SET(WIN32_MODE "debug")
-  SET(CMAKE_RC_FLAGS "-D_DEBUG ${CMAKE_RC_FLAGS}")
-ELSE(LIBNFC_DEBUG_MODE)
-  SET(WIN32_MODE "release")
-ENDIF(LIBNFC_DEBUG_MODE)
+if(LIBNFC_CONFFILES_MODE)
+  add_compile_definitions(CONFFILES)
+endif()
 
-IF(LIBNFC_CONFFILES_MODE)
-  ADD_DEFINITIONS(-DCONFFILES)
-ENDIF(LIBNFC_CONFFILES_MODE)
+set(builddir "${CMAKE_BINARY_DIR}")
+set(top_srcdir "${CMAKE_SOURCE_DIR}")
+include(UseDoxygen)
 
-option (BUILD_EXAMPLES "build examples ON/OFF" ON)
-option (BUILD_UTILS "build utils ON/OFF" ON)
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  set(CMAKE_C_FLAGS "-Wall -pedantic ${CMAKE_C_FLAGS}")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector-strong")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_FORTIFY_SOURCE=2")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wformat -Wformat-security")
+  if(NOT WIN32)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIE")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pie")
+  endif()
+endif()
 
-option (BUILD_DEBPKG "build debian package ON/OFF" OFF)
-
-
-# Doxygen
-SET(builddir "${CMAKE_BINARY_DIR}")
-SET(top_srcdir "${CMAKE_SOURCE_DIR}")
-INCLUDE(UseDoxygen)
-
-IF(DEFINED CMAKE_INSTALL_LIBDIR)
-  SET(libdir ${CMAKE_INSTALL_LIBDIR})
-ELSE(DEFINED CMAKE_INSTALL_LIBDIR)
-  SET(CMAKE_INSTALL_LIBDIR lib)
-  SET(libdir ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
-ENDIF(DEFINED CMAKE_INSTALL_LIBDIR)
-
-IF(DEFINED INCLUDE_INSTALL_DIR)
-  SET(includedir ${INCLUDE_INSTALL_DIR})
-ELSE(DEFINED INCLUDE_INSTALL_DIR)
-  SET(INCLUDE_INSTALL_DIR include)
-  SET(includedir ${CMAKE_INSTALL_PREFIX}/${INCLUDE_INSTALL_DIR})
-ENDIF(DEFINED INCLUDE_INSTALL_DIR)
-
-IF(NOT DEFINED SHARE_INSTALL_PREFIX)
-  SET(SHARE_INSTALL_PREFIX share)
-ENDIF(NOT DEFINED SHARE_INSTALL_PREFIX)
-
-# Additonnal GCC flags
-IF(CMAKE_COMPILER_IS_GNUCC)
-  # Make sure we will not miss some warnings ;)
-  SET(CMAKE_C_FLAGS "-Wall -pedantic -std=c99 ${CMAKE_C_FLAGS}")
-
-  # Security compiler flags (Phase 4 refactoring)
-  # Stack protection against buffer overflows
-  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector-strong")
-  # Enable compile-time and runtime checks for common buffer overflow vulnerabilities
-  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_FORTIFY_SOURCE=2")
-  # Format string vulnerability detection
-  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wformat -Wformat-security")
-  # Position Independent Executable for ASLR support
-  IF(NOT WIN32)
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIE")
-    SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pie")
-  ENDIF(NOT WIN32)
-ENDIF(CMAKE_COMPILER_IS_GNUCC)
-
-if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   set(CMAKE_CXX_FLAGS "-Wall -Wextra -pedantic ${CMAKE_CXX_FLAGS}")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_FORTIFY_SOURCE=2")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wformat -Wformat-security")
-  if (NOT WIN32)
+  if(NOT WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIE")
   endif()
 endif()
 
-IF(MINGW)
-  IF (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
-    IF(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86")
-        # force MinGW-w64 in 32bit mode
-        MESSAGE("Building 32-bit Windows DLL")
-        #SET(CMAKE_C_FLAGS "-m32 ${CMAKE_C_FLAGS}")
-        #SET(CMAKE_MODULE_LINKER_FLAGS "--Wl,--enable-stdcall-fixup ${CMAKE_SHARED_LINKER_FLAGS}")
-        #SET(CMAKE_SHARED_LINKER_FLAGS "--Wl,--enable-stdcall-fixup ${CMAKE_SHARED_LINKER_FLAGS}")
-        #SET(CMAKE_EXE_LINKER_FLAGS "--Wl,--enable-stdcall-fixup ${CMAKE_EXE_LINKER_FLAGS}")
-        SET(CMAKE_RC_FLAGS "--target=pe-i386 --output-format=coff ${CMAKE_RC_FLAGS}")
-    ELSEIF((CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64") OR (CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64"))
-        MESSAGE("Building 64-bit Windows DLL")
-        SET(CMAKE_RC_FLAGS "--target=pe-x86-64 --output-format=coff ${CMAKE_RC_FLAGS}")
-    ELSE(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86")
-        MESSAGE(FATAL_ERROR "Unknown Processor: ${CMAKE_SYSTEM_PROCESSOR}")
-    ENDIF(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86")
-  ENDIF(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+if(MINGW)
+  if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86")
+      message(STATUS "Building 32-bit Windows DLL")
+      set(CMAKE_RC_FLAGS "--target=pe-i386 --output-format=coff ${CMAKE_RC_FLAGS}")
+    elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64")
+      message(STATUS "Building 64-bit Windows DLL")
+      set(CMAKE_RC_FLAGS "--target=pe-x86-64 --output-format=coff ${CMAKE_RC_FLAGS}")
+    else()
+      message(FATAL_ERROR "Unknown Processor: ${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+  endif()
 
-  FIND_PROGRAM(DLLTOOL dlltool CMAKE_FIND_ROOT_PATH_BOTH)
-  IF (NOT DLLTOOL)
-    MESSAGE(FATAL_ERROR "Could not find dlltool command")
-  ENDIF (NOT DLLTOOL)
-ENDIF(MINGW)
+  find_program(DLLTOOL dlltool CMAKE_FIND_ROOT_PATH_BOTH)
+  if(NOT DLLTOOL)
+    message(FATAL_ERROR "Could not find dlltool command")
+  endif()
+endif()
 
-IF(NOT WIN32)
-  # Set some pkg-config variables
-  SET(prefix ${CMAKE_INSTALL_PREFIX})
-  SET(exec_prefix ${CMAKE_INSTALL_PREFIX})
-  SET(PACKAGE "libnfc")
-  IF(LIBNFC_DRIVER_PN53X_USB)
-    SET(PKG_REQ ${PKG_REQ} "libusb")
-  ENDIF(LIBNFC_DRIVER_PN53X_USB)
-  IF(LIBNFC_DRIVER_PCSC)
-    SET(PKG_REQ ${PKG_REQ} "libpcsclite")
-  ENDIF(LIBNFC_DRIVER_PCSC)
-  IF(LIBNFC_DRIVER_ACR122_PCSC)
-    SET(PKG_REQ ${PKG_REQ} "libpcsclite")
-  ENDIF(LIBNFC_DRIVER_ACR122_PCSC)
-  IF(LIBNFC_DRIVER_ACR122_USB)
-    SET(PKG_REQ ${PKG_REQ} "libusb")
-  ENDIF(LIBNFC_DRIVER_ACR122_USB)
-  # CMake lists are separated by a semi colon, replace with colon
-  STRING(REPLACE ";" "," PKG_CONFIG_REQUIRES "${PKG_REQ}")
-  CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/libnfc.pc.in ${CMAKE_CURRENT_BINARY_DIR}/libnfc.pc @ONLY)
-  INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/libnfc.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
-ENDIF(NOT WIN32)
+set(LIBNFC_PKGCONFIG_REQUIRES_PRIVATE)
+set(LIBNFC_PKGCONFIG_LIBS_PRIVATE)
 
-IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    IF(I2C_REQUIRED)
-        # Inspired from http://cmake.3232098.n2.nabble.com/RFC-cmake-analog-to-AC-SEARCH-LIBS-td7585423.html
-        INCLUDE (CheckFunctionExists)
-        INCLUDE (CheckLibraryExists)
-        CHECK_FUNCTION_EXISTS (clock_gettime HAVE_CLOCK_GETTIME)
-        IF (NOT HAVE_CLOCK_GETTIME)
-            CHECK_LIBRARY_EXISTS (rt clock_gettime "" HAVE_CLOCK_GETTIME_IN_RT)
-            IF (HAVE_CLOCK_GETTIME_IN_RT)
-                SET(LIBRT_FOUND TRUE)
-                SET(LIBRT_LIBRARIES "rt")
-            ENDIF (HAVE_CLOCK_GETTIME_IN_RT)
-        ENDIF (NOT HAVE_CLOCK_GETTIME)
-    ENDIF(I2C_REQUIRED)
-  ENDIF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+if(LIBNFC_DRIVER_PN53X_USB OR LIBNFC_DRIVER_ACR122_USB)
+  list(APPEND LIBNFC_PKGCONFIG_REQUIRES_PRIVATE libusb-1.0)
+endif()
+if(LIBNFC_DRIVER_PCSC OR LIBNFC_DRIVER_ACR122_PCSC)
+  list(APPEND LIBNFC_PKGCONFIG_REQUIRES_PRIVATE libpcsclite)
+endif()
 
-IF(PCSC_INCLUDE_DIRS)
-  INCLUDE_DIRECTORIES(${PCSC_INCLUDE_DIRS})
-  LINK_DIRECTORIES(${PCSC_LIBRARY_DIRS})
-ENDIF(PCSC_INCLUDE_DIRS)
+if(CMAKE_SYSTEM_NAME MATCHES "Linux" AND I2C_REQUIRED)
+  include(CheckFunctionExists)
+  include(CheckLibraryExists)
+  check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
+  if(NOT HAVE_CLOCK_GETTIME)
+    check_library_exists(rt clock_gettime "" HAVE_CLOCK_GETTIME_IN_RT)
+    if(HAVE_CLOCK_GETTIME_IN_RT)
+      set(LIBRT_FOUND TRUE)
+      set(LIBRT_LIBRARIES rt)
+      list(APPEND LIBNFC_PKGCONFIG_LIBS_PRIVATE -lrt)
+    endif()
+  endif()
+endif()
 
-IF(LIBUSB_INCLUDE_DIRS)
-  INCLUDE_DIRECTORIES(${LIBUSB_INCLUDE_DIRS})
-  LINK_DIRECTORIES(${LIBUSB_LIBRARY_DIRS})
-  SET(LIBUSB_FOUND TRUE)
-ENDIF(LIBUSB_INCLUDE_DIRS)
+if(LIBUSB_INCLUDE_DIRS)
+  include_directories(${LIBUSB_INCLUDE_DIRS})
+endif()
+if(LIBUSB_LIBRARY_DIRS)
+  link_directories(${LIBUSB_LIBRARY_DIRS})
+endif()
 
-# version.rc for Windows
-IF(WIN32)
-  # Date for filling in rc file information
-  STRING(TIMESTAMP CURRENT_YEAR %Y)
-  SET(prefix ${CMAKE_INSTALL_PREFIX})
-  SET(RC_COMMENT "${PACKAGE_NAME} library")
-  SET(RC_INTERNAL_NAME "${PACKAGE_NAME} ${WIN32_MODE}")
-  SET(RC_ORIGINAL_NAME ${PACKAGE_NAME}.dll)
-  # RC_FILE_TYPE: VFT_DLL
-  SET(RC_FILE_TYPE 0x00000002L)
-  CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/contrib/win32/version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/windows/libnfc.rc @ONLY)
-ENDIF(WIN32)
+if(PCSC_INCLUDE_DIRS)
+  include_directories(${PCSC_INCLUDE_DIRS})
+endif()
+if(PCSC_LIBRARY_DIRS)
+  link_directories(${PCSC_LIBRARY_DIRS})
+endif()
 
-ADD_SUBDIRECTORY(libnfc)
-ADD_SUBDIRECTORY(include)
+if(NOT WIN32)
+  if(LIBNFC_PKGCONFIG_REQUIRES_PRIVATE)
+    list(SORT LIBNFC_PKGCONFIG_REQUIRES_PRIVATE)
+    list(REMOVE_DUPLICATES LIBNFC_PKGCONFIG_REQUIRES_PRIVATE)
+    string(REPLACE ";" "," PKG_CONFIG_REQUIRES_PRIVATE "${LIBNFC_PKGCONFIG_REQUIRES_PRIVATE}")
+  else()
+    set(PKG_CONFIG_REQUIRES_PRIVATE "")
+  endif()
 
-if (BUILD_UTILS)
-  add_subdirectory (utils)
-endif ()
+  if(LIBNFC_PKGCONFIG_LIBS_PRIVATE)
+    list(REMOVE_DUPLICATES LIBNFC_PKGCONFIG_LIBS_PRIVATE)
+    string(REPLACE ";" " " PKG_CONFIG_LIBS_PRIVATE "${LIBNFC_PKGCONFIG_LIBS_PRIVATE}")
+  else()
+    set(PKG_CONFIG_LIBS_PRIVATE "")
+  endif()
 
-if (BUILD_EXAMPLES)
-  add_subdirectory (examples)
-endif ()
+  set(prefix "${CMAKE_INSTALL_PREFIX}")
+  set(exec_prefix "\${prefix}")
+  set(libdir "\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}")
+  set(includedir "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
 
-if (BUILD_TESTING)
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/libnfc.pc.in" "${CMAKE_CURRENT_BINARY_DIR}/libnfc.pc" @ONLY)
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libnfc.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+endif()
+
+if(WIN32)
+  string(TIMESTAMP CURRENT_YEAR %Y)
+  set(prefix "${CMAKE_INSTALL_PREFIX}")
+  set(RC_COMMENT "${PACKAGE_NAME} library")
+  set(RC_INTERNAL_NAME "${PACKAGE_NAME} ${WIN32_MODE}")
+  set(RC_ORIGINAL_NAME "${PACKAGE_NAME}.dll")
+  set(RC_FILE_TYPE 0x00000002L)
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/contrib/win32/version.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/windows/libnfc.rc" @ONLY)
+endif()
+
+set(LIBNFC_CMAKE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/LibNFC")
+set(LIBNFC_STATIC_PACKAGE_LIBRARIES)
+if(NOT BUILD_SHARED_LIBS)
+  if(LIBUSB_FOUND)
+    list(APPEND LIBNFC_STATIC_PACKAGE_LIBRARIES ${LIBUSB_LIBRARIES})
+  endif()
+  if(PCSC_FOUND)
+    list(APPEND LIBNFC_STATIC_PACKAGE_LIBRARIES ${PCSC_LIBRARIES})
+  endif()
+  if(LIBRT_FOUND)
+    list(APPEND LIBNFC_STATIC_PACKAGE_LIBRARIES ${LIBRT_LIBRARIES})
+  endif()
+  if(WIN32)
+    list(APPEND LIBNFC_STATIC_PACKAGE_LIBRARIES wsock32)
+  endif()
+  list(REMOVE_DUPLICATES LIBNFC_STATIC_PACKAGE_LIBRARIES)
+endif()
+
+add_subdirectory(libnfc)
+add_library(LibNFC::nfc ALIAS nfc)
+add_subdirectory(include)
+
+if(BUILD_UTILS)
+  add_subdirectory(utils)
+endif()
+
+if(BUILD_EXAMPLES)
+  add_subdirectory(examples)
+endif()
+
+if(BUILD_TESTING)
   add_subdirectory(test)
-endif ()
+endif()
 
-if (NOT MSVC)
-  # config script install path
-  if ( NOT DEFINED LIBNFC_CMAKE_CONFIG_DIR )
-    set ( LIBNFC_CMAKE_CONFIG_DIR lib${LIB_SUFFIX}/cmake/libnfc )
-  endif ()
+configure_package_config_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/LibNFCConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfig.cmake"
+  INSTALL_DESTINATION "${LIBNFC_CMAKE_INSTALL_DIR}")
 
-  set ( LIBNFC_INCLUDE_DIR ${includedir} )
-  set ( LIBNFC_INCLUDE_DIRS ${LIBNFC_INCLUDE_DIR} )
-  list ( APPEND LIBNFC_INCLUDE_DIRS ${LIBUSB_INCLUDE_DIRS} )
-  set ( LIBNFC_LIBRARY nfc )
-  set ( LIBNFC_LIBRARIES ${LIBNFC_LIBRARY} )
-  list ( APPEND LIBNFC_LIBRARIES ${LIBUSB_LIBRARIES} )
-  set ( LIBNFC_LIBRARY_DIRS ${libdir} )
-  set ( LIBNFC_ROOT_DIR ${prefix} )
-  set ( LIBNFC_VERSION_STRING ${VERSION} )
-  set ( LIBNFC_VERSION_MAJOR ${VERSION_MAJOR} )
-  set ( LIBNFC_VERSION_MINOR ${VERSION_MINOR} )
-  set ( LIBNFC_VERSION_PATCH ${VERSION_PATCH} )
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfigVersion.cmake"
+  VERSION "${PROJECT_VERSION}"
+  COMPATIBILITY SameMajorVersion)
 
-  set ( LIBNFC_USE_FILE ${CMAKE_INSTALL_PREFIX}/${LIBNFC_CMAKE_CONFIG_DIR}/UseLibNFC.cmake )
+install(FILES
+  "${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfig.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfigVersion.cmake"
+  DESTINATION "${LIBNFC_CMAKE_INSTALL_DIR}")
 
+install(EXPORT LibNFCTargets
+  FILE LibNFCTargets.cmake
+  NAMESPACE LibNFC::
+  DESTINATION "${LIBNFC_CMAKE_INSTALL_DIR}")
 
+if(WIN32 AND INSTALL_BUNDLE AND BUILD_UTILS)
+  include(InstallRequiredSystemLibraries)
+  configure_file("${CMAKE_SOURCE_DIR}/cmake/FixBundle.cmake.in" "${CMAKE_CURRENT_BINARY_DIR}/FixBundle.cmake" @ONLY)
+  install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/FixBundle.cmake")
+endif()
 
-  if(CMAKE_VERSION VERSION_LESS 2.8.8)
-    configure_file ( cmake/LibNFCConfig.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfig.cmake @ONLY )
-    configure_file ( cmake/LibNFCConfigVersion.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfigVersion.cmake @ONLY )
-  else ()
-    include(CMakePackageConfigHelpers)
-    configure_package_config_file (
-      cmake/LibNFCConfig.cmake.in
-      ${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfig.cmake
-      INSTALL_DESTINATION ${LIBNFC_CMAKE_CONFIG_DIR}
-      PATH_VARS
-        LIBNFC_USE_FILE
-        LIBNFC_ROOT_DIR
-        LIBNFC_INCLUDE_DIR
-        LIBNFC_INCLUDE_DIRS
-        LIBNFC_LIBRARY_DIRS
-        NO_CHECK_REQUIRED_COMPONENTS_MACRO
-    )
-    write_basic_package_version_file (
-      LibNFCConfigVersion.cmake
-      VERSION ${LIBNFC_VERSION_STRING}
-      COMPATIBILITY AnyNewerVersion
-    )
-  endif ()
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PACKAGE_DESCRIPTION}")
+set(CPACK_PACKAGE_VENDOR "Roel Verdult")
+set(CPACK_PACKAGE_CONTACT "Roel Verdult <roel@libnfc.org>")
 
-  install ( FILES ${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfig.cmake
-                  ${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfigVersion.cmake
-                  cmake/UseLibNFC.cmake
-            DESTINATION ${LIBNFC_CMAKE_CONFIG_DIR}
-          )
+if(WIN32)
+  set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README-Windows.md")
+  set(CPACK_GENERATOR "ZIP")
+  set(CPACK_SOURCE_GENERATOR "ZIP")
+else()
+  set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+  set(CPACK_GENERATOR "TGZ")
+  set(CPACK_SOURCE_GENERATOR "TGZ")
+endif()
 
-endif ()
-
-# Binary Package
-IF(WIN32)
-  SET(CPACK_GENERATOR "ZIP")
-ELSE(WIN32)
-  SET(CPACK_GENERATOR "TBZ2")
-  IF(BUILD_DEBPKG)
-    SET(CPACK_GENERATOR "DEB")
-  ENDIF(BUILD_DEBPKG)
-ENDIF(WIN32)
-
-SET(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Near Field Communication (NFC) library")
-SET(CPACK_PACKAGE_VENDOR "Roel Verdult")
-SET(CPACK_PACKAGE_CONTACT "Roel Verdult <roel@libnfc.org>")
-
-#Readme file
-IF(WIN32)
-  SET(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README-Windows.md")
-ELSE(WIN32)
-  SET(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
-ENDIF(WIN32)
-
-SET(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/COPYING")
-SET(CPACK_PACKAGE_INSTALL_DIRECTORY "libnfc")
-SET(CPACK_PACKAGE_VERSION_MAJOR ${VERSION_MAJOR})
-SET(CPACK_PACKAGE_VERSION_MINOR ${VERSION_MINOR})
-SET(CPACK_PACKAGE_VERSION_PATCH ${VERSION_PATCH})
-SET(CPACK_COMPONENT_LIBRARIES_DISPLAY_NAME "NFC Library")
-SET(CPACK_COMPONENT_EXAMPLES_DISPLAY_NAME "Example Applications")
-SET(CPACK_COMPONENT_HEADERS_DISPLAY_NAME "Development Headers")
-IF(NOT WIN32)
-  SET(CPACK_COMPONENT_MANUALS_DISPLAY_NAME "Example Applications Manuals")
-  SET(CPACK_COMPONENT_MANUALS_DISABLED TRUE)
-  SET(CPACK_COMPONENT_MANUALS_DEPENDS examples)
-ENDIF(NOT WIN32)
-SET(CPACK_COMPONENT_HEADERS_DISABLED TRUE)
-SET(CPACK_COMPONENT_HEADERS_DEPENDS libraries)
-SET(CPACK_COMPONENT_EXAMPLES_DEPENDS libraries)
-
-# Source Package
-IF(WIN32)
-  SET(CPACK_SOURCE_GENERATOR "ZIP")
-ELSE(WIN32)
-  SET(CPACK_SOURCE_GENERATOR "ZIP;TBZ2")
-ENDIF(WIN32)
-
-SET(CPACK_SOURCE_PACKAGE_FILE_NAME "libnfc-${VERSION}")
-SET(CPACK_SOURCE_IGNORE_FILES "~$" "/\\\\.git/" "bin/")
-INCLUDE(CPack)
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/COPYING")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "libnfc")
+set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
+set(CPACK_COMPONENT_LIBRARIES_DISPLAY_NAME "NFC Library")
+set(CPACK_COMPONENT_EXAMPLES_DISPLAY_NAME "Example Applications")
+set(CPACK_COMPONENT_HEADERS_DISPLAY_NAME "Development Headers")
+if(NOT WIN32)
+  set(CPACK_COMPONENT_MANUALS_DISPLAY_NAME "Example Applications Manuals")
+  set(CPACK_COMPONENT_MANUALS_DISABLED TRUE)
+  set(CPACK_COMPONENT_MANUALS_DEPENDS examples)
+endif()
+set(CPACK_COMPONENT_HEADERS_DISABLED TRUE)
+set(CPACK_COMPONENT_HEADERS_DEPENDS libraries)
+set(CPACK_COMPONENT_EXAMPLES_DEPENDS libraries)
+set(CPACK_SOURCE_PACKAGE_FILE_NAME "libnfc-${PROJECT_VERSION}")
+set(CPACK_SOURCE_IGNORE_FILES "~$" "/\\\\.git/" "bin/")
+include(CPack)

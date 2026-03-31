@@ -9,7 +9,7 @@
 # USAGE: GLOBAL INSTALL
 #
 # Install it with:
-#  cmake ./ && sudo make install
+#  cmake --install build
 # Add the following to the CMakeLists.txt of your project:
 #  include(UseDoxygen OPTIONAL)
 # Optionally copy Doxyfile.in in the directory of CMakeLists.txt and edit it.

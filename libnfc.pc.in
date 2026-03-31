@@ -1,11 +1,12 @@
-prefix=@prefix@
+prefix=${pcfiledir}/../..
 exec_prefix=@exec_prefix@
-libdir=@libdir@
-includedir=@includedir@
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
 
-Name: libnfc
-Description: Near Field Communication (NFC) library
+Name: @PACKAGE_NAME@
+Description: @PACKAGE_DESCRIPTION@
 Version: @VERSION@
-Requires: @PKG_CONFIG_REQUIRES@
+Requires.private: @PKG_CONFIG_REQUIRES_PRIVATE@
 Libs: -L${libdir} -lnfc
+Libs.private: @PKG_CONFIG_LIBS_PRIVATE@
 Cflags: -I${includedir}

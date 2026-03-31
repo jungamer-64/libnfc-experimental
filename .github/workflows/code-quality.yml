@@ -79,13 +79,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libusb-dev \
+            cmake \
+            ninja-build \
             libusb-1.0-0-dev \
             libpcsclite-dev \
             libudev-dev \
-            autoconf \
-            automake \
-            libtool \
             pkg-config \
             build-essential \
             gcovr \
@@ -112,29 +110,94 @@ jobs:
           echo "=== libusb-1.0 LIBS ==="
           pkg-config --libs libusb-1.0 || true
 
-      - name: Configure (autotools with coverage)
+      - name: Configure shared build with coverage
         run: |
-          autoreconf -vis
-          ./configure CFLAGS="--coverage -fprofile-arcs -ftest-coverage -g -O0" \
-                      LDFLAGS="--coverage"
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_EXAMPLES=ON \
+            -DBUILD_UTILS=ON \
+            -DBUILD_TESTING=ON \
+            -DCMAKE_C_FLAGS="--coverage -fprofile-arcs -ftest-coverage -g -O0" \
+            -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage -g -O0" \
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage" \
+            -DCMAKE_SHARED_LINKER_FLAGS="--coverage"
 
-      - name: Build
+      - name: Build shared configuration
         run: |
-          make -j$(nproc)
+          cmake --build build --parallel
 
-      - name: Run tests (if available)
+      - name: Run shared tests
         run: |
-          if [ -f "Makefile" ] && grep -q "check:" Makefile; then
-            make check || echo "⚠️ Tests failed or not available"
-          else
-            echo "⚠️ No tests configured (Phase 12 target)"
-          fi
+          ctest --test-dir build --output-on-failure
+
+      - name: Install shared build
+        run: |
+          cmake --install build --prefix /tmp/libnfc-install-shared
+
+      - name: Configure static build
+        run: |
+          cmake -S . -B build-static -G Ninja \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_UTILS=OFF \
+            -DBUILD_TESTING=ON
+
+      - name: Build static configuration
+        run: |
+          cmake --build build-static --parallel
+
+      - name: Run static tests
+        run: |
+          ctest --test-dir build-static --output-on-failure
+
+      - name: Install static build
+        run: |
+          cmake --install build-static --prefix /tmp/libnfc-install-static
+
+      - name: Verify relocatable metadata and pkg-config
+        run: |
+          ! grep -R "/usr/local" /tmp/libnfc-install-shared/lib/cmake/LibNFC /tmp/libnfc-install-shared/lib/pkgconfig/libnfc.pc
+          PKG_CONFIG_PATH=/tmp/libnfc-install-shared/lib/pkgconfig pkg-config --cflags --libs libnfc
+
+      - name: Verify installed shared package
+        run: |
+          mkdir -p /tmp/libnfc-consumer-shared
+          cat > /tmp/libnfc-consumer-shared/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.16)
+          project(libnfc_consumer_shared C)
+          find_package(LibNFC CONFIG REQUIRED PATHS /tmp/libnfc-install-shared/lib/cmake/LibNFC NO_DEFAULT_PATH)
+          add_executable(consumer main.c)
+          target_link_libraries(consumer PRIVATE LibNFC::nfc)
+          EOF
+          cat > /tmp/libnfc-consumer-shared/main.c <<'EOF'
+          #include <nfc/nfc.h>
+          int main(void) { return NFC_SUCCESS; }
+          EOF
+          cmake -S /tmp/libnfc-consumer-shared -B /tmp/libnfc-consumer-shared/build -G Ninja
+          cmake --build /tmp/libnfc-consumer-shared/build --parallel
+
+      - name: Verify installed static package
+        run: |
+          mkdir -p /tmp/libnfc-consumer-static
+          cat > /tmp/libnfc-consumer-static/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.16)
+          project(libnfc_consumer_static C)
+          find_package(LibNFC CONFIG REQUIRED PATHS /tmp/libnfc-install-static/lib/cmake/LibNFC NO_DEFAULT_PATH)
+          add_executable(consumer main.c)
+          target_link_libraries(consumer PRIVATE LibNFC::nfc)
+          EOF
+          cat > /tmp/libnfc-consumer-static/main.c <<'EOF'
+          #include <nfc/nfc.h>
+          int main(void) { return NFC_SUCCESS; }
+          EOF
+          cmake -S /tmp/libnfc-consumer-static -B /tmp/libnfc-consumer-static/build -G Ninja
+          cmake --build /tmp/libnfc-consumer-static/build --parallel
 
       - name: Generate coverage report
         continue-on-error: true
         run: |
           echo "=== Checking for .gcda files ==="
-          gcda_count=$(find . -name "*.gcda" -type f 2>/dev/null | wc -l)
+          gcda_count=$(find build -name "*.gcda" -type f 2>/dev/null | wc -l)
           echo "Found $gcda_count .gcda files"
 
           if [ "$gcda_count" -eq 0 ]; then
@@ -145,7 +208,7 @@ jobs:
 
           # Generate LCOV coverage report from .gcda files
           echo "=== Generating coverage report ==="
-          lcov --directory . --capture --output-file coverage.info --ignore-errors empty,mismatch || {
+          lcov --directory build --capture --output-file coverage.info --ignore-errors empty,mismatch || {
             echo "⚠️ Coverage generation failed (expected without tests)"
             exit 0
           }
@@ -186,13 +249,13 @@ jobs:
       - name: Check for build artifacts
         run: |
           echo "=== Shared libraries ==="
-          find . -name "*.so*" -type f | head -5 || echo "No shared libraries found"
+          find build -name "*.so*" -type f | head -5 || echo "No shared libraries found"
           echo ""
           echo "=== Example binaries ==="
-          ls -lh examples/nfc-poll examples/nfc-list 2>/dev/null || echo "Example binaries not found"
+          ls -lh build/examples/nfc-poll build/examples/pn53x-sam 2>/dev/null || echo "Example binaries not found"
           echo ""
           echo "=== Utility binaries ==="
-          ls -lh utils/nfc-scan-device utils/nfc-mfultralight 2>/dev/null || echo "Utility binaries not found"
+          ls -lh build/utils/nfc-scan-device build/utils/nfc-mfultralight 2>/dev/null || echo "Utility binaries not found"
 
   rust-sanity:
     name: Rust Sanity Tests

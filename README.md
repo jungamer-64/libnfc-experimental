@@ -93,23 +93,35 @@ should continue to treat `<nfc/nfc.h>` as the supported include surface.
 Building
 ========
 
-Note: If working directly from a git clone of the repository, some of the files need to be generated first. To do this run
-`autoreconf -vis`
+CMake is the only supported build system in this repository.
 
-Alternatively use a .tar.bz2 version of a packaged release (which already contains ./configure):
-<https://github.com/nfc-tools/libnfc/releases/>
+Typical development build:
 
-The build should be as simple as running these commands:
+    cmake -S . -B build -DBUILD_EXAMPLES=ON -DBUILD_UTILS=ON -DBUILD_TESTING=ON
+    cmake --build build -j$(nproc)
 
-    ./configure
-    make
+Useful options:
 
-To build with specific driver(s), see option `--with-drivers=...` detailed in `./configure --help`.
+* `-DBUILD_SHARED_LIBS=OFF` for a static library build
+* `-DLIBNFC_DRIVER_PCSC=ON` to enable the PC/SC driver
+* `-DUSE_RUST_NFC_SECURE=ON` to use the Rust `nfc-secure` implementation
+* `-DUSE_RUST_NFC_LIFECYCLE=ON` to move lifecycle helpers to Rust
+
+Downstream CMake consumers should use the exported package target:
+
+```cmake
+find_package(LibNFC CONFIG REQUIRED)
+target_link_libraries(your_app PRIVATE LibNFC::nfc)
+```
+
+For non-CMake consumers, the install still provides `pkg-config` metadata:
+
+    pkg-config --cflags --libs libnfc
 
 Installation
 ============
 
-    make install
+    cmake --install build
 
 You may need to grant permissions to your user to drive your device.
 Under GNU/Linux systems, if you use udev, you could use the provided udev rules.
@@ -123,13 +135,16 @@ Configuration
 =============
 
 In order to change the default behavior of the library, the libnfc uses a
-configuration file located in sysconfdir (as provided to ./configure).
+configuration file located in `SYSCONFDIR` as chosen when CMake configured the
+build.
 
 A sample commented file is available in sources: libnfc.conf.sample
 
-If you have compiled using:
+If you configure the project like this:
 
-    ./configure --prefix=/usr --sysconfdir=/etc
+    cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DSYSCONFDIR=/etc
+    cmake --build build
+    sudo cmake --install build
 
 you can make configuration directory and copy the sample file:
 
@@ -264,7 +279,7 @@ FEITIAN bR500 and R502
 -----------------------
 
 Libnfc can work with PCSC proprietary driver of bR500 and R502, which is already available on most Linux setups.
-To activate the PCSC support: `./configure --with-drivers=pcsc`.
+To activate the PCSC support: `cmake -S . -B build -DLIBNFC_DRIVER_PCSC=ON`.
 Readers known to work:
 
 * Feitian bR500

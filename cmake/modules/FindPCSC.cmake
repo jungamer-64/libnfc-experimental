@@ -1,31 +1,23 @@
-# - Try to find the PC/SC smart card  library
-# Once done this will define
-#
-#  PCSC_FOUND - system has the PC/SC library
-#  PCSC_INCLUDE_DIRS - the PC/SC include directory
-#  PCSC_LIBRARIES - The libraries needed to use PC/SC
-#
-# Author: F. Kooman <fkooman@tuxed.net>
-# Version: 20101019
-#
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND AND NOT WIN32)
+  pkg_check_modules(PCSC QUIET libpcsclite)
+endif()
 
-FIND_PACKAGE (PkgConfig)
-IF(PKG_CONFIG_FOUND)
-    # Will find PC/SC library on Linux/BSDs using PkgConfig
-    PKG_CHECK_MODULES(PCSC libpcsclite)
-#   PKG_CHECK_MODULES(PCSC QUIET libpcsclite)   # IF CMake >= 2.8.2?
-ENDIF(PKG_CONFIG_FOUND)
+if(NOT PCSC_FOUND)
+  find_path(PCSC_INCLUDE_DIRS
+    NAMES WinSCard.h winscard.h)
 
-IF(NOT PCSC_FOUND)
-   # Will find PC/SC headers both on Mac and Windows
-   FIND_PATH(PCSC_INCLUDE_DIRS WinSCard.h)
-   # PCSC library is for Mac, WinSCard library is for Windows
-   FIND_LIBRARY(PCSC_LIBRARIES NAMES PCSC libwinscard)
-ENDIF(NOT PCSC_FOUND)
+  if(APPLE)
+    find_library(PCSC_LIBRARIES NAMES PCSC)
+  else()
+    find_library(PCSC_LIBRARIES NAMES pcsclite PCSC libwinscard winscard WinSCard)
+  endif()
+endif()
 
-INCLUDE(FindPackageHandleStandardArgs)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(PCSC DEFAULT_MSG
-  PCSC_LIBRARIES
-  PCSC_INCLUDE_DIRS
-)
-MARK_AS_ADVANCED(PCSC_INCLUDE_DIRS PCSC_LIBRARIES)
+if(PCSC_LIBRARIES AND NOT PCSC_LIBRARY_DIRS)
+  get_filename_component(PCSC_LIBRARY_DIRS "${PCSC_LIBRARIES}" DIRECTORY)
+endif()
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(PCSC REQUIRED_VARS PCSC_LIBRARIES PCSC_INCLUDE_DIRS)
+mark_as_advanced(PCSC_INCLUDE_DIRS PCSC_LIBRARIES PCSC_LIBRARY_DIRS)

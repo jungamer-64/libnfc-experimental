@@ -1,4 +1,4 @@
-SET(UTILS-SOURCES
+set(UTILITY_SOURCES
   nfc-barcode
   nfc-emulate-forum-tag4
   nfc-jewel
@@ -10,60 +10,47 @@ SET(UTILS-SOURCES
   nfc-scan-device
 )
 
-ADD_LIBRARY(nfcutils STATIC
+add_library(nfcutils STATIC
   nfc-utils.c
 )
-TARGET_LINK_LIBRARIES(nfcutils nfc)
+target_link_libraries(nfcutils PRIVATE nfc)
 
-# Examples
-FOREACH(source ${UTILS-SOURCES})
-  SET (TARGETS ${source}.c)
+foreach(source ${UTILITY_SOURCES})
+  set(TARGETS "${source}.c")
 
-  IF(WIN32)
-    SET(RC_COMMENT "${PACKAGE_NAME} utility")
-    SET(RC_INTERNAL_NAME ${source})
-    SET(RC_ORIGINAL_NAME ${source}.exe)
-    # RC_FILE_TYPE: VFT_APP
-    SET(RC_FILE_TYPE 0x00000001L)
-    CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/../windows/${source}.rc @ONLY)
-    LIST(APPEND TARGETS ${CMAKE_CURRENT_BINARY_DIR}/../windows/${source}.rc)
-  ENDIF(WIN32)
+  if(WIN32)
+    set(RC_COMMENT "${PACKAGE_NAME} utility")
+    set(RC_INTERNAL_NAME "${source}")
+    set(RC_ORIGINAL_NAME "${source}.exe")
+    set(RC_FILE_TYPE 0x00000001L)
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/version.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/../windows/${source}.rc" @ONLY)
+    list(APPEND TARGETS "${CMAKE_CURRENT_BINARY_DIR}/../windows/${source}.rc")
+  endif()
 
-  IF(${source} MATCHES "nfc-jewel")
-    LIST(APPEND TARGETS jewel.c)
-  ENDIF(${source} MATCHES "nfc-jewel")
+  if(source MATCHES "nfc-jewel")
+    list(APPEND TARGETS jewel.c)
+  endif()
 
-  IF((${source} MATCHES "nfc-mfultralight") OR (${source} MATCHES "nfc-mfclassic"))
-    LIST(APPEND TARGETS mifare.c)
-  ENDIF((${source} MATCHES "nfc-mfultralight") OR (${source} MATCHES "nfc-mfclassic"))
+  if(source MATCHES "nfc-mfultralight" OR source MATCHES "nfc-mfclassic")
+    list(APPEND TARGETS mifare.c)
+  endif()
 
-  IF(WIN32)
-    IF(${source} MATCHES "nfc-scan-device")
-      LIST(APPEND TARGETS ../contrib/win32/stdlib.c)
-      INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32)
-    ENDIF(${source} MATCHES "nfc-scan-device")
-    IF(${source} MATCHES "nfc-read-forum-tag3")
-      LIST(APPEND TARGETS ${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/getopt.c)
-    ENDIF()
-  ENDIF(WIN32)
+  if(WIN32)
+    if(source MATCHES "nfc-scan-device")
+      list(APPEND TARGETS ../contrib/win32/stdlib.c)
+      include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32")
+    endif()
+    if(source MATCHES "nfc-read-forum-tag3")
+      list(APPEND TARGETS "${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/getopt.c")
+    endif()
+  endif()
 
-  ADD_EXECUTABLE(${source} ${TARGETS})
+  add_executable("${source}" ${TARGETS})
+  target_link_libraries("${source}" PRIVATE nfc nfcutils)
+  install(TARGETS "${source}" RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT utils)
+endforeach()
 
-  TARGET_LINK_LIBRARIES(${source} nfc)
-  TARGET_LINK_LIBRARIES(${source} nfcutils)
-
-  INSTALL(TARGETS ${source} RUNTIME DESTINATION bin COMPONENT utils)
-ENDFOREACH(source)
-
-#install required libraries
-IF(WIN32)
-  INCLUDE(InstallRequiredSystemLibraries)
-  CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/cmake/FixBundle.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/FixBundle.cmake @ONLY)
-  INSTALL(SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/FixBundle.cmake)
-ENDIF(WIN32)
-
-IF(NOT WIN32)
-  # Manuals for the examples
-  FILE(GLOB manuals "${CMAKE_CURRENT_SOURCE_DIR}/*.1")
-  INSTALL(FILES ${manuals} DESTINATION ${SHARE_INSTALL_PREFIX}/man/man1 COMPONENT manuals)
-ENDIF(NOT WIN32)
+if(BUILD_MANUAL)
+  file(GLOB manuals "${CMAKE_CURRENT_SOURCE_DIR}/*.1")
+  install(FILES ${manuals} DESTINATION "${CMAKE_INSTALL_MANDIR}/man1" COMPONENT manuals)
+endif()

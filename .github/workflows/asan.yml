@@ -21,13 +21,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
+            cmake \
+            ninja-build \
             clang \
             lld \
             libclang-dev \
+            libusb-1.0-0-dev \
+            libpcsclite-dev \
             pkg-config \
-            autoconf \
-            automake \
-            libtool
+            python3
 
       - name: Setup Rust (nightly) and components
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -51,20 +53,21 @@ jobs:
             --manifest-path rust/libnfc-rs/Cargo.toml --features "nfc_secure nfc_secure_debug test_helpers asan_tests" -- --nocapture
 
       - name: Configure and build C components with ASan
-        working-directory: .
         run: |
-          autoreconf -vis
-          ./configure CFLAGS="-fsanitize=address -fno-omit-frame-pointer -g -O1" \
-                      LDFLAGS="-fsanitize=address"
-          make -j$(nproc)
+          cmake -S . -B build-asan -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DBUILD_TESTING=ON \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g -O1" \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g -O1" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address"
+          cmake --build build-asan --parallel
 
-      - name: Run C unit tests (if present)
+      - name: Run C unit tests
         run: |
-          if [ -f "Makefile" ] && grep -q "check:" Makefile; then
-            make check || true
-          else
-            echo "No C 'make check' target found — skipping"
-          fi
+          ctest --test-dir build-asan --output-on-failure || true
 
       - name: Collect ASan logs (if any)
         if: always()

@@ -1,58 +1,37 @@
 #! /bin/sh
 
-# Stop script on first error.
-set -e
+set -eu
 
-# Retrieve libnfc version from configure.ac
-LIBNFC_VERSION=$(grep AC_INIT configure.ac | sed 's/^.*\[libnfc\],\[\(.*\)\],\[.*/\1/g')
+PROJECT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+BUILD_DIR="${PROJECT_DIR}/build/release"
 
-echo "=== Building release archive for libnfc $LIBNFC_VERSION ==="
-# Easiest part: GNU/linux, BSD and other POSIX systems.
-LIBNFC_AUTOTOOLS_ARCHIVE=libnfc-$LIBNFC_VERSION.tar.gz
+LIBNFC_VERSION=$(awk '
+  $1 == "project(libnfc" {
+    for (i = 1; i <= NF; ++i) {
+      if ($i == "VERSION") {
+        print $(i + 1)
+        exit
+      }
+    }
+  }
+' "${PROJECT_DIR}/CMakeLists.txt")
 
-echo ">>> Cleaning sources..."
-# First, clean what we can
-rm -f configure config.h config.h.in
-autoreconf -is --force && ./configure && make distclean
-git clean -dfX
-echo "<<< Sources cleaned."
-
-if [ ! -f $LIBNFC_AUTOTOOLS_ARCHIVE ]; then
-	echo ">>> Autotooled archive generation..."
-
-	# Second, generate dist archive (and test it)
-	autoreconf -is --force && ./configure && make distcheck
-
-	# Finally, clean up
-	make distclean
-	echo "<<< Autotooled archive generated."
-else
-	echo "--- Autotooled archive (GNU/Linux, BSD, etc.) is already done: skipped."
+if [ -z "${LIBNFC_VERSION}" ]; then
+  echo "Could not determine libnfc version from CMakeLists.txt" >&2
+  exit 1
 fi
 
-# Documentation part
-echo "=== Building documentation archive for libnfc $LIBNFC_VERSION ==="
-LIBNFC_DOC_DIR=libnfc-doc-$LIBNFC_VERSION
-LIBNFC_DOC_ARCHIVE=$LIBNFC_DOC_DIR.zip
+echo "=== Building release artifacts for libnfc ${LIBNFC_VERSION} ==="
+rm -rf "${BUILD_DIR}"
 
-if [ ! -f $LIBNFC_DOC_ARCHIVE ]; then
-	echo ">>> Documentation archive generation..."
-	if [ -d $LIBNFC_DOC_DIR ]; then
-		rm -rf $LIBNFC_DOC_DIR
-	fi
+cmake -S "${PROJECT_DIR}" -B "${BUILD_DIR}" -DBUILD_TESTING=ON
+cmake --build "${BUILD_DIR}"
+ctest --test-dir "${BUILD_DIR}" --output-on-failure
 
-	# Build documentation
-	autoreconf -is --force && ./configure --enable-doc && make doc || false
+echo "=== Building source package ==="
+cpack --config "${BUILD_DIR}/CPackSourceConfig.cmake"
 
-	# Create archive
-	cp -r doc/html $LIBNFC_DOC_DIR
-	zip -r $LIBNFC_DOC_ARCHIVE $LIBNFC_DOC_DIR
+echo "=== Building binary package ==="
+cpack --config "${BUILD_DIR}/CPackConfig.cmake"
 
-	# Clean up
-	rm -rf $LIBNFC_DOC_DIR
-	make distclean
-	echo "<<< Documentation archive generated."
-else
-	echo "--- Documentation archive is already done: skipped."
-fi
-
+echo "Artifacts are available in ${BUILD_DIR}"

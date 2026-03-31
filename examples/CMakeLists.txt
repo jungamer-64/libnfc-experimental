@@ -1,4 +1,4 @@
-SET(EXAMPLES-SOURCES
+set(EXAMPLE_SOURCES
   nfc-anticol
   nfc-dep-initiator
   nfc-dep-target
@@ -14,42 +14,30 @@ SET(EXAMPLES-SOURCES
   pn53x-tamashell
 )
 
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/../libnfc)
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../libnfc")
 
-# Examples
-FOREACH(source ${EXAMPLES-SOURCES})
-  SET (TARGETS ${source}.c)
+foreach(source ${EXAMPLE_SOURCES})
+  set(TARGETS "${source}.c")
 
-  IF(WIN32)
-    SET(RC_COMMENT "${PACKAGE_NAME} example")
-    SET(RC_INTERNAL_NAME ${source})
-    SET(RC_ORIGINAL_NAME ${source}.exe)
-    # RC_FILE_TYPE: VFT_APP
-    SET(RC_FILE_TYPE 0x00000001L)
-    CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/../windows/${source}.rc @ONLY)
-    LIST(APPEND TARGETS ${CMAKE_CURRENT_BINARY_DIR}/../windows/${source}.rc)
-	
-	  
-	IF(${source} MATCHES "nfc-st25tb")
-		LIST(APPEND TARGETS ${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/getopt.c)
-	ENDIF()
-  ENDIF(WIN32)
+  if(WIN32)
+    set(RC_COMMENT "${PACKAGE_NAME} example")
+    set(RC_INTERNAL_NAME "${source}")
+    set(RC_ORIGINAL_NAME "${source}.exe")
+    set(RC_FILE_TYPE 0x00000001L)
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/version.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/../windows/${source}.rc" @ONLY)
+    list(APPEND TARGETS "${CMAKE_CURRENT_BINARY_DIR}/../windows/${source}.rc")
 
-  ADD_EXECUTABLE(${source} ${TARGETS})
-  TARGET_LINK_LIBRARIES(${source} nfc)
-  TARGET_LINK_LIBRARIES(${source} nfcutils)
-  INSTALL(TARGETS ${source} RUNTIME DESTINATION bin COMPONENT examples)
-ENDFOREACH(source)
+    if(source MATCHES "nfc-st25tb")
+      list(APPEND TARGETS "${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/getopt.c")
+    endif()
+  endif()
 
-#install required libraries
-IF(WIN32)
-  INCLUDE(InstallRequiredSystemLibraries)
-  CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/cmake/FixBundle.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/FixBundle.cmake @ONLY)
-  INSTALL(SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/FixBundle.cmake)
-ENDIF(WIN32)
+  add_executable("${source}" ${TARGETS})
+  target_link_libraries("${source}" PRIVATE nfc nfcutils)
+  install(TARGETS "${source}" RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT examples)
+endforeach()
 
-IF(NOT WIN32)
-  # Manuals for the examples
-  FILE(GLOB manuals "${CMAKE_CURRENT_SOURCE_DIR}/*.1")
-  INSTALL(FILES ${manuals} DESTINATION ${SHARE_INSTALL_PREFIX}/man/man1 COMPONENT manuals)
-ENDIF(NOT WIN32)
+if(BUILD_MANUAL)
+  file(GLOB manuals "${CMAKE_CURRENT_SOURCE_DIR}/*.1")
+  install(FILES ${manuals} DESTINATION "${CMAKE_INSTALL_MANDIR}/man1" COMPONENT manuals)
+endif()

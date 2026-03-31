@@ -1,269 +1,72 @@
 # Contributing to libnfc
 
-Thank you for your interest in contributing to libnfc!
+Thank you for your interest in contributing to libnfc.
 
-## Code Quality Standards
+## Build and test expectations
 
-All contributions should meet the following requirements:
-
-* **Test Coverage**: 60%+ for new code (when test infrastructure is available)
-* **Duplication**: <30%
-* **Build**: All targets compile without errors
-
-### Continuous Integration
-
-Every commit is automatically verified:
-
-1. **Static Analysis**: Code analysis and security scanning
-2. **Build & Test**: Compilation and unit tests (when available)
-3. **Quality Gate**: Verification of standards
-
-View the CI/CD pipeline: [.github/workflows/code-quality.yml](.github/workflows/code-quality.yml)
-
-## Code Standards
-
-### Memory Safety
-
-When you touch in-tree code that manipulates buffers, prefer the internal
-`nfc-secure` helpers from `libnfc/nfc-secure.h`:
-
-```c
-#include "libnfc/nfc-secure.h"
-
-// ✅ Good: Safe memory operations
-NFC_SAFE_MEMCPY(dest, src, size);
-NFC_SECURE_MEMSET(password, 0x00);
-
-// ❌ Bad: Direct memory operations
-memcpy(dest, src, size);
-memset(password, 0, sizeof(password));
-```
-
-These helpers are repository-internal and are not installed as part of the
-orig-compatible public headers.
-
-### Error Handling
-
-Use the unified error handling infrastructure from `nfc-common.h`:
-
-```c
-#include "nfc-common.h"
-
-// ✅ Good: Structured error handling
-NFC_LOG_ERROR("Failed to open device: %s", error);
-return nfc_error_set(NFC_EIO, "Device initialization failed");
-
-// ❌ Bad: Direct perror() calls
-perror("open failed");
-return -1;
-```
-
-### Frame Processing
-
-Prefer existing shared helpers in `libnfc/` (for example `nfc-common.h`,
-`target-subr*.c`, and the chip-specific helpers) instead of introducing a new
-public frame utility layer.
-
-## Testing
-
-### Coverage Requirements
-
-* **New Functions**: 80%+ line coverage
-* **Modified Functions**: Maintain or improve existing coverage
-* **Critical Paths**: 100% coverage for security-sensitive code
-
-### Test Organization
-
-```
-test/
-├── unit/           # Unit tests for individual functions
-├── integration/    # Integration tests for driver interaction
-└── fixtures/       # Test data and mock devices
-```
-
-### Running Tests
+All development in this repository is expected to use CMake.
 
 ```bash
-# Build with coverage
-./configure CFLAGS="--coverage -g -O0" LDFLAGS="--coverage"
-make -j$(nproc)
-
-# Run tests
-make check
-
-# Generate coverage report
-lcov --capture --directory . --output-file coverage.info
-lcov --remove coverage.info '/usr/*' '*/test/*' --output-file coverage_filtered.info
-genhtml coverage_filtered.info --output-directory coverage_html
+cmake -S . -B build -DBUILD_EXAMPLES=ON -DBUILD_UTILS=ON -DBUILD_TESTING=ON
+cmake --build build -j"$(nproc)"
+ctest --test-dir build --output-on-failure
 ```
 
-## Development Workflow
-
-### 1. Create Feature Branch
+When you touch packaging or exported targets, also verify a static build:
 
 ```bash
-git checkout -b feature/your-feature-name
+cmake -S . -B build-static -DBUILD_SHARED_LIBS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON
+cmake --build build-static -j"$(nproc)"
+ctest --test-dir build-static --output-on-failure
 ```
 
-### 2. Make Changes
+## Code standards
 
-* Follow code standards above
-* Add tests for new functionality (when test infrastructure is available)
-* Update documentation if needed
+### Memory safety
 
-### 3. Verify Locally
+When you touch in-tree buffer handling, prefer the internal helpers from
+`libnfc/nfc-secure.h` instead of calling raw `memcpy` / `memset` directly.
+
+### Error handling
+
+Prefer the shared helpers in `nfc-common.h` and the existing logging/error
+infrastructure instead of introducing ad-hoc `perror()` or integer-only error
+paths.
+
+### Cross-platform behavior
+
+Keep Linux, FreeBSD, macOS, and Windows in mind. If you cannot test a target
+platform directly, avoid changes that hard-code Linux-only assumptions into
+shared code paths.
+
+## Local verification
+
+Recommended local checks:
 
 ```bash
-# Build
-autoreconf -vis
-./configure
-make -j$(nproc)
-
-# Run tests (when available)
-make check
-
-    # Verify no new issues
-    # Check: code quality dashboard (internal)
+bash scripts/check-cbindgen.sh
+bash scripts/check_callerfree_usage.sh
+cargo test --manifest-path rust/libnfc-rs/Cargo.toml --features nfc_secure -- --nocapture
 ```
 
-### 4. Commit Changes
+If you change exported CMake/package behavior, verify all of the following:
 
-Use conventional commit messages:
+1. Shared build configure/build/install succeeds.
+2. Static build configure/build/install succeeds.
+3. An external CMake consumer can link `LibNFC::nfc`.
+4. `pkg-config --cflags --libs libnfc` works against the install tree.
 
-```bash
-git commit -m "feat: Add new driver support for XYZ"
-git commit -m "fix: Simplify pn53x_usb_open timeout handling"
-git commit -m "docs: Update installation instructions"
-git commit -m "test: Add unit tests for nfc_initiator_init"
-```
+## Pull requests
 
-Commit types:
+Keep pull requests small and intentional.
 
-* `feat`: New feature
-* `fix`: Bug fix
-* `docs`: Documentation only
-* `test`: Adding or modifying tests
-* `refactor`: Code refactoring without behavior change
-* `perf`: Performance improvement
-* `style`: Code style/formatting
-* `chore`: Build system, dependencies, etc.
+- `feat`: new feature
+- `fix`: bug fix
+- `docs`: documentation only
+- `test`: tests only
+- `refactor`: internal restructuring without behavior change
+- `perf`: performance work
+- `chore`: build, CI, or maintenance work
 
-### 5. Push and Create Pull Request
-
-```bash
-git push origin feature/your-feature-name
-```
-
-Then create a Pull Request on GitHub. The CI/CD pipeline will automatically verify:
-
-* Build succeeds
-* Tests pass (when available)
-* Code quality standards met
-* Coverage targets achieved (when test infrastructure is available)
-
-## FFI Change Checklist
-
-When your change touches the FFI boundary (Rust ⇄ C), include the following in your PR description and ensure CI checks pass:
-
-1. Regenerate and commit the cbindgen header (if any symbol/signature/layout changed):
-
-        ```sh
-        cbindgen --config rust/libnfc-rs/cbindgen.toml --crate libnfc-rs --output rust/libnfc-rs/include/libnfc_rs.h
-        ```
-
-2. Include a short ownership table: who allocates / who frees any returned buffers (use `nfc_free_*` wrappers for CallerFree cases).
-3. Demonstrate `nfc_set_last_error()` usage for error paths where appropriate and list the error codes added.
-4. Add or update unit tests (Rust) and C integration tests that exercise success and failure paths. The test-only `ffi-sanity` check must pass.
-5. Ensure `scripts/check-cbindgen.sh` and `scripts/check_callerfree_usage.sh` pass locally and in CI.
-6. Coverage thresholds: changed modules should maintain >= 80% line coverage; critical FFI paths require 100% tests where feasible.
-7. If the change is ABI-breaking, include an RFC and obtain maintainers' approval before merging.
-
-CI will gate FFI PRs on the above checks. Failing the header check or the
-test-only `ffi-sanity` check will block merges.
-
-## Refactoring Guidelines
-
-### Complexity Reduction
-
-Target: Reduce cyclomatic complexity (CC) of complex functions
-
-**High Priority Functions**:
-
-* `pn53x_usb_open` (CC: 25 → 10)
-* `pn532_uart_receive` (CC: 22 → 10)
-* `pn53x_usb_set_property_bool` (CC: 20 → 8)
-* `arygon_tama_receive` (CC: 20 → 10)
-
-**Strategy**: Extract Method refactoring
-
-```c
-// Before: Complex function (CC: 25)
-int pn53x_usb_open(const nfc_context *context, const nfc_connstring connstring) {
-    // 26 decision points
-    // Device discovery
-    // Descriptor validation
-    // Error handling
-}
-
-// After: Helper functions (CC: 10)
-static int pn53x_usb_validate_candidate(...);
-static int pn53x_usb_open_device(...);
-static int pn53x_usb_configure_device(...);
-
-int pn53x_usb_open(const nfc_context *context, const nfc_connstring connstring) {
-    // 12 decision points
-    if (!pn53x_usb_validate_candidate(...)) return NULL;
-    if (pn53x_usb_open_device(...) < 0) return NULL;
-    return pn53x_usb_configure_device(...);
-}
-```
-
-### Duplication Reduction
-
-Target: Reduce duplication from 30% to 20%
-
-**Common Patterns**:
-
-* Frame preamble: `0x00 0x00 0xff`
-* Checksum calculation (LCS, DCS)
-* Length encoding
-* Error frame detection
-
-**Solution**: Reuse shared helpers in `libnfc/` instead of creating a new public frame helper layer
-
-## Development Goals
-
-### Code Quality Enhancement
-
-**Completed**:
-
-* Memory safety layer (nfc-secure)
-* Unified error handling (nfc-common)
-* Driver refactoring (4 drivers)
-* CI/CD pipeline
-
-**In Progress**:
-
-* High-complexity function refactoring
-* Frame processing utilities
-* Code duplication reduction
-
-**Future Work**:
-
-* Test suite development
-* Coverage targets: 60%+ overall, 80%+ for new code
-* Unit tests for core functions
-* Integration tests for drivers
-
-## Resources
-
-* **Security**: [SECURITY.md](SECURITY.md)
-* **Memory Safety**: `libnfc/nfc-secure.h` (internal helper header)
-* **CI/CD Pipeline**: [GitHub Actions](https://github.com/jungamer-64/libnfc/actions)
-
-## Questions?
-
-* [Open an issue](https://github.com/jungamer-64/libnfc/issues)
-* [Check existing discussions](https://github.com/jungamer-64/libnfc/discussions)
-
-Thank you for contributing to libnfc!
+If you change the FFI boundary, include regenerated headers and describe buffer
+ownership clearly in the PR description.
