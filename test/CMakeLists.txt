@@ -37,6 +37,12 @@ if(USE_RUST_NFC_CORE)
   )
   target_link_libraries(test_core_initiator nfc)
   add_test(NAME core_initiator COMMAND test_core_initiator)
+
+  add_executable(test_core_device_io
+    test_rust_core_device_io.c
+  )
+  target_link_libraries(test_core_device_io nfc)
+  add_test(NAME core_device_io COMMAND test_core_device_io)
 endif()
 
 find_package(LIBNFC_NCI QUIET)

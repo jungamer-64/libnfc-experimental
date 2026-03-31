@@ -102,6 +102,7 @@ typedef enum
 } nfc_driver_open_result_t;
 #endif
 
+#ifndef USE_RUST_NFC_CORE
 /* Property setting structure for bulk configuration */
 typedef struct
 {
@@ -115,6 +116,7 @@ typedef struct
   int error_code;
   const char *error_msg;
 } error_message_t;
+#endif
 
 /* ============================================================================
  * DRIVER LIST MANAGEMENT TYPES
@@ -155,6 +157,7 @@ static const char *nfc_property_name[] = {
     "NP_FORCE_SPEED_106"};
 #endif
 
+#ifndef USE_RUST_NFC_CORE
 static const error_message_t ERROR_MESSAGES[] = {
     {NFC_SUCCESS, "Success"},
     {NFC_EIO, "Input / Output Error"},
@@ -170,6 +173,7 @@ static const error_message_t ERROR_MESSAGES[] = {
     {NFC_ERFTRANS, "RF Transmission Error"},
     {NFC_ECHIP, "Device's Internal Chip Error"},
 };
+#endif
 
 /* Modulation type name mapping */
 typedef struct
@@ -764,6 +768,7 @@ nfc_list_devices(
  * PROPERTY MANAGEMENT
  * ========================================================================== */
 
+#ifndef USE_RUST_NFC_CORE
 static int
 apply_property_sequence(
     nfc_device *pnd,
@@ -781,6 +786,7 @@ apply_property_sequence(
   }
   return NFC_SUCCESS;
 }
+#endif
 
 #ifndef USE_RUST_NFC_CORE
 int nfc_device_set_property_int(
@@ -940,6 +946,7 @@ int nfc_initiator_init_secure_element(nfc_device *pnd)
  * TARGET MODE FUNCTIONS
  * ========================================================================== */
 
+#ifndef USE_RUST_NFC_CORE
 int nfc_target_init(
     nfc_device *pnd,
     nfc_target *pnt,
@@ -967,11 +974,13 @@ int nfc_target_init(
 
   return HAL(target_init, pnd, pnt, pbtRx, szRx, timeout);
 }
+#endif
 
 /* ============================================================================
  * ERROR HANDLING
  * ========================================================================== */
 
+#ifndef USE_RUST_NFC_CORE
 const char *
 nfc_strerror(const nfc_device *pnd)
 {
@@ -999,6 +1008,7 @@ int nfc_device_get_last_error(const nfc_device *pnd)
 {
   return pnd->last_error;
 }
+#endif
 
 /* ============================================================================
  * STRING CONVERSION UTILITIES
@@ -1290,6 +1300,7 @@ end:
  * DATA TRANSMISSION FUNCTIONS
  * ========================================================================== */
 
+#ifndef USE_RUST_NFC_CORE
 int nfc_initiator_transceive_bytes(
     nfc_device *pnd,
     const uint8_t *pbtTx,
@@ -1386,6 +1397,7 @@ int nfc_target_receive_bits(
 {
   return HAL(target_receive_bits, pnd, pbtRx, szRx, pbtRxPar);
 }
+#endif
 
 /* ============================================================================
  * DEVICE CONTROL FUNCTIONS
@@ -1399,6 +1411,7 @@ void nfc_close(nfc_device *pnd)
   }
 }
 
+#ifndef USE_RUST_NFC_CORE
 int nfc_idle(nfc_device *pnd)
 {
   return HAL(idle, pnd);
@@ -1408,6 +1421,7 @@ int nfc_abort_command(nfc_device *pnd)
 {
   return HAL(abort_command, pnd);
 }
+#endif
 
 /* ============================================================================
  * LIBRARY INITIALIZATION AND CLEANUP
@@ -1440,6 +1454,7 @@ void nfc_exit(nfc_context *context)
  * DEVICE INFORMATION AND DATA ACCESSORS
  * ========================================================================== */
 
+#ifndef USE_RUST_NFC_CORE
 const char *
 nfc_device_get_name(nfc_device *pnd)
 {
@@ -1480,6 +1495,7 @@ int nfc_device_get_information_about(nfc_device *pnd, char **buf)
 {
   return HAL(device_get_information_about, pnd, buf);
 }
+#endif
 
 /* ============================================================================
  * MISCELLANEOUS FUNCTIONS
