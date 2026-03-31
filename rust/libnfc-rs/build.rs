@@ -2,6 +2,19 @@
 use std::env;
 use std::process::Command;
 
+fn env_flag_enabled(name: &str, default_enabled: bool) -> bool {
+    println!("cargo:rerun-if-env-changed={}", name);
+
+    match env::var(name) {
+        Ok(value) => match value.to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => true,
+            "0" | "false" | "no" | "off" => false,
+            _ => default_enabled,
+        },
+        Err(_) => default_enabled,
+    }
+}
+
 fn pick_compiler_for_target() -> String {
     // Prefer an explicit CC if provided; otherwise pick a reasonable
     // default based on the TARGET triple so cross-compilation attempts
@@ -78,9 +91,31 @@ fn main() {
         "have_memset_s",
         "have_explicit_bzero",
         "have_secure_zero_memory",
+        "libnfc_conffiles",
+        "libnfc_debug",
+        "libnfc_envvars",
+        "libnfc_external_bridges",
+        "libnfc_log",
     ] {
         println!("cargo:rustc-check-cfg=cfg({})", cfg_name);
     }
+
+    if env_flag_enabled("LIBNFC_RS_WITH_ENVVARS", true) {
+        println!("cargo:rustc-cfg=libnfc_envvars");
+    }
+    if env_flag_enabled("LIBNFC_RS_WITH_CONFFILES", true) {
+        println!("cargo:rustc-cfg=libnfc_conffiles");
+    }
+    if env_flag_enabled("LIBNFC_RS_WITH_LOG", true) {
+        println!("cargo:rustc-cfg=libnfc_log");
+    }
+    if env_flag_enabled("LIBNFC_RS_WITH_DEBUG", false) {
+        println!("cargo:rustc-cfg=libnfc_debug");
+    }
+    if env_flag_enabled("LIBNFC_RS_EXTERNAL_BRIDGES", false) {
+        println!("cargo:rustc-cfg=libnfc_external_bridges");
+    }
+
     // Conservative default: do not assume availability.
     // Check for explicit_bzero, memset_s and SecureZeroMemory by trying to compile.
     // Note: cross-compilation may not allow executing the compiled binary, but the

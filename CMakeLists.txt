@@ -25,6 +25,10 @@ SET(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
 
 option (USE_RUST_NFC_SECURE "Use Rust implementation of nfc-secure" OFF)
 option (USE_RUST_NFC_LIFECYCLE "Use Rust implementation of nfc context/device lifecycle alloc/free helpers" OFF)
+option (LIBNFC_LOG "Enable log facility (errors, warning, info and debug messages)" ON)
+option (LIBNFC_ENVVARS "Enable envvars facility" ON)
+set(LIBNFC_DEBUG_MODE OFF CACHE BOOL "Debug mode")
+option (LIBNFC_CONFFILES_MODE "Enable configuration files" ON)
 
 # Optional: features to pass to cbindgen when generating the public Rust header.
 # By default this is empty which generates a stable header without debug helpers.
@@ -45,6 +49,7 @@ endif()
 set(RUST_TARGET_DIR ${CMAKE_BINARY_DIR}/rust-target)
 file(GLOB_RECURSE LIBNFC_RUST_SOURCES
   ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/src/*.rs)
+list(APPEND LIBNFC_RUST_SOURCES ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/build.rs)
 set(RUST_CRATE_NAME libnfc_rs)
 set(RUST_LIB_FILENAME ${CMAKE_STATIC_LIBRARY_PREFIX}${RUST_CRATE_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX})
 set(RUST_LIB_PATH ${RUST_TARGET_DIR}/release/${RUST_LIB_FILENAME} CACHE INTERNAL "Path to Rust support library")
@@ -63,7 +68,13 @@ endif()
 
 add_custom_command(
   OUTPUT ${RUST_LIB_PATH}
-  COMMAND ${CARGO_EXECUTABLE} build --release --manifest-path ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml --target-dir ${RUST_TARGET_DIR} ${RUST_CARGO_FEATURES}
+  COMMAND ${CMAKE_COMMAND} -E env
+          LIBNFC_RS_WITH_ENVVARS=${LIBNFC_ENVVARS}
+          LIBNFC_RS_WITH_CONFFILES=${LIBNFC_CONFFILES_MODE}
+          LIBNFC_RS_WITH_LOG=${LIBNFC_LOG}
+          LIBNFC_RS_WITH_DEBUG=${LIBNFC_DEBUG_MODE}
+          LIBNFC_RS_EXTERNAL_BRIDGES=1
+          ${CARGO_EXECUTABLE} build --release --manifest-path ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml --target-dir ${RUST_TARGET_DIR} ${RUST_CARGO_FEATURES}
   DEPENDS ${CMAKE_SOURCE_DIR}/rust/libnfc-rs/Cargo.toml ${LIBNFC_RUST_SOURCES}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   COMMENT "Building Rust support library"
@@ -135,17 +146,14 @@ INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/incl
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/modules/")
 
 # Options
-option (LIBNFC_LOG "Enable log facility (errors, warning, info and debug messages)" ON)
 IF(LIBNFC_LOG)
   ADD_DEFINITIONS(-DLOG)
 ENDIF(LIBNFC_LOG)
 
-option (LIBNFC_ENVVARS "Enable envvars facility" ON)
 IF(LIBNFC_ENVVARS)
   ADD_DEFINITIONS(-DENVVARS)
 ENDIF(LIBNFC_ENVVARS)
 
-SET(LIBNFC_DEBUG_MODE OFF CACHE BOOL "Debug mode")
 IF(LIBNFC_DEBUG_MODE)
   ADD_DEFINITIONS(-DDEBUG)
   SET(CMAKE_C_FLAGS "-g3 ${CMAKE_C_FLAGS}")
@@ -155,7 +163,6 @@ ELSE(LIBNFC_DEBUG_MODE)
   SET(WIN32_MODE "release")
 ENDIF(LIBNFC_DEBUG_MODE)
 
-option (LIBNFC_CONFFILES_MODE "Enable configuration files" ON)
 IF(LIBNFC_CONFFILES_MODE)
   ADD_DEFINITIONS(-DCONFFILES)
 ENDIF(LIBNFC_CONFFILES_MODE)

@@ -43,6 +43,7 @@ pub const NFC_COMMON_ERROR: c_int = -1;
 pub const NFC_COMMON_INVALID: c_int = -(libc::EINVAL as c_int);
 
 pub const LOG_GROUP_GENERAL: u8 = 1;
+const LOG_PRIORITY_NONE: u8 = 0;
 pub const LOG_PRIORITY_ERROR: u8 = 1;
 pub const LOG_PRIORITY_DEBUG: u8 = 3;
 
@@ -50,9 +51,9 @@ const LOG_CATEGORY: *const c_char = b"libnfc.common\0" as *const u8 as *const c_
 pub const NFC_BUFSIZE_CONNSTRING: usize = 1024;
 const MALLOC_LABEL: *const c_char = b"malloc\0" as *const u8 as *const c_char;
 
-#[cfg(not(test))]
+#[cfg(all(not(test), libnfc_external_bridges))]
 unsafe extern "C" {
-    fn log_put_message(group: u8, category: *const c_char, priority: u8, message: *const c_char);
+    fn nfc_rs_log_message(group: u8, category: *const c_char, priority: u8, message: *const c_char);
 }
 
 // ...existing code...
@@ -64,7 +65,7 @@ thread_local! {
 
 #[cfg(test)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn log_put_message(
+pub unsafe extern "C" fn nfc_rs_log_message(
     _group: u8,
     _category: *const c_char,
     _priority: u8,
@@ -97,10 +98,35 @@ pub fn test_clear_last_log() {
 
 fn log_message(priority: u8, message: &str) {
     if let Ok(c_msg) = CString::new(message) {
-        unsafe {
-            log_put_message(LOG_GROUP_GENERAL, LOG_CATEGORY, priority, c_msg.as_ptr());
-        }
+        unsafe { emit_log_message(LOG_GROUP_GENERAL, LOG_CATEGORY, priority, c_msg.as_ptr()) };
     }
+}
+
+#[cfg(all(not(test), libnfc_external_bridges))]
+unsafe fn emit_log_message(
+    group: u8,
+    category: *const c_char,
+    priority: u8,
+    message: *const c_char,
+) {
+    unsafe { nfc_rs_log_message(group, category, priority, message) };
+}
+
+#[cfg(any(test, not(libnfc_external_bridges)))]
+unsafe fn emit_log_message(
+    group: u8,
+    category: *const c_char,
+    priority: u8,
+    message: *const c_char,
+) {
+    #[cfg(test)]
+    unsafe {
+        nfc_rs_log_message(group, category, priority, message);
+        return;
+    }
+
+    #[cfg(not(test))]
+    let _ = (group, category, priority, message);
 }
 
 #[inline]

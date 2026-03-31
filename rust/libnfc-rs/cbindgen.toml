@@ -40,6 +40,10 @@ exclude = [
     "MALLOC_LABEL",
     "c_free",
     "nfc_driver",
+    "nfc_context_new",
+    "nfc_rs_context_conf_load",
+    "nfc_rs_context_log_init",
+    "nfc_rs_log_message",
 ]
 
 [defines]

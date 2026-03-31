@@ -77,13 +77,6 @@ typedef struct nfc_device {
   int last_error;
 } nfc_device;
 
-#if !defined(RUST_TEST)
-extern void log_put_message(uint8_t group,
-                            const char *category,
-                            uint8_t priority,
-                            const char *message);
-#endif
-
 int nfc_parse_connstring(const char *connstring,
                          const char *prefix,
                          const char *param_name,

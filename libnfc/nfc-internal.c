@@ -81,14 +81,33 @@ void string_as_boolean(const char *s, bool *value)
   }
 }
 
+void
+nfc_rs_context_conf_load(nfc_context *context)
+{
+#ifdef CONFFILES
+  conf_load(context);
+#else
+  (void)context;
+#endif
+}
+
+void
+nfc_rs_context_log_init(const nfc_context *context)
+{
+  log_init(context);
+}
+
+void
+nfc_rs_log_message(uint8_t group, const char *category, uint8_t priority, const char *message)
+{
+  log_put_message(group, category, priority, message);
+}
+
+#ifndef USE_RUST_NFC_LIFECYCLE
 nfc_context *
 nfc_context_new(void)
 {
   nfc_context *res;
-
-#ifdef USE_RUST_NFC_LIFECYCLE
-  res = nfc_context_alloc_defaults();
-#else
   res = malloc(sizeof(*res));
   if (!res)
   {
@@ -112,7 +131,6 @@ nfc_context_new(void)
     res->user_defined_devices[i].optional = false;
   }
   res->user_defined_device_count = 0;
-#endif
 
   if (!res)
   {
@@ -221,6 +239,7 @@ nfc_context_new(void)
   }
   return res;
 }
+#endif
 
 void nfc_context_free(nfc_context *context)
 {

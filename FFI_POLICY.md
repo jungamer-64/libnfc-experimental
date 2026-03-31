@@ -6,7 +6,8 @@
 ## 現在の基準線（2026-03-31）
 
 - Rust の公開 FFI 成果物は `staticlib` を基準にし、`rlib` は Rust 側テスト/内部リンク補助として併存する。
-- 現在 Rust が所有する lifecycle slice は `nfc_context_alloc_defaults()`、`nfc_device_new()`、`nfc_device_free()` のみで、`nfc_context_new()` / `nfc_context_free()` は C 側 wrapper が責務を持つ。
+- 現在 Rust が所有する lifecycle slice は `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()` である。
+- `nfc_context_new()` は Rust が env/config hydration と `log_init()` 呼び出し順を所有するが、`conf_load()` の parser / file I/O 本体、`nfc_context_free()`、`log_exit()`、driver list 管理は C 側が責務を持つ。
 - 現在の CI / チェックは `scripts/check-cbindgen.sh`、`scripts/check_callerfree_usage.sh`、`cargo test`、Nightly ASan を中核とする。専用 `ffi-test` crate や追加 governance は将来の hardening 案として扱う。
 
 ## 適用範囲
@@ -258,8 +259,9 @@ extern "C" fn my_c_callback(event_data: i32, user_data: *mut std::ffi::c_void) {
 
 ### 13.1) Phase 4 lifecycle slice の ownership 境界
 
-- foundation-first の初手では、Rust が所有するのは `nfc_context_alloc_defaults()`、`nfc_device_new()`、`nfc_device_free()` の allocator/defaults slice に限定する。
-- `nfc_context_new()` は C 側の薄い wrapper とし、env 読み込み、`conf_load()`、`string_as_boolean()`、`log_init()`、driver list の管理は引き続き C が所有する。
+- 現在の foundation-first slice では、Rust が `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()` を所有する。
+- `nfc_context_new()` は Rust 実装だが、`conf_load()` と `log_init()` は常設の内部 C bridge を介して呼び出し、config parser / file I/O 本体と C の logging backend を再利用する。
+- env 読み込み、`string_as_boolean()` 相当の値解釈、`log_init()` までの初期化順序は Rust が責務を持つ。
 - `nfc_context_free()` は `log_exit()` の責務を持つため、このフェーズでは C 実装のまま維持する。
 - `nfc_open()`、`nfc_list_devices()`、各 driver 実装の Rust 化は次バッチ以降に分離して扱う。
 
@@ -428,9 +430,11 @@ FFI boundary must link back to the relevant items below.
   opaque handles. C headers forward-declare `struct nfc_context;` and expose
   constructor/destructor-style functions such as `nfc_context_new()` and
   `nfc_context_free()`.
-- In the current Phase 4 slice, Rust owns the allocations behind
-  `nfc_context_alloc_defaults()`, `nfc_device_new()`, and `nfc_device_free()`,
-  while `nfc_context_new()` / `nfc_context_free()` remain C-owned wrappers.
+- In the current Phase 4 slice, Rust owns
+  `nfc_context_alloc_defaults()`, `nfc_context_new()`, `nfc_device_new()`,
+  and `nfc_device_free()`. The Rust `nfc_context_new()` entrypoint still calls
+  into C-owned bridges for `conf_load()` and `log_init()`, while
+  `nfc_context_free()` remains C-owned because it also owns `log_exit()`.
 - Only simple data-transfer structs that require direct field access should use
   `#[repr(C)]`. Any such structs must have their layout locked down and be
   mirrored in the public C headers.

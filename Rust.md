@@ -25,10 +25,11 @@
 ## 現在の基準線（2026-03-31）
 
 * Rust の公開 FFI 成果物は `staticlib` を基準にし、`Cargo.toml` では Rust 側のテスト/内部リンク都合で `rlib` も併記している。`cdylib` は未採用で、必要になった場合は別途扱う。
-* 現在 Rust 化済みの lifecycle slice は `nfc_context_alloc_defaults()`、`nfc_device_new()`、`nfc_device_free()` のみ。
-* `nfc_context_new()` と `nfc_context_free()` は引き続き C 側が責務を持つ。
+* 現在 Rust 化済みの lifecycle slice は `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()`。
+* `nfc_context_new()` の env/config hydration と `log_init()` 呼び出し順は Rust が所有するが、config parser 本体（`conf_load()` のファイル I/O）、`nfc_context_free()`、`log_exit()`、driver list 管理は引き続き C 側が責務を持つ。
 * GitHub Actions の既成事実は `build-and-test`、`rust-sanity`、`asan`。`ci/ffi-sanity` と `ci/full` は追加候補であり、まだ常設ジョブではない。
 * Rust ビルド出力は CMake では `build/rust-target/`、Autotools では `<builddir>/rust/target/` を基準にする。
+* CMake / Autotools は `LIBNFC_RS_WITH_ENVVARS`、`LIBNFC_RS_WITH_CONFFILES`、`LIBNFC_RS_WITH_LOG`、`LIBNFC_RS_WITH_DEBUG` を `build.rs` へ渡し、Rust 側 cfg を C のビルド設定と揃える。
 
 ---
 
@@ -128,7 +129,7 @@
 **主要タスク**
 
 * 各構造体を `#[repr(C)]` でミラーリングしつつ、内部実装は安全型で書く。
-* CのAPIは薄いラッパ関数で保持しつつ ownership 境界を段階的に移す（現時点では `nfc_context_new()` / `nfc_context_free()` は C が所有）。
+* CのAPIは薄いラッパ関数で保持しつつ ownership 境界を段階的に移す（現時点では `nfc_context_free()` は C が所有し、`nfc_context_new()` は Rust が内部 bridge を介して config/log 初期化をオーケストレーションする）。
 * Cargoテスト（境界条件・エラーパス）を拡充。
 
 **成果物**
@@ -156,8 +157,9 @@
 
 - `rust-toolchain.toml` は CI と同じ `stable` を追従し、feature なしの `cargo test` が通る入口を維持する。
 - ビルド切替は Cargo `nfc_lifecycle`、CMake `USE_RUST_NFC_LIFECYCLE`、Autotools `--enable-rust-lifecycle` で揃える。
-- このバッチで Rust へ移すのは `nfc_context_alloc_defaults()`、`nfc_device_new()`、`nfc_device_free()` の allocator/defaults slice のみ。
-- `nfc_context_new()` は C の薄い wrapper として残し、env/config/log 初期化は C が継続して所有する。
+- このバッチで Rust へ移すのは `nfc_context_alloc_defaults()`、`nfc_context_new()`、`nfc_device_new()`、`nfc_device_free()` の lifecycle slice。
+- `nfc_context_new()` は Rust 実装とし、env/config hydration と `log_init()` 呼び出し順を Rust が所有する。
+- `conf_load()` の parser / file I/O 本体、`nfc_context_free()`、`log_exit()` は C が継続して所有する。
 - `nfc_context_free()` は `log_exit()` を持つため C のまま据え置く。
 - `nfc_open()`、`nfc_list_devices()`、`conf_load()`、各ドライバ実装は Phase 4 の後続バッチで分離して扱う。
 - Nightly/ASan 向けには `asan_tests` feature を追加し、`tests/mprotect.rs` は `nfc_secure` 前提で gate する。
