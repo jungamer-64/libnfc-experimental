@@ -21,14 +21,16 @@ use std::ffi::{CStr, CString};
 use std::panic;
 use std::ptr;
 
+#[cfg(feature = "orchestration")]
+mod buses;
 #[cfg(feature = "lifecycle")]
 mod compat;
 #[cfg(feature = "lifecycle")]
 mod conf;
 #[cfg(feature = "orchestration")]
-mod drivers;
-#[cfg(feature = "orchestration")]
 mod core;
+#[cfg(feature = "orchestration")]
+mod drivers;
 mod ffi_support;
 #[cfg(feature = "lifecycle")]
 mod ffi_types;
@@ -42,6 +44,18 @@ pub mod rust_api;
 #[cfg(feature = "usb_helper")]
 mod usbbus;
 use crate::ffi_support::{bounded_strlen, copy_bytes_to_c_buffer};
+#[cfg(feature = "orchestration")]
+pub use buses::i2c::{i2c_close, i2c_list_ports, i2c_open, i2c_read, i2c_write};
+#[cfg(feature = "orchestration")]
+pub use buses::spi::{
+    spi_close, spi_get_speed, spi_list_ports, spi_open, spi_receive, spi_send, spi_send_receive,
+    spi_set_mode, spi_set_speed,
+};
+#[cfg(feature = "orchestration")]
+pub use buses::uart::{
+    uart_close, uart_flush_input, uart_get_speed, uart_list_ports, uart_open, uart_receive,
+    uart_send, uart_set_speed,
+};
 #[cfg(feature = "lifecycle")]
 pub use compat::{
     nfc_close, nfc_free, nfc_version, str_nfc_baud_rate, str_nfc_modulation_type, str_nfc_target,

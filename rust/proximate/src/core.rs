@@ -4,14 +4,22 @@
 //
 // Ported from libnfc/nfc.c.
 
+#[cfg(all(not(test), libnfc_driver_pn53x_usb))]
+use crate::drivers::pn53x_usb::builtin_driver_ptr as pn53x_usb_builtin_driver_ptr;
+#[cfg(all(not(test), libnfc_driver_pn71xx))]
+use crate::drivers::pn71xx::builtin_driver_ptr as pn71xx_builtin_driver_ptr;
+#[cfg(all(not(test), libnfc_driver_pn532_i2c))]
+use crate::drivers::pn532_i2c::builtin_driver_ptr as pn532_i2c_builtin_driver_ptr;
+#[cfg(all(not(test), libnfc_driver_pn532_spi))]
+use crate::drivers::pn532_spi::builtin_driver_ptr as pn532_spi_builtin_driver_ptr;
+#[cfg(all(not(test), libnfc_driver_pn532_uart))]
+use crate::drivers::pn532_uart::builtin_driver_ptr as pn532_uart_builtin_driver_ptr;
 #[cfg(test)]
 use crate::ffi_support::copy_bytes_to_c_buffer;
 use crate::ffi_support::{
     as_ref, bounded_strlen, c_string_ptr_to_string, copy_c_string_to_c_buffer,
     fixed_c_buffer_to_string,
 };
-#[cfg(all(not(test), libnfc_driver_pn71xx))]
-use crate::drivers::pn71xx::builtin_driver_ptr as pn71xx_builtin_driver_ptr;
 use crate::lifecycle::{
     DEVICE_NAME_LENGTH, NFC_DRIVER_NAME_MAX, nfc_connstring, nfc_context, nfc_context_new,
     nfc_device, nfc_driver, scan_type_enum,
@@ -37,6 +45,7 @@ const GENERAL_LOG_CATEGORY: *const c_char = b"libnfc.general\0" as *const u8 as 
 const USB_PREFIX: &[u8] = b"usb";
 const USB_SUFFIX: &[u8] = b"_usb";
 const ENV_LIBNFC_LOG_LEVEL: &[u8] = b"LIBNFC_LOG_LEVEL\0";
+const ENV_LIBNFC_LOG_LEVEL_NAME: &str = "LIBNFC_LOG_LEVEL";
 
 #[derive(Clone, Copy)]
 struct DriverHandle(*const nfc_driver);
@@ -275,20 +284,9 @@ unsafe fn duplicate_log_level_env() -> (Option<CString>, bool) {
 
 unsafe fn restore_log_level_env(old_value: Option<&CString>, had_env: bool) {
     if let Some(value) = old_value {
-        if unsafe {
-            libc::setenv(
-                ENV_LIBNFC_LOG_LEVEL.as_ptr() as *const c_char,
-                value.as_ptr(),
-                1,
-            )
-        } != 0
-        {
-            log_general_warn("Unable to restore LIBNFC_LOG_LEVEL");
-        }
-    } else if !had_env
-        && unsafe { libc::unsetenv(ENV_LIBNFC_LOG_LEVEL.as_ptr() as *const c_char) } != 0
-    {
-        log_general_warn("Unable to unset LIBNFC_LOG_LEVEL");
+        unsafe { std::env::set_var(ENV_LIBNFC_LOG_LEVEL_NAME, value.to_string_lossy().as_ref()) };
+    } else if !had_env {
+        unsafe { std::env::remove_var(ENV_LIBNFC_LOG_LEVEL_NAME) };
     }
 }
 
@@ -303,17 +301,7 @@ unsafe fn optional_device_available(
     };
 
     if cfg!(libnfc_envvars) && (!had_env || old_env_log_level.is_some()) {
-        let zero = b"0\0";
-        if unsafe {
-            libc::setenv(
-                ENV_LIBNFC_LOG_LEVEL.as_ptr() as *const c_char,
-                zero.as_ptr() as *const c_char,
-                1,
-            )
-        } != 0
-        {
-            log_general_warn("Unable to reduce log verbosity when probing optional device");
-        }
+        unsafe { std::env::set_var(ENV_LIBNFC_LOG_LEVEL_NAME, "0") };
     }
 
     let opened = unsafe { nfc_open_impl(context, device.connstring.as_ptr()) };
@@ -492,25 +480,9 @@ unsafe extern "C" {
 unsafe extern "C" {
     static acr122s_driver: nfc_driver;
 }
-#[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pn53x_usb))]
-unsafe extern "C" {
-    static pn53x_usb_driver: nfc_driver;
-}
 #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_arygon))]
 unsafe extern "C" {
     static arygon_driver: nfc_driver;
-}
-#[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pn532_uart))]
-unsafe extern "C" {
-    static pn532_uart_driver: nfc_driver;
-}
-#[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pn532_spi))]
-unsafe extern "C" {
-    static pn532_spi_driver: nfc_driver;
-}
-#[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pn532_i2c))]
-unsafe extern "C" {
-    static pn532_i2c_driver: nfc_driver;
 }
 fn builtin_driver_ptrs() -> Vec<*const nfc_driver> {
     #[allow(unused_mut)]
@@ -518,8 +490,8 @@ fn builtin_driver_ptrs() -> Vec<*const nfc_driver> {
 
     #[cfg(all(not(test), libnfc_driver_pn71xx))]
     drivers.push(pn71xx_builtin_driver_ptr());
-    #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pn53x_usb))]
-    drivers.push(ptr::addr_of!(pn53x_usb_driver));
+    #[cfg(all(not(test), libnfc_driver_pn53x_usb))]
+    drivers.push(pn53x_usb_builtin_driver_ptr());
     #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pcsc))]
     drivers.push(ptr::addr_of!(pcsc_driver));
     #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_acr122_pcsc))]
@@ -528,14 +500,14 @@ fn builtin_driver_ptrs() -> Vec<*const nfc_driver> {
     drivers.push(ptr::addr_of!(acr122_usb_driver));
     #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_acr122s))]
     drivers.push(ptr::addr_of!(acr122s_driver));
-    #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pn532_uart))]
-    drivers.push(ptr::addr_of!(pn532_uart_driver));
-    #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pn532_spi))]
-    drivers.push(ptr::addr_of!(pn532_spi_driver));
-    #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pn532_i2c))]
-    drivers.push(ptr::addr_of!(pn532_i2c_driver));
     #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_arygon))]
     drivers.push(ptr::addr_of!(arygon_driver));
+    #[cfg(all(not(test), libnfc_driver_pn532_uart))]
+    drivers.push(pn532_uart_builtin_driver_ptr());
+    #[cfg(all(not(test), libnfc_driver_pn532_spi))]
+    drivers.push(pn532_spi_builtin_driver_ptr());
+    #[cfg(all(not(test), libnfc_driver_pn532_i2c))]
+    drivers.push(pn532_i2c_builtin_driver_ptr());
 
     drivers
 }
@@ -1403,13 +1375,7 @@ mod tests {
         }
 
         let original = CString::new("7").unwrap();
-        unsafe {
-            libc::setenv(
-                ENV_LIBNFC_LOG_LEVEL.as_ptr() as *const c_char,
-                original.as_ptr(),
-                1,
-            );
-        }
+        unsafe { std::env::set_var(ENV_LIBNFC_LOG_LEVEL_NAME, original.to_string_lossy().as_ref()) };
 
         let mut connstrings = [[0 as c_char; NFC_BUFSIZE_CONNSTRING]; 2];
         let found =
@@ -1420,7 +1386,7 @@ mod tests {
         assert_eq!(c_string_ptr_to_string(restored, 16), "7".to_string());
 
         unsafe {
-            libc::unsetenv(ENV_LIBNFC_LOG_LEVEL.as_ptr() as *const c_char);
+            std::env::remove_var(ENV_LIBNFC_LOG_LEVEL_NAME);
             nfc_exit(context);
         }
     }

@@ -232,6 +232,177 @@ pub unsafe extern "C" fn usb_error_is_access(result: libc::c_int) -> bool {
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn uart_open(port_name: *const libc::c_char) -> *mut libc::c_void {
+    unsafe { proximate::uart_open(port_name) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn uart_close(port: *mut libc::c_void) {
+    unsafe { proximate::uart_close(port) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn uart_flush_input(port: *mut libc::c_void, wait: bool) {
+    unsafe { proximate::uart_flush_input(port, wait) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn uart_set_speed(port: *mut libc::c_void, speed: u32) {
+    unsafe { proximate::uart_set_speed(port, speed) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn uart_get_speed(port: *mut libc::c_void) -> u32 {
+    unsafe { proximate::uart_get_speed(port) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn uart_receive(
+    port: *mut libc::c_void,
+    rx: *mut u8,
+    rx_len: libc::size_t,
+    abort_p: *mut libc::c_void,
+    timeout: libc::c_int,
+) -> libc::c_int {
+    unsafe { proximate::uart_receive(port, rx, rx_len, abort_p, timeout) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn uart_send(
+    port: *mut libc::c_void,
+    tx: *const u8,
+    tx_len: libc::size_t,
+    timeout: libc::c_int,
+) -> libc::c_int {
+    unsafe { proximate::uart_send(port, tx, tx_len, timeout) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn uart_list_ports() -> *mut *mut libc::c_char {
+    unsafe { proximate::uart_list_ports() }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn spi_open(port_name: *const libc::c_char) -> *mut libc::c_void {
+    unsafe { proximate::spi_open(port_name) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn spi_close(port: *mut libc::c_void) {
+    unsafe { proximate::spi_close(port) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn spi_set_speed(port: *mut libc::c_void, speed: u32) {
+    unsafe { proximate::spi_set_speed(port, speed) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn spi_set_mode(port: *mut libc::c_void, mode: u32) {
+    unsafe { proximate::spi_set_mode(port, mode) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn spi_get_speed(port: *mut libc::c_void) -> u32 {
+    unsafe { proximate::spi_get_speed(port) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn spi_receive(
+    port: *mut libc::c_void,
+    rx: *mut u8,
+    rx_len: libc::size_t,
+    lsb_first: bool,
+) -> libc::c_int {
+    unsafe { proximate::spi_receive(port, rx, rx_len, lsb_first) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn spi_send(
+    port: *mut libc::c_void,
+    tx: *const u8,
+    tx_len: libc::size_t,
+    lsb_first: bool,
+) -> libc::c_int {
+    unsafe { proximate::spi_send(port, tx, tx_len, lsb_first) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn spi_send_receive(
+    port: *mut libc::c_void,
+    tx: *const u8,
+    tx_len: libc::size_t,
+    rx: *mut u8,
+    rx_len: libc::size_t,
+    lsb_first: bool,
+) -> libc::c_int {
+    unsafe { proximate::spi_send_receive(port, tx, tx_len, rx, rx_len, lsb_first) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn spi_list_ports() -> *mut *mut libc::c_char {
+    unsafe { proximate::spi_list_ports() }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn i2c_open(
+    bus_name: *const libc::c_char,
+    address: u32,
+) -> *mut libc::c_void {
+    unsafe { proximate::i2c_open(bus_name, address) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn i2c_close(device: *mut libc::c_void) {
+    unsafe { proximate::i2c_close(device) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn i2c_read(
+    device: *mut libc::c_void,
+    rx: *mut u8,
+    rx_len: libc::size_t,
+) -> libc::ssize_t {
+    unsafe { proximate::i2c_read(device, rx, rx_len) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn i2c_write(
+    device: *mut libc::c_void,
+    tx: *const u8,
+    tx_len: libc::size_t,
+) -> libc::c_int {
+    unsafe { proximate::i2c_write(device, tx, tx_len) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn i2c_list_ports() -> *mut *mut libc::c_char {
+    unsafe { proximate::i2c_list_ports() }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn connstring_decode(
     connstring: *const libc::c_char,
     driver_name: *const libc::c_char,

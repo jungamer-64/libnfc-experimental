@@ -94,6 +94,11 @@ jobs:
           toolchain: stable
           profile: minimal
 
+      - name: Verify Windows-target Rust parity for proximate
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          cargo check --manifest-path rust/Cargo.toml --target x86_64-pc-windows-gnu -p proximate
+
       - name: Configure shared build with coverage
         run: |
           cmake -S . -B build -G Ninja \

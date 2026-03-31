@@ -3,9 +3,13 @@
 include("${CMAKE_CURRENT_LIST_DIR}/LibNFCTargets.cmake")
 
 set(_libnfc_static_link_libraries "@LIBNFC_STATIC_PACKAGE_LIBRARIES@")
-if(_libnfc_static_link_libraries)
+if(NOT "@BUILD_SHARED_LIBS@" STREQUAL "ON" AND "@PROXIMATE_C_FFI@" STREQUAL "ON")
   list(PREPEND _libnfc_static_link_libraries "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/@RUST_LIB_FILENAME@")
-  set_property(TARGET LibNFC::nfc PROPERTY INTERFACE_LINK_LIBRARIES "${_libnfc_static_link_libraries}")
+  list(APPEND _libnfc_static_link_libraries "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/libnfc.a")
+endif()
+
+if(_libnfc_static_link_libraries)
+  set_property(TARGET LibNFC::nfc APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${_libnfc_static_link_libraries}")
 endif()
 
 check_required_components(LibNFC)

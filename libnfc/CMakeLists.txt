@@ -24,7 +24,9 @@ set(CHIPS_SOURCES chips/pn53x.c)
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/chips")
 
 if(UART_REQUIRED)
-  if(WIN32)
+  if(PROXIMATE_C_FFI)
+    # UART is provided by the Rust-backed C ABI shim in this branch.
+  elseif(WIN32)
     list(APPEND BUSES_SOURCES ../contrib/win32/libnfc/buses/uart.c)
   else()
     list(APPEND BUSES_SOURCES buses/uart.c)
@@ -32,7 +34,9 @@ if(UART_REQUIRED)
 endif()
 
 if(I2C_REQUIRED)
-  if(CMAKE_SYSTEM_NAME MATCHES "Linux")
+  if(PROXIMATE_C_FFI)
+    # I2C is provided by the Rust-backed C ABI shim in this branch.
+  elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
     list(APPEND BUSES_SOURCES buses/i2c.c)
   else()
     message(FATAL_ERROR "I2C is only (yet) supported in Linux!")
@@ -40,7 +44,9 @@ if(I2C_REQUIRED)
 endif()
 
 if(SPI_REQUIRED)
-  if(CMAKE_SYSTEM_NAME MATCHES "Linux")
+  if(PROXIMATE_C_FFI)
+    # SPI is provided by the Rust-backed C ABI shim in this branch.
+  elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
     list(APPEND BUSES_SOURCES buses/spi.c)
   else()
     message(FATAL_ERROR "SPI is only (yet) supported in Linux!")

@@ -4,7 +4,9 @@
 //
 // Ported from libnfc/nfc.c.
 
-use crate::ffi_support::{as_mut, as_ref, c_string_ptr_to_string};
+use crate::ffi_support::{
+    as_mut, as_ref, bounded_strlen, c_string_ptr_to_string, copy_bytes_to_c_buffer,
+};
 use crate::ffi_types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_mode, nfc_modulation, nfc_modulation_type,
     nfc_property, nfc_target,
@@ -57,8 +59,6 @@ const CHIP_ERROR_MESSAGE: *const c_char =
     b"Device's Internal Chip Error\0" as *const u8 as *const c_char;
 const UNKNOWN_ERROR_MESSAGE: *const c_char = b"Unknown error\0" as *const u8 as *const c_char;
 const NULL_ERROR_PREFIX: *const c_char = b"(null)\0" as *const u8 as *const c_char;
-const PRINTF_STRING_FORMAT: *const c_char = b"%s\0" as *const u8 as *const c_char;
-
 const PROPERTY_NAMES: [&str; 15] = [
     "NP_TIMEOUT_COMMAND",
     "NP_TIMEOUT_ATR",
@@ -1304,12 +1304,25 @@ pub unsafe fn nfc_strerror(device: *const nfc_device) -> *const c_char {
 
 pub unsafe fn nfc_strerror_r(device: *const nfc_device, buf: *mut c_char, buflen: size_t) -> c_int {
     ffi_catch_unwind_int("nfc_strerror_r", NFC_ESOFT, || unsafe {
-        if buf.is_null() && buflen > 0 {
+        if buflen == 0 {
+            return 0;
+        }
+
+        if buf.is_null() {
             return -1;
         }
 
-        let written = libc::snprintf(buf, buflen, PRINTF_STRING_FORMAT, nfc_strerror(device));
-        if written < 0 { -1 } else { 0 }
+        let message = nfc_strerror(device);
+        let max_copy = buflen.saturating_sub(1);
+        let message_len = bounded_strlen(message, max_copy.saturating_add(1));
+        let copy_len = message_len.min(max_copy);
+        let bytes = slice::from_raw_parts(message.cast::<u8>(), copy_len);
+
+        if copy_bytes_to_c_buffer(buf, buflen, bytes) {
+            0
+        } else {
+            -1
+        }
     })
 }
 

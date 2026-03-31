@@ -9,17 +9,17 @@
 
 use crate::ffi_support::{as_mut, copy_bytes_to_c_buffer};
 use crate::ffi_types::{
-    nfc_baud_rate, nfc_felica_info, nfc_iso14443a_info, nfc_iso14443b2ct_info,
-    nfc_iso14443b2sr_info, nfc_iso14443b_info, nfc_iso14443bi_info, nfc_jewel_info, nfc_mode,
-    nfc_modulation, nfc_modulation_type, nfc_property, nfc_target,
+    nfc_baud_rate, nfc_felica_info, nfc_iso14443a_info, nfc_iso14443b_info, nfc_iso14443b2ct_info,
+    nfc_iso14443b2sr_info, nfc_iso14443bi_info, nfc_jewel_info, nfc_mode, nfc_modulation,
+    nfc_modulation_type, nfc_property, nfc_target,
 };
 use crate::lifecycle::{
     DEVICE_NAME_LENGTH, nfc_connstring, nfc_context, nfc_device, nfc_device_free, nfc_device_new,
     nfc_driver, scan_type_enum,
 };
 use crate::{
-    LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, emit_log_message, log_debug, log_error,
-    release_allocated_ptr, reset_last_error, set_last_error_message, NFC_BUFSIZE_CONNSTRING,
+    LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING, emit_log_message, log_debug,
+    log_error, release_allocated_ptr, reset_last_error, set_last_error_message,
 };
 use libc::{c_char, c_int, c_uchar, c_uint, c_void, size_t};
 use std::ffi::{CStr, CString};
@@ -716,7 +716,13 @@ unsafe extern "C" fn pn71xx_open(
     };
 
     device_ref.driver = pn71xx_driver_ptr();
-    if !unsafe { copy_bytes_to_c_buffer(device_ref.name.as_mut_ptr(), DEVICE_NAME_LENGTH, PN71XX_DEVICE_NAME) } {
+    if !unsafe {
+        copy_bytes_to_c_buffer(
+            device_ref.name.as_mut_ptr(),
+            DEVICE_NAME_LENGTH,
+            PN71XX_DEVICE_NAME,
+        )
+    } {
         backend_deinitialize();
         unsafe { nfc_device_free(device) };
         clear_runtime_state();
@@ -886,8 +892,9 @@ unsafe extern "C" fn pn71xx_initiator_poll_target(
     for _ in 0..poll_nr {
         for index in 0..modulations_len {
             let nm = unsafe { ptr::read(modulations.add(index)) };
-            let result =
-                unsafe { pn71xx_initiator_select_passive_target(device, nm, ptr::null(), 0, target) };
+            let result = unsafe {
+                pn71xx_initiator_select_passive_target(device, nm, ptr::null(), 0, target)
+            };
             if result > 0 {
                 return result;
             }
@@ -1148,7 +1155,10 @@ mod tests {
         }
         let found = unsafe { pn71xx_scan(context, connstrings.as_mut_ptr(), connstrings.len()) };
         assert_eq!(found, 1);
-        assert_eq!(fixed_c_buffer_to_string(&connstrings[0]), "pn71xx".to_string());
+        assert_eq!(
+            fixed_c_buffer_to_string(&connstrings[0]),
+            "pn71xx".to_string()
+        );
         let snapshot = backend_state().lock().unwrap().clone();
         assert_eq!(snapshot.initialize_calls, 1);
         assert_eq!(snapshot.deinitialize_calls, 1);
@@ -1281,7 +1291,11 @@ mod tests {
                 },
             ),
             (
-                make_tag(TARGET_TYPE_ISO14443_3B, &[0x41, 0x42, 0x43, 0x44, 0x45, 0x46], 0),
+                make_tag(
+                    TARGET_TYPE_ISO14443_3B,
+                    &[0x41, 0x42, 0x43, 0x44, 0x45, 0x46],
+                    0,
+                ),
                 nfc_modulation {
                     nmt: nfc_modulation_type::NMT_ISO14443B2SR,
                     nbr: nfc_baud_rate::NBR_106,
@@ -1295,14 +1309,22 @@ mod tests {
                 },
             ),
             (
-                make_tag(TARGET_TYPE_FELICA, &[0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68], 0),
+                make_tag(
+                    TARGET_TYPE_FELICA,
+                    &[0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68],
+                    0,
+                ),
                 nfc_modulation {
                     nmt: nfc_modulation_type::NMT_FELICA,
                     nbr: nfc_baud_rate::NBR_212,
                 },
             ),
             (
-                make_tag(TARGET_TYPE_ISO14443_3A, &[0x71, 0x72, 0x73, 0x74], NFA_PROTOCOL_T1T),
+                make_tag(
+                    TARGET_TYPE_ISO14443_3A,
+                    &[0x71, 0x72, 0x73, 0x74],
+                    NFA_PROTOCOL_T1T,
+                ),
                 nfc_modulation {
                     nmt: nfc_modulation_type::NMT_JEWEL,
                     nbr: nfc_baud_rate::NBR_106,
@@ -1327,7 +1349,10 @@ mod tests {
             match modulation.nmt {
                 nfc_modulation_type::NMT_ISO14443A => {
                     let info = target_iso14443a(&target);
-                    assert_eq!(&info.abtUid[..tag.uid_length as usize], &tag.uid[..tag.uid_length as usize]);
+                    assert_eq!(
+                        &info.abtUid[..tag.uid_length as usize],
+                        &tag.uid[..tag.uid_length as usize]
+                    );
                     if tag.technology == TARGET_TYPE_MIFARE_CLASSIC {
                         assert_eq!(info.btSak, 0x08);
                     } else {

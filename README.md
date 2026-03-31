@@ -112,7 +112,8 @@ Useful options:
 Rust core baseline in this branch:
 
 * Rust is the only supported core path for lifecycle, orchestration, and public control-plane entrypoints
-* C remains for driver implementations, while the USB helper layer is provided only through the internal Rust bridge
+* Builtin driver ownership is now split: `pn71xx`, `pn53x_usb`, `pn532_uart`, `pn532_spi`, and `pn532_i2c` are Rust-owned, while the remaining chip-specific drivers stay in C for now
+* The internal USB/UART/SPI/I2C helper layers are Rust-backed in this branch, while the shared PN53x chip layer is still provided by the existing C implementation
 
 Recommended validation build:
 

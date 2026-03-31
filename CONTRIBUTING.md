@@ -62,6 +62,10 @@ In this experimental branch, Rust is the only supported core implementation. The
 `PROXIMATE_SECURE`, `PROXIMATE_LIFECYCLE`, and `PROXIMATE_ORCHESTRATION` CMake options
 are deprecated no-ops kept for one compatibility cycle.
 
+The builtin `pn71xx`, `pn53x_usb`, `pn532_uart`, `pn532_spi`, and `pn532_i2c`
+drivers are Rust-owned in this branch, and the internal USB/UART/SPI/I2C helper
+layers are also provided through the Rust-backed C ABI shim.
+
 If you change exported CMake/package behavior, verify all of the following:
 
 1. Shared build configure/build/install succeeds.
