@@ -218,9 +218,6 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   endif()
 endif()
 
-# Workarounds for libusb in C99
-ADD_DEFINITIONS(-Du_int8_t=uint8_t -Du_int16_t=uint16_t)
-
 IF(MINGW)
   IF (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
     IF(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86")

@@ -27,28 +27,83 @@
 
 /**
  * @file usbbus.h
- * @brief libusb 0.1 driver header
+ * @brief Internal libusb-1.0 helper layer for USB-backed NFC drivers
  */
 
 #ifndef __NFC_BUS_USB_H__
 #  define __NFC_BUS_USB_H__
 
-#ifndef _WIN32
-// Under POSIX system, we use libusb (>= 0.1.12)
-#include <stdint.h>
-#include <usb.h>
-#define USB_TIMEDOUT ETIMEDOUT
-#define _usb_strerror( X ) strerror(-X)
-#else
-// Under Windows we use libusb-win32 (>= 1.2.5)
-#include <lusb0_usb.h>
-#define USB_TIMEDOUT 116
-#define _usb_strerror( X ) usb_strerror()
-#endif
-
 #include <stdbool.h>
-#include <string.h>
+#include <stddef.h>
+#include <stdint.h>
+
+typedef struct usb_dev_handle usb_dev_handle;
+
+struct usb_endpoint_descriptor {
+  uint8_t address;
+  uint8_t attributes;
+  uint16_t max_packet_size;
+};
+
+struct usb_interface_descriptor {
+  uint8_t number;
+  uint8_t alternate_setting;
+  size_t endpoint_count;
+  struct usb_endpoint_descriptor *endpoints;
+};
+
+struct usb_device {
+  void *native_device;
+  uint16_t vendor_id;
+  uint16_t product_id;
+  uint8_t manufacturer_string_index;
+  uint8_t product_string_index;
+  uint8_t bus_number;
+  uint8_t device_address;
+  uint8_t configuration_value;
+  size_t interface_count;
+  struct usb_interface_descriptor *interfaces;
+};
+
+struct usb_device_list {
+  struct usb_device *devices;
+  size_t count;
+};
+
+struct usb_bulk_endpoints {
+  uint8_t interface_number;
+  int alternate_setting;
+  uint8_t endpoint_in;
+  uint8_t endpoint_out;
+  uint16_t max_packet_size;
+};
 
 int usb_prepare(void);
+int usb_get_device_list(struct usb_device_list *list);
+void usb_free_device_list(struct usb_device_list *list);
+int usb_get_bus_device_strings(const struct usb_device *device,
+                               char *bus_buffer, size_t bus_buffer_size,
+                               char *device_buffer, size_t device_buffer_size);
+bool usb_device_get_bulk_endpoints(const struct usb_device *device,
+                                   struct usb_bulk_endpoints *endpoints);
+int usb_open(const struct usb_device *device, usb_dev_handle **handle);
+int usb_close(usb_dev_handle *handle);
+int usb_set_configuration(usb_dev_handle *handle, int configuration_value);
+int usb_claim_interface(usb_dev_handle *handle, int interface_number);
+int usb_release_interface(usb_dev_handle *handle, int interface_number);
+int usb_set_altinterface(usb_dev_handle *handle, int interface_number,
+                         int alternate_setting);
+int usb_reset(usb_dev_handle *handle);
+int usb_bulk_read(usb_dev_handle *handle, unsigned char endpoint,
+                  unsigned char *data, size_t size, int timeout);
+int usb_bulk_write(usb_dev_handle *handle, unsigned char endpoint,
+                   const unsigned char *data, size_t size, int timeout);
+int usb_get_string_simple(usb_dev_handle *handle, int string_index,
+                          char *buffer, size_t buffer_size);
+const char *usb_strerror(int result);
+bool usb_error_is_timeout(int result);
+bool usb_error_is_access(int result);
+
+#define _usb_strerror(X) usb_strerror(X)
 
 #endif // __NFC_BUS_USB_H__

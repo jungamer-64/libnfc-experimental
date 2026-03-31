@@ -35,7 +35,7 @@ Some NFC drivers depend on third party software:
 
 * pn53x_usb & acr122_usb:
 
-  * libusb-0.1 <http://libusb.sf.net>
+  * libusb-1.0 <https://libusb.info/>
 
 * acr122_pcsc:
 
