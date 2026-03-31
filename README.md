@@ -35,7 +35,10 @@ Some NFC drivers depend on third party software:
 
 * pn53x_usb & acr122_usb:
 
-  * libusb-1.0 <https://libusb.info/>
+  * No extra development package is required in this branch.
+  * USB transport is provided by the in-tree Rust `nusb` bridge and uses the host OS USB stack.
+  * On Linux, keep the existing udev or `/dev/bus/usb` permission setup for reader access.
+  * On Windows, install a WinUSB-compatible driver for USB readers.
 
 * acr122_pcsc:
 
@@ -109,7 +112,7 @@ Useful options:
 Rust core baseline in this branch:
 
 * Rust is the only supported core path for lifecycle, orchestration, and public control-plane entrypoints
-* C remains for driver implementations plus selected backend helpers that Rust still calls through internal bridges
+* C remains for driver implementations, while the USB helper layer is provided only through the internal Rust bridge
 
 Recommended validation build:
 

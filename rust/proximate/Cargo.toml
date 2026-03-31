@@ -9,12 +9,14 @@ name = "proximate"
 
 [dependencies]
 libc = "0.2"
+nusb = { version = "0.2", optional = true }
 
 [features]
-default = ["secure", "lifecycle", "orchestration"]
+default = ["secure", "lifecycle", "orchestration", "usb_helper"]
 secure = []
 lifecycle = []
 orchestration = ["lifecycle"]
+usb_helper = ["dep:nusb"]
 # Internal support feature used by the facade crate when it exposes a C ABI.
 c_ffi_support = []
 # Debug helpers for nfc-secure (buffers overlap checks, suspicious size warnings)

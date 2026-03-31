@@ -20,6 +20,12 @@ pub use proximate::{
     scan_type_enum,
 };
 
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+pub use proximate::{
+    usb_bulk_endpoints, usb_dev_handle, usb_device, usb_device_list, usb_endpoint_descriptor,
+    usb_interface_descriptor,
+};
+
 #[cfg(any(feature = "c_ffi", cbindgen))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_parse_connstring(
@@ -64,6 +70,164 @@ pub unsafe extern "C" fn nfc_set_last_error(message: *const libc::c_char) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_rs_free(ptr: *mut libc::c_void) {
     unsafe { proximate::nfc_rs_free(ptr) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_prepare() -> libc::c_int {
+    unsafe { proximate::usb_prepare() }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_get_device_list(list: *mut usb_device_list) -> libc::c_int {
+    unsafe { proximate::usb_get_device_list(list) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_free_device_list(list: *mut usb_device_list) {
+    unsafe { proximate::usb_free_device_list(list) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_get_bus_device_strings(
+    device: *const usb_device,
+    bus_buffer: *mut libc::c_char,
+    bus_buffer_size: libc::size_t,
+    device_buffer: *mut libc::c_char,
+    device_buffer_size: libc::size_t,
+) -> libc::c_int {
+    unsafe {
+        proximate::usb_get_bus_device_strings(
+            device,
+            bus_buffer,
+            bus_buffer_size,
+            device_buffer,
+            device_buffer_size,
+        )
+    }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_device_get_bulk_endpoints(
+    device: *const usb_device,
+    endpoints: *mut usb_bulk_endpoints,
+) -> bool {
+    unsafe { proximate::usb_device_get_bulk_endpoints(device, endpoints) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_open(
+    device: *const usb_device,
+    handle: *mut *mut usb_dev_handle,
+) -> libc::c_int {
+    unsafe { proximate::usb_open(device, handle) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_close(handle: *mut usb_dev_handle) -> libc::c_int {
+    unsafe { proximate::usb_close(handle) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_set_configuration(
+    handle: *mut usb_dev_handle,
+    configuration_value: libc::c_int,
+) -> libc::c_int {
+    unsafe { proximate::usb_set_configuration(handle, configuration_value) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_claim_interface(
+    handle: *mut usb_dev_handle,
+    interface_number: libc::c_int,
+) -> libc::c_int {
+    unsafe { proximate::usb_claim_interface(handle, interface_number) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_release_interface(
+    handle: *mut usb_dev_handle,
+    interface_number: libc::c_int,
+) -> libc::c_int {
+    unsafe { proximate::usb_release_interface(handle, interface_number) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_set_altinterface(
+    handle: *mut usb_dev_handle,
+    interface_number: libc::c_int,
+    alternate_setting: libc::c_int,
+) -> libc::c_int {
+    unsafe { proximate::usb_set_altinterface(handle, interface_number, alternate_setting) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_reset(handle: *mut usb_dev_handle) -> libc::c_int {
+    unsafe { proximate::usb_reset(handle) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_bulk_read(
+    handle: *mut usb_dev_handle,
+    endpoint: u8,
+    data: *mut u8,
+    size: libc::size_t,
+    timeout: libc::c_int,
+) -> libc::c_int {
+    unsafe { proximate::usb_bulk_read(handle, endpoint, data, size, timeout) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_bulk_write(
+    handle: *mut usb_dev_handle,
+    endpoint: u8,
+    data: *const u8,
+    size: libc::size_t,
+    timeout: libc::c_int,
+) -> libc::c_int {
+    unsafe { proximate::usb_bulk_write(handle, endpoint, data, size, timeout) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_get_string_simple(
+    handle: *mut usb_dev_handle,
+    string_index: libc::c_int,
+    buffer: *mut libc::c_char,
+    buffer_size: libc::size_t,
+) -> libc::c_int {
+    unsafe { proximate::usb_get_string_simple(handle, string_index, buffer, buffer_size) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_strerror(result: libc::c_int) -> *const libc::c_char {
+    unsafe { proximate::usb_strerror(result) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_error_is_timeout(result: libc::c_int) -> bool {
+    unsafe { proximate::usb_error_is_timeout(result) }
+}
+
+#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn usb_error_is_access(result: libc::c_int) -> bool {
+    unsafe { proximate::usb_error_is_access(result) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]

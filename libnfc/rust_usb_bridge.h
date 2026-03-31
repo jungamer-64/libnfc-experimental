@@ -9,7 +9,8 @@
  * Copyright (C) 2012-2013 Ludovic Rousseau
  * See AUTHORS file for a more comprehensive list of contributors.
  * Additional contributors of this file:
- *
+ * Copyright (C) 2025-2026 jungamer-64
+ * 
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published by the
  * Free Software Foundation, either version 3 of the License, or (at your
@@ -26,12 +27,12 @@
  */
 
 /**
- * @file usbbus.h
- * @brief Internal libusb-1.0 helper layer for USB-backed NFC drivers
+ * @file rust_usb_bridge.h
+ * @brief Internal Rust-backed USB helper declarations for USB NFC drivers
  */
 
-#ifndef __NFC_BUS_USB_H__
-#  define __NFC_BUS_USB_H__
+#ifndef __NFC_RUST_USB_BRIDGE_H__
+#  define __NFC_RUST_USB_BRIDGE_H__
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -106,4 +107,4 @@ bool usb_error_is_access(int result);
 
 #define _usb_strerror(X) usb_strerror(X)
 
-#endif // __NFC_BUS_USB_H__
+#endif // __NFC_RUST_USB_BRIDGE_H__

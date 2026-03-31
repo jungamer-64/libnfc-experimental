@@ -9,7 +9,7 @@ Requirements
 
 - MinGW-w64 or MSVC
 - CMake 3.16 or newer
-- libusb-1.0 development files
+- Rust toolchain with `cargo`
 
 Building
 ========
@@ -47,6 +47,9 @@ The default Windows configuration directory is `./config` relative to the
 installed binaries. If you want a different location, set
 `-DLIBNFC_CONFDIR=...` when configuring the build.
 
+USB-backed readers use the Rust `nusb` bridge in this branch. Install a
+WinUSB-compatible driver for the reader you want to access directly over USB.
+
 For compatibility with older build scripts, `-DLIBNFC_SYSCONFDIR=...` is still
 accepted and mapped to `LIBNFC_CONFDIR`.
 
@@ -54,5 +57,4 @@ References
 ==========
 
 - MinGW-w64: <https://www.mingw-w64.org/>
-- libusb-1.0: <https://libusb.info/>
 - CMake: <https://cmake.org/>

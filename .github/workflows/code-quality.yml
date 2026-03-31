@@ -81,7 +81,6 @@ jobs:
           sudo apt-get install -y \
             cmake \
             ninja-build \
-            libusb-1.0-0-dev \
             libpcsclite-dev \
             libudev-dev \
             pkg-config \
@@ -94,21 +93,6 @@ jobs:
         with:
           toolchain: stable
           profile: minimal
-
-      - name: Verify pkg-config for libusb
-        run: |
-          echo "=== Checking pkg-config packages ==="
-          pkg-config --list-all | grep -i usb || true
-          echo ""
-          echo "=== Checking libusb-1.0 specifically ==="
-          pkg-config --exists libusb-1.0 && echo "✅ libusb-1.0 found" || echo "❌ libusb-1.0 not found"
-          pkg-config --modversion libusb-1.0 || true
-          echo ""
-          echo "=== libusb-1.0 CFLAGS ==="
-          pkg-config --cflags libusb-1.0 || true
-          echo ""
-          echo "=== libusb-1.0 LIBS ==="
-          pkg-config --libs libusb-1.0 || true
 
       - name: Configure shared build with coverage
         run: |

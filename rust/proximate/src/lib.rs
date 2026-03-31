@@ -37,6 +37,8 @@ mod lifecycle;
 #[cfg(feature = "secure")]
 mod nfc_secure;
 pub mod rust_api;
+#[cfg(feature = "usb_helper")]
+mod usbbus;
 use crate::ffi_support::{bounded_strlen, copy_bytes_to_c_buffer};
 #[cfg(feature = "lifecycle")]
 pub use compat::{
@@ -87,6 +89,15 @@ pub use rust_api::{
 };
 #[cfg(feature = "secure")]
 pub use rust_api::{safe_memcpy, safe_memmove, secure_zero};
+#[cfg(feature = "usb_helper")]
+pub use usbbus::{
+    usb_bulk_endpoints, usb_bulk_read, usb_bulk_write, usb_claim_interface, usb_close,
+    usb_dev_handle, usb_device, usb_device_get_bulk_endpoints, usb_device_list,
+    usb_endpoint_descriptor, usb_error_is_access, usb_error_is_timeout, usb_free_device_list,
+    usb_get_bus_device_strings, usb_get_device_list, usb_get_string_simple,
+    usb_interface_descriptor, usb_open, usb_prepare, usb_release_interface, usb_reset,
+    usb_set_altinterface, usb_set_configuration, usb_strerror,
+};
 
 // Public test helpers module. Enabled by the `test_helpers` feature and
 // requires `secure` so internal helpers can be re-exported. This is

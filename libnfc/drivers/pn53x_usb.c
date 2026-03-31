@@ -51,10 +51,10 @@ Thanks to d18c7db and Okko for example code
 #include "nfc-internal.h"
 #include "nfc-secure.h"
 #include "nfc-common.h"
-#include "buses/usbbus.h"
 #include "chips/pn53x.h"
 #include "chips/pn53x-internal.h"
 #include "drivers/pn53x_usb.h"
+#include "rust_usb_bridge.h"
 
 #define PN53X_USB_DRIVER_NAME "pn53x_usb"
 #define LOG_CATEGORY "libnfc.driver.pn53x_usb"
@@ -121,7 +121,7 @@ pn53x_usb_bulk_write(struct pn53x_usb_data *data, uint8_t abtTx[], const size_t 
   int res = usb_bulk_write(data->pudh, data->uiEndPointOut, abtTx, szTx,
                            timeout);
   if (res > 0) {
-    // HACK This little hack is a well know problem of USB, see http://www.libusb.org/ticket/6 for more details
+    // HACK Some hosts expose this descriptor quirk on reconnect.
     if (data->uiMaxPacketSize != 0 && (res % data->uiMaxPacketSize) == 0) {
       usb_bulk_write(data->pudh, data->uiEndPointOut, NULL, 0, timeout);
     }

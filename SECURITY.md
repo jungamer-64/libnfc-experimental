@@ -105,7 +105,7 @@ A comprehensive memory safety refactoring effort has been completed:
 
 #### 3. Driver-Specific Considerations
 
-- **USB Drivers**: Rely on libusb for USB communication security
+- **USB Drivers**: Rely on the Rust `nusb` bridge and the host operating system USB stack for USB communication security
 - **PCSC Drivers**: Rely on PC/SC middleware for smart card communication
 - **Serial Drivers**: No authentication on serial ports (by design)
 

@@ -55,8 +55,6 @@ extern "C"
 #define NFC_LOG_GROUP_CHIP 3
 #define NFC_LOG_GROUP_DRIVER 4
 #define NFC_LOG_GROUP_COM 5
-#define NFC_LOG_GROUP_LIBUSB 6
-
   /*
     To enable log only for one (or more) group, you can use this formula:
       log_level = NFC_LOG_PRIORITY(main) + NFC_LOG_PRIORITY(group) * 2 ^ (NFC_LOG_GROUP(group) * 2)

@@ -127,7 +127,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build build-essential libusb-1.0-0-dev libpcsclite-dev
+          sudo apt-get install -y cmake ninja-build build-essential libpcsclite-dev
 
       - name: Configure with security flags
         run: |

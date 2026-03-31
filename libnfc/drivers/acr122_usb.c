@@ -46,7 +46,6 @@
 
 #include <nfc/nfc.h>
 
-#include "buses/usbbus.h"
 #include "chips/pn53x.h"
 #include "chips/pn53x-internal.h"
 #include "drivers/acr122-core.h"
@@ -54,6 +53,7 @@
 #include "nfc-common.h"
 #include "nfc-internal.h"
 #include "nfc-secure.h"
+#include "rust_usb_bridge.h"
 
 #define ACR122_USB_DRIVER_NAME "acr122_usb"
 

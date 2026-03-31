@@ -88,17 +88,14 @@ else()
   set_tests_properties(pn71xx_requires_libnfc_nci PROPERTIES WILL_FAIL TRUE)
 endif()
 
-if(LIBUSB_FOUND)
+if(USB_REQUIRED)
   add_executable(test_usbbus_helpers
     test_usbbus_helpers.c
-    ../libnfc/buses/usbbus.c
-    ../libnfc/log.cpp
-    ../libnfc/log-internal.c
+    test_usb_bridge_link_support.c
   )
   target_include_directories(test_usbbus_helpers PRIVATE
     ${CMAKE_SOURCE_DIR}/libnfc
-    ${LIBUSB_INCLUDE_DIRS}
   )
-  target_link_libraries(test_usbbus_helpers ${LIBUSB_LIBRARIES})
+  target_link_libraries(test_usbbus_helpers PRIVATE nfc)
   add_test(NAME usbbus_helpers COMMAND test_usbbus_helpers)
 endif()
