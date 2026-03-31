@@ -40,6 +40,7 @@ const USB_ENDPOINT_DIR_MASK: u8 = 0x80;
 const USB_ENDPOINT_IN: u8 = 0x80;
 const USB_ENDPOINT_OUT: u8 = 0x00;
 const STRING_DESCRIPTOR_TIMEOUT: Duration = Duration::from_millis(250);
+const INVALID_STRING_DESCRIPTOR_FALLBACK: &[u8] = b"?";
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
@@ -907,7 +908,16 @@ pub unsafe fn usb_get_string_simple(
         Err(error) => {
             return match error {
                 nusb::GetDescriptorError::Transfer(error) => map_transfer_error(error),
-                nusb::GetDescriptorError::InvalidDescriptor => USB_ERROR_OTHER,
+                nusb::GetDescriptorError::InvalidDescriptor => {
+                    unsafe {
+                        copy_bytes_with_truncation(
+                            buffer,
+                            buffer_size,
+                            INVALID_STRING_DESCRIPTOR_FALLBACK,
+                        )
+                    };
+                    INVALID_STRING_DESCRIPTOR_FALLBACK.len() as c_int
+                }
             };
         }
     };
