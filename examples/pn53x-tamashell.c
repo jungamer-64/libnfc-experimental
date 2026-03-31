@@ -73,7 +73,7 @@
 
 #include "utils/nfc-utils.h"
 #include "libnfc/chips/pn53x.h"
-#include "libnfc/nfc-secure.h"
+#include "../libnfc/nfc-secure.h"
 
 #define MAX_FRAME_LEN 264
 

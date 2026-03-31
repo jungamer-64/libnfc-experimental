@@ -3,8 +3,22 @@
 AM_CPPFLAGS = $(CUTTER_CFLAGS) $(LIBNFC_CFLAGS)
 LIBS = $(CUTTER_LIBS)
 
+check_PROGRAMS = \
+	test_public_compat_smoke \
+	ffi-sanity
+
+TESTS = \
+	test_public_compat_smoke \
+	ffi-sanity
+
+test_public_compat_smoke_SOURCES = test_public_compat_smoke.c
+test_public_compat_smoke_LDADD = $(top_builddir)/libnfc/libnfc.la
+
+ffi_sanity_SOURCES = ../examples/ffi-sanity/ffi-sanity.c
+ffi_sanity_LDADD = $(top_builddir)/libnfc/libnfc.la
+
 if WITH_CUTTER
-TESTS = run-test.sh
+TESTS += run-test.sh
 TESTS_ENVIRONMENT = NO_MAKE=yes CUTTER="$(CUTTER)"
 
 cutter_unit_test_libs = \
@@ -48,4 +62,4 @@ echo-cutter:
 CLEANFILES = *.gcno
 
 endif
-EXTRA_DIST = run-test.sh test_public_compat_smoke.c
+EXTRA_DIST = run-test.sh test_public_compat_smoke.c ../examples/ffi-sanity/ffi-sanity.c

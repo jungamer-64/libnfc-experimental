@@ -42,7 +42,7 @@
 **主要タスク**
 
 * FFI方針文書を作成（呼び出し方向、エラーコードマッピング、型規約）。
-* `Cargo.toml` の public FFI artifact を `staticlib` 基準で確定し、Rust 側のテスト/内部リンク用に `rlib` を併記する。
+* `Cargo.toml` の FFI artifact を `staticlib` 基準で確定し、Rust 側のテスト/内部リンク用に `rlib` を併記する。
 * `cbindgen.toml` のテンプレ作成、ヘッダ出力パスを `rust/libnfc-rs/include/` に設定。
 * CIにRustビルドを追加（CMake/Autotoolsと統合）。
 
@@ -220,7 +220,7 @@
 
 **追加予定**
 
-1. `ci/ffi-sanity` を導入し、standalone の `examples/ffi-sanity/` を常設 CI で実行する。
+1. `ci/ffi-sanity` を導入し、test-only の `ffi-sanity` ターゲットを常設 CI で実行する。
 2. `ci/full` のような統合ジョブを導入し、より広い C/Rust 統合テストと性能ゲートを集約する。
 3. TSan や `cargo-fuzz` など、Nightly hardening を段階的に追加する。
 

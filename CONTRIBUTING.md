@@ -24,10 +24,11 @@ View the CI/CD pipeline: [.github/workflows/code-quality.yml](.github/workflows/
 
 ### Memory Safety
 
-All new code **must** use the `nfc-secure` memory safety layer:
+When you touch in-tree code that manipulates buffers, prefer the internal
+`nfc-secure` helpers from `libnfc/nfc-secure.h`:
 
 ```c
-#include <nfc/nfc-secure.h>
+#include "libnfc/nfc-secure.h"
 
 // ✅ Good: Safe memory operations
 NFC_SAFE_MEMCPY(dest, src, size);
@@ -38,7 +39,8 @@ memcpy(dest, src, size);
 memset(password, 0, sizeof(password));
 ```
 
-See [libnfc/NFC_SECURE_USAGE_GUIDE.md](libnfc/NFC_SECURE_USAGE_GUIDE.md) for complete usage guide.
+These helpers are repository-internal and are not installed as part of the
+orig-compatible public headers.
 
 ### Error Handling
 
@@ -58,21 +60,9 @@ return -1;
 
 ### Frame Processing
 
-Use the frame processing utilities from `nfc-frame.h`:
-
-```c
-#include "nfc-frame.h"
-
-// ✅ Good: Centralized frame handling
-if (!nfc_frame_validate_header(frame, len)) {
-    return NFC_EINVARG;
-}
-
-// ❌ Bad: Duplicate frame validation logic
-if (frame[0] != 0x00 || frame[1] != 0x00 || frame[2] != 0xff) {
-    return -1;
-}
-```
+Prefer existing shared helpers in `libnfc/` (for example `nfc-common.h`,
+`target-subr*.c`, and the chip-specific helpers) instead of introducing a new
+public frame utility layer.
 
 ## Testing
 
@@ -183,12 +173,13 @@ When your change touches the FFI boundary (Rust ⇄ C), include the following in
 
 2. Include a short ownership table: who allocates / who frees any returned buffers (use `nfc_free_*` wrappers for CallerFree cases).
 3. Demonstrate `nfc_set_last_error()` usage for error paths where appropriate and list the error codes added.
-4. Add or update unit tests (Rust) and C integration tests that exercise success and failure paths. `ffi-sanity` integration must pass.
+4. Add or update unit tests (Rust) and C integration tests that exercise success and failure paths. The test-only `ffi-sanity` check must pass.
 5. Ensure `scripts/check-cbindgen.sh` and `scripts/check_callerfree_usage.sh` pass locally and in CI.
 6. Coverage thresholds: changed modules should maintain >= 80% line coverage; critical FFI paths require 100% tests where feasible.
 7. If the change is ABI-breaking, include an RFC and obtain maintainers' approval before merging.
 
-CI will gate FFI PRs on the above checks — failing the header check or ffi-sanity will block merges.
+CI will gate FFI PRs on the above checks. Failing the header check or the
+test-only `ffi-sanity` check will block merges.
 
 ## Refactoring Guidelines
 
@@ -238,7 +229,7 @@ Target: Reduce duplication from 30% to 20%
 * Length encoding
 * Error frame detection
 
-**Solution**: Centralized `nfc-frame.h/c` utilities
+**Solution**: Reuse shared helpers in `libnfc/` instead of creating a new public frame helper layer
 
 ## Development Goals
 
@@ -267,7 +258,7 @@ Target: Reduce duplication from 30% to 20%
 ## Resources
 
 * **Security**: [SECURITY.md](SECURITY.md)
-* **Memory Safety**: [libnfc/NFC_SECURE_USAGE_GUIDE.md](libnfc/NFC_SECURE_USAGE_GUIDE.md)
+* **Memory Safety**: `libnfc/nfc-secure.h` (internal helper header)
 * **CI/CD Pipeline**: [GitHub Actions](https://github.com/jungamer-64/libnfc/actions)
 
 ## Questions?

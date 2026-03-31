@@ -35,11 +35,10 @@
  * - [[nodiscard]] for mandatory error checking
  * - Improved type generic macros with typeof
  *
- * 📚 DOCUMENTATION:
- * - Complete Usage Guide: libnfc/NFC_SECURE_USAGE_GUIDE.md
- * - Best Practices: libnfc/NFC_SECURE_BEST_PRACTICES_V4.md
- * - Security Fixes: libnfc/NFC_SECURE_CRITICAL_FIXES_V5.md
- * - Examples: libnfc/nfc-secure-examples.c
+ * 📚 REPOSITORY NOTES:
+ * - This header is for in-tree use inside this experimental repository.
+ * - It is not installed as part of the orig-compatible public headers.
+ * - See SECURITY.md and libnfc/nfc-secure-examples.c for current context.
  *
  * 🎯 QUICK START:
  * ```c

@@ -52,7 +52,7 @@
 
 #include <nfc/nfc.h>
 
-#include "nfc-secure.h"
+#include "../libnfc/nfc-secure.h"
 #include "utils/nfc-utils.h"
 
 #define SAK_FLAG_ATS_SUPPORTED 0x20

@@ -61,7 +61,7 @@
 #include <nfc/nfc.h>
 
 #include "nfc-utils.h"
-#include "nfc-secure.h"
+#include "../libnfc/nfc-secure.h"
 
 #define MAX_FRAME_LEN 264
 #define MAX_DEVICE_COUNT 2

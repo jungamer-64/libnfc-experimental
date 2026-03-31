@@ -235,7 +235,7 @@ extern "C" fn my_c_callback(event_data: i32, user_data: *mut std::ffi::c_void) {
   - 実行した単体テスト / C テスト / 手動チェックの記録
 - `cbindgen` で生成したヘッダと追跡中のヘッダが一致すること（`scripts/check-cbindgen.sh` または `tests/cbindgen_diff.rs` で確認）。
 - CallerFree を採用する場合、`*_free` / `nfc_rs_free()` のどちらを使うのかを PR に明記し、使用例も添付する。
-- standalone の `examples/ffi-sanity/` を手動で回した場合は、コマンドと結果を PR に残す。専用 CI job はまだ常設ではない。
+- test-only の `ffi-sanity` チェックを手動で回した場合は、コマンドと結果を PR に残す。専用 CI job はまだ常設ではない。
 
 ### 将来追加したい hardening（planned）
 
@@ -331,7 +331,7 @@ where
 ### CI Failure Policy（日本語）
 
 - 現在の基準線では、`scripts/check-cbindgen.sh`、`scripts/check_callerfree_usage.sh`、関連する `cargo test`、Nightly ASan の失敗を解消するまでマージしない。
-- standalone の `examples/ffi-sanity/` を使って確認した場合は、失敗時にコマンドとログを添えて再現経路を残す。
+- test-only の `ffi-sanity` チェックを使って確認した場合は、失敗時にコマンドとログを添えて再現経路を残す。
 - 将来 dedicated な `ffi-test` crate や専用 CI job を導入した場合は、その失敗も同じ扱いで gate する。
 
 ### Governance（運用ルール）
@@ -366,7 +366,7 @@ Apply this wrapper at the entrypoint of every FFI-exposed function to ensure all
 ### CI Failure Policy (English)
 
 - In the current baseline, do not merge while `scripts/check-cbindgen.sh`, `scripts/check_callerfree_usage.sh`, relevant `cargo test` invocations, or the nightly ASan job are failing.
-- If the standalone `examples/ffi-sanity/` check was used during validation, include the failing command and logs in the PR for reproduction.
+- If the test-only `ffi-sanity` check was used during validation, include the failing command and logs in the PR for reproduction.
 - If a dedicated `ffi-test` crate or `ffi-sanity` CI job is added later, treat those failures as equivalent merge blockers.
 
 ### Governance
@@ -385,7 +385,7 @@ FFI boundary must link back to the relevant items below.
 - All Rust functions exported to C **must** use `#[unsafe(no_mangle)]`
   (or the edition-appropriate equivalent) and `extern "C"`.
 - Exports are placed in the `libnfc_rs` crate. The crate `lib` stanza remains
-  centered on `staticlib` for the public FFI artifact; the current manifest also
+  centered on `staticlib` for the primary repo-side FFI artifact; the current manifest also
   keeps `rlib` for Rust-side tests and internal linking convenience.
 - Stable symbol names follow the existing C naming scheme. When a Rust function
   replaces a former C implementation, the symbol name is kept identical so that
@@ -448,15 +448,17 @@ FFI boundary must link back to the relevant items below.
   wrapper script or CI/header-check flow. A `make ffi-headers` alias may be
   added later, but it is not a current prerequisite.
 - The generated header lives in `rust/libnfc-rs/include/libnfc_rs.h` and is
-  versioned in Git to keep the build reproducible.
+  versioned in Git as a tracked ABI snapshot. It is not installed as part of
+  the orig-compatible public headers.
 
 ## 6. Testing and Compatibility
 
 - Each FFI-facing function must have:
   - A Rust unit test that exercises success and failure paths.
   - A C integration test (or reuse of an existing one) that validates the
-    exported ABI; today this is split across existing C tests, the standalone
-    `examples/ffi-sanity/` check, and the nightly `-fsanitize=address` job.
+    exported ABI; today this is split across existing C tests, the test-only
+    `ffi-sanity` check sourced from `examples/ffi-sanity/ffi-sanity.c`, and
+    the nightly `-fsanitize=address` job.
 - Behavioural differences between the legacy and Rust implementations must be
   documented in the release notes before merging the change that introduces
   them.

@@ -62,7 +62,7 @@
 #include <nfc/nfc.h>
 
 #include "nfc-utils.h"
-#include "nfc-secure.h"
+#include "../libnfc/nfc-secure.h"
 
 #if defined(WIN32) /* mingw compiler */
 #include <getopt.h>

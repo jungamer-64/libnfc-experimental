@@ -37,13 +37,6 @@ FOREACH(source ${UTILS-SOURCES})
     LIST(APPEND TARGETS mifare.c)
   ENDIF((${source} MATCHES "nfc-mfultralight") OR (${source} MATCHES "nfc-mfclassic"))
 
-  # Add nfc-secure.c for memory safety wrappers
-  IF((${source} MATCHES "nfc-read-forum-tag3") OR (${source} MATCHES "nfc-relay-picc"))
-    if(NOT USE_RUST_NFC_SECURE)
-      LIST(APPEND TARGETS nfc-secure.c)
-    endif()
-  ENDIF()
-
   IF(WIN32)
     IF(${source} MATCHES "nfc-scan-device")
       LIST(APPEND TARGETS ../contrib/win32/stdlib.c)

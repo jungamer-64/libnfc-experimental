@@ -42,7 +42,7 @@
 #include <string.h>
 
 #include <nfc/nfc.h>
-#include "nfc-secure.h"
+#include "../libnfc/nfc-secure.h"
 
 /**
  * @brief Execute a MIFARE Classic Command

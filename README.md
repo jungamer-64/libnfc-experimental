@@ -67,9 +67,14 @@ For security information, see [SECURITY.md](SECURITY.md).
 
 ## Memory Safety (`nfc-secure`)
 
-libnfc includes a memory safety layer (`libnfc/nfc-secure.h/c`):
+This experimental tree includes an internal memory safety layer in
+`libnfc/nfc-secure.h/c`.
 
-**Features**:
+It is used by the in-tree library, utilities, and examples, but it is not
+installed as part of the orig-compatible public headers. External consumers
+should continue to treat `<nfc/nfc.h>` as the supported include surface.
+
+**Current focus**:
 
 * Buffer overflow prevention (size checking)
 * Compiler optimization-resistant secure memory erasure
@@ -77,28 +82,11 @@ libnfc includes a memory safety layer (`libnfc/nfc-secure.h/c`):
 * Compile-time type safety (C11+ array vs pointer detection)
 * Debug mode overlap detection
 
-**Example**:
-
-```c
-#include <nfc/nfc-secure.h>
-
-// Safe copy with overflow prevention
-uint8_t buffer[64];
-uint8_t data[16] = {...};
-NFC_SAFE_MEMCPY(buffer, data, sizeof(data));  // Automatic size check
-
-// Secure erase (won't be optimized away)
-uint8_t password[256];
-NFC_SECURE_MEMSET(password, 0x00);  // Guaranteed execution
-```
-
 **Documentation**:
 
-* **Usage Guide**: `libnfc/NFC_SECURE_USAGE_GUIDE.md` - Reference with examples
-* **API Reference**: `libnfc/nfc-secure.h` - API documentation
-* **Best Practices**: `libnfc/NFC_SECURE_BEST_PRACTICES_V4.md`
-
-  (new: `nfc_secure_zero()` recommended for secrets)
+* **Security Notes**: [SECURITY.md](SECURITY.md)
+* **Internal API**: `libnfc/nfc-secure.h`
+* **In-tree Examples**: `libnfc/nfc-secure-examples.c`
 
 **Standards Support**: C89/C99/C11/C23
 

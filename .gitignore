@@ -65,6 +65,8 @@ utils/nfc-scan-device
 
 rust/target/
 rust/libnfc-rs/target/
+rust/libnfc-rs/include/libnfc_rs.generated.h
+rust/libnfc-rs/rust/
 */target
 #Ignore insiders AI rules
 .github/instructions/codacy.instructions.md
