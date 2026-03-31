@@ -5,14 +5,16 @@
 // Ported from libnfc/conf.c.
 
 use crate::emit_log_message;
-use crate::lifecycle::{DEVICE_NAME_LENGTH, MAX_USER_DEFINED_DEVICES, nfc_context};
+use crate::ffi_support::{as_mut, copy_bytes_with_truncation};
+use crate::lifecycle::{
+    DEVICE_NAME_LENGTH, MAX_USER_DEFINED_DEVICES, nfc_context, nfc_user_defined_device,
+};
 use crate::{LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING};
 use libc::c_char;
 use std::ffi::CString;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::ptr;
 
 const LOG_GROUP_CONFIG: u8 = 2;
 const LOG_PRIORITY_INFO: u8 = 2;
@@ -179,74 +181,65 @@ fn parse_line(line: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
     Some((key, value))
 }
 
-unsafe fn copy_bytes_with_truncation(dst: *mut c_char, dst_size: usize, value: &[u8]) {
-    if dst.is_null() || dst_size == 0 {
-        return;
-    }
-
-    let copy_len = value.len().min(dst_size - 1);
-    unsafe {
-        if copy_len > 0 {
-            ptr::copy_nonoverlapping(value.as_ptr() as *const c_char, dst, copy_len);
-        }
-        *dst.add(copy_len) = 0;
-    }
+#[derive(Clone, Copy)]
+enum UserDeviceField {
+    Name,
+    Connstring,
+    Optional,
 }
 
-unsafe fn last_device_name_empty(context: *mut nfc_context) -> bool {
-    let last = unsafe { (*context).user_defined_device_count as usize - 1 };
-    unsafe { (*context).user_defined_devices[last].name[0] == 0 }
+fn last_device_name_empty(context: &nfc_context) -> bool {
+    let last = context.user_defined_device_count as usize - 1;
+    context.user_defined_devices[last].name[0] == 0
 }
 
-unsafe fn last_device_connstring_empty(context: *mut nfc_context) -> bool {
-    let last = unsafe { (*context).user_defined_device_count as usize - 1 };
-    unsafe { (*context).user_defined_devices[last].connstring[0] == 0 }
+fn last_device_connstring_empty(context: &nfc_context) -> bool {
+    let last = context.user_defined_device_count as usize - 1;
+    context.user_defined_devices[last].connstring[0] == 0
 }
 
-unsafe fn last_device_optional(context: *mut nfc_context) -> bool {
-    let last = unsafe { (*context).user_defined_device_count as usize - 1 };
-    unsafe { (*context).user_defined_devices[last].optional }
+fn last_device_optional(context: &nfc_context) -> bool {
+    let last = context.user_defined_device_count as usize - 1;
+    context.user_defined_devices[last].optional
 }
 
-unsafe fn push_user_defined_device_slot(context: *mut nfc_context) -> Option<usize> {
-    if unsafe { (*context).user_defined_device_count as usize } >= MAX_USER_DEFINED_DEVICES {
+fn push_user_defined_device_slot(context: &mut nfc_context) -> Option<usize> {
+    if context.user_defined_device_count as usize >= MAX_USER_DEFINED_DEVICES {
         log_config_error(CONFIG_MAX_DEVICES_MESSAGE);
         return None;
     }
 
-    unsafe {
-        (*context).user_defined_device_count += 1;
-        Some((*context).user_defined_device_count as usize - 1)
+    context.user_defined_device_count += 1;
+    Some(context.user_defined_device_count as usize - 1)
+}
+
+fn current_device_index(context: &mut nfc_context, field: UserDeviceField) -> Option<usize> {
+    let needs_new_slot = if context.user_defined_device_count == 0 {
+        true
+    } else {
+        match field {
+            UserDeviceField::Name => !last_device_name_empty(context),
+            UserDeviceField::Connstring => !last_device_connstring_empty(context),
+            UserDeviceField::Optional => last_device_optional(context),
+        }
+    };
+
+    if needs_new_slot {
+        push_user_defined_device_slot(context)
+    } else {
+        Some(context.user_defined_device_count as usize - 1)
     }
 }
 
-unsafe fn current_device_index_for_name(context: *mut nfc_context) -> Option<usize> {
-    if unsafe { (*context).user_defined_device_count == 0 } || unsafe { !last_device_name_empty(context) } {
-        return unsafe { push_user_defined_device_slot(context) };
-    }
-
-    Some(unsafe { (*context).user_defined_device_count as usize - 1 })
+fn current_device_slot(
+    context: &mut nfc_context,
+    field: UserDeviceField,
+) -> Option<&mut nfc_user_defined_device> {
+    let index = current_device_index(context, field)?;
+    context.user_defined_devices.get_mut(index)
 }
 
-unsafe fn current_device_index_for_connstring(context: *mut nfc_context) -> Option<usize> {
-    if unsafe { (*context).user_defined_device_count == 0 }
-        || unsafe { !last_device_connstring_empty(context) }
-    {
-        return unsafe { push_user_defined_device_slot(context) };
-    }
-
-    Some(unsafe { (*context).user_defined_device_count as usize - 1 })
-}
-
-unsafe fn current_device_index_for_optional(context: *mut nfc_context) -> Option<usize> {
-    if unsafe { (*context).user_defined_device_count == 0 } || unsafe { last_device_optional(context) } {
-        return unsafe { push_user_defined_device_slot(context) };
-    }
-
-    Some(unsafe { (*context).user_defined_device_count as usize - 1 })
-}
-
-unsafe fn conf_keyvalue_context(context: *mut nfc_context, key: &[u8], value: &[u8]) {
+fn conf_keyvalue_context(context: &mut nfc_context, key: &[u8], value: &[u8]) {
     log_config_debug(&format!(
         "key: [{}], value: [{}]",
         bytes_to_lossy_string(key),
@@ -254,45 +247,37 @@ unsafe fn conf_keyvalue_context(context: *mut nfc_context, key: &[u8], value: &[
     ));
 
     if key == b"allow_autoscan" {
-        unsafe { apply_boolean_bytes(value, &mut (*context).allow_autoscan) };
+        apply_boolean_bytes(value, &mut context.allow_autoscan);
         return;
     }
 
     if key == b"allow_intrusive_scan" {
-        unsafe { apply_boolean_bytes(value, &mut (*context).allow_intrusive_scan) };
+        apply_boolean_bytes(value, &mut context.allow_intrusive_scan);
         return;
     }
 
     if key == b"log_level" {
-        unsafe {
-            (*context).log_level = atoi_bytes(value);
-        }
+        context.log_level = atoi_bytes(value);
         return;
     }
 
     if key == b"device.name" {
-        let Some(index) = (unsafe { current_device_index_for_name(context) }) else {
+        let Some(device) = current_device_slot(context, UserDeviceField::Name) else {
             return;
         };
 
-        unsafe {
-            copy_bytes_with_truncation(
-                (*context).user_defined_devices[index].name.as_mut_ptr(),
-                DEVICE_NAME_LENGTH,
-                value,
-            );
-        }
+        unsafe { copy_bytes_with_truncation(device.name.as_mut_ptr(), DEVICE_NAME_LENGTH, value) };
         return;
     }
 
     if key == b"device.connstring" {
-        let Some(index) = (unsafe { current_device_index_for_connstring(context) }) else {
+        let Some(device) = current_device_slot(context, UserDeviceField::Connstring) else {
             return;
         };
 
         unsafe {
             copy_bytes_with_truncation(
-                (*context).user_defined_devices[index].connstring.as_mut_ptr(),
+                device.connstring.as_mut_ptr(),
                 NFC_BUFSIZE_CONNSTRING,
                 value,
             );
@@ -301,14 +286,12 @@ unsafe fn conf_keyvalue_context(context: *mut nfc_context, key: &[u8], value: &[
     }
 
     if key == b"device.optional" {
-        let Some(index) = (unsafe { current_device_index_for_optional(context) }) else {
+        let Some(device) = current_device_slot(context, UserDeviceField::Optional) else {
             return;
         };
 
         if value == b"true" || value == b"True" || value == b"1" {
-            unsafe {
-                (*context).user_defined_devices[index].optional = true;
-            }
+            device.optional = true;
         }
         return;
     }
@@ -320,16 +303,16 @@ unsafe fn conf_keyvalue_context(context: *mut nfc_context, key: &[u8], value: &[
     ));
 }
 
-unsafe fn conf_keyvalue_device(context: *mut nfc_context, key: &[u8], value: &[u8]) {
+fn conf_keyvalue_device(context: &mut nfc_context, key: &[u8], value: &[u8]) {
     let mut prefixed = b"device.".to_vec();
     prefixed.extend_from_slice(key);
-    unsafe { conf_keyvalue_context(context, &prefixed, value) };
+    conf_keyvalue_context(context, &prefixed, value);
 }
 
-unsafe fn conf_parse_file(
+fn conf_parse_file(
     filename: &Path,
-    conf_keyvalue: unsafe fn(*mut nfc_context, &[u8], &[u8]),
-    context: *mut nfc_context,
+    conf_keyvalue: fn(&mut nfc_context, &[u8], &[u8]),
+    context: &mut nfc_context,
 ) {
     let Ok(file) = File::open(filename) else {
         log_config_info(&format!("Unable to open file: {}", filename.display()));
@@ -352,7 +335,11 @@ unsafe fn conf_parse_file(
 
         line_number += 1;
 
-        if line.first().copied().is_some_and(|byte| matches!(byte, b'#' | b'\n')) {
+        if line
+            .first()
+            .copied()
+            .is_some_and(|byte| matches!(byte, b'#' | b'\n'))
+        {
             continue;
         }
 
@@ -366,7 +353,7 @@ unsafe fn conf_parse_file(
         }
 
         if let Some((key, value)) = parse_line(&line) {
-            unsafe { conf_keyvalue(context, &key, &value) };
+            conf_keyvalue(context, &key, &value);
         } else {
             log_config_debug(&format!(
                 "Parse error on line #{}: {}",
@@ -377,7 +364,7 @@ unsafe fn conf_parse_file(
     }
 }
 
-unsafe fn conf_devices_load(dirname: &Path, context: *mut nfc_context) {
+fn conf_devices_load(dirname: &Path, context: &mut nfc_context) {
     let Ok(entries) = fs::read_dir(dirname) else {
         log_config_debug(&format!("Unable to open directory: {}", dirname.display()));
         return;
@@ -402,7 +389,7 @@ unsafe fn conf_devices_load(dirname: &Path, context: *mut nfc_context) {
         };
 
         if metadata.is_file() {
-            unsafe { conf_parse_file(&entry.path(), conf_keyvalue_device, context) };
+            conf_parse_file(&entry.path(), conf_keyvalue_device, context);
         }
     }
 }
@@ -431,14 +418,54 @@ fn configured_conf_root() -> Option<PathBuf> {
 }
 
 pub(crate) unsafe fn load_context_config(context: *mut nfc_context) {
-    if context.is_null() {
+    let Some(context) = (unsafe { as_mut(context) }) else {
         return;
-    }
+    };
 
     let Some(root) = configured_conf_root() else {
         return;
     };
 
-    unsafe { conf_parse_file(&root.join(LIBNFC_CONFFILE_NAME), conf_keyvalue_context, context) };
-    unsafe { conf_devices_load(&root.join(LIBNFC_DEVICECONFDIR_NAME), context) };
+    conf_parse_file(
+        &root.join(LIBNFC_CONFFILE_NAME),
+        conf_keyvalue_context,
+        context,
+    );
+    conf_devices_load(&root.join(LIBNFC_DEVICECONFDIR_NAME), context);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_context() -> nfc_context {
+        unsafe { std::mem::zeroed() }
+    }
+
+    #[test]
+    fn device_name_and_connstring_share_one_slot() {
+        let mut context = empty_context();
+
+        conf_keyvalue_context(&mut context, b"device.name", b"reader");
+        conf_keyvalue_context(&mut context, b"device.connstring", b"pn53x_usb");
+
+        assert_eq!(context.user_defined_device_count, 1);
+        assert_eq!(context.user_defined_devices[0].name[0], b'r' as c_char);
+        assert_eq!(
+            context.user_defined_devices[0].connstring[0],
+            b'p' as c_char
+        );
+    }
+
+    #[test]
+    fn repeated_optional_entries_allocate_new_slots() {
+        let mut context = empty_context();
+
+        conf_keyvalue_context(&mut context, b"device.optional", b"true");
+        conf_keyvalue_context(&mut context, b"device.optional", b"true");
+
+        assert_eq!(context.user_defined_device_count, 2);
+        assert!(context.user_defined_devices[0].optional);
+        assert!(context.user_defined_devices[1].optional);
+    }
 }

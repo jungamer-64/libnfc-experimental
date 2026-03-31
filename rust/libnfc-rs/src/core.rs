@@ -4,14 +4,20 @@
 //
 // Ported from libnfc/nfc.c.
 
+#[cfg(test)]
+use crate::ffi_support::copy_bytes_to_c_buffer;
+use crate::ffi_support::{
+    as_ref, bounded_strlen, c_string_ptr_to_string, copy_c_string_to_c_buffer,
+    fixed_c_buffer_to_string,
+};
 use crate::lifecycle::{
     DEVICE_NAME_LENGTH, NFC_DRIVER_NAME_MAX, nfc_connstring, nfc_context, nfc_context_new,
     nfc_device, nfc_driver, scan_type_enum,
 };
 use crate::{
     LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, MALLOC_LABEL,
-    NFC_BUFSIZE_CONNSTRING, bounded_strlen, emit_log_message, ffi_catch_unwind_int,
-    ffi_catch_unwind_ptr, ffi_catch_unwind_void,
+    NFC_BUFSIZE_CONNSTRING, emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr,
+    ffi_catch_unwind_void,
 };
 use libc::{c_char, c_int, size_t};
 use std::ffi::CString;
@@ -89,25 +95,6 @@ fn log_general_warn(message: &str) {
     log_general_message(LOG_PRIORITY_WARN, message);
 }
 
-fn c_string_ptr_to_string(ptr: *const c_char, max_len: usize) -> String {
-    if ptr.is_null() {
-        return String::new();
-    }
-
-    let length = bounded_strlen(ptr, max_len);
-    let bytes = unsafe { slice::from_raw_parts(ptr as *const u8, length) };
-    String::from_utf8_lossy(bytes).into_owned()
-}
-
-fn fixed_c_buffer_to_string(buffer: &[c_char]) -> String {
-    let length = buffer
-        .iter()
-        .position(|&ch| ch == 0)
-        .unwrap_or(buffer.len());
-    let bytes: Vec<u8> = buffer[..length].iter().map(|&ch| ch as u8).collect();
-    String::from_utf8_lossy(&bytes).into_owned()
-}
-
 fn string_contains_control_chars(value: *const c_char, length: usize) -> bool {
     if value.is_null() {
         return false;
@@ -140,18 +127,7 @@ fn string_is_numeric(value: *const c_char, length: usize) -> bool {
 
 #[cfg(test)]
 unsafe fn write_bytes_to_char_buffer(dst: *mut c_char, dst_size: usize, src: &[u8]) -> bool {
-    if dst.is_null() || src.len() >= dst_size {
-        return false;
-    }
-
-    unsafe {
-        if !src.is_empty() {
-            ptr::copy_nonoverlapping(src.as_ptr() as *const c_char, dst, src.len());
-        }
-        *dst.add(src.len()) = 0;
-    }
-
-    true
+    unsafe { copy_bytes_to_c_buffer(dst, dst_size, src) }
 }
 
 unsafe fn copy_connstring_safely(source: *const c_char, destination: *mut nfc_connstring) -> bool {
@@ -171,15 +147,16 @@ unsafe fn copy_connstring_safely(source: *const c_char, destination: *mut nfc_co
         return false;
     }
 
-    let destination_ptr = unsafe { (*destination).as_mut_ptr() };
+    let Some(destination) = (unsafe { as_ref(destination.cast_const()) }) else {
+        return false;
+    };
     unsafe {
-        if length > 0 {
-            ptr::copy_nonoverlapping(source, destination_ptr, length);
-        }
-        *destination_ptr.add(length) = 0;
+        copy_c_string_to_c_buffer(
+            destination.as_ptr().cast_mut(),
+            NFC_BUFSIZE_CONNSTRING,
+            source,
+        )
     }
-
-    true
 }
 
 fn connstring_is_usb_request(ncs: &nfc_connstring) -> bool {
@@ -231,12 +208,16 @@ unsafe fn apply_user_defined_device_name(
     ncs: *const c_char,
     device: *mut nfc_device,
 ) -> bool {
-    if context.is_null() || device.is_null() {
+    let Some(context) = (unsafe { as_ref(context) }) else {
         return true;
-    }
+    };
+    let Some(device) = (unsafe { as_ref(device.cast_const()) }) else {
+        return true;
+    };
 
-    for index in 0..unsafe { (*context).user_defined_device_count as usize } {
-        let configured = unsafe { &(*context).user_defined_devices[index] };
+    for configured in
+        context.user_defined_devices[..context.user_defined_device_count as usize].iter()
+    {
         if unsafe { libc::strcmp(ncs, configured.connstring.as_ptr()) } != 0 {
             continue;
         }
@@ -246,7 +227,7 @@ unsafe fn apply_user_defined_device_name(
             return false;
         }
 
-        let dst = unsafe { (*device).name.as_mut_ptr() };
+        let dst = device.name.as_ptr().cast_mut();
         unsafe {
             if name_len > 0 {
                 ptr::copy_nonoverlapping(configured.name.as_ptr(), dst, name_len);
@@ -356,14 +337,18 @@ unsafe fn append_user_defined_devices(
     connstrings: *mut nfc_connstring,
     connstrings_len: usize,
 ) -> usize {
+    let Some(context_ref) = (unsafe { as_ref(context) }) else {
+        return 0;
+    };
     let mut device_found = 0usize;
 
-    for index in 0..unsafe { (*context).user_defined_device_count as usize } {
+    for device in
+        context_ref.user_defined_devices[..context_ref.user_defined_device_count as usize].iter()
+    {
         if device_found >= connstrings_len {
             break;
         }
 
-        let device = unsafe { &(*context).user_defined_devices[index] };
         if device.optional && !unsafe { optional_device_available(context, device) } {
             continue;
         }
@@ -377,8 +362,16 @@ unsafe fn append_user_defined_devices(
 }
 
 fn scan_allowed_for_driver(context: &nfc_context, driver: &nfc_driver) -> bool {
-    matches!(driver.scan_type, scan_type_enum::NOT_INTRUSIVE)
-        || (context.allow_intrusive_scan && matches!(driver.scan_type, scan_type_enum::INTRUSIVE))
+    let _ = [
+        scan_type_enum::NOT_INTRUSIVE,
+        scan_type_enum::INTRUSIVE,
+        scan_type_enum::NOT_AVAILABLE,
+    ];
+    match driver.scan_type {
+        scan_type_enum::NOT_INTRUSIVE => true,
+        scan_type_enum::INTRUSIVE => context.allow_intrusive_scan,
+        scan_type_enum::NOT_AVAILABLE => false,
+    }
 }
 
 unsafe fn autoscan_devices(
@@ -387,6 +380,9 @@ unsafe fn autoscan_devices(
     start_index: usize,
     connstrings_len: usize,
 ) -> usize {
+    let Some(context_ref) = (unsafe { as_ref(context) }) else {
+        return start_index;
+    };
     let mut device_found = start_index;
     let snapshot = registry_snapshot();
 
@@ -396,7 +392,7 @@ unsafe fn autoscan_devices(
         }
 
         let driver = unsafe { &*handle.0 };
-        if unsafe { driver.scan.is_none() || !scan_allowed_for_driver(&*context, driver) } {
+        if driver.scan.is_none() || !scan_allowed_for_driver(context_ref, driver) {
             continue;
         }
 
@@ -446,16 +442,15 @@ unsafe extern "C" {
 
 #[cfg(any(test, not(libnfc_external_bridges)))]
 unsafe fn invoke_driver_close(device: *mut nfc_device) {
-    if device.is_null() {
+    let Some(device_ref) = (unsafe { as_ref(device) }) else {
         return;
-    }
+    };
 
-    let driver = unsafe { (*device).driver };
-    if driver.is_null() {
+    let Some(driver_ref) = (unsafe { as_ref(device_ref.driver) }) else {
         return;
-    }
+    };
 
-    if let Some(close) = unsafe { (*driver).close } {
+    if let Some(close) = driver_ref.close {
         unsafe { close(device) };
     }
 }
@@ -594,10 +589,14 @@ unsafe fn nfc_open_impl(context: *mut nfc_context, connstring: *const c_char) ->
             return ptr::null_mut();
         }
 
+        let Some(candidate_ref) = (unsafe { as_ref(candidate) }) else {
+            unsafe { bridge_close_device(candidate) };
+            return ptr::null_mut();
+        };
         log_general_debug(&format!(
             "\"{}\" ({}) has been claimed.",
-            fixed_c_buffer_to_string(unsafe { &(*candidate).name }),
-            fixed_c_buffer_to_string(unsafe { &(*candidate).connstring })
+            fixed_c_buffer_to_string(&candidate_ref.name),
+            fixed_c_buffer_to_string(&candidate_ref.connstring)
         ));
         return candidate;
     }
@@ -611,9 +610,13 @@ unsafe fn nfc_list_devices_impl(
     connstrings: *mut nfc_connstring,
     connstrings_len: usize,
 ) -> usize {
-    if context.is_null() || connstrings.is_null() || connstrings_len == 0 {
+    if connstrings.is_null() || connstrings_len == 0 {
         return 0;
     }
+
+    let Some(context_ref) = (unsafe { as_ref(context) }) else {
+        return 0;
+    };
 
     let mut device_found = 0usize;
 
@@ -625,8 +628,8 @@ unsafe fn nfc_list_devices_impl(
         }
     }
 
-    if unsafe { !(*context).allow_autoscan } {
-        if unsafe { (*context).user_defined_device_count == 0 } {
+    if !context_ref.allow_autoscan {
+        if context_ref.user_defined_device_count == 0 {
             log_general_info(
                 "Warning: user must specify device(s) manually when autoscan is disabled",
             );

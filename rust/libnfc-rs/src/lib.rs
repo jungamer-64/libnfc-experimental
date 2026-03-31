@@ -21,18 +21,20 @@ use std::ffi::{CStr, CString};
 use std::panic;
 use std::ptr;
 
-#[cfg(feature = "nfc_core")]
-mod core;
-#[cfg(feature = "nfc_lifecycle")]
-mod ffi_types;
 #[cfg(feature = "nfc_lifecycle")]
 mod conf;
+#[cfg(feature = "nfc_core")]
+mod core;
+mod ffi_support;
+#[cfg(feature = "nfc_lifecycle")]
+mod ffi_types;
 #[cfg(feature = "nfc_core")]
 mod initiator;
 #[cfg(feature = "nfc_lifecycle")]
 mod lifecycle;
 #[cfg(feature = "nfc_secure")]
 mod nfc_secure;
+use crate::ffi_support::{bounded_strlen, copy_bytes_to_c_buffer};
 #[cfg(feature = "nfc_secure")]
 pub use nfc_secure::{
     NFC_SECURE_SUCCESS, nfc_ensure_null_terminated, nfc_is_null_terminated, nfc_safe_memcpy,
@@ -46,14 +48,19 @@ pub use nfc_secure::{
 #[cfg(all(any(test, feature = "test_helpers"), feature = "nfc_secure"))]
 pub(crate) mod test_helpers {
     //! Test-only helpers. Enabled with `--features test_helpers`.
+    #[allow(unused_imports)]
     pub(crate) use crate::nfc_secure::nfc_buffers_overlap_usize;
+    #[allow(unused_imports)]
     pub(crate) use crate::nfc_secure::nfc_secure_max_reasonable_size;
+    #[allow(unused_imports)]
     pub(crate) use crate::nfc_secure::nfc_secure_max_size_usize;
+    #[allow(unused_imports)]
     pub(crate) use crate::nfc_secure::nfc_secure_memset_threshold;
 
     // Volatile helpers: only available when the volatile fallback path is
     // compiled.
     #[cfg(not(any(have_memset_explicit, have_memset_s)))]
+    #[allow(unused_imports)]
     pub(crate) use crate::nfc_secure::{nfc_memset_and_fence, nfc_volatile_memset};
 }
 
@@ -66,6 +73,7 @@ pub const NFC_COMMON_ERROR: c_int = -1;
 pub const NFC_COMMON_INVALID: c_int = -(libc::EINVAL as c_int);
 
 pub const LOG_GROUP_GENERAL: u8 = 1;
+#[cfg(feature = "nfc_lifecycle")]
 const LOG_PRIORITY_NONE: u8 = 0;
 pub const LOG_PRIORITY_ERROR: u8 = 1;
 pub const LOG_PRIORITY_DEBUG: u8 = 3;
@@ -222,29 +230,103 @@ fn set_error_and_return(code: c_int, message: String) -> c_int {
     code
 }
 
-fn bounded_strlen(ptr: *const c_char, max: usize) -> usize {
-    if ptr.is_null() {
-        return 0;
-    }
-
-    let mut len = 0usize;
-    while len < max {
-        unsafe {
-            if *ptr.add(len) == 0 {
-                break;
-            }
-        }
-        len += 1;
-    }
-    len
-}
-
 fn split_at_first(data: &[u8], delimiter: u8) -> (&[u8], Option<&[u8]>) {
     if let Some(position) = data.iter().position(|&b| b == delimiter) {
         (&data[..position], Some(&data[position + 1..]))
     } else {
         (data, None)
     }
+}
+
+fn write_checked_c_buffer(dst: &mut [c_char], value: &[u8], overflow_message: String) -> c_int {
+    if !unsafe { copy_bytes_to_c_buffer(dst.as_mut_ptr(), dst.len(), value) } {
+        set_last_error_message(overflow_message.clone());
+        log_error(&overflow_message);
+        return NFC_COMMON_ERROR;
+    }
+
+    NFC_COMMON_SUCCESS
+}
+
+fn extract_param_value<'a>(
+    conn_bytes: &'a [u8],
+    prefix_bytes: &[u8],
+    param_name_bytes: &[u8],
+) -> Result<&'a [u8], String> {
+    if conn_bytes.len() < prefix_bytes.len() || !conn_bytes.starts_with(prefix_bytes) {
+        return Err(format!(
+            "Connstring '{}' does not match prefix '{}'",
+            String::from_utf8_lossy(conn_bytes),
+            String::from_utf8_lossy(prefix_bytes)
+        ));
+    }
+
+    let mut param_section = &conn_bytes[prefix_bytes.len()..];
+    if param_section.first().copied() == Some(b':') {
+        param_section = &param_section[1..];
+    }
+
+    let mut pattern = Vec::with_capacity(param_name_bytes.len() + 1);
+    pattern.extend_from_slice(param_name_bytes);
+    pattern.push(b'=');
+
+    let value_start = param_section
+        .windows(pattern.len())
+        .position(|window| window == pattern.as_slice())
+        .map(|index| index + pattern.len())
+        .ok_or_else(|| {
+            format!(
+                "Parameter '{}' not found in connstring",
+                String::from_utf8_lossy(param_name_bytes)
+            )
+        })?;
+
+    let value_slice = &param_section[value_start..];
+    let value_end = value_slice
+        .iter()
+        .position(|&byte| byte == b':')
+        .unwrap_or(value_slice.len());
+    Ok(&value_slice[..value_end])
+}
+
+fn build_connstring_bytes(driver_name: &[u8], param_name: &[u8], param_value: &[u8]) -> Vec<u8> {
+    let mut result =
+        Vec::with_capacity(driver_name.len() + 1 + param_name.len() + 1 + param_value.len());
+    result.extend_from_slice(driver_name);
+    result.push(b':');
+    result.extend_from_slice(param_name);
+    result.push(b'=');
+    result.extend_from_slice(param_value);
+    result
+}
+
+fn decode_connstring_segments<'a>(
+    connstring: &'a [u8],
+    driver_name: &[u8],
+    bus_name: &[u8],
+) -> Option<(c_int, Option<&'a [u8]>, Option<&'a [u8]>)> {
+    let (first_segment, remainder) = split_at_first(connstring, b':');
+    if first_segment != driver_name && first_segment != bus_name {
+        return None;
+    }
+
+    let mut result = 1;
+    let mut param1 = None;
+    let mut param2 = None;
+
+    if let Some(level1) = remainder {
+        let (second, remainder2) = split_at_first(level1, b':');
+        param1 = Some(second);
+        result = 2;
+
+        if let Some(level2) = remainder2 {
+            let (third, _) = split_at_first(level2, b':');
+            param2 = Some(third);
+            result = 3;
+        }
+    }
+
+    Some((result, param1, param2))
 }
 
 unsafe fn alloc_and_copy(segment: &[u8]) -> Result<*mut c_char, ()> {
@@ -257,10 +339,10 @@ unsafe fn alloc_and_copy(segment: &[u8]) -> Result<*mut c_char, ()> {
             return Err(());
         }
 
-        if length > 0 {
-            ptr::copy_nonoverlapping(segment.as_ptr() as *const c_char, memory, length);
+        if !copy_bytes_to_c_buffer(memory, size, &segment[..length]) {
+            release_allocated_ptr(memory.cast::<c_void>());
+            return Err(());
         }
-        *memory.add(length) = 0;
 
         Ok(memory)
     }
@@ -413,84 +495,37 @@ pub unsafe extern "C" fn nfc_parse_connstring(
             return code;
         }
 
-        let conn_bytes = connstring_c.to_bytes();
-        let prefix_bytes = prefix_c.to_bytes();
-        if conn_bytes.len() < prefix_bytes.len() || !conn_bytes.starts_with(prefix_bytes) {
-            let conn_display = String::from_utf8_lossy(conn_bytes);
-            let prefix_display = String::from_utf8_lossy(prefix_bytes);
-            let message = format!(
-                "Connstring '{}' does not match prefix '{}'",
-                conn_display, prefix_display
-            );
-            log_debug(&message);
-            set_last_error_message(message);
-            return NFC_COMMON_ERROR;
-        }
-
-        let mut param_section = &conn_bytes[prefix_bytes.len()..];
-        if !param_section.is_empty() && param_section[0] == b':' {
-            param_section = &param_section[1..];
-        }
-
-        let param_name_bytes = param_name_c.to_bytes();
-        let mut pattern = Vec::with_capacity(param_name_bytes.len() + 1);
-        pattern.extend_from_slice(param_name_bytes);
-        pattern.push(b'=');
-
-        let mut i = 0usize;
-        let mut value_start_idx = None;
-        while i + pattern.len() <= param_section.len() {
-            if &param_section[i..i + pattern.len()] == pattern.as_slice() {
-                value_start_idx = Some(i + pattern.len());
-                break;
-            }
-            i += 1;
-        }
-
-        let value_start_idx = match value_start_idx {
-            Some(idx) => idx,
-            None => {
-                let param_display = String::from_utf8_lossy(param_name_bytes);
-                let message = format!("Parameter '{}' not found in connstring", param_display);
+        let param_buffer = std::slice::from_raw_parts_mut(param_value_ptr, param_value_size);
+        let value_bytes = match extract_param_value(
+            connstring_c.to_bytes(),
+            prefix_c.to_bytes(),
+            param_name_c.to_bytes(),
+        ) {
+            Ok(value) => value,
+            Err(message) => {
                 log_debug(&message);
                 set_last_error_message(message);
                 return NFC_COMMON_ERROR;
             }
         };
 
-        let value_slice = &param_section[value_start_idx..];
-        let value_end = value_slice
-            .iter()
-            .position(|&b| b == b':')
-            .unwrap_or(value_slice.len());
-        let value_bytes = &value_slice[..value_end];
-
-        let dest_capacity = param_value_size;
-        if value_bytes.len() >= dest_capacity {
-            let message = format!(
+        let write_result = write_checked_c_buffer(
+            param_buffer,
+            value_bytes,
+            format!(
                 "Parameter value too long ({} bytes, buffer size {})",
                 value_bytes.len(),
-                dest_capacity
-            );
-            set_last_error_message(message.clone());
-            log_error(&message);
-            return NFC_COMMON_ERROR;
+                param_buffer.len()
+            ),
+        );
+        if write_result != NFC_COMMON_SUCCESS {
+            return write_result;
         }
 
-        if !value_bytes.is_empty() {
-            ptr::copy_nonoverlapping(
-                value_bytes.as_ptr() as *const c_char,
-                param_value_ptr,
-                value_bytes.len(),
-            );
-        }
-        *param_value_ptr.add(value_bytes.len()) = 0;
-
-        let param_display = String::from_utf8_lossy(param_name_bytes);
-        let value_display = String::from_utf8_lossy(value_bytes);
         log_debug(&format!(
             "Extracted parameter '{}'='{}' from connstring",
-            param_display, value_display
+            String::from_utf8_lossy(param_name_c.to_bytes()),
+            String::from_utf8_lossy(value_bytes)
         ));
 
         reset_last_error();
@@ -546,37 +581,29 @@ pub unsafe extern "C" fn nfc_build_connstring(
             return code;
         }
 
-        let driver_bytes = driver_name_c.to_bytes();
-        let param_name_bytes = param_name_c.to_bytes();
-        let param_value_bytes = param_value_c.to_bytes();
-
-        let mut result = Vec::with_capacity(
-            driver_bytes.len() + 1 + param_name_bytes.len() + 1 + param_value_bytes.len(),
+        let result = build_connstring_bytes(
+            driver_name_c.to_bytes(),
+            param_name_c.to_bytes(),
+            param_value_c.to_bytes(),
         );
-        result.extend_from_slice(driver_bytes);
-        result.push(b':');
-        result.extend_from_slice(param_name_bytes);
-        result.push(b'=');
-        result.extend_from_slice(param_value_bytes);
-
-        let needed = result.len() + 1; // include null terminator
-        if needed > dest_size {
-            let message = format!(
+        let dest_buffer = std::slice::from_raw_parts_mut(dest_ptr, dest_size);
+        let write_result = write_checked_c_buffer(
+            dest_buffer,
+            &result,
+            format!(
                 "Connection string buffer overflow (need {} bytes, have {})",
-                needed, dest_size
-            );
-            set_last_error_message(message.clone());
-            log_error(&message);
-            return NFC_COMMON_ERROR;
+                result.len() + 1,
+                dest_buffer.len()
+            ),
+        );
+        if write_result != NFC_COMMON_SUCCESS {
+            return write_result;
         }
 
-        if !result.is_empty() {
-            ptr::copy_nonoverlapping(result.as_ptr() as *const c_char, dest_ptr, result.len());
-        }
-        *dest_ptr.add(result.len()) = 0;
-
-        let display = String::from_utf8_lossy(&result);
-        log_debug(&format!("Built connection string: '{}'", display));
+        log_debug(&format!(
+            "Built connection string: '{}'",
+            String::from_utf8_lossy(&result)
+        ));
 
         reset_last_error();
 
@@ -642,35 +669,19 @@ unsafe fn connstring_decode_impl(
             CStr::from_ptr(bus_name).to_bytes()
         };
 
-        let length = bounded_strlen(connstring, NFC_BUFSIZE_CONNSTRING);
-        let slice = std::slice::from_raw_parts(connstring as *const u8, length);
-
-        let (first_segment, remainder) = split_at_first(slice, b':');
-
-        if first_segment != driver_bytes && first_segment != bus_bytes {
+        let slice = std::slice::from_raw_parts(
+            connstring.cast::<u8>(),
+            bounded_strlen(connstring, NFC_BUFSIZE_CONNSTRING),
+        );
+        let Some((result, param1_segment, param2_segment)) =
+            decode_connstring_segments(slice, driver_bytes, bus_bytes)
+        else {
             return 0;
-        }
-
-        let mut result: c_int = 1;
-        let mut param1_segment: Option<&[u8]> = None;
-        let mut param2_segment: Option<&[u8]> = None;
-
-        if let Some(level1) = remainder {
-            let (second, remainder2) = split_at_first(level1, b':');
-            param1_segment = Some(second);
-            result = 2;
-
-            if let Some(level2) = remainder2 {
-                let (third, _) = split_at_first(level2, b':');
-                param2_segment = Some(third);
-                result = 3;
-            }
-        }
+        };
 
         if !pparam1.is_null() {
             if result >= 2 {
-                let segment = param1_segment.unwrap_or(&[]);
-                match alloc_and_copy(segment) {
+                match alloc_and_copy(param1_segment.unwrap_or(&[])) {
                     Ok(ptr_value) => {
                         *pparam1 = ptr_value;
                     }
@@ -689,14 +700,13 @@ unsafe fn connstring_decode_impl(
 
         if !pparam2.is_null() {
             if result >= 3 {
-                let segment = param2_segment.unwrap_or(&[]);
-                match alloc_and_copy(segment) {
+                match alloc_and_copy(param2_segment.unwrap_or(&[])) {
                     Ok(ptr_value) => {
                         *pparam2 = ptr_value;
                     }
                     Err(()) => {
                         if !pparam1.is_null() {
-                            release_allocated_ptr(*pparam1 as *mut c_void);
+                            release_allocated_ptr((*pparam1).cast::<c_void>());
                             *pparam1 = ptr::null_mut();
                         }
                         *pparam2 = ptr::null_mut();
@@ -850,6 +860,54 @@ mod tests {
             let logged = test_get_last_log();
             assert!(logged.is_some());
             assert!(logged.unwrap().contains("does not match prefix"));
+        }
+    }
+
+    #[test]
+    fn parse_connstring_rejects_truncated_output_buffer() {
+        unsafe {
+            let conn = CString::new("pn53x_usb:path=/dev/ttyUSB0").unwrap();
+            let prefix = CString::new("pn53x_usb").unwrap();
+            let param = CString::new("path").unwrap();
+            let mut buf = [0 as c_char; 4];
+
+            let rc = nfc_parse_connstring(
+                conn.as_ptr(),
+                prefix.as_ptr(),
+                param.as_ptr(),
+                buf.as_mut_ptr(),
+                buf.len(),
+            );
+
+            assert_eq!(rc, NFC_COMMON_ERROR);
+            let err = nfc_get_last_error();
+            assert!(!err.is_null());
+            let recovered = CStr::from_ptr(err).to_str().unwrap();
+            assert!(recovered.contains("Parameter value too long"));
+        }
+    }
+
+    #[test]
+    fn build_connstring_rejects_truncated_output_buffer() {
+        unsafe {
+            let driver = CString::new("pn53x_usb").unwrap();
+            let param = CString::new("path").unwrap();
+            let value = CString::new("/dev/ttyUSB0").unwrap();
+            let mut buf = [0 as c_char; 8];
+
+            let rc = nfc_build_connstring(
+                buf.as_mut_ptr(),
+                buf.len(),
+                driver.as_ptr(),
+                param.as_ptr(),
+                value.as_ptr(),
+            );
+
+            assert_eq!(rc, NFC_COMMON_ERROR);
+            let err = nfc_get_last_error();
+            assert!(!err.is_null());
+            let recovered = CStr::from_ptr(err).to_str().unwrap();
+            assert!(recovered.contains("Connection string buffer overflow"));
         }
     }
 

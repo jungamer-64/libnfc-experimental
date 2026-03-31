@@ -3,10 +3,10 @@
 // Free/Libre Near Field Communication (NFC) library
 //
 // ABI mirrors for packed public NFC types from include/nfc/nfc-types.h.
+#![allow(dead_code, non_camel_case_types, non_snake_case)]
 
 use libc::size_t;
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(C)]
 pub(crate) enum nfc_property {
@@ -27,7 +27,6 @@ pub(crate) enum nfc_property {
     NP_FORCE_SPEED_106 = 14,
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(C)]
 pub(crate) enum nfc_dep_mode {
@@ -36,7 +35,6 @@ pub(crate) enum nfc_dep_mode {
     NDM_ACTIVE = 2,
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(C)]
 pub(crate) enum nfc_baud_rate {
@@ -47,7 +45,6 @@ pub(crate) enum nfc_baud_rate {
     NBR_847 = 4,
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(C)]
 pub(crate) enum nfc_modulation_type {
@@ -64,7 +61,6 @@ pub(crate) enum nfc_modulation_type {
     NMT_ISO14443BICLASS = 10,
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(C)]
 pub(crate) enum nfc_mode {
@@ -72,7 +68,6 @@ pub(crate) enum nfc_mode {
     N_INITIATOR = 1,
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub(crate) struct nfc_dep_info {
@@ -87,7 +82,6 @@ pub(crate) struct nfc_dep_info {
     pub ndm: nfc_dep_mode,
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub(crate) struct nfc_iso14443a_info {
@@ -99,7 +93,6 @@ pub(crate) struct nfc_iso14443a_info {
     pub abtAts: [u8; 254],
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub(crate) struct nfc_felica_info {
@@ -110,7 +103,6 @@ pub(crate) struct nfc_felica_info {
     pub abtSysCode: [u8; 2],
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub(crate) struct nfc_iso14443b_info {
@@ -120,7 +112,6 @@ pub(crate) struct nfc_iso14443b_info {
     pub ui8CardIdentifier: u8,
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub(crate) struct nfc_iso14443bi_info {
@@ -131,21 +122,18 @@ pub(crate) struct nfc_iso14443bi_info {
     pub abtAtr: [u8; 33],
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub(crate) struct nfc_iso14443biclass_info {
     pub abtUID: [u8; 8],
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub(crate) struct nfc_iso14443b2sr_info {
     pub abtUID: [u8; 8],
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub(crate) struct nfc_iso14443b2ct_info {
@@ -154,7 +142,6 @@ pub(crate) struct nfc_iso14443b2ct_info {
     pub btFabCode: u8,
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub(crate) struct nfc_jewel_info {
@@ -162,7 +149,6 @@ pub(crate) struct nfc_jewel_info {
     pub btId: [u8; 4],
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub(crate) struct nfc_barcode_info {
@@ -170,7 +156,6 @@ pub(crate) struct nfc_barcode_info {
     pub abtData: [u8; 32],
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub(crate) union nfc_target_info {
@@ -186,7 +171,6 @@ pub(crate) union nfc_target_info {
     pub nhi: nfc_iso14443biclass_info,
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub(crate) struct nfc_modulation {
@@ -194,7 +178,6 @@ pub(crate) struct nfc_modulation {
     pub nbr: nfc_baud_rate,
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub(crate) struct nfc_target {

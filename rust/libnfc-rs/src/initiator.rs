@@ -4,9 +4,10 @@
 //
 // Ported from libnfc/nfc.c.
 
+use crate::ffi_support::{as_mut, as_ref};
 use crate::ffi_types::{
-    nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_mode, nfc_modulation,
-    nfc_modulation_type, nfc_property, nfc_target,
+    nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_mode, nfc_modulation, nfc_modulation_type,
+    nfc_property, nfc_target,
 };
 use crate::lifecycle::nfc_device;
 use crate::{
@@ -20,13 +21,11 @@ use std::ptr;
 use std::slice;
 
 const NFC_SUCCESS: c_int = 0;
-const NFC_EIO: c_int = -1;
 const NFC_EINVARG: c_int = -2;
 const NFC_EDEVNOTSUPP: c_int = -3;
 const NFC_ETIMEOUT: c_int = -6;
 const NFC_ESOFT: c_int = -80;
 
-const LOG_PRIORITY_INFO: u8 = 2;
 const GENERAL_LOG_CATEGORY: *const c_char = b"libnfc.general\0" as *const u8 as *const c_char;
 
 const PROPERTY_NAMES: [&str; 15] = [
@@ -84,10 +83,8 @@ fn log_general_error(message: &str) {
 }
 
 unsafe fn set_device_last_error(device: *mut nfc_device, value: c_int) {
-    if !device.is_null() {
-        unsafe {
-            (*device).last_error = value;
-        }
+    if let Some(device) = unsafe { as_mut(device) } {
+        device.last_error = value;
     }
 }
 
@@ -100,9 +97,89 @@ unsafe fn unsupported_driver_operation(device: *mut nfc_device) -> c_int {
     0
 }
 
+unsafe fn dispatch_driver_call(
+    device: *mut nfc_device,
+    call: impl FnOnce(&crate::lifecycle::nfc_driver) -> Option<c_int>,
+) -> c_int {
+    unsafe { reset_device_last_error(device) };
+    let Some(device_ref) = (unsafe { as_ref(device) }) else {
+        return 0;
+    };
+    let Some(driver_ref) = (unsafe { as_ref(device_ref.driver) }) else {
+        return unsafe { unsupported_driver_operation(device) };
+    };
+
+    match call(driver_ref) {
+        Some(result) => result,
+        None => unsafe { unsupported_driver_operation(device) },
+    }
+}
+
+struct InfiniteSelectGuard {
+    device: *mut nfc_device,
+    previous: Option<bool>,
+    temporary_value: bool,
+    active: bool,
+}
+
+impl InfiniteSelectGuard {
+    unsafe fn set(device: *mut nfc_device, temporary_value: bool) -> Result<Self, c_int> {
+        let previous = unsafe { as_ref(device) }.map(|device| device.bInfiniteSelect);
+        let result = unsafe {
+            nfc_device_set_property_bool(device, nfc_property::NP_INFINITE_SELECT, temporary_value)
+        };
+        if result < 0 {
+            return Err(result);
+        }
+
+        Ok(Self {
+            device,
+            previous,
+            temporary_value,
+            active: true,
+        })
+    }
+
+    fn restore(&mut self) -> c_int {
+        if !self.active {
+            return NFC_SUCCESS;
+        }
+        self.active = false;
+
+        let Some(previous) = self.previous else {
+            return NFC_SUCCESS;
+        };
+        if previous == self.temporary_value {
+            return NFC_SUCCESS;
+        }
+
+        unsafe {
+            nfc_device_set_property_bool(self.device, nfc_property::NP_INFINITE_SELECT, previous)
+        }
+    }
+
+    fn finish(mut self, result: c_int) -> c_int {
+        let restore_result = self.restore();
+        if restore_result < 0 {
+            restore_result
+        } else {
+            result
+        }
+    }
+}
+
+impl Drop for InfiniteSelectGuard {
+    fn drop(&mut self) {
+        let _ = self.restore();
+    }
+}
+
 fn property_name(property: nfc_property) -> &'static str {
     let index = property as usize;
-    PROPERTY_NAMES.get(index).copied().unwrap_or("UNKNOWN_PROPERTY")
+    PROPERTY_NAMES
+        .get(index)
+        .copied()
+        .unwrap_or("UNKNOWN_PROPERTY")
 }
 
 #[cfg(all(not(test), libnfc_external_bridges))]
@@ -160,19 +237,12 @@ unsafe fn call_device_set_property_bool_impl(
     property: nfc_property,
     enable: bool,
 ) -> c_int {
-    unsafe { reset_device_last_error(device) };
-    if device.is_null() {
-        return 0;
-    }
-
-    let driver = unsafe { (*device).driver };
-    if driver.is_null() {
-        return unsafe { unsupported_driver_operation(device) };
-    }
-
-    match unsafe { (*driver).device_set_property_bool } {
-        Some(callback) => unsafe { callback(device, property, enable) },
-        None => unsafe { unsupported_driver_operation(device) },
+    unsafe {
+        dispatch_driver_call(device, |driver| {
+            driver
+                .device_set_property_bool
+                .map(|callback| callback(device, property, enable))
+        })
     }
 }
 
@@ -181,53 +251,30 @@ unsafe fn call_device_set_property_int_impl(
     property: nfc_property,
     value: c_int,
 ) -> c_int {
-    unsafe { reset_device_last_error(device) };
-    if device.is_null() {
-        return 0;
-    }
-
-    let driver = unsafe { (*device).driver };
-    if driver.is_null() {
-        return unsafe { unsupported_driver_operation(device) };
-    }
-
-    match unsafe { (*driver).device_set_property_int } {
-        Some(callback) => unsafe { callback(device, property, value) },
-        None => unsafe { unsupported_driver_operation(device) },
+    unsafe {
+        dispatch_driver_call(device, |driver| {
+            driver
+                .device_set_property_int
+                .map(|callback| callback(device, property, value))
+        })
     }
 }
 
 unsafe fn call_initiator_init_impl(device: *mut nfc_device) -> c_int {
-    unsafe { reset_device_last_error(device) };
-    if device.is_null() {
-        return 0;
-    }
-
-    let driver = unsafe { (*device).driver };
-    if driver.is_null() {
-        return unsafe { unsupported_driver_operation(device) };
-    }
-
-    match unsafe { (*driver).initiator_init } {
-        Some(callback) => unsafe { callback(device) },
-        None => unsafe { unsupported_driver_operation(device) },
+    unsafe {
+        dispatch_driver_call(device, |driver| {
+            driver.initiator_init.map(|callback| callback(device))
+        })
     }
 }
 
 unsafe fn call_initiator_init_secure_element_impl(device: *mut nfc_device) -> c_int {
-    unsafe { reset_device_last_error(device) };
-    if device.is_null() {
-        return 0;
-    }
-
-    let driver = unsafe { (*device).driver };
-    if driver.is_null() {
-        return unsafe { unsupported_driver_operation(device) };
-    }
-
-    match unsafe { (*driver).initiator_init_secure_element } {
-        Some(callback) => unsafe { callback(device) },
-        None => unsafe { unsupported_driver_operation(device) },
+    unsafe {
+        dispatch_driver_call(device, |driver| {
+            driver
+                .initiator_init_secure_element
+                .map(|callback| callback(device))
+        })
     }
 }
 
@@ -238,19 +285,12 @@ unsafe fn call_initiator_select_passive_target_impl(
     init_data_len: usize,
     target: *mut nfc_target,
 ) -> c_int {
-    unsafe { reset_device_last_error(device) };
-    if device.is_null() {
-        return 0;
-    }
-
-    let driver = unsafe { (*device).driver };
-    if driver.is_null() {
-        return unsafe { unsupported_driver_operation(device) };
-    }
-
-    match unsafe { (*driver).initiator_select_passive_target } {
-        Some(callback) => unsafe { callback(device, nm, init_data, init_data_len, target) },
-        None => unsafe { unsupported_driver_operation(device) },
+    unsafe {
+        dispatch_driver_call(device, |driver| {
+            driver
+                .initiator_select_passive_target
+                .map(|callback| callback(device, nm, init_data, init_data_len, target))
+        })
     }
 }
 
@@ -262,21 +302,19 @@ unsafe fn call_initiator_poll_target_impl(
     period: u8,
     target: *mut nfc_target,
 ) -> c_int {
-    unsafe { reset_device_last_error(device) };
-    if device.is_null() {
-        return 0;
-    }
-
-    let driver = unsafe { (*device).driver };
-    if driver.is_null() {
-        return unsafe { unsupported_driver_operation(device) };
-    }
-
-    match unsafe { (*driver).initiator_poll_target } {
-        Some(callback) => unsafe {
-            callback(device, modulations, modulations_len, poll_nr, period, target)
-        },
-        None => unsafe { unsupported_driver_operation(device) },
+    unsafe {
+        dispatch_driver_call(device, |driver| {
+            driver.initiator_poll_target.map(|callback| {
+                callback(
+                    device,
+                    modulations,
+                    modulations_len,
+                    poll_nr,
+                    period,
+                    target,
+                )
+            })
+        })
     }
 }
 
@@ -288,36 +326,22 @@ unsafe fn call_initiator_select_dep_target_impl(
     target: *mut nfc_target,
     timeout: c_int,
 ) -> c_int {
-    unsafe { reset_device_last_error(device) };
-    if device.is_null() {
-        return 0;
-    }
-
-    let driver = unsafe { (*device).driver };
-    if driver.is_null() {
-        return unsafe { unsupported_driver_operation(device) };
-    }
-
-    match unsafe { (*driver).initiator_select_dep_target } {
-        Some(callback) => unsafe { callback(device, ndm, nbr, initiator, target, timeout) },
-        None => unsafe { unsupported_driver_operation(device) },
+    unsafe {
+        dispatch_driver_call(device, |driver| {
+            driver
+                .initiator_select_dep_target
+                .map(|callback| callback(device, ndm, nbr, initiator, target, timeout))
+        })
     }
 }
 
 unsafe fn call_initiator_deselect_target_impl(device: *mut nfc_device) -> c_int {
-    unsafe { reset_device_last_error(device) };
-    if device.is_null() {
-        return 0;
-    }
-
-    let driver = unsafe { (*device).driver };
-    if driver.is_null() {
-        return unsafe { unsupported_driver_operation(device) };
-    }
-
-    match unsafe { (*driver).initiator_deselect_target } {
-        Some(callback) => unsafe { callback(device) },
-        None => unsafe { unsupported_driver_operation(device) },
+    unsafe {
+        dispatch_driver_call(device, |driver| {
+            driver
+                .initiator_deselect_target
+                .map(|callback| callback(device))
+        })
     }
 }
 
@@ -325,19 +349,12 @@ unsafe fn call_initiator_target_is_present_impl(
     device: *mut nfc_device,
     target: *const nfc_target,
 ) -> c_int {
-    unsafe { reset_device_last_error(device) };
-    if device.is_null() {
-        return 0;
-    }
-
-    let driver = unsafe { (*device).driver };
-    if driver.is_null() {
-        return unsafe { unsupported_driver_operation(device) };
-    }
-
-    match unsafe { (*driver).initiator_target_is_present } {
-        Some(callback) => unsafe { callback(device, target) },
-        None => unsafe { unsupported_driver_operation(device) },
+    unsafe {
+        dispatch_driver_call(device, |driver| {
+            driver
+                .initiator_target_is_present
+                .map(|callback| callback(device, target))
+        })
     }
 }
 
@@ -346,19 +363,12 @@ unsafe fn get_supported_modulation_impl(
     mode: nfc_mode,
     supported: *mut *const nfc_modulation_type,
 ) -> c_int {
-    unsafe { reset_device_last_error(device) };
-    if device.is_null() {
-        return 0;
-    }
-
-    let driver = unsafe { (*device).driver };
-    if driver.is_null() {
-        return unsafe { unsupported_driver_operation(device) };
-    }
-
-    match unsafe { (*driver).get_supported_modulation } {
-        Some(callback) => unsafe { callback(device, mode, supported) },
-        None => unsafe { unsupported_driver_operation(device) },
+    unsafe {
+        dispatch_driver_call(device, |driver| {
+            driver
+                .get_supported_modulation
+                .map(|callback| callback(device, mode, supported))
+        })
     }
 }
 
@@ -368,26 +378,16 @@ unsafe fn get_supported_baud_rate_impl(
     modulation_type: nfc_modulation_type,
     supported: *mut *const nfc_baud_rate,
 ) -> c_int {
-    unsafe { reset_device_last_error(device) };
-    if device.is_null() {
-        return 0;
-    }
-
-    let driver = unsafe { (*device).driver };
-    if driver.is_null() {
-        return unsafe { unsupported_driver_operation(device) };
-    }
-
-    match unsafe { (*driver).get_supported_baud_rate } {
-        Some(callback) => unsafe { callback(device, mode, modulation_type, supported) },
-        None => unsafe { unsupported_driver_operation(device) },
+    unsafe {
+        dispatch_driver_call(device, |driver| {
+            driver
+                .get_supported_baud_rate
+                .map(|callback| callback(device, mode, modulation_type, supported))
+        })
     }
 }
 
-fn apply_property_sequence(
-    device: *mut nfc_device,
-    settings: &[PropertyBoolSetting],
-) -> c_int {
+fn apply_property_sequence(device: *mut nfc_device, settings: &[PropertyBoolSetting]) -> c_int {
     for setting in settings {
         let res = unsafe { nfc_device_set_property_bool(device, setting.property, setting.value) };
         if res < 0 {
@@ -449,7 +449,8 @@ unsafe fn get_baud_rates_for_mode(
     status: &mut c_int,
 ) -> *const nfc_baud_rate {
     let mut supported = ptr::null();
-    *status = unsafe { get_supported_baud_rate_impl(device, mode, modulation_type, &mut supported) };
+    *status =
+        unsafe { get_supported_baud_rate_impl(device, mode, modulation_type, &mut supported) };
     if *status < 0 {
         return ptr::null();
     }
@@ -514,12 +515,15 @@ unsafe fn copy_target_bytes(dst: *mut nfc_target, src: *const nfc_target) {
 
 fn targets_equal(left: *const nfc_target, right: *const nfc_target) -> bool {
     let left_bytes = unsafe { slice::from_raw_parts(left as *const u8, size_of::<nfc_target>()) };
-    let right_bytes =
-        unsafe { slice::from_raw_parts(right as *const u8, size_of::<nfc_target>()) };
+    let right_bytes = unsafe { slice::from_raw_parts(right as *const u8, size_of::<nfc_target>()) };
     left_bytes == right_bytes
 }
 
-fn target_already_seen(targets: *const nfc_target, count: usize, candidate: *const nfc_target) -> bool {
+fn target_already_seen(
+    targets: *const nfc_target,
+    count: usize,
+    candidate: *const nfc_target,
+) -> bool {
     for index in 0..count {
         if targets_equal(unsafe { targets.add(index) }, candidate) {
             return true;
@@ -635,52 +639,56 @@ pub unsafe extern "C" fn nfc_initiator_select_passive_target(
     init_data_len: size_t,
     target: *mut nfc_target,
 ) -> c_int {
-    ffi_catch_unwind_int("nfc_initiator_select_passive_target", NFC_ESOFT, || unsafe {
-        let validation = validate_modulation(device, nfc_mode::N_INITIATOR, ptr::addr_of!(nm));
-        if validation != NFC_SUCCESS {
-            return validation;
-        }
+    ffi_catch_unwind_int(
+        "nfc_initiator_select_passive_target",
+        NFC_ESOFT,
+        || unsafe {
+            let validation = validate_modulation(device, nfc_mode::N_INITIATOR, ptr::addr_of!(nm));
+            if validation != NFC_SUCCESS {
+                return validation;
+            }
 
-        if init_data_len == 0 {
-            let (default_data, default_len) = default_initiator_data(nm);
-            return call_initiator_select_passive_target_impl(
+            if init_data_len == 0 {
+                let (default_data, default_len) = default_initiator_data(nm);
+                return call_initiator_select_passive_target_impl(
+                    device,
+                    nm,
+                    default_data,
+                    default_len,
+                    target,
+                );
+            }
+
+            if init_data.is_null() {
+                log_general_error("Failed to copy init data");
+                return NFC_EINVARG;
+            }
+
+            let max_abt = (init_data_len as usize).max(12);
+            let mut abt_init = vec![0u8; max_abt];
+            let mut cascaded_len = 0usize;
+
+            if read_modulation_type(ptr::addr_of!(nm)) == nfc_modulation_type::NMT_ISO14443A {
+                bridge_iso14443_cascade_uid(
+                    init_data,
+                    init_data_len,
+                    abt_init.as_mut_ptr(),
+                    &mut cascaded_len,
+                );
+            } else {
+                ptr::copy_nonoverlapping(init_data, abt_init.as_mut_ptr(), init_data_len as usize);
+                cascaded_len = init_data_len as usize;
+            }
+
+            call_initiator_select_passive_target_impl(
                 device,
                 nm,
-                default_data,
-                default_len,
+                abt_init.as_ptr(),
+                cascaded_len,
                 target,
-            );
-        }
-
-        if init_data.is_null() {
-            log_general_error("Failed to copy init data");
-            return NFC_EINVARG;
-        }
-
-        let max_abt = (init_data_len as usize).max(12);
-        let mut abt_init = vec![0u8; max_abt];
-        let mut cascaded_len = 0usize;
-
-        if read_modulation_type(ptr::addr_of!(nm)) == nfc_modulation_type::NMT_ISO14443A {
-            bridge_iso14443_cascade_uid(
-                init_data,
-                init_data_len,
-                abt_init.as_mut_ptr(),
-                &mut cascaded_len,
-            );
-        } else {
-            ptr::copy_nonoverlapping(init_data, abt_init.as_mut_ptr(), init_data_len as usize);
-            cascaded_len = init_data_len as usize;
-        }
-
-        call_initiator_select_passive_target_impl(
-            device,
-            nm,
-            abt_init.as_ptr(),
-            cascaded_len,
-            target,
-        )
-    })
+            )
+        },
+    )
 }
 
 #[unsafe(no_mangle)]
@@ -696,21 +704,10 @@ pub unsafe extern "C" fn nfc_initiator_list_passive_targets(
         }
 
         reset_device_last_error(device);
-
-        let restore_infinite = if device.is_null() {
-            false
-        } else {
-            (*device).bInfiniteSelect
+        let guard = match InfiniteSelectGuard::set(device, false) {
+            Ok(guard) => guard,
+            Err(error) => return error,
         };
-
-        let mut res = nfc_device_set_property_bool(
-            device,
-            nfc_property::NP_INFINITE_SELECT,
-            false,
-        );
-        if res < 0 {
-            return res;
-        }
 
         let (init_data, init_data_len) = default_initiator_data(nm);
         let mut target_count = 0usize;
@@ -738,18 +735,7 @@ pub unsafe extern "C" fn nfc_initiator_list_passive_targets(
             nfc_initiator_deselect_target(device);
         }
 
-        if restore_infinite {
-            res = nfc_device_set_property_bool(
-                device,
-                nfc_property::NP_INFINITE_SELECT,
-                true,
-            );
-            if res < 0 {
-                return res;
-            }
-        }
-
-        target_count as c_int
+        guard.finish(target_count as c_int)
     })
 }
 
@@ -801,27 +787,14 @@ pub unsafe extern "C" fn nfc_initiator_poll_dep_target(
         const PERIOD: c_int = 300;
         let mut remaining_time = timeout;
         let mut result = 0;
-
-        let restore_false = if device.is_null() {
-            false
-        } else {
-            !(*device).bInfiniteSelect
+        let guard = match InfiniteSelectGuard::set(device, true) {
+            Ok(guard) => guard,
+            Err(error) => return error,
         };
 
-        let res = nfc_device_set_property_bool(device, nfc_property::NP_INFINITE_SELECT, true);
-        if res < 0 {
-            return res;
-        }
-
         while remaining_time > 0 {
-            let select_res = nfc_initiator_select_dep_target(
-                device,
-                ndm,
-                nbr,
-                initiator,
-                target,
-                PERIOD,
-            );
+            let select_res =
+                nfc_initiator_select_dep_target(device, ndm, nbr, initiator, target, PERIOD);
 
             if select_res < 0 && select_res != NFC_ETIMEOUT {
                 result = select_res;
@@ -836,15 +809,7 @@ pub unsafe extern "C" fn nfc_initiator_poll_dep_target(
             remaining_time -= PERIOD;
         }
 
-        if restore_false {
-            let restore_res =
-                nfc_device_set_property_bool(device, nfc_property::NP_INFINITE_SELECT, false);
-            if restore_res < 0 {
-                return restore_res;
-            }
-        }
-
-        result
+        guard.finish(result)
     })
 }
 
@@ -1221,9 +1186,8 @@ mod tests {
         reset_test_state();
 
         let device = unsafe { make_device(ptr::addr_of!(TEST_DRIVER_MISSING_BOOL)) };
-        let result = unsafe {
-            nfc_device_set_property_bool(device, nfc_property::NP_ACTIVATE_FIELD, true)
-        };
+        let result =
+            unsafe { nfc_device_set_property_bool(device, nfc_property::NP_ACTIVATE_FIELD, true) };
 
         assert_eq!(result, 0);
         assert_eq!(unsafe { (*device).last_error }, NFC_EDEVNOTSUPP);
@@ -1237,9 +1201,8 @@ mod tests {
         reset_test_state();
 
         let device = unsafe { make_device(ptr::addr_of!(TEST_DRIVER_FULL)) };
-        let result = unsafe {
-            nfc_device_set_property_int(device, nfc_property::NP_TIMEOUT_COMMAND, 42)
-        };
+        let result =
+            unsafe { nfc_device_set_property_int(device, nfc_property::NP_TIMEOUT_COMMAND, 42) };
 
         assert_eq!(result, 0);
         assert_eq!(

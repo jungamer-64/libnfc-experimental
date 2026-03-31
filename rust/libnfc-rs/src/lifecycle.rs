@@ -13,14 +13,18 @@
 // Copyright (C) 2020      Adam Laurie
 // See AUTHORS file for a more comprehensive list of contributors.
 
+use crate::ffi_support::{
+    as_mut, bounded_strlen, copy_bytes_to_c_buffer, copy_c_string_to_c_buffer,
+    fixed_c_buffer_to_string,
+};
+use crate::ffi_types::{
+    nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_mode, nfc_modulation, nfc_modulation_type,
+    nfc_property, nfc_target,
+};
 use crate::{
     LOG_PRIORITY_DEBUG, LOG_PRIORITY_NONE, NFC_BUFSIZE_CONNSTRING, ffi_catch_unwind_ptr,
     ffi_catch_unwind_void, log_error, log_message, release_allocated_ptr, reset_last_error,
     set_last_error_message,
-};
-use crate::ffi_types::{
-    nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_mode, nfc_modulation,
-    nfc_modulation_type, nfc_property, nfc_target,
 };
 use libc::{c_char, c_int, c_uint, c_void};
 use std::mem::size_of;
@@ -274,14 +278,17 @@ unsafe fn nfc_device_new_impl(
         return ptr::null_mut();
     }
 
-    let copy_len = crate::bounded_strlen(connstring, NFC_BUFSIZE_CONNSTRING.saturating_sub(1));
-    unsafe {
-        (*device).context = context;
-        if copy_len > 0 {
-            ptr::copy_nonoverlapping(connstring, (*device).connstring.as_mut_ptr(), copy_len);
+    let Some(device_ref) = (unsafe { as_mut(device) }) else {
+        return ptr::null_mut();
+    };
+    device_ref.context = context;
+    let copy_len = bounded_strlen(connstring, NFC_BUFSIZE_CONNSTRING.saturating_sub(1));
+    if copy_len > 0 {
+        unsafe {
+            ptr::copy_nonoverlapping(connstring, device_ref.connstring.as_mut_ptr(), copy_len);
         }
-        (*device).connstring[copy_len] = 0;
     }
+    device_ref.connstring[copy_len] = 0;
 
     reset_last_error();
     device
@@ -292,49 +299,6 @@ fn set_copy_error(message: &str) {
     set_last_error_message(message.to_string());
 }
 
-unsafe fn copy_bytes_to_buffer(
-    dst: *mut c_char,
-    dst_size: usize,
-    src: &[u8],
-    error_message: &str,
-) -> bool {
-    if src.len() >= dst_size {
-        set_copy_error(error_message);
-        return false;
-    }
-
-    unsafe {
-        if !src.is_empty() {
-            ptr::copy_nonoverlapping(src.as_ptr() as *const c_char, dst, src.len());
-        }
-        *dst.add(src.len()) = 0;
-    }
-
-    true
-}
-
-unsafe fn copy_c_string_to_buffer(
-    dst: *mut c_char,
-    dst_size: usize,
-    src: *const c_char,
-    error_message: &str,
-) -> bool {
-    let length = crate::bounded_strlen(src, dst_size);
-    if length >= dst_size {
-        set_copy_error(error_message);
-        return false;
-    }
-
-    unsafe {
-        if length > 0 {
-            ptr::copy_nonoverlapping(src, dst, length);
-        }
-        *dst.add(length) = 0;
-    }
-
-    true
-}
-
 unsafe fn apply_user_defined_device(
     context: *mut nfc_context,
     device_name: &[u8],
@@ -342,30 +306,29 @@ unsafe fn apply_user_defined_device(
     count: c_uint,
     connstring_error_message: &str,
 ) -> bool {
-    unsafe {
-        let device = &mut (*context).user_defined_devices[0];
+    let Some(context) = (unsafe { as_mut(context) }) else {
+        return false;
+    };
+    let device = &mut context.user_defined_devices[0];
 
-        if !copy_bytes_to_buffer(
-            device.name.as_mut_ptr(),
-            DEVICE_NAME_LENGTH,
-            device_name,
-            "Failed to copy device name",
-        ) {
-            return false;
-        }
+    if !unsafe { copy_bytes_to_c_buffer(device.name.as_mut_ptr(), DEVICE_NAME_LENGTH, device_name) }
+    {
+        set_copy_error("Failed to copy device name");
+        return false;
+    }
 
-        if !copy_c_string_to_buffer(
+    if !unsafe {
+        copy_c_string_to_c_buffer(
             device.connstring.as_mut_ptr(),
             NFC_BUFSIZE_CONNSTRING,
             connstring,
-            connstring_error_message,
-        ) {
-            return false;
-        }
-
-        (*context).user_defined_device_count = count;
+        )
+    } {
+        set_copy_error(connstring_error_message);
+        return false;
     }
 
+    context.user_defined_device_count = count;
     true
 }
 
@@ -388,69 +351,61 @@ unsafe fn getenv(name: &[u8]) -> *mut c_char {
     unsafe { libc::getenv(name.as_ptr() as *const c_char) }
 }
 
-fn fixed_c_buffer_to_string(buffer: &[c_char]) -> String {
-    let length = buffer
-        .iter()
-        .position(|&ch| ch == 0)
-        .unwrap_or(buffer.len());
-    let bytes: Vec<u8> = buffer[..length].iter().map(|&ch| ch as u8).collect();
-    String::from_utf8_lossy(&bytes).into_owned()
-}
-
-unsafe fn log_context_state(context: *const nfc_context) {
+fn log_context_state(context: &nfc_context) {
     let first_priority = if cfg!(libnfc_debug) {
         LOG_PRIORITY_NONE
     } else {
         LOG_PRIORITY_DEBUG
     };
 
-    unsafe {
-        log_message(
-            first_priority,
-            &format!("log_level is set to {}", (*context).log_level),
-        );
-        log_message(
-            LOG_PRIORITY_DEBUG,
-            &format!(
-                "allow_autoscan is set to {}",
-                if (*context).allow_autoscan {
-                    "true"
-                } else {
-                    "false"
-                }
-            ),
-        );
-        log_message(
-            LOG_PRIORITY_DEBUG,
-            &format!(
-                "allow_intrusive_scan is set to {}",
-                if (*context).allow_intrusive_scan {
-                    "true"
-                } else {
-                    "false"
-                }
-            ),
-        );
-        log_message(
-            LOG_PRIORITY_DEBUG,
-            &format!(
-                "{} device(s) defined by user",
-                (*context).user_defined_device_count
-            ),
-        );
+    log_message(
+        first_priority,
+        &format!("log_level is set to {}", context.log_level),
+    );
+    log_message(
+        LOG_PRIORITY_DEBUG,
+        &format!(
+            "allow_autoscan is set to {}",
+            if context.allow_autoscan {
+                "true"
+            } else {
+                "false"
+            }
+        ),
+    );
+    log_message(
+        LOG_PRIORITY_DEBUG,
+        &format!(
+            "allow_intrusive_scan is set to {}",
+            if context.allow_intrusive_scan {
+                "true"
+            } else {
+                "false"
+            }
+        ),
+    );
+    log_message(
+        LOG_PRIORITY_DEBUG,
+        &format!(
+            "{} device(s) defined by user",
+            context.user_defined_device_count
+        ),
+    );
 
-        for index in 0..((*context).user_defined_device_count as usize) {
-            let device = &(*context).user_defined_devices[index];
-            log_message(
-                LOG_PRIORITY_DEBUG,
-                &format!(
-                    "  #{} name: \"{}\", connstring: \"{}\"",
-                    index,
-                    fixed_c_buffer_to_string(&device.name),
-                    fixed_c_buffer_to_string(&device.connstring)
-                ),
-            );
-        }
+    for (index, device) in context.user_defined_devices
+        [..context.user_defined_device_count as usize]
+        .iter()
+        .enumerate()
+    {
+        log_message(
+            LOG_PRIORITY_DEBUG,
+            &format!(
+                "  #{} name: \"{}\", connstring: \"{}\"",
+                index,
+                fixed_c_buffer_to_string(&device.name),
+                fixed_c_buffer_to_string(&device.connstring)
+            ),
+        );
     }
 }
 
@@ -503,26 +458,28 @@ unsafe fn nfc_context_new_impl() -> *mut nfc_context {
             return ptr::null_mut();
         }
 
-        unsafe {
+        if let Some(context_ref) = unsafe { as_mut(context) } {
             apply_boolean_string(
-                getenv(ENV_LIBNFC_AUTO_SCAN) as *const c_char,
-                &mut (*context).allow_autoscan,
+                unsafe { getenv(ENV_LIBNFC_AUTO_SCAN) } as *const c_char,
+                &mut context_ref.allow_autoscan,
             );
             apply_boolean_string(
-                getenv(ENV_LIBNFC_INTRUSIVE_SCAN) as *const c_char,
-                &mut (*context).allow_intrusive_scan,
+                unsafe { getenv(ENV_LIBNFC_INTRUSIVE_SCAN) } as *const c_char,
+                &mut context_ref.allow_intrusive_scan,
             );
 
-            let env_log_level = getenv(ENV_LIBNFC_LOG_LEVEL);
+            let env_log_level = unsafe { getenv(ENV_LIBNFC_LOG_LEVEL) };
             if !env_log_level.is_null() {
-                (*context).log_level = libc::atoi(env_log_level) as u32;
+                context_ref.log_level = unsafe { libc::atoi(env_log_level) as u32 };
             }
         }
     }
 
     unsafe {
         bridge_context_log_init(context);
-        log_context_state(context);
+        if let Some(context_ref) = as_mut(context) {
+            log_context_state(context_ref);
+        }
     }
 
     reset_last_error();
@@ -876,7 +833,10 @@ mod tests {
         }
 
         let logs = crate::test_get_logs();
-        assert!(logs.iter().any(|entry| entry.contains("key: [allow_autoscan], value: [false]")));
+        assert!(
+            logs.iter()
+                .any(|entry| entry.contains("key: [allow_autoscan], value: [false]"))
+        );
 
         release_context(context);
     }
@@ -912,16 +872,21 @@ mod tests {
         assert!(!context.is_null());
 
         unsafe {
-            assert_eq!((*context).user_defined_device_count as usize, MAX_USER_DEFINED_DEVICES);
+            assert_eq!(
+                (*context).user_defined_device_count as usize,
+                MAX_USER_DEFINED_DEVICES
+            );
         }
 
         let logs = crate::test_get_logs();
-        assert!(logs
-            .iter()
-            .any(|entry| entry.contains("Unknown key in config line: unknown.key = value")));
-        assert!(logs
-            .iter()
-            .any(|entry| entry.contains("Parse error on line #2: broken line")));
+        assert!(
+            logs.iter()
+                .any(|entry| entry.contains("Unknown key in config line: unknown.key = value"))
+        );
+        assert!(
+            logs.iter()
+                .any(|entry| entry.contains("Parse error on line #2: broken line"))
+        );
         assert!(logs
             .iter()
             .any(|entry| entry.contains("Configuration exceeded maximum user-defined devices.")));

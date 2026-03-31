@@ -19,6 +19,7 @@
 //!
 //! Safety: All exported functions are `unsafe extern "C"` and their
 //! safety requirements are documented on each function.
+use crate::ffi_support::bounded_strlen;
 use libc::{c_char, c_int, size_t};
 use std::ptr;
 // Import compiler_fence/Ordering when the fallback path that uses
@@ -45,6 +46,7 @@ const NFC_SECURE_MAX_REASONABLE_SIZE_64: usize = 1usize << 47; // 128 TiB
 
 // Threshold used to decide when to switch from volatile-byte writes to
 // a libc::memset+compiler_fence path for efficiency.
+#[allow(dead_code)]
 const NFC_SECURE_MEMSET_THRESHOLD: usize = 256;
 
 // Helper: architecture-aware maximum acceptable size for secure
@@ -306,18 +308,18 @@ unsafe fn memset_and_fence(ptr: *mut libc::c_void, c: libc::c_int, len: usize) {
     compiler_fence(Ordering::SeqCst);
 }
 
-fn validate_params(
+fn validate_copy_params(
     dst: *mut u8,
     dst_size: size_t,
     src: *const u8,
     src_size: size_t,
     func_name: *const c_char,
-) -> c_int {
+) -> Result<usize, c_int> {
     if dst.is_null() || src.is_null() {
-        return NFC_SECURE_ERROR_INVALID;
+        return Err(NFC_SECURE_ERROR_INVALID);
     }
     if src_size == 0 {
-        return NFC_SECURE_SUCCESS;
+        return Ok(0);
     }
     // Defense-in-depth validation order:
     // 1. Apply individual range caps so obviously-invalid arguments (e.g.
@@ -334,7 +336,7 @@ fn validate_params(
     // fall back to a fraction of the platform's max size to avoid overflow.
     let max: size_t = secure_max_size();
     if src_size > max || dst_size > max {
-        return NFC_SECURE_ERROR_RANGE;
+        return Err(NFC_SECURE_ERROR_RANGE);
     }
     // Defend against future code paths that may add sizes together
     // (for example a naive dst_size + src_size check). Ensure the
@@ -342,10 +344,10 @@ fn validate_params(
     // overflow as an invalid/range error rather than relying on
     // wrapping arithmetic later in the call chain.
     if dst_size.checked_add(src_size).is_none() {
-        return NFC_SECURE_ERROR_RANGE;
+        return Err(NFC_SECURE_ERROR_RANGE);
     }
     if dst_size < src_size {
-        return NFC_SECURE_ERROR_OVERFLOW;
+        return Err(NFC_SECURE_ERROR_OVERFLOW);
     }
     // When debug helpers are enabled, exercise the suspicious size
     // heuristic here so callers do not need to invoke it manually.
@@ -359,6 +361,178 @@ fn validate_params(
             nfc_check_suspicious_size(dst_size as size_t, func_name);
         }
     }
+
+    #[cfg(not(feature = "nfc_secure_debug"))]
+    let _ = func_name;
+
+    Ok(src_size as usize)
+}
+
+fn validate_fill_target(ptr: *mut libc::c_void, size: size_t) -> Result<usize, c_int> {
+    if ptr.is_null() {
+        return Err(NFC_SECURE_ERROR_INVALID);
+    }
+    if size == 0 {
+        return Ok(0);
+    }
+    if size > secure_max_size() {
+        return Err(NFC_SECURE_ERROR_RANGE);
+    }
+
+    Ok(size as usize)
+}
+
+#[cfg(not(any(have_memset_explicit, have_memset_s)))]
+fn fallback_secure_fill(ptr: *mut libc::c_void, value: u8, len: usize) {
+    if len <= NFC_SECURE_MEMSET_THRESHOLD {
+        unsafe { volatile_memset(ptr.cast::<u8>(), value, len) };
+    } else {
+        unsafe { memset_and_fence(ptr, value as libc::c_int, len) };
+    }
+}
+
+#[cfg(have_memset_explicit)]
+fn secure_fill_bytes(ptr: *mut libc::c_void, value: u8, len: usize) -> c_int {
+    unsafe extern "C" {
+        fn memset_explicit(s: *mut libc::c_void, c: libc::c_int, n: libc::size_t);
+    }
+
+    unsafe { memset_explicit(ptr, value as libc::c_int, len as libc::size_t) };
+    NFC_SECURE_SUCCESS
+}
+
+#[cfg(all(not(have_memset_explicit), have_memset_s))]
+fn secure_fill_bytes(ptr: *mut libc::c_void, value: u8, len: usize) -> c_int {
+    unsafe extern "C" {
+        fn memset_s(
+            dest: *mut libc::c_void,
+            destsz: libc::size_t,
+            ch: libc::c_int,
+            count: libc::size_t,
+        ) -> libc::c_int;
+    }
+
+    let result = unsafe {
+        memset_s(
+            ptr,
+            len as libc::size_t,
+            value as libc::c_int,
+            len as libc::size_t,
+        )
+    };
+    if result != 0 {
+        crate::log_error("nfc_secure_memset: memset_s failed");
+        NFC_SECURE_ERROR_INVALID
+    } else {
+        NFC_SECURE_SUCCESS
+    }
+}
+
+#[cfg(all(not(any(have_memset_explicit, have_memset_s)), have_explicit_bzero))]
+fn secure_fill_bytes(ptr: *mut libc::c_void, value: u8, len: usize) -> c_int {
+    if value == 0 {
+        unsafe extern "C" {
+            fn explicit_bzero(s: *mut libc::c_void, n: libc::size_t);
+        }
+
+        unsafe { explicit_bzero(ptr, len as libc::size_t) };
+    } else {
+        fallback_secure_fill(ptr, value, len);
+    }
+
+    NFC_SECURE_SUCCESS
+}
+
+#[cfg(all(
+    not(any(have_memset_explicit, have_memset_s, have_explicit_bzero)),
+    have_secure_zero_memory
+))]
+fn secure_fill_bytes(ptr: *mut libc::c_void, value: u8, len: usize) -> c_int {
+    if value == 0 {
+        unsafe extern "system" {
+            fn SecureZeroMemory(ptr: *mut libc::c_void, cnt: libc::size_t);
+        }
+
+        unsafe { SecureZeroMemory(ptr, len as libc::size_t) };
+    } else {
+        fallback_secure_fill(ptr, value, len);
+    }
+
+    NFC_SECURE_SUCCESS
+}
+
+#[cfg(not(any(
+    have_memset_explicit,
+    have_memset_s,
+    have_explicit_bzero,
+    have_secure_zero_memory
+)))]
+fn secure_fill_bytes(ptr: *mut libc::c_void, value: u8, len: usize) -> c_int {
+    fallback_secure_fill(ptr, value, len);
+    NFC_SECURE_SUCCESS
+}
+
+#[cfg(have_memset_explicit)]
+fn secure_zero_bytes(ptr: *mut libc::c_void, len: usize) -> c_int {
+    unsafe extern "C" {
+        fn memset_explicit(s: *mut libc::c_void, c: libc::c_int, n: libc::size_t);
+    }
+
+    unsafe { memset_explicit(ptr, 0, len as libc::size_t) };
+    NFC_SECURE_SUCCESS
+}
+
+#[cfg(all(not(have_memset_explicit), have_memset_s))]
+fn secure_zero_bytes(ptr: *mut libc::c_void, len: usize) -> c_int {
+    unsafe extern "C" {
+        fn memset_s(
+            dest: *mut libc::c_void,
+            destsz: libc::size_t,
+            ch: libc::c_int,
+            count: libc::size_t,
+        ) -> libc::c_int;
+    }
+
+    let result = unsafe { memset_s(ptr, len as libc::size_t, 0, len as libc::size_t) };
+    if result != 0 {
+        crate::log_error("nfc_secure_zero: memset_s failed");
+        NFC_SECURE_ERROR_INVALID
+    } else {
+        NFC_SECURE_SUCCESS
+    }
+}
+
+#[cfg(all(not(any(have_memset_explicit, have_memset_s)), have_explicit_bzero))]
+fn secure_zero_bytes(ptr: *mut libc::c_void, len: usize) -> c_int {
+    unsafe extern "C" {
+        fn explicit_bzero(s: *mut libc::c_void, n: libc::size_t);
+    }
+
+    unsafe { explicit_bzero(ptr, len as libc::size_t) };
+    NFC_SECURE_SUCCESS
+}
+
+#[cfg(all(
+    not(any(have_memset_explicit, have_memset_s, have_explicit_bzero)),
+    have_secure_zero_memory
+))]
+fn secure_zero_bytes(ptr: *mut libc::c_void, len: usize) -> c_int {
+    unsafe extern "system" {
+        fn SecureZeroMemory(ptr: *mut libc::c_void, cnt: libc::size_t);
+    }
+
+    unsafe { SecureZeroMemory(ptr, len as libc::size_t) };
+    NFC_SECURE_SUCCESS
+}
+
+#[cfg(not(any(
+    have_memset_explicit,
+    have_memset_s,
+    have_explicit_bzero,
+    have_secure_zero_memory
+)))]
+fn secure_zero_bytes(ptr: *mut libc::c_void, len: usize) -> c_int {
+    fallback_secure_fill(ptr, 0, len);
     NFC_SECURE_SUCCESS
 }
 
@@ -419,17 +593,17 @@ pub unsafe extern "C" fn nfc_safe_memcpy(
     src_size: size_t,
 ) -> c_int {
     crate::ffi_catch_unwind_int("nfc_safe_memcpy", NFC_SECURE_ERROR_INTERNAL, || {
-        let res = validate_params(
+        let len = match validate_copy_params(
             dst as *mut u8,
             dst_size,
             src as *const u8,
             src_size,
             b"nfc_safe_memcpy\0".as_ptr() as *const c_char,
-        );
-        if res != NFC_SECURE_SUCCESS {
-            return res;
-        }
-        if src_size == 0 {
+        ) {
+            Ok(len) => len,
+            Err(error) => return error,
+        };
+        if len == 0 {
             return NFC_SECURE_SUCCESS;
         }
         // Debug-only alignment heuristic: warn in debug builds when the
@@ -443,7 +617,8 @@ pub unsafe extern "C" fn nfc_safe_memcpy(
                 crate::log_debug("nfc_safe_memcpy: destination pointer is unaligned");
             }
         }
-        ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, src_size as usize);
+
+        unsafe { ptr::copy_nonoverlapping(src.cast::<u8>(), dst.cast::<u8>(), len) };
         NFC_SECURE_SUCCESS
     })
 }
@@ -486,20 +661,21 @@ pub unsafe extern "C" fn nfc_safe_memmove(
     src_size: size_t,
 ) -> c_int {
     crate::ffi_catch_unwind_int("nfc_safe_memmove", NFC_SECURE_ERROR_INTERNAL, || {
-        let res = validate_params(
+        let len = match validate_copy_params(
             dst as *mut u8,
             dst_size,
             src as *const u8,
             src_size,
             b"nfc_safe_memmove\0".as_ptr() as *const c_char,
-        );
-        if res != NFC_SECURE_SUCCESS {
-            return res;
-        }
-        if src_size == 0 {
+        ) {
+            Ok(len) => len,
+            Err(error) => return error,
+        };
+        if len == 0 {
             return NFC_SECURE_SUCCESS;
         }
-        ptr::copy(src as *const u8, dst as *mut u8, src_size as usize);
+
+        unsafe { ptr::copy(src.cast::<u8>(), dst.cast::<u8>(), len) };
         NFC_SECURE_SUCCESS
     })
 }
@@ -571,153 +747,15 @@ pub unsafe extern "C" fn nfc_secure_memset(
     size: size_t,
 ) -> c_int {
     crate::ffi_catch_unwind_int("nfc_secure_memset", NFC_SECURE_ERROR_INTERNAL, || {
-        if ptr.is_null() {
-            return NFC_SECURE_ERROR_INVALID;
-        }
-        if size == 0 {
-            return NFC_SECURE_SUCCESS;
-        }
-        // Use the same reasonable-size check as validate_params so all
-        // secure helpers reject obviously-invalid large sizes.
-        let max: size_t = secure_max_size();
-        if size > max {
-            return NFC_SECURE_ERROR_RANGE;
-        }
-        // Normalize the value we'll write so all branches can reference
-        // a single variable name (`_val`). Some platform-specific
-        // primitives rely on `val` directly while the fallback paths
-        // use a byte-sized form; keep `_val` as the raw c_int and cast
-        // where needed.
-        let _val: libc::c_int = val;
-
-        // Prefer primitives that accept an arbitrary fill value (these
-        // also cover the zeroing case):
-        #[cfg(have_memset_explicit)]
-        {
-            unsafe extern "C" {
-                fn memset_explicit(s: *mut libc::c_void, c: libc::c_int, n: libc::size_t);
-            }
-            unsafe { memset_explicit(ptr as *mut _, _val as libc::c_int, size as libc::size_t) };
+        let len = match validate_fill_target(ptr, size) {
+            Ok(len) => len,
+            Err(error) => return error,
+        };
+        if len == 0 {
             return NFC_SECURE_SUCCESS;
         }
 
-        #[cfg(have_memset_s)]
-        {
-            unsafe extern "C" {
-                fn memset_s(
-                    dest: *mut libc::c_void,
-                    destsz: libc::size_t,
-                    ch: libc::c_int,
-                    count: libc::size_t,
-                ) -> libc::c_int;
-            }
-            let res = unsafe {
-                memset_s(
-                    ptr as *mut _,
-                    size as libc::size_t,
-                    _val as libc::c_int,
-                    size as libc::size_t,
-                )
-            };
-            if res != 0 {
-                crate::log_error("nfc_secure_memset: memset_s failed");
-                return NFC_SECURE_ERROR_INVALID;
-            }
-            return NFC_SECURE_SUCCESS;
-        }
-
-        // If the caller requested a non-zero fill and the platform does
-        // not provide a primitive that accepts arbitrary values, avoid
-        // calling zero-only primitives (explicit_bzero /
-        // SecureZeroMemory). Instead, fall back to a best-effort
-        // non-zero fill (volatile writes or libc::memset + fence).
-        if _val != 0 {
-            // Fallback for non-zero fills: compile this path only when
-            // no memset-style primitives are available so we avoid
-            // unreachable-code warnings on platforms that do provide
-            // those primitives.
-            #[cfg(not(any(have_memset_explicit, have_memset_s)))]
-            {
-                let len = size as usize;
-                let dst = ptr as *mut u8;
-                let byte = _val as u8;
-
-                if len <= NFC_SECURE_MEMSET_THRESHOLD {
-                    // Small buffers: use the shared volatile write helper
-                    // which performs alignment-aware word writes when
-                    // possible and byte-wise volatile stores otherwise.
-                    volatile_memset(dst, byte, len);
-                    return NFC_SECURE_SUCCESS;
-                }
-
-                // Large buffers: use libc::memset for speed and fence the
-                // write so the store cannot be optimized away.
-                // Large buffers: use libc::memset for speed and ensure
-                // the write is not optimized away.
-                memset_and_fence(ptr, _val as libc::c_int, len);
-                return NFC_SECURE_SUCCESS;
-            }
-
-            // If we reach here the build provided a memset-style primitive
-            // but it was handled above; falling through is intentional so
-            // the zero-path below can take care of zero-only primitives.
-        }
-
-        // Zeroing path: prefer zero-only primitives if available. We only
-        // reach this block either because _val == 0 or because the
-        // non-zero path above was not taken/available.
-        #[cfg(have_explicit_bzero)]
-        {
-            // Consume `val` to silence unused-variable warnings when
-            // explicit_bzero is the only available primitive.
-            let _ = val;
-            unsafe extern "C" {
-                fn explicit_bzero(s: *mut libc::c_void, n: libc::size_t);
-            }
-            unsafe { explicit_bzero(ptr as *mut _, size as libc::size_t) };
-            return NFC_SECURE_SUCCESS;
-        }
-
-        #[cfg(have_secure_zero_memory)]
-        {
-            // Consume `val` to silence unused-variable warnings when
-            // SecureZeroMemory is the chosen primitive.
-            let _ = val;
-            unsafe extern "system" {
-                fn SecureZeroMemory(ptr: *mut libc::c_void, cnt: libc::size_t);
-            }
-            unsafe { SecureZeroMemory(ptr as *mut _, size as libc::size_t) };
-            return NFC_SECURE_SUCCESS;
-        }
-
-        // Fallback for the zeroing case: only compiled when none of the
-        // platform primitives were available so we avoid unreachable
-        // code warnings in other builds.
-        #[cfg(not(any(
-            have_memset_explicit,
-            have_memset_s,
-            have_explicit_bzero,
-            have_secure_zero_memory
-        )))]
-        {
-            let len = size as usize;
-            let dst = ptr as *mut u8;
-
-            if len <= NFC_SECURE_MEMSET_THRESHOLD {
-                // Small buffers: shared volatile write helper.
-                volatile_memset(dst, _val as u8, len);
-                return NFC_SECURE_SUCCESS;
-            }
-
-            // Large buffers: use libc::memset for speed, then ensure the write is not optimized away
-            unsafe {
-                libc::memset(ptr, _val as libc::c_int, len as libc::size_t);
-            }
-            compiler_fence(Ordering::SeqCst);
-            return NFC_SECURE_SUCCESS;
-        }
-        // If any platform primitive was present the function already
-        // returned; reaching here means there's nothing left to do.
+        secure_fill_bytes(ptr, val as u8, len)
     })
 }
 
@@ -741,83 +779,15 @@ pub unsafe extern "C" fn nfc_secure_memset(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_secure_zero(ptr: *mut libc::c_void, size: size_t) -> c_int {
     crate::ffi_catch_unwind_int("nfc_secure_zero", NFC_SECURE_ERROR_INTERNAL, || {
-        if ptr.is_null() {
-            return NFC_SECURE_ERROR_INVALID;
-        }
-        if size == 0 {
-            return NFC_SECURE_SUCCESS;
-        }
-        let max: size_t = secure_max_size();
-        if size > max {
-            return NFC_SECURE_ERROR_RANGE;
-        }
-
-        #[cfg(have_memset_explicit)]
-        {
-            unsafe extern "C" {
-                fn memset_explicit(s: *mut libc::c_void, c: libc::c_int, n: libc::size_t);
-            }
-            unsafe { memset_explicit(ptr as *mut _, 0 as libc::c_int, size as libc::size_t) };
+        let len = match validate_fill_target(ptr, size) {
+            Ok(len) => len,
+            Err(error) => return error,
+        };
+        if len == 0 {
             return NFC_SECURE_SUCCESS;
         }
 
-        #[cfg(have_memset_s)]
-        {
-            unsafe extern "C" {
-                fn memset_s(
-                    dest: *mut libc::c_void,
-                    destsz: libc::size_t,
-                    ch: libc::c_int,
-                    count: libc::size_t,
-                ) -> libc::c_int;
-            }
-            let res =
-                unsafe { memset_s(ptr as *mut _, size as libc::size_t, 0, size as libc::size_t) };
-            if res != 0 {
-                crate::log_error("nfc_secure_zero: memset_s failed");
-                return NFC_SECURE_ERROR_INVALID;
-            }
-            return NFC_SECURE_SUCCESS;
-        }
-
-        #[cfg(have_explicit_bzero)]
-        {
-            unsafe extern "C" {
-                fn explicit_bzero(s: *mut libc::c_void, n: libc::size_t);
-            }
-            unsafe { explicit_bzero(ptr as *mut _, size as libc::size_t) };
-            return NFC_SECURE_SUCCESS;
-        }
-
-        #[cfg(have_secure_zero_memory)]
-        {
-            unsafe extern "system" {
-                fn SecureZeroMemory(ptr: *mut libc::c_void, cnt: libc::size_t);
-            }
-            unsafe { SecureZeroMemory(ptr as *mut _, size as libc::size_t) };
-            return NFC_SECURE_SUCCESS;
-        }
-
-        #[cfg(not(any(
-            have_memset_explicit,
-            have_memset_s,
-            have_explicit_bzero,
-            have_secure_zero_memory
-        )))]
-        {
-            let len = size as usize;
-            let dst = ptr as *mut u8;
-            if len <= NFC_SECURE_MEMSET_THRESHOLD {
-                for i in 0..len {
-                    unsafe { ptr::write_volatile(dst.add(i), 0u8) };
-                }
-                return NFC_SECURE_SUCCESS;
-            }
-            // Large buffers: use libc::memset for speed and ensure the
-            // write is not optimized away.
-            memset_and_fence(ptr, 0 as libc::c_int, len);
-            return NFC_SECURE_SUCCESS;
-        }
+        secure_zero_bytes(ptr, len)
     })
 }
 
@@ -886,18 +856,7 @@ pub extern "C" fn nfc_secure_strerror(code: c_int) -> *const c_char {
 /// ```
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_safe_strlen(str: *const c_char, maxlen: size_t) -> size_t {
-    if str.is_null() {
-        return 0;
-    }
-    let mut len: usize = 0;
-    while len < (maxlen as usize) {
-        let b = *(str.add(len) as *const u8);
-        if b == 0 {
-            break;
-        }
-        len += 1;
-    }
-    len as size_t
+    bounded_strlen(str, maxlen as usize) as size_t
 }
 
 /// Inspect `buf` up to `bufsize` bytes and return `1` if a NUL
@@ -930,14 +889,9 @@ pub unsafe extern "C" fn nfc_is_null_terminated(buf: *const c_char, bufsize: siz
     if buf.is_null() || bufsize == 0 {
         return 0;
     }
-    let mut i: usize = 0;
-    while i < (bufsize as usize) {
-        if *buf.add(i) as u8 == 0 {
-            return 1;
-        }
-        i += 1;
-    }
-    0
+
+    let bytes = unsafe { std::slice::from_raw_parts(buf.cast::<u8>(), bufsize as usize) };
+    bytes.contains(&0) as c_int
 }
 
 /// Ensure a buffer of size `bufsize` contains a terminating NUL.
@@ -969,18 +923,12 @@ pub unsafe extern "C" fn nfc_ensure_null_terminated(buf: *mut c_char, bufsize: s
     if buf.is_null() || bufsize == 0 {
         return;
     }
-    let mut found_null = false;
-    let mut i: usize = 0;
-    while i < (bufsize as usize) {
-        if *buf.add(i) as u8 == 0 {
-            found_null = true;
-            break;
+
+    let bytes = unsafe { std::slice::from_raw_parts_mut(buf.cast::<u8>(), bufsize as usize) };
+    if !bytes.contains(&0) {
+        if let Some(last) = bytes.last_mut() {
+            *last = 0;
         }
-        i += 1;
-    }
-    if !found_null {
-        // Overwrite last byte with NUL
-        *buf.add(bufsize as usize - 1) = 0;
     }
 }
 
@@ -1027,6 +975,7 @@ pub unsafe extern "C" fn nfc_buffers_overlap(
 // invalid pointer values. The logic mirrors `nfc_buffers_overlap` and
 // returns 1 for overlap, 0 otherwise.
 #[cfg(any(test, feature = "test_helpers"))]
+#[allow(dead_code)]
 pub fn nfc_buffers_overlap_usize(
     dst_addr: usize,
     dst_size: usize,
@@ -1059,16 +1008,19 @@ pub fn nfc_buffers_overlap_usize(
 // and mirror internal constants/behaviour so tests can assert on
 // boundary conditions without reaching into private internals.
 #[cfg(any(test, feature = "test_helpers"))]
+#[allow(dead_code)]
 pub fn nfc_secure_memset_threshold() -> usize {
     NFC_SECURE_MEMSET_THRESHOLD
 }
 
 #[cfg(any(test, feature = "test_helpers"))]
+#[allow(dead_code)]
 pub fn nfc_secure_max_reasonable_size() -> usize {
     NFC_SECURE_MAX_REASONABLE_SIZE_64
 }
 
 #[cfg(any(test, feature = "test_helpers"))]
+#[allow(dead_code)]
 pub fn nfc_secure_max_size_usize() -> usize {
     secure_max_size() as usize
 }
@@ -1360,20 +1312,18 @@ mod tests {
 
     #[test]
     fn buffers_overlap_handles_overflow_values() {
-        unsafe {
-            // Use extreme addresses simulated as usize values that would
-            // cause an addition overflow if naively added. To be explicit
-            // and avoid inline integer->pointer casts we keep the usize
-            // representations and then cast to pointers for the call.
-            // We do not dereference these pointers; they are only used for
-            // arithmetic checks inside `nfc_buffers_overlap`.
-            let large_addr = usize::MAX - 1usize;
-            let small_addr = 8usize;
-            // Use the usize-based overlap helper to avoid creating
-            // potentially invalid pointer values from arbitrary usize
-            // values. This computes overlap purely on arithmetic.
-            assert_eq!(nfc_buffers_overlap_usize(large_addr, 16, small_addr, 4), 0);
-        }
+        // Use extreme addresses simulated as usize values that would
+        // cause an addition overflow if naively added. To be explicit
+        // and avoid inline integer->pointer casts we keep the usize
+        // representations and then cast to pointers for the call.
+        // We do not dereference these pointers; they are only used for
+        // arithmetic checks inside `nfc_buffers_overlap`.
+        let large_addr = usize::MAX - 1usize;
+        let small_addr = 8usize;
+        // Use the usize-based overlap helper to avoid creating
+        // potentially invalid pointer values from arbitrary usize
+        // values. This computes overlap purely on arithmetic.
+        assert_eq!(nfc_buffers_overlap_usize(large_addr, 16, small_addr, 4), 0);
     }
 
     #[test]
