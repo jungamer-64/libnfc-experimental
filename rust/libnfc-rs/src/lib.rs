@@ -1,4 +1,19 @@
-// src/lib.rs
+// SPDX-License-Identifier: LGPL-3.0-or-later
+//
+// Free/Libre Near Field Communication (NFC) library
+//
+// This Rust crate contains libnfc FFI support code together with Rust
+// implementations of selected libnfc helpers. The connstring decoding helper
+// in this file is derived from libnfc/nfc-internal.c.
+//
+// Libnfc historical contributors:
+// Copyright (C) 2009      Roel Verdult
+// Copyright (C) 2009-2013 Romuald Conty
+// Copyright (C) 2010-2012 Romain Tartiere
+// Copyright (C) 2010-2013 Philippe Teuwen
+// Copyright (C) 2012-2013 Ludovic Rousseau
+// Copyright (C) 2020      Adam Laurie
+// See AUTHORS file for a more comprehensive list of contributors.
 
 use libc::{c_char, c_int, c_void, size_t};
 use std::cell::RefCell;

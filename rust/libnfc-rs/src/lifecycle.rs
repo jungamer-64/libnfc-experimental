@@ -1,3 +1,18 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
+//
+// Free/Libre Near Field Communication (NFC) library
+//
+// Ported from libnfc/nfc.c, libnfc/nfc-device.c, and libnfc/conf.c.
+//
+// Libnfc historical contributors:
+// Copyright (C) 2009      Roel Verdult
+// Copyright (C) 2009-2013 Romuald Conty
+// Copyright (C) 2010-2012 Romain Tartiere
+// Copyright (C) 2010-2013 Philippe Teuwen
+// Copyright (C) 2012-2013 Ludovic Rousseau
+// Copyright (C) 2020      Adam Laurie
+// See AUTHORS file for a more comprehensive list of contributors.
+
 use crate::{
     LOG_PRIORITY_DEBUG, LOG_PRIORITY_NONE, NFC_BUFSIZE_CONNSTRING, ffi_catch_unwind_ptr,
     ffi_catch_unwind_void, log_error, log_message, release_allocated_ptr, reset_last_error,

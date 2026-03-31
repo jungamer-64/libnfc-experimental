@@ -1,4 +1,12 @@
-// src/nfc_secure.rs
+// SPDX-License-Identifier: LGPL-3.0-or-later
+//
+// Free/Libre Near Field Communication (NFC) library
+//
+// This module provides secure memory helpers for this fork's Rust support
+// layer. There is no single upstream libnfc source file corresponding to this
+// module.
+//
+// See AUTHORS file for a more comprehensive list of contributors.
 
 //! Secure memory and string helpers exposed to C via a stable FFI.
 //!
