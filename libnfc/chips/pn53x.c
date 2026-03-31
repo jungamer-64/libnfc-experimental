@@ -129,9 +129,12 @@ int pn53x_init(struct nfc_device *pnd)
   // Parity handling should be enabled by default as declared in nfc_device_new
   // which is the case by default for pn53x, so nothing to do here
 
-  // We can't read these parameters, so we set a default config by using the SetParameters wrapper
-  // Note: pn53x_SetParameters() will save the sent value in pnd->ui8Parameters cache
-  if ((res = pn53x_SetParameters(pnd, PARAM_AUTO_ATR_RES | PARAM_AUTO_RATS)) < 0) {
+  // RC-S360 is prone to rejecting SetParameters after the reader has been used once.
+  // Keep the software cache in sync and rely on the chip defaults instead of
+  // reprogramming it when the reader is already in the expected state.
+  if (CHIP_DATA(pnd)->type == RCS360) {
+    CHIP_DATA(pnd)->ui8Parameters = PARAM_AUTO_ATR_RES | PARAM_AUTO_RATS;
+  } else if ((res = pn53x_SetParameters(pnd, PARAM_AUTO_ATR_RES | PARAM_AUTO_RATS)) < 0) {
     return res;
   }
 
