@@ -376,4 +376,65 @@ mod tests {
         assert!(matches!(dep.info, crate::rust_api::TargetInfo::Dep(_)));
         device.deselect_target().unwrap();
     }
+
+    #[test]
+    fn timed_bit_flow_uses_shared_runtime_over_t0_follow_up() {
+        let mut state = FakeCardState::default();
+        state.status_responses.push_back(Ok(PcscCardStatus {
+            present: true,
+            atr: Vec::new(),
+            protocol: Some(PcscProtocol::T0),
+        }));
+        state
+            .transmit_responses
+            .push_back(Ok(b"ACR122U203\x90\x00".to_vec()));
+        state
+            .transmit_responses
+            .push_back(Ok(vec![0x00, 0x00, 0x32, 0x01, 0x06, 0x07, 0x90, 0x00]));
+        state
+            .transmit_responses
+            .push_back(Ok(vec![0x00, 0x00, 0x90, 0x00]));
+        state
+            .transmit_responses
+            .push_back(Ok(vec![0x00, 0x00, 0x90, 0x00]));
+        state
+            .transmit_responses
+            .push_back(Ok(vec![0x61, 0x01]));
+        state
+            .transmit_responses
+            .push_back(Ok(vec![0x00, 0x00, 0x02, 0x90, 0x00]));
+        state
+            .transmit_responses
+            .push_back(Ok(vec![0x00, 0x00, 0x04, 0x00, 0x00, 0x90, 0x00]));
+        state
+            .transmit_responses
+            .push_back(Ok(vec![0x00, 0x00, 0x00, 0x90, 0x00]));
+        state
+            .transmit_responses
+            .push_back(Ok(vec![0x00, 0x00, 0xf0, 0x00, 0x90, 0x00]));
+
+        let backend = Arc::new(
+            FakePcscBackend::default().with_reader("ACS ACR122U PICC Interface 00 00", state),
+        );
+        let driver = Acr122PcscDriver::with_backend(backend);
+        let context = Context::new();
+        let connstring =
+            ConnectionString::new("acr122_pcsc:ACS ACR122U PICC Interface 00 00").unwrap();
+
+        let mut device = driver.open(&context, &connstring).unwrap();
+        device
+            .set_property_bool(crate::rust_api::Property::EasyFraming, false)
+            .unwrap();
+        device
+            .set_property_bool(crate::rust_api::Property::HandleCrc, false)
+            .unwrap();
+
+        let mut rx = [0u8; 8];
+        let (bits, cycles) = device
+            .transceive_bits_timed(&[0x26], 7, None, &mut rx, None)
+            .unwrap();
+        assert_eq!(bits, 16);
+        assert_eq!(&rx[..2], &[0x04, 0x00]);
+        assert_eq!(cycles, 3506);
+    }
 }

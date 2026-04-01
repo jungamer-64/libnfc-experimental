@@ -2534,6 +2534,49 @@ mod tests {
             rx[0] = 0xA5;
             Ok(1)
         }
+
+        fn transceive_bits_timed_driver(
+            &mut self,
+            _tx: &[u8],
+            _tx_bits_len: usize,
+            _tx_parity: Option<&[u8]>,
+            rx: &mut [u8],
+            rx_parity: Option<&mut [u8]>,
+        ) -> Result<(usize, u32), rt::Error> {
+            rx[0] = 0x5A;
+            if let Some(parity) = rx_parity {
+                parity[0] = 0x01;
+            }
+            Ok((5, 4321))
+        }
+
+        fn target_is_present_driver(
+            &mut self,
+            _target: Option<&rt::Target>,
+        ) -> Result<bool, rt::Error> {
+            Ok(true)
+        }
+
+        fn target_send_bits_driver(
+            &mut self,
+            _tx: &[u8],
+            tx_bits_len: usize,
+            _tx_parity: Option<&[u8]>,
+        ) -> Result<usize, rt::Error> {
+            Ok(tx_bits_len)
+        }
+
+        fn target_receive_bits_driver(
+            &mut self,
+            rx: &mut [u8],
+            rx_parity: Option<&mut [u8]>,
+        ) -> Result<usize, rt::Error> {
+            rx[0] = 0x3C;
+            if let Some(parity) = rx_parity {
+                parity[0] = 0x01;
+            }
+            Ok(7)
+        }
     }
 
     struct ShimTestDriver;
@@ -2620,6 +2663,51 @@ mod tests {
             1
         );
         assert_eq!(rx[0], 0xA5);
+
+        let tx_parity = [0x01u8];
+        let mut rx_bits = [0u8; 2];
+        let mut rx_parity = [0u8; 2];
+        let mut cycles = 0u32;
+        assert_eq!(
+            unsafe {
+                crate::initiator::nfc_initiator_transceive_bits_timed(
+                    raw,
+                    tx.as_ptr(),
+                    5,
+                    tx_parity.as_ptr(),
+                    rx_bits.as_mut_ptr(),
+                    rx_bits.len(),
+                    rx_parity.as_mut_ptr(),
+                    &mut cycles,
+                )
+            },
+            5
+        );
+        assert_eq!(rx_bits[0], 0x5A);
+        assert_eq!(rx_parity[0], 0x01);
+        assert_eq!(cycles, 4321);
+
+        assert_eq!(
+            unsafe { crate::initiator::nfc_initiator_target_is_present(raw, ptr::null()) },
+            1
+        );
+        assert_eq!(
+            unsafe { crate::initiator::nfc_target_send_bits(raw, tx.as_ptr(), 5, tx_parity.as_ptr()) },
+            5
+        );
+        assert_eq!(
+            unsafe {
+                crate::initiator::nfc_target_receive_bits(
+                    raw,
+                    rx_bits.as_mut_ptr(),
+                    rx_bits.len(),
+                    rx_parity.as_mut_ptr(),
+                )
+            },
+            7
+        );
+        assert_eq!(rx_bits[0], 0x3C);
+        assert_eq!(rx_parity[0], 0x01);
 
         unsafe { crate::compat::nfc_close(raw) };
     }
