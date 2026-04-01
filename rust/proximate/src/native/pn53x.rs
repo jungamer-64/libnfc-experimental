@@ -249,6 +249,28 @@ impl Pn53xProfile {
         }
     }
 
+    pub(crate) const fn acr122s() -> Self {
+        Self {
+            driver_name: "ACR122S",
+            initial_power_mode: Pn53xPowerMode::Normal,
+            sam_mode_on_low_vbat: None,
+            secure_element_mode: None,
+            timer_correction: 46,
+            usb_model: None,
+        }
+    }
+
+    pub(crate) const fn arygon() -> Self {
+        Self {
+            driver_name: "arygon",
+            initial_power_mode: Pn53xPowerMode::Normal,
+            sam_mode_on_low_vbat: None,
+            secure_element_mode: None,
+            timer_correction: 46,
+            usb_model: None,
+        }
+    }
+
     fn supported_modulations(self, mode: Mode) -> Vec<ModulationType> {
         match (self.usb_model, mode) {
             (Some(Pn53xUsbModel::AskLogo), Mode::Target) => Vec::new(),

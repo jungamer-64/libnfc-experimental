@@ -19,8 +19,11 @@ use rustix::io::{ioctl_fionread, read, write};
 #[cfg(target_os = "linux")]
 use rustix::termios::{OptionalActions, QueueSelector, Termios, tcflush, tcgetattr, tcsetattr};
 
+#[cfg_attr(not(any(test, libnfc_driver_pn532_uart)), allow(dead_code))]
 const DRIVER_NAME: &str = "pn532_uart";
+#[cfg_attr(not(any(test, libnfc_driver_pn532_uart)), allow(dead_code))]
 const DEFAULT_SPEED: u32 = 115_200;
+#[cfg_attr(not(any(test, libnfc_driver_pn532_uart)), allow(dead_code))]
 const PROBE_TIMEOUT_MS: i32 = 250;
 const NFC_EIO: i32 = -1;
 const NFC_ETIMEOUT: i32 = -6;
@@ -29,8 +32,10 @@ const WAKEUP_FRAME: [u8; 16] = [
     0x55, 0x55, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
+#[cfg_attr(not(any(test, libnfc_driver_pn532_uart)), allow(dead_code))]
 pub(crate) struct Pn532UartDriver;
 
+#[cfg_attr(not(any(test, libnfc_driver_pn532_uart)), allow(dead_code))]
 impl Pn532UartDriver {
     pub(crate) const fn new() -> Self {
         Self
@@ -111,7 +116,7 @@ impl Driver for Pn532UartDriver {
     }
 }
 
-fn list_candidate_paths() -> Vec<String> {
+pub(crate) fn list_candidate_paths() -> Vec<String> {
     let mut ports = Vec::new();
     let Ok(entries) = fs::read_dir("/dev") else {
         return ports;
@@ -193,7 +198,7 @@ impl UartPort {
         })
     }
 
-    fn flush_input(&mut self) -> Result<(), Error> {
+    pub(crate) fn flush_input(&mut self) -> Result<(), Error> {
         tcflush(&self.fd, QueueSelector::IFlush)
             .map_err(|_| device_error("uart_flush_input", NFC_EIO))?;
         self.read_buffer.clear();
@@ -239,7 +244,7 @@ impl UartPort {
         Ok(())
     }
 
-    fn write_all(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
+    pub(crate) fn write_all(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
         let mut written = 0usize;
         while written < payload.len() {
             self.wait_for(PollFlags::OUT, timeout_ms)?;
@@ -253,7 +258,39 @@ impl UartPort {
         Ok(())
     }
 
-    fn read_frame_into(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
+    fn fill_read_buffer(&mut self, timeout_ms: i32) -> Result<(), Error> {
+        self.wait_for(PollFlags::IN, timeout_ms)?;
+        let available = ioctl_fionread(&self.fd).unwrap_or(1).max(1) as usize;
+        let mut chunk = vec![0u8; available.min(512)];
+        let len = read(&self.fd, chunk.as_mut_slice())
+            .map_err(|_| device_error("uart_receive", NFC_EIO))?;
+        if len == 0 {
+            return Err(device_error("uart_receive", NFC_EIO));
+        }
+        self.read_buffer.extend_from_slice(&chunk[..len]);
+        Ok(())
+    }
+
+    pub(crate) fn read_exact(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<(), Error> {
+        let mut filled = 0usize;
+        while filled < buffer.len() {
+            if !self.read_buffer.is_empty() {
+                let available = (buffer.len() - filled).min(self.read_buffer.len());
+                buffer[filled..filled + available].copy_from_slice(&self.read_buffer[..available]);
+                self.read_buffer.drain(..available);
+                filled += available;
+                continue;
+            }
+            self.fill_read_buffer(timeout_ms)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn read_frame_into(
+        &mut self,
+        buffer: &mut [u8],
+        timeout_ms: i32,
+    ) -> Result<usize, Error> {
         loop {
             if let Some(frame_len) = expected_frame_len(&self.read_buffer)? {
                 if self.read_buffer.len() >= frame_len {
@@ -269,15 +306,7 @@ impl UartPort {
                 }
             }
 
-            self.wait_for(PollFlags::IN, timeout_ms)?;
-            let available = ioctl_fionread(&self.fd).unwrap_or(1).max(1) as usize;
-            let mut chunk = vec![0u8; available.min(512)];
-            let len = read(&self.fd, chunk.as_mut_slice())
-                .map_err(|_| device_error("uart_receive", NFC_EIO))?;
-            if len == 0 {
-                return Err(device_error("uart_receive", NFC_EIO));
-            }
-            self.read_buffer.extend_from_slice(&chunk[..len]);
+            self.fill_read_buffer(timeout_ms)?;
         }
     }
 }

@@ -41,6 +41,7 @@ endif()
 option(BUILD_SHARED_LIBS "Build libnfc as a shared library" ON)
 option(BUILD_EXAMPLES "Build examples" ON)
 option(BUILD_UTILS "Build utilities" ON)
+option(PROXIMATE_C_FFI "Build the Rust-backed C ABI layer" ON)
 option(PROXIMATE_SECURE "Deprecated no-op: Rust secure helpers are always enabled in this branch" ON)
 option(PROXIMATE_LIFECYCLE "Deprecated no-op: Rust lifecycle/core helpers are always enabled in this branch" ON)
 option(PROXIMATE_ORCHESTRATION "Deprecated no-op: Rust orchestration entrypoints are always enabled in this branch" ON)
@@ -62,7 +63,11 @@ if(NOT PROXIMATE_SECURE OR NOT PROXIMATE_LIFECYCLE OR NOT PROXIMATE_ORCHESTRATIO
     "the Rust core is always enabled.")
 endif()
 
-set(PROXIMATE_C_FFI ON)
+if(NOT PROXIMATE_C_FFI)
+  message(FATAL_ERROR
+    "PROXIMATE_C_FFI=OFF is no longer supported in this branch. "
+    "Only the Rust-backed build is supported.")
+endif()
 
 set(RUST_CBINDGEN_FEATURES "" CACHE STRING "Features to pass to cbindgen when generating the Rust FFI header (comma-separated)")
 option(RUST_CBINDGEN_DEBUG_HEADER "Generate Rust FFI header including debug helpers (nfc_secure_debug)" OFF)

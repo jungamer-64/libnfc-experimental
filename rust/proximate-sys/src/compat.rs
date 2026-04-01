@@ -33,6 +33,42 @@ fn baud_rate_label(value: nfc_baud_rate) -> *const c_char {
     baud_rate_from_c(value).label_cstr().as_ptr()
 }
 
+fn iso14443a_crc_bytes(data: &[u8]) -> [u8; 2] {
+    let mut crc = 0x6363u16;
+    for byte in data {
+        let mut bt = *byte ^ (crc as u8);
+        bt ^= bt << 4;
+        crc = (crc >> 8) ^ (u16::from(bt) << 8) ^ (u16::from(bt) << 3) ^ (u16::from(bt) >> 4);
+    }
+    [(crc & 0xff) as u8, (crc >> 8) as u8]
+}
+
+fn iso14443b_crc_bytes(data: &[u8]) -> [u8; 2] {
+    let mut crc = 0xffffu16;
+    for byte in data {
+        let mut bt = *byte ^ (crc as u8);
+        bt ^= bt << 4;
+        crc = (crc >> 8) ^ (u16::from(bt) << 8) ^ (u16::from(bt) << 3) ^ (u16::from(bt) >> 4);
+    }
+    crc = !crc;
+    [(crc & 0xff) as u8, (crc >> 8) as u8]
+}
+
+fn locate_historical_bytes_offset(ats: &[u8]) -> Option<usize> {
+    let t0 = *ats.first()?;
+    let mut offset = 1usize;
+    if t0 & 0x10 != 0 {
+        offset += 1;
+    }
+    if t0 & 0x20 != 0 {
+        offset += 1;
+    }
+    if t0 & 0x40 != 0 {
+        offset += 1;
+    }
+    (offset < ats.len()).then_some(offset)
+}
+
 unsafe fn render_nfc_target(
     dst: *mut c_char,
     size: size_t,
@@ -139,6 +175,78 @@ pub unsafe fn str_nfc_target(
     })
 }
 
+pub unsafe fn iso14443a_crc(data: *mut u8, len: size_t, crc: *mut u8) {
+    ffi_catch_unwind_void("iso14443a_crc", || unsafe {
+        if data.is_null() || crc.is_null() {
+            return;
+        }
+        let bytes = slice::from_raw_parts(data.cast_const(), len);
+        let out = iso14443a_crc_bytes(bytes);
+        *crc = out[0];
+        *crc.add(1) = out[1];
+    });
+}
+
+pub unsafe fn iso14443a_crc_append(data: *mut u8, len: size_t) {
+    ffi_catch_unwind_void("iso14443a_crc_append", || unsafe {
+        if data.is_null() {
+            return;
+        }
+        let bytes = slice::from_raw_parts(data.cast_const(), len);
+        let out = iso14443a_crc_bytes(bytes);
+        *data.add(len) = out[0];
+        *data.add(len + 1) = out[1];
+    });
+}
+
+pub unsafe fn iso14443b_crc(data: *mut u8, len: size_t, crc: *mut u8) {
+    ffi_catch_unwind_void("iso14443b_crc", || unsafe {
+        if data.is_null() || crc.is_null() {
+            return;
+        }
+        let bytes = slice::from_raw_parts(data.cast_const(), len);
+        let out = iso14443b_crc_bytes(bytes);
+        *crc = out[0];
+        *crc.add(1) = out[1];
+    });
+}
+
+pub unsafe fn iso14443b_crc_append(data: *mut u8, len: size_t) {
+    ffi_catch_unwind_void("iso14443b_crc_append", || unsafe {
+        if data.is_null() {
+            return;
+        }
+        let bytes = slice::from_raw_parts(data.cast_const(), len);
+        let out = iso14443b_crc_bytes(bytes);
+        *data.add(len) = out[0];
+        *data.add(len + 1) = out[1];
+    });
+}
+
+pub unsafe fn iso14443a_locate_historical_bytes(
+    ats: *mut u8,
+    ats_len: size_t,
+    tk_len: *mut size_t,
+) -> *mut u8 {
+    ffi_catch_unwind_ptr("iso14443a_locate_historical_bytes", || unsafe {
+        if !tk_len.is_null() {
+            *tk_len = 0;
+        }
+        if ats.is_null() {
+            return ptr::null_mut();
+        }
+
+        let ats_slice = slice::from_raw_parts(ats.cast_const(), ats_len);
+        let Some(offset) = locate_historical_bytes_offset(ats_slice) else {
+            return ptr::null_mut();
+        };
+        if !tk_len.is_null() {
+            *tk_len = ats_len - offset;
+        }
+        ats.add(offset).cast()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,5 +349,37 @@ mod tests {
         assert!(text.contains("ISO/IEC 14443A"));
         assert!(text.contains("106 kbps"));
         unsafe { nfc_free(rendered.cast()) };
+    }
+
+    #[test]
+    fn iso14443_crc_helpers_match_known_values() {
+        let mut atqa = [0x26u8];
+        let mut a_crc = [0u8; 2];
+        unsafe { iso14443a_crc(atqa.as_mut_ptr(), atqa.len(), a_crc.as_mut_ptr()) };
+        assert_eq!(a_crc, [0xca, 0x15]);
+
+        let mut atqb = [0x05u8, 0x00, 0x08];
+        let mut b_crc = [0u8; 2];
+        unsafe { iso14443b_crc(atqb.as_mut_ptr(), atqb.len(), b_crc.as_mut_ptr()) };
+        assert_eq!(b_crc, iso14443b_crc_bytes(&atqb));
+
+        let mut appended = [0x26u8, 0x00, 0x00];
+        unsafe { iso14443a_crc_append(appended.as_mut_ptr(), 1) };
+        assert_eq!(appended[1..], a_crc);
+    }
+
+    #[test]
+    fn locate_historical_bytes_matches_existing_ats_layout() {
+        let mut ats = [0x75u8, 0x77, 0x81, 0x02, 0x80, 0x80];
+        let mut tk_len = 0usize;
+        let ptr = unsafe {
+            iso14443a_locate_historical_bytes(
+                ats.as_mut_ptr(),
+                ats.len(),
+                ptr::addr_of_mut!(tk_len),
+            )
+        };
+        assert_eq!(tk_len, 2);
+        assert_eq!(unsafe { slice::from_raw_parts(ptr, tk_len) }, [0x80, 0x80]);
     }
 }

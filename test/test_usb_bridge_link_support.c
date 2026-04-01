@@ -90,6 +90,7 @@ pn53x_check_communication(struct nfc_device *pnd)
   return stub_pn53x_error();
 }
 
+#ifndef PROXIMATE_C_FFI
 int
 pn53x_transceive(struct nfc_device *pnd, const uint8_t *pbtTx, const size_t szTx,
                  uint8_t *pbtRx, const size_t szRxLen, int timeout)
@@ -113,6 +114,7 @@ pn53x_write_register(struct nfc_device *pnd, uint16_t ui16Reg,
   (void)ui8Value;
   return stub_pn53x_error();
 }
+#endif
 
 int
 pn53x_set_property_int(struct nfc_device *pnd, const nfc_property property,
@@ -348,6 +350,7 @@ pn53x_PowerDown(struct nfc_device *pnd)
   return stub_pn53x_error();
 }
 
+#ifndef PROXIMATE_C_FFI
 int
 pn532_SAMConfiguration(struct nfc_device *pnd, const pn532_sam_mode mode,
                        int timeout)
@@ -357,6 +360,7 @@ pn532_SAMConfiguration(struct nfc_device *pnd, const pn532_sam_mode mode,
   (void)timeout;
   return stub_pn53x_error();
 }
+#endif
 
 int
 pn53x_check_ack_frame(struct nfc_device *pnd, const uint8_t *pbtRxFrame,

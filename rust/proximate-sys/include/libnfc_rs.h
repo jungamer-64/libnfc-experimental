@@ -279,6 +279,16 @@ int str_nfc_target(char **buf, const struct nfc_target *target, bool verbose);
 
 int nfc_emulate_target(struct nfc_device *device, void *emulator, int timeout);
 
+void iso14443a_crc(uint8_t *data, size_t len, uint8_t *crc);
+
+void iso14443a_crc_append(uint8_t *data, size_t len);
+
+void iso14443b_crc(uint8_t *data, size_t len, uint8_t *crc);
+
+void iso14443b_crc_append(uint8_t *data, size_t len);
+
+uint8_t *iso14443a_locate_historical_bytes(uint8_t *ats, size_t ats_len, size_t *tk_len);
+
 int pn53x_transceive(struct nfc_device *device,
                      const uint8_t *tx,
                      size_t tx_len,

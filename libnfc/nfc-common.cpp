@@ -31,9 +31,17 @@
  */
 
 #include "nfc-common.h"
-extern "C"
+
+static void
+nfc_release_chip_data(nfc_device *pnd)
 {
-#include "chips/pn53x.h"
+  if (pnd == NULL || pnd->chip_data == NULL)
+  {
+    return;
+  }
+
+  free(pnd->chip_data);
+  pnd->chip_data = NULL;
 }
 /* =========================================================================
  * DEVICE INITIALIZATION ERROR HANDLING
@@ -57,7 +65,7 @@ int nfc_device_init_failed(nfc_device *pnd,
   /* Free chip-specific data if it was allocated */
   if (pnd != NULL && chip_data_allocated)
   {
-    pn53x_data_free(pnd);
+    nfc_release_chip_data(pnd);
   }
 
   /* Free device structure */
@@ -89,7 +97,7 @@ void nfc_device_open_failed(nfc_device *pnd,
   /* Free chip-specific data if allocated */
   if (chip_data_allocated)
   {
-    pn53x_data_free(pnd);
+    nfc_release_chip_data(pnd);
   }
 
   /* nfc_device_free will handle driver_data cleanup */

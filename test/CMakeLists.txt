@@ -96,6 +96,9 @@ if(USB_REQUIRED)
   target_include_directories(test_usbbus_helpers PRIVATE
     ${CMAKE_SOURCE_DIR}/libnfc
   )
+  if(PROXIMATE_C_FFI)
+    target_compile_definitions(test_usbbus_helpers PRIVATE PROXIMATE_C_FFI=1)
+  endif()
   target_link_libraries(test_usbbus_helpers PRIVATE nfc)
   add_test(NAME usbbus_helpers COMMAND test_usbbus_helpers)
 endif()

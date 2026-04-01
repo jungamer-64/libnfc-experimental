@@ -836,7 +836,6 @@ RECURSIVE              = NO
 # run.
 
 EXCLUDE                = @top_srcdir@/libnfc/drivers.h \
-                         @top_srcdir@/libnfc/iso14443-subr.c \
                          @top_srcdir@/libnfc/iso7816.h \
                          @top_srcdir@/libnfc/log-printf.c \
                          @top_srcdir@/libnfc/log.h \

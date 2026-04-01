@@ -901,7 +901,41 @@ pub unsafe extern "C" fn nfc_emulate_target(
     unsafe { crate::initiator::nfc_emulate_target(device, emulator.cast(), timeout) }
 }
 
-#[cfg(all(any(feature = "c_ffi", cbindgen), not(libnfc_external_bridges)))]
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn iso14443a_crc(data: *mut u8, len: libc::size_t, crc: *mut u8) {
+    unsafe { crate::compat::iso14443a_crc(data, len, crc) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn iso14443a_crc_append(data: *mut u8, len: libc::size_t) {
+    unsafe { crate::compat::iso14443a_crc_append(data, len) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn iso14443b_crc(data: *mut u8, len: libc::size_t, crc: *mut u8) {
+    unsafe { crate::compat::iso14443b_crc(data, len, crc) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn iso14443b_crc_append(data: *mut u8, len: libc::size_t) {
+    unsafe { crate::compat::iso14443b_crc_append(data, len) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn iso14443a_locate_historical_bytes(
+    ats: *mut u8,
+    ats_len: libc::size_t,
+    tk_len: *mut libc::size_t,
+) -> *mut u8 {
+    unsafe { crate::compat::iso14443a_locate_historical_bytes(ats, ats_len, tk_len) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pn53x_transceive(
     device: *mut nfc_device,
@@ -931,7 +965,7 @@ pub unsafe extern "C" fn pn53x_transceive(
     })
 }
 
-#[cfg(all(any(feature = "c_ffi", cbindgen), not(libnfc_external_bridges)))]
+#[cfg(any(feature = "c_ffi", cbindgen))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pn53x_read_register(
     device: *mut nfc_device,
@@ -955,7 +989,7 @@ pub unsafe extern "C" fn pn53x_read_register(
     })
 }
 
-#[cfg(all(any(feature = "c_ffi", cbindgen), not(libnfc_external_bridges)))]
+#[cfg(any(feature = "c_ffi", cbindgen))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pn53x_write_register(
     device: *mut nfc_device,
@@ -977,7 +1011,7 @@ pub unsafe extern "C" fn pn53x_write_register(
     })
 }
 
-#[cfg(all(any(feature = "c_ffi", cbindgen), not(libnfc_external_bridges)))]
+#[cfg(any(feature = "c_ffi", cbindgen))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pn532_SAMConfiguration(
     device: *mut nfc_device,
