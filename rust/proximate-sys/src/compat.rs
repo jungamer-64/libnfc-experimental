@@ -17,21 +17,13 @@ use proximate::rust_api as rt;
 
 #[cfg(test)]
 use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
-#[cfg(any(test, not(libnfc_external_bridges)))]
 use crate::ffi_support::copy_bytes_to_c_buffer;
-#[cfg(any(test, not(libnfc_external_bridges)))]
 use std::ptr;
-#[cfg(any(test, not(libnfc_external_bridges)))]
 use std::slice;
 
 const NFC_EINVARG: c_int = -2;
 const NFC_ESOFT: c_int = -80;
 const TARGET_RENDER_BUFFER_SIZE: usize = 4096;
-
-#[cfg(all(not(test), libnfc_external_bridges))]
-unsafe extern "C" {
-    fn snprint_nfc_target(dst: *mut c_char, size: size_t, pnt: *const nfc_target, verbose: bool);
-}
 
 fn modulation_label(value: nfc_modulation_type) -> *const c_char {
     modulation_type_from_c(value).label_cstr().as_ptr()
@@ -41,18 +33,7 @@ fn baud_rate_label(value: nfc_baud_rate) -> *const c_char {
     baud_rate_from_c(value).label_cstr().as_ptr()
 }
 
-#[cfg(all(not(test), libnfc_external_bridges))]
-unsafe fn bridge_snprint_nfc_target(
-    dst: *mut c_char,
-    size: size_t,
-    target: *const nfc_target,
-    verbose: bool,
-) {
-    unsafe { snprint_nfc_target(dst, size, target, verbose) };
-}
-
-#[cfg(any(test, not(libnfc_external_bridges)))]
-unsafe fn bridge_snprint_nfc_target(
+unsafe fn render_nfc_target(
     dst: *mut c_char,
     size: size_t,
     target: *const nfc_target,
@@ -153,7 +134,7 @@ pub unsafe fn str_nfc_target(
         *buf = rendered;
         *rendered = 0;
 
-        bridge_snprint_nfc_target(rendered, TARGET_RENDER_BUFFER_SIZE, target, verbose);
+        render_nfc_target(rendered, TARGET_RENDER_BUFFER_SIZE, target, verbose);
         bounded_strlen(rendered, TARGET_RENDER_BUFFER_SIZE) as c_int
     })
 }

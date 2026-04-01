@@ -158,7 +158,21 @@ pub(crate) enum Pn53xPowerMode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Pn532SamMode {
     Normal = 0x01,
+    VirtualCard = 0x02,
     WiredCard = 0x03,
+    DualCard = 0x04,
+}
+
+impl Pn532SamMode {
+    fn from_raw(mode: u8) -> Option<Self> {
+        match mode {
+            0x01 => Some(Self::Normal),
+            0x02 => Some(Self::VirtualCard),
+            0x03 => Some(Self::WiredCard),
+            0x04 => Some(Self::DualCard),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -425,6 +439,8 @@ impl Pn53xCore {
                 let payload = match mode {
                     Pn532SamMode::Normal => [mode as u8, 0x00],
                     Pn532SamMode::WiredCard => [mode as u8, 0x00],
+                    Pn532SamMode::VirtualCard => [mode as u8, 0x00],
+                    Pn532SamMode::DualCard => [mode as u8, 0x00],
                 };
                 let _ = self.exchange_prepared_command(
                     transport,
@@ -608,9 +624,17 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
     }
 
     fn sam_configuration(&mut self, mode: Pn532SamMode, timeout_ms: i32) -> Result<i32, Error> {
+        if self.core.chip_type() != Pn53xType::Pn532 {
+            return self.remember(Err(status_error(
+                "pn532_SAMConfiguration",
+                NFC_EDEVNOTSUPP,
+            )));
+        }
         let payload = match mode {
             Pn532SamMode::Normal => [mode as u8, 0x00],
             Pn532SamMode::WiredCard => [mode as u8, 0x00],
+            Pn532SamMode::VirtualCard => [mode as u8, 0x00],
+            Pn532SamMode::DualCard => [mode as u8, 0x00],
         };
         let result = self
             .core
@@ -2153,6 +2177,54 @@ impl<T: Pn53xTransport + Send + 'static> OpenedDevice for Pn53xDevice<T> {
         self.last_error = 0;
         Ok(())
     }
+
+    fn pn53x_transceive_driver(
+        &mut self,
+        tx: &[u8],
+        rx: &mut [u8],
+        timeout: i32,
+    ) -> Result<usize, Error> {
+        let Some((&command, payload)) = tx.split_first() else {
+            return self.remember(Err(status_error("pn53x_transceive", NFC_EINVARG)));
+        };
+        let timeout = if timeout >= 0 {
+            timeout
+        } else {
+            self.core.timeout_command_ms
+        };
+        let response = self.exchange_raw(command, payload, timeout)?;
+        let written = Self::copy_into("pn53x_transceive", &response, rx)?;
+        self.last_error = 0;
+        Ok(written)
+    }
+
+    fn pn53x_read_register_driver(&mut self, register: u16) -> Result<u8, Error> {
+        let value = self.read_register(register)?;
+        self.last_error = 0;
+        Ok(value)
+    }
+
+    fn pn53x_write_register_driver(
+        &mut self,
+        register: u16,
+        symbol_mask: u8,
+        value: u8,
+    ) -> Result<(), Error> {
+        self.update_register_bits(register, symbol_mask, value)?;
+        self.last_error = 0;
+        Ok(())
+    }
+
+    fn pn532_sam_configuration_driver(&mut self, mode: u8, timeout: i32) -> Result<i32, Error> {
+        let mode = Pn532SamMode::from_raw(mode)
+            .ok_or_else(|| status_error("pn532_SAMConfiguration", NFC_EINVARG))?;
+        let timeout = if timeout >= 0 {
+            timeout
+        } else {
+            self.core.timeout_command_ms
+        };
+        self.sam_configuration(mode, timeout)
+    }
 }
 
 pub(crate) fn build_frame(payload: &[u8]) -> Result<Vec<u8>, Error> {
@@ -2439,6 +2511,25 @@ mod tests {
             25,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn hidden_pn53x_helpers_route_through_shared_core() {
+        let mut device = probed_device();
+        queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0x12]);
+        assert_eq!(device.pn53x_read_register(0x6302).unwrap(), 0x12);
+
+        queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0x12]);
+        queue_command_response(&mut device.transport, PN53X_WRITE_REGISTER, &[]);
+        device.pn53x_write_register(0x6302, 0x0f, 0x05).unwrap();
+
+        queue_command_response(&mut device.transport, 0x40, &[0xaa, 0xbb]);
+        let mut rx = [0u8; 4];
+        assert_eq!(device.pn53x_transceive(&[0x40, 0xde, 0xad], &mut rx, 25).unwrap(), 2);
+        assert_eq!(&rx[..2], &[0xaa, 0xbb]);
+
+        queue_command_response(&mut device.transport, PN532_SAM_CONFIGURATION, &[]);
+        assert_eq!(device.pn532_sam_configuration(0x03, 25).unwrap(), 0);
     }
 
     #[test]

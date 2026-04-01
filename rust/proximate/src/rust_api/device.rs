@@ -196,6 +196,36 @@ pub trait OpenedDevice: Send + Any {
     }
 
     #[doc(hidden)]
+    fn pn53x_transceive_driver(
+        &mut self,
+        _tx: &[u8],
+        _rx: &mut [u8],
+        _timeout: i32,
+    ) -> Result<usize, Error> {
+        Err(Error::UnsupportedOperation("pn53x_transceive"))
+    }
+
+    #[doc(hidden)]
+    fn pn53x_read_register_driver(&mut self, _register: u16) -> Result<u8, Error> {
+        Err(Error::UnsupportedOperation("pn53x_read_register"))
+    }
+
+    #[doc(hidden)]
+    fn pn53x_write_register_driver(
+        &mut self,
+        _register: u16,
+        _symbol_mask: u8,
+        _value: u8,
+    ) -> Result<(), Error> {
+        Err(Error::UnsupportedOperation("pn53x_write_register"))
+    }
+
+    #[doc(hidden)]
+    fn pn532_sam_configuration_driver(&mut self, _mode: u8, _timeout: i32) -> Result<i32, Error> {
+        Err(Error::UnsupportedOperation("pn532_SAMConfiguration"))
+    }
+
+    #[doc(hidden)]
     fn into_native_payload(self: Box<Self>) -> Option<Box<dyn Any + Send>> {
         None
     }
@@ -417,6 +447,36 @@ pub trait OpenedDevice: Send + Any {
 
     fn powerdown(&mut self) -> Result<(), Error> {
         self.powerdown_driver()
+    }
+
+    #[doc(hidden)]
+    fn pn53x_transceive(
+        &mut self,
+        tx: &[u8],
+        rx: &mut [u8],
+        timeout: i32,
+    ) -> Result<usize, Error> {
+        self.pn53x_transceive_driver(tx, rx, timeout)
+    }
+
+    #[doc(hidden)]
+    fn pn53x_read_register(&mut self, register: u16) -> Result<u8, Error> {
+        self.pn53x_read_register_driver(register)
+    }
+
+    #[doc(hidden)]
+    fn pn53x_write_register(
+        &mut self,
+        register: u16,
+        symbol_mask: u8,
+        value: u8,
+    ) -> Result<(), Error> {
+        self.pn53x_write_register_driver(register, symbol_mask, value)
+    }
+
+    #[doc(hidden)]
+    fn pn532_sam_configuration(&mut self, mode: u8, timeout: i32) -> Result<i32, Error> {
+        self.pn532_sam_configuration_driver(mode, timeout)
     }
 }
 

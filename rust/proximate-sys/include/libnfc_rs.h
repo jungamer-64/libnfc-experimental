@@ -277,6 +277,24 @@ const char *str_nfc_modulation_type(enum nfc_modulation_type value);
 
 int str_nfc_target(char **buf, const struct nfc_target *target, bool verbose);
 
+int nfc_emulate_target(struct nfc_device *device, void *emulator, int timeout);
+
+int pn53x_transceive(struct nfc_device *device,
+                     const uint8_t *tx,
+                     size_t tx_len,
+                     uint8_t *rx,
+                     size_t rx_len,
+                     int timeout);
+
+int pn53x_read_register(struct nfc_device *device, uint16_t register_, uint8_t *value);
+
+int pn53x_write_register(struct nfc_device *device,
+                         uint16_t register_,
+                         uint8_t symbol_mask,
+                         uint8_t value);
+
+int pn532_SAMConfiguration(struct nfc_device *device, int mode, int timeout);
+
 int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size);
 
 int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_size);

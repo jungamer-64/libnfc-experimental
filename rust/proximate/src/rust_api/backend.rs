@@ -211,6 +211,32 @@ pub trait DeviceBackend: Send + Any {
         Err(Error::UnsupportedOperation("powerdown"))
     }
 
+    fn pn53x_transceive_backend(
+        &mut self,
+        _tx: &[u8],
+        _rx: &mut [u8],
+        _timeout: i32,
+    ) -> Result<usize, Error> {
+        Err(Error::UnsupportedOperation("pn53x_transceive"))
+    }
+
+    fn pn53x_read_register_backend(&mut self, _register: u16) -> Result<u8, Error> {
+        Err(Error::UnsupportedOperation("pn53x_read_register"))
+    }
+
+    fn pn53x_write_register_backend(
+        &mut self,
+        _register: u16,
+        _symbol_mask: u8,
+        _value: u8,
+    ) -> Result<(), Error> {
+        Err(Error::UnsupportedOperation("pn53x_write_register"))
+    }
+
+    fn pn532_sam_configuration_backend(&mut self, _mode: u8, _timeout: i32) -> Result<i32, Error> {
+        Err(Error::UnsupportedOperation("pn532_SAMConfiguration"))
+    }
+
     fn into_native_payload(self: Box<Self>) -> Option<Box<dyn Any + Send>> {
         None
     }
@@ -541,6 +567,40 @@ impl OpenedDevice for BackendOpenedDevice {
 
     fn powerdown_driver(&mut self) -> Result<(), Error> {
         self.normalize_result("powerdown", |backend| backend.powerdown_backend())
+    }
+
+    fn pn53x_transceive_driver(
+        &mut self,
+        tx: &[u8],
+        rx: &mut [u8],
+        timeout: i32,
+    ) -> Result<usize, Error> {
+        self.normalize_result("pn53x_transceive", |backend| {
+            backend.pn53x_transceive_backend(tx, rx, timeout)
+        })
+    }
+
+    fn pn53x_read_register_driver(&mut self, register: u16) -> Result<u8, Error> {
+        self.normalize_result("pn53x_read_register", |backend| {
+            backend.pn53x_read_register_backend(register)
+        })
+    }
+
+    fn pn53x_write_register_driver(
+        &mut self,
+        register: u16,
+        symbol_mask: u8,
+        value: u8,
+    ) -> Result<(), Error> {
+        self.normalize_result("pn53x_write_register", |backend| {
+            backend.pn53x_write_register_backend(register, symbol_mask, value)
+        })
+    }
+
+    fn pn532_sam_configuration_driver(&mut self, mode: u8, timeout: i32) -> Result<i32, Error> {
+        self.normalize_result("pn532_SAMConfiguration", |backend| {
+            backend.pn532_sam_configuration_backend(mode, timeout)
+        })
     }
 
     fn into_native_payload(self: Box<Self>) -> Option<Box<dyn Any + Send>> {

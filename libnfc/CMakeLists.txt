@@ -57,18 +57,23 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/buses")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 
 set(LIBRARY_SOURCES
-  nfc-emulation.c
   nfc-internal.c
   nfc-common.cpp
   iso14443-subr.c
   mirror-subr.c
-  target-subr.c
-  target-subr-helpers.c
-  target-subr-helpers2.c
   ${DRIVERS_SOURCES}
   ${BUSES_SOURCES}
   ${CHIPS_SOURCES}
   ${WINDOWS_SOURCES})
+
+if(NOT PROXIMATE_C_FFI)
+  list(APPEND LIBRARY_SOURCES
+    nfc-emulation.c
+    target-subr.c
+    target-subr-helpers.c
+    target-subr-helpers2.c
+  )
+endif()
 
 set(LIBNFC_EXPORTS_FILE "${CMAKE_SOURCE_DIR}/libnfc/libnfc.exports")
 set(LIBNFC_VERSION_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/libnfc.map")

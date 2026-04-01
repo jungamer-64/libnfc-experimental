@@ -51,7 +51,7 @@ unsafe fn rust_device_state<'a>(device: *mut nfc_device) -> Option<&'a mut RustD
     unsafe { (device.driver_data as *mut RustDeviceState).as_mut() }
 }
 
-fn set_device_last_error(device: *mut nfc_device, value: c_int) {
+pub(crate) fn set_device_last_error(device: *mut nfc_device, value: c_int) {
     if let Some(device) = unsafe { as_mut(device) } {
         device.last_error = value;
     }
@@ -1504,6 +1504,36 @@ impl rt::DeviceBackend for RustBorrowedDeviceBackend {
     fn powerdown_backend(&mut self) -> Result<(), rt::Error> {
         self.with_handle(|handle| handle.powerdown())
     }
+
+    fn pn53x_transceive_backend(
+        &mut self,
+        tx: &[u8],
+        rx: &mut [u8],
+        timeout: i32,
+    ) -> Result<usize, rt::Error> {
+        self.with_handle(|handle| handle.pn53x_transceive(tx, rx, timeout))
+    }
+
+    fn pn53x_read_register_backend(&mut self, register: u16) -> Result<u8, rt::Error> {
+        self.with_handle(|handle| handle.pn53x_read_register(register))
+    }
+
+    fn pn53x_write_register_backend(
+        &mut self,
+        register: u16,
+        symbol_mask: u8,
+        value: u8,
+    ) -> Result<(), rt::Error> {
+        self.with_handle(|handle| handle.pn53x_write_register(register, symbol_mask, value))
+    }
+
+    fn pn532_sam_configuration_backend(
+        &mut self,
+        mode: u8,
+        timeout: i32,
+    ) -> Result<i32, rt::Error> {
+        self.with_handle(|handle| handle.pn532_sam_configuration(mode, timeout))
+    }
 }
 
 pub(crate) struct DriverAdapter {
@@ -2447,6 +2477,7 @@ mod tests {
         name: String,
         connstring: rt::ConnectionString,
         bool_properties: Vec<(rt::Property, bool)>,
+        registers: Vec<(u16, u8)>,
     }
 
     impl ShimTestDevice {
@@ -2455,6 +2486,7 @@ mod tests {
                 name: "shim-device".to_string(),
                 connstring: rt::ConnectionString::new(connstring).unwrap(),
                 bool_properties: Vec::new(),
+                registers: vec![(0x6302, 0x55)],
             }
         }
     }
@@ -2576,6 +2608,55 @@ mod tests {
                 parity[0] = 0x01;
             }
             Ok(7)
+        }
+
+        fn pn53x_transceive_driver(
+            &mut self,
+            tx: &[u8],
+            rx: &mut [u8],
+            _timeout: i32,
+        ) -> Result<usize, rt::Error> {
+            let len = tx.len().min(rx.len());
+            rx[..len].copy_from_slice(&tx[..len]);
+            Ok(len)
+        }
+
+        fn pn53x_read_register_driver(&mut self, register: u16) -> Result<u8, rt::Error> {
+            self.registers
+                .iter()
+                .find(|entry| entry.0 == register)
+                .map(|entry| entry.1)
+                .ok_or(rt::Error::UnsupportedOperation("pn53x_read_register"))
+        }
+
+        fn pn53x_write_register_driver(
+            &mut self,
+            register: u16,
+            symbol_mask: u8,
+            value: u8,
+        ) -> Result<(), rt::Error> {
+            let slot = self
+                .registers
+                .iter_mut()
+                .find(|entry| entry.0 == register)
+                .map(|entry| &mut entry.1);
+            match slot {
+                Some(current) => {
+                    *current = (*current & !symbol_mask) | (value & symbol_mask);
+                }
+                None => self
+                    .registers
+                    .push((register, value & symbol_mask)),
+            }
+            Ok(())
+        }
+
+        fn pn532_sam_configuration_driver(
+            &mut self,
+            mode: u8,
+            _timeout: i32,
+        ) -> Result<i32, rt::Error> {
+            Ok(i32::from(mode))
         }
     }
 
@@ -2708,6 +2789,42 @@ mod tests {
         );
         assert_eq!(rx_bits[0], 0x3C);
         assert_eq!(rx_parity[0], 0x01);
+
+        let mut register = 0u8;
+        assert_eq!(
+            unsafe { crate::pn53x_read_register(raw, 0x6302, &mut register) },
+            0
+        );
+        assert_eq!(register, 0x55);
+
+        assert_eq!(
+            unsafe { crate::pn53x_write_register(raw, 0x6302, 0x0f, 0x0a) },
+            0
+        );
+        assert_eq!(
+            unsafe { crate::pn53x_read_register(raw, 0x6302, &mut register) },
+            0
+        );
+        assert_eq!(register, 0x5a);
+
+        let tx_cmd = [0x40u8, 0xaa, 0xbb];
+        let mut rx_cmd = [0u8; 8];
+        assert_eq!(
+            unsafe {
+                crate::pn53x_transceive(
+                    raw,
+                    tx_cmd.as_ptr(),
+                    tx_cmd.len(),
+                    rx_cmd.as_mut_ptr(),
+                    rx_cmd.len(),
+                    50,
+                )
+            },
+            tx_cmd.len() as c_int
+        );
+        assert_eq!(&rx_cmd[..tx_cmd.len()], &tx_cmd);
+
+        assert_eq!(unsafe { crate::pn532_SAMConfiguration(raw, 0x03, 10) }, 3);
 
         unsafe { crate::compat::nfc_close(raw) };
     }

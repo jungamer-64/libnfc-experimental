@@ -18,7 +18,7 @@ use crate::runtime_bridge::{
     modulation_from_c, property_from_c, target_from_c, write_target_to_c,
 };
 use crate::{emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr, ffi_catch_unwind_void};
-use libc::{c_char, c_int, size_t};
+use libc::{c_char, c_int, c_void, size_t};
 use proximate::rust_api as rt;
 use std::ffi::CString;
 #[cfg(test)]
@@ -31,9 +31,32 @@ const NFC_EDEVNOTSUPP: c_int = -3;
 #[cfg(test)]
 const NFC_ETIMEOUT: c_int = -6;
 const NFC_ESOFT: c_int = -80;
+const ISO7816_SHORT_C_APDU_MAX_LEN: usize = 261;
+const ISO7816_SHORT_R_APDU_MAX_LEN: usize = 258;
 
 const GENERAL_LOG_CATEGORY: *const c_char = b"libnfc.general\0" as *const u8 as *const c_char;
 const NULL_ERROR_PREFIX: *const c_char = b"(null)\0" as *const u8 as *const c_char;
+
+#[repr(C)]
+pub(crate) struct nfc_emulator {
+    target: *mut nfc_target,
+    state_machine: *mut nfc_emulation_state_machine,
+    user_data: *mut c_void,
+}
+
+#[repr(C)]
+pub(crate) struct nfc_emulation_state_machine {
+    io: Option<
+        unsafe extern "C" fn(
+            emulator: *mut nfc_emulator,
+            data_in: *const u8,
+            data_in_len: size_t,
+            data_out: *mut u8,
+            data_out_len: size_t,
+        ) -> c_int,
+    >,
+    data: *mut c_void,
+}
 
 unsafe extern "C" {
     static mut stderr: *mut libc::FILE;
@@ -722,6 +745,68 @@ pub unsafe fn nfc_target_receive_bits(
     })
 }
 
+pub unsafe fn nfc_emulate_target(
+    device: *mut nfc_device,
+    emulator: *mut nfc_emulator,
+    timeout: c_int,
+) -> c_int {
+    ffi_catch_unwind_int("nfc_emulate_target", NFC_ESOFT, || unsafe {
+        let Some(emulator_ref) = as_mut(emulator) else {
+            return NFC_EINVARG;
+        };
+        let Some(state_machine) = as_mut(emulator_ref.state_machine) else {
+            return NFC_EINVARG;
+        };
+        let Some(callback) = state_machine.io else {
+            return NFC_EINVARG;
+        };
+        if emulator_ref.target.is_null() {
+            return NFC_EINVARG;
+        }
+
+        let mut rx = [0u8; ISO7816_SHORT_R_APDU_MAX_LEN];
+        let mut tx = [0u8; ISO7816_SHORT_C_APDU_MAX_LEN];
+
+        let init_len = nfc_target_init(
+            device,
+            emulator_ref.target,
+            rx.as_mut_ptr(),
+            rx.len(),
+            timeout,
+        );
+        if init_len < 0 {
+            return init_len;
+        }
+
+        let mut rx_len = init_len as usize;
+        let mut io_res = init_len;
+        while io_res >= 0 {
+            io_res = callback(
+                emulator,
+                rx.as_ptr(),
+                rx_len,
+                tx.as_mut_ptr(),
+                tx.len(),
+            );
+            if io_res > 0 {
+                let sent = nfc_target_send_bytes(device, tx.as_ptr(), io_res as usize, timeout);
+                if sent < 0 {
+                    return sent;
+                }
+            }
+            if io_res >= 0 {
+                let received = nfc_target_receive_bytes(device, rx.as_mut_ptr(), rx.len(), timeout);
+                if received < 0 {
+                    return received;
+                }
+                rx_len = received as usize;
+            }
+        }
+
+        io_res
+    })
+}
+
 pub unsafe fn nfc_abort_command(device: *mut nfc_device) -> c_int {
     ffi_catch_unwind_int("nfc_abort_command", NFC_ESOFT, || unsafe {
         call_abort_command_impl(device)
@@ -901,6 +986,11 @@ mod tests {
             .get_or_init(|| Mutex::new(()))
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn emulator_state() -> &'static Mutex<usize> {
+        static STATE: OnceLock<Mutex<usize>> = OnceLock::new();
+        STATE.get_or_init(|| Mutex::new(0))
     }
 
     fn reset_test_state() {
@@ -1299,6 +1389,34 @@ mod tests {
             }
         }
         19
+    }
+
+    unsafe extern "C" fn test_emulator_io(
+        _emulator: *mut nfc_emulator,
+        data_in: *const u8,
+        data_in_len: size_t,
+        data_out: *mut u8,
+        data_out_len: size_t,
+    ) -> c_int {
+        let mut state = emulator_state()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if *state == 0 {
+            assert!(!data_in.is_null());
+            assert_eq!(data_in_len, 11);
+            assert!(!data_out.is_null());
+            assert!(data_out_len >= 2);
+            unsafe {
+                *data_out = 0xaa;
+                *data_out.add(1) = 0xbb;
+            }
+            *state = 1;
+            2
+        } else {
+            assert!(!data_in.is_null());
+            assert_eq!(data_in_len, 17);
+            -1
+        }
     }
 
     unsafe extern "C" fn test_device_get_information_about(
@@ -2188,6 +2306,42 @@ mod tests {
                 (nfc_mode::N_INITIATOR, nfc_modulation_type::NMT_ISO14443A),
                 (nfc_mode::N_TARGET, nfc_modulation_type::NMT_FELICA),
             ]
+        );
+
+        unsafe { destroy_device(device) };
+    }
+
+    #[test]
+    fn emulate_target_uses_target_byte_io_loop() {
+        let _guard = initiator_test_guard();
+        reset_test_state();
+        *emulator_state()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = 0;
+
+        let device = unsafe { make_device(ptr::addr_of!(TEST_DRIVER_FULL)) };
+        let mut target = zeroed_target_with_marker(0);
+        let mut state_machine = nfc_emulation_state_machine {
+            io: Some(test_emulator_io),
+            data: ptr::null_mut(),
+        };
+        let mut emulator = nfc_emulator {
+            target: ptr::addr_of_mut!(target),
+            state_machine: ptr::addr_of_mut!(state_machine),
+            user_data: ptr::null_mut(),
+        };
+
+        assert_eq!(
+            unsafe { nfc_emulate_target(device, ptr::addr_of_mut!(emulator), 250) },
+            -1
+        );
+
+        let snapshot = snapshot_test_state();
+        assert_eq!(snapshot.target_init_calls, vec![(ISO7816_SHORT_R_APDU_MAX_LEN, 250)]);
+        assert_eq!(snapshot.target_send_bytes_calls, vec![(2, 250)]);
+        assert_eq!(
+            snapshot.target_receive_bytes_calls,
+            vec![(ISO7816_SHORT_R_APDU_MAX_LEN, 250)]
         );
 
         unsafe { destroy_device(device) };
