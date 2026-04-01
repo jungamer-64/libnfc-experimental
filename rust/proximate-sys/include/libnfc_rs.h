@@ -4,8 +4,6 @@
 // Manually-provided macros for values that cbindgen cannot emit
 #define LOG_CATEGORY "libnfc.common"
 #define MALLOC_LABEL "malloc"
-#define DEVICE_NAME_LENGTH 256
-#define MAX_USER_DEFINED_DEVICES 4
 #define NFC_BUFSIZE_CONNSTRING 1024
 #define NFC_COMMON_SUCCESS 0
 #define NFC_COMMON_ERROR -1
@@ -32,6 +30,12 @@ typedef struct nfc_driver nfc_driver;
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+
+#define DEVICE_NAME_LENGTH 256
+
+#define MAX_USER_DEFINED_DEVICES 4
+
+#define NFC_DRIVER_NAME_MAX 64
 
 typedef enum nfc_baud_rate {
   NBR_UNDEFINED = 0,

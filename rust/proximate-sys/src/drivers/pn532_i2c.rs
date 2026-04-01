@@ -8,6 +8,7 @@
 
 use crate::buses::i2c::{i2c_close, i2c_device, i2c_list_ports, i2c_open, i2c_read, i2c_write};
 use crate::buses::{invalid_i2c_address, invalid_i2c_bus};
+use crate::c_api_impl::{NFC_BUFSIZE_CONNSTRING, connstring_decode};
 use crate::drivers::pn53x_native::{
     NFC_EIO, NFC_EOPABORTED, NFC_ETIMEOUT, NFC_SUCCESS, PN53X_EXTENDED_FRAME_DATA_MAX_LEN,
     PN53X_PREAMBLE_AND_START, PN532_BUFFER_LEN, PN532_I2C_ADDR, PN532_TIMER_CORRECTION, chip_data,
@@ -29,16 +30,15 @@ use crate::drivers::pn53x_native::{
 };
 #[cfg(test)]
 use crate::drivers::pn53x_native::{
+    test_lock as test_lock_native,
     test_queue_check_communication_result as test_queue_check_communication_result_native,
     test_reset as test_reset_native, test_snapshot as test_snapshot_native,
-    test_lock as test_lock_native,
 };
 use crate::ffi_support::{as_mut, copy_bytes_to_c_buffer};
 use crate::lifecycle::{
     DEVICE_NAME_LENGTH, nfc_connstring, nfc_context, nfc_device, nfc_device_free, nfc_device_new,
     nfc_driver, scan_type_enum,
 };
-use crate::{NFC_BUFSIZE_CONNSTRING, connstring_decode};
 use libc::{c_char, c_int, c_void, ssize_t};
 use std::ffi::CString;
 use std::ptr;
@@ -599,10 +599,10 @@ pub(crate) use crate::buses::i2c::{
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lifecycle::nfc_context;
+    use crate::lifecycle::{nfc_context, nfc_context_free, nfc_context_new};
 
     fn context() -> *mut nfc_context {
-        unsafe { crate::nfc_context_new() }
+        unsafe { nfc_context_new() }
     }
 
     #[test]
@@ -655,6 +655,6 @@ mod tests {
         let native = test_snapshot_native();
         assert_eq!(native.data_new_calls, 1);
         assert_eq!(native.data_free_calls, 1);
-        unsafe { crate::nfc_context_free(ctx) };
+        unsafe { nfc_context_free(ctx) };
     }
 }

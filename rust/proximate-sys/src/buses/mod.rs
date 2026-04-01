@@ -8,6 +8,7 @@
 
 #![allow(non_camel_case_types)]
 
+use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
 use crate::ffi_support::{bounded_strlen, copy_bytes_to_c_buffer};
 use libc::{c_char, c_void};
 use std::ffi::CStr;
@@ -29,7 +30,7 @@ pub(crate) unsafe fn c_path_to_string(path: *const c_char) -> Option<String> {
         return None;
     }
 
-    let len = bounded_strlen(path, crate::NFC_BUFSIZE_CONNSTRING);
+    let len = bounded_strlen(path, NFC_BUFSIZE_CONNSTRING);
     let bytes = unsafe { std::slice::from_raw_parts(path.cast::<u8>(), len) };
     Some(String::from_utf8_lossy(bytes).into_owned())
 }

@@ -6,7 +6,9 @@
 
 #![allow(non_camel_case_types)]
 
-use crate::ffi_support::{as_mut, as_ref, copy_bytes_to_c_buffer};
+use crate::ffi_support::as_mut;
+#[cfg(test)]
+use crate::ffi_support::copy_bytes_to_c_buffer;
 use crate::ffi_types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_mode, nfc_modulation, nfc_modulation_type,
     nfc_property, nfc_target,
@@ -14,6 +16,7 @@ use crate::ffi_types::{
 use crate::lifecycle::nfc_device;
 use libc::{c_char, c_int, c_void};
 use std::ptr;
+#[cfg(test)]
 use std::slice;
 
 pub(crate) const NFC_SUCCESS: c_int = 0;

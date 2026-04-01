@@ -8,13 +8,15 @@
 use crate::ffi_support::{as_ref, bounded_strlen};
 use crate::ffi_types::{nfc_baud_rate, nfc_modulation_type, nfc_target};
 use crate::lifecycle::nfc_device;
+use crate::runtime_bridge::{baud_rate_from_c, modulation_type_from_c};
 use crate::{
     ffi_catch_unwind_int, ffi_catch_unwind_ptr, ffi_catch_unwind_void, release_allocated_ptr,
 };
 use libc::{c_char, c_int, c_void, size_t};
-use std::ffi::CString;
-use std::sync::OnceLock;
+use proximate::rust_api as rt;
 
+#[cfg(test)]
+use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
 #[cfg(any(test, not(libnfc_external_bridges)))]
 use crate::ffi_support::copy_bytes_to_c_buffer;
 #[cfg(any(test, not(libnfc_external_bridges)))]
@@ -26,66 +28,17 @@ const NFC_EINVARG: c_int = -2;
 const NFC_ESOFT: c_int = -80;
 const TARGET_RENDER_BUFFER_SIZE: usize = 4096;
 
-const UNKNOWN_LABEL: *const c_char = c"???".as_ptr();
-const UNDEFINED_BAUD_RATE_LABEL: *const c_char = c"undefined baud rate".as_ptr();
-const BAUD_RATE_106_LABEL: *const c_char = c"106 kbps".as_ptr();
-const BAUD_RATE_212_LABEL: *const c_char = c"212 kbps".as_ptr();
-const BAUD_RATE_424_LABEL: *const c_char = c"424 kbps".as_ptr();
-const BAUD_RATE_847_LABEL: *const c_char = c"847 kbps".as_ptr();
-const MODULATION_ISO14443A_LABEL: *const c_char = c"ISO/IEC 14443A".as_ptr();
-const MODULATION_ISO14443B_LABEL: *const c_char = c"ISO/IEC 14443-4B".as_ptr();
-const MODULATION_ISO14443BI_LABEL: *const c_char = c"ISO/IEC 14443-4B'".as_ptr();
-const MODULATION_ISO14443BICLASS_LABEL: *const c_char =
-    c"ISO/IEC 14443-2B-3B iClass (Picopass)".as_ptr();
-const MODULATION_ISO14443B2CT_LABEL: *const c_char = c"ISO/IEC 14443-2B ASK CTx".as_ptr();
-const MODULATION_ISO14443B2SR_LABEL: *const c_char = c"ISO/IEC 14443-2B ST SRx".as_ptr();
-const MODULATION_FELICA_LABEL: *const c_char = c"FeliCa".as_ptr();
-const MODULATION_JEWEL_LABEL: *const c_char = c"Innovision Jewel".as_ptr();
-const MODULATION_BARCODE_LABEL: *const c_char = c"Thinfilm NFC Barcode".as_ptr();
-const MODULATION_DEP_LABEL: *const c_char = c"D.E.P.".as_ptr();
-
-static VERSION_STRING: OnceLock<CString> = OnceLock::new();
-
 #[cfg(all(not(test), libnfc_external_bridges))]
 unsafe extern "C" {
     fn snprint_nfc_target(dst: *mut c_char, size: size_t, pnt: *const nfc_target, verbose: bool);
 }
 
-fn version_value() -> &'static str {
-    option_env!("PROXIMATE_GIT_REVISION")
-        .filter(|value| !value.is_empty())
-        .unwrap_or(option_env!("PROXIMATE_PACKAGE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")))
-}
-
-fn version_c_string() -> &'static CString {
-    VERSION_STRING
-        .get_or_init(|| CString::new(version_value()).expect("version string must not contain NUL"))
-}
-
 fn modulation_label(value: nfc_modulation_type) -> *const c_char {
-    match value {
-        nfc_modulation_type::NMT_ISO14443A => MODULATION_ISO14443A_LABEL,
-        nfc_modulation_type::NMT_ISO14443B => MODULATION_ISO14443B_LABEL,
-        nfc_modulation_type::NMT_ISO14443BI => MODULATION_ISO14443BI_LABEL,
-        nfc_modulation_type::NMT_ISO14443BICLASS => MODULATION_ISO14443BICLASS_LABEL,
-        nfc_modulation_type::NMT_ISO14443B2CT => MODULATION_ISO14443B2CT_LABEL,
-        nfc_modulation_type::NMT_ISO14443B2SR => MODULATION_ISO14443B2SR_LABEL,
-        nfc_modulation_type::NMT_FELICA => MODULATION_FELICA_LABEL,
-        nfc_modulation_type::NMT_JEWEL => MODULATION_JEWEL_LABEL,
-        nfc_modulation_type::NMT_BARCODE => MODULATION_BARCODE_LABEL,
-        nfc_modulation_type::NMT_DEP => MODULATION_DEP_LABEL,
-        _ => UNKNOWN_LABEL,
-    }
+    modulation_type_from_c(value).label_cstr().as_ptr()
 }
 
 fn baud_rate_label(value: nfc_baud_rate) -> *const c_char {
-    match value {
-        nfc_baud_rate::NBR_UNDEFINED => UNDEFINED_BAUD_RATE_LABEL,
-        nfc_baud_rate::NBR_106 => BAUD_RATE_106_LABEL,
-        nfc_baud_rate::NBR_212 => BAUD_RATE_212_LABEL,
-        nfc_baud_rate::NBR_424 => BAUD_RATE_424_LABEL,
-        nfc_baud_rate::NBR_847 => BAUD_RATE_847_LABEL,
-    }
+    baud_rate_from_c(value).label_cstr().as_ptr()
 }
 
 #[cfg(all(not(test), libnfc_external_bridges))]
@@ -169,7 +122,7 @@ pub unsafe fn nfc_free(ptr: *mut c_void) {
 }
 
 pub unsafe fn nfc_version() -> *const c_char {
-    ffi_catch_unwind_ptr("nfc_version", || version_c_string().as_ptr().cast_mut()) as *const c_char
+    ffi_catch_unwind_ptr("nfc_version", || rt::version_cstr().as_ptr().cast_mut()) as *const c_char
 }
 
 pub unsafe fn str_nfc_baud_rate(value: nfc_baud_rate) -> *const c_char {
@@ -264,7 +217,7 @@ mod tests {
             driver_data: ptr::null_mut(),
             chip_data: ptr::null_mut(),
             name: [0; crate::lifecycle::DEVICE_NAME_LENGTH],
-            connstring: [0; crate::NFC_BUFSIZE_CONNSTRING],
+            connstring: [0; NFC_BUFSIZE_CONNSTRING],
             bCrc: false,
             bPar: false,
             bEasyFraming: false,

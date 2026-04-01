@@ -4,6 +4,7 @@
 //
 // Ported from libnfc/nfc.c.
 
+use crate::c_api_impl::{LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG};
 use crate::ffi_support::{
     as_mut, as_ref, bounded_strlen, c_string_ptr_to_string, copy_bytes_to_c_buffer,
 };
@@ -12,12 +13,15 @@ use crate::ffi_types::{
     nfc_property, nfc_target,
 };
 use crate::lifecycle::nfc_device;
-use crate::{
-    LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, emit_log_message,
-    ffi_catch_unwind_int, ffi_catch_unwind_ptr, ffi_catch_unwind_void,
+use crate::runtime_bridge::{
+    baud_rate_from_c, borrowed_device, dep_mode_from_c, error_to_status, modulation_from_c,
+    is_rust_shim_device, property_from_c, target_from_c, write_target_to_c,
 };
+use crate::{emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr, ffi_catch_unwind_void};
 use libc::{c_char, c_int, size_t};
+use proximate::rust_api as rt;
 use std::ffi::CString;
+#[cfg(test)]
 use std::mem::size_of;
 use std::ptr;
 use std::slice;
@@ -37,60 +41,7 @@ const NFC_ESOFT: c_int = -80;
 const NFC_ECHIP: c_int = -90;
 
 const GENERAL_LOG_CATEGORY: *const c_char = b"libnfc.general\0" as *const u8 as *const c_char;
-const SUCCESS_MESSAGE: *const c_char = b"Success\0" as *const u8 as *const c_char;
-const IO_ERROR_MESSAGE: *const c_char = b"Input / Output Error\0" as *const u8 as *const c_char;
-const INVALID_ARGUMENT_MESSAGE: *const c_char =
-    b"Invalid argument(s)\0" as *const u8 as *const c_char;
-const DEVICE_NOT_SUPPORTED_MESSAGE: *const c_char =
-    b"Not Supported by Device\0" as *const u8 as *const c_char;
-const NO_SUCH_DEVICE_MESSAGE: *const c_char = b"No Such Device\0" as *const u8 as *const c_char;
-const BUFFER_OVERFLOW_MESSAGE: *const c_char = b"Buffer Overflow\0" as *const u8 as *const c_char;
-const TIMEOUT_MESSAGE: *const c_char = b"Timeout\0" as *const u8 as *const c_char;
-const OPERATION_ABORTED_MESSAGE: *const c_char =
-    b"Operation Aborted\0" as *const u8 as *const c_char;
-const NOT_IMPLEMENTED_MESSAGE: *const c_char =
-    b"Not (yet) Implemented\0" as *const u8 as *const c_char;
-const TARGET_RELEASED_MESSAGE: *const c_char = b"Target Released\0" as *const u8 as *const c_char;
-const MIFARE_AUTH_FAILED_MESSAGE: *const c_char =
-    b"Mifare Authentication Failed\0" as *const u8 as *const c_char;
-const RF_TRANSMISSION_ERROR_MESSAGE: *const c_char =
-    b"RF Transmission Error\0" as *const u8 as *const c_char;
-const CHIP_ERROR_MESSAGE: *const c_char =
-    b"Device's Internal Chip Error\0" as *const u8 as *const c_char;
-const UNKNOWN_ERROR_MESSAGE: *const c_char = b"Unknown error\0" as *const u8 as *const c_char;
 const NULL_ERROR_PREFIX: *const c_char = b"(null)\0" as *const u8 as *const c_char;
-const PROPERTY_NAMES: [&str; 15] = [
-    "NP_TIMEOUT_COMMAND",
-    "NP_TIMEOUT_ATR",
-    "NP_TIMEOUT_COM",
-    "NP_HANDLE_CRC",
-    "NP_HANDLE_PARITY",
-    "NP_ACTIVATE_FIELD",
-    "NP_ACTIVATE_CRYPTO1",
-    "NP_INFINITE_SELECT",
-    "NP_ACCEPT_INVALID_FRAMES",
-    "NP_ACCEPT_MULTIPLE_FRAMES",
-    "NP_AUTO_ISO14443_4",
-    "NP_EASY_FRAMING",
-    "NP_FORCE_ISO14443_A",
-    "NP_FORCE_ISO14443_B",
-    "NP_FORCE_SPEED_106",
-];
-
-struct PropertyBoolSetting {
-    property: nfc_property,
-    value: bool,
-}
-
-#[cfg(all(not(test), libnfc_external_bridges))]
-unsafe extern "C" {
-    fn iso14443_cascade_uid(
-        abt_uid: *const u8,
-        sz_uid: size_t,
-        pbt_cascaded_uid: *mut u8,
-        psz_cascaded_uid: *mut size_t,
-    );
-}
 
 unsafe extern "C" {
     static mut stderr: *mut libc::FILE;
@@ -113,27 +64,8 @@ fn log_general_debug(message: &str) {
     log_general_message(LOG_PRIORITY_DEBUG, message);
 }
 
-fn log_general_error(message: &str) {
-    log_general_message(LOG_PRIORITY_ERROR, message);
-}
-
 fn error_message_ptr(code: c_int) -> *const c_char {
-    match code {
-        NFC_SUCCESS => SUCCESS_MESSAGE,
-        -1 => IO_ERROR_MESSAGE,
-        NFC_EINVARG => INVALID_ARGUMENT_MESSAGE,
-        NFC_EDEVNOTSUPP => DEVICE_NOT_SUPPORTED_MESSAGE,
-        NFC_ENOTSUCHDEV => NO_SUCH_DEVICE_MESSAGE,
-        NFC_EOVFLOW => BUFFER_OVERFLOW_MESSAGE,
-        NFC_ETIMEOUT => TIMEOUT_MESSAGE,
-        NFC_EOPABORTED => OPERATION_ABORTED_MESSAGE,
-        NFC_ENOTIMPL => NOT_IMPLEMENTED_MESSAGE,
-        NFC_ETGRELEASED => TARGET_RELEASED_MESSAGE,
-        NFC_EMFCAUTHFAIL => MIFARE_AUTH_FAILED_MESSAGE,
-        NFC_ERFTRANS => RF_TRANSMISSION_ERROR_MESSAGE,
-        NFC_ECHIP => CHIP_ERROR_MESSAGE,
-        _ => UNKNOWN_ERROR_MESSAGE,
-    }
+    rt::device_error_message_cstr(code).as_ptr()
 }
 
 unsafe fn device_last_error(device: *const nfc_device) -> c_int {
@@ -150,6 +82,15 @@ unsafe fn set_device_last_error(device: *mut nfc_device, value: c_int) {
 
 unsafe fn reset_device_last_error(device: *mut nfc_device) {
     unsafe { set_device_last_error(device, 0) };
+}
+
+fn runtime_result_status(error: &rt::Error, unsupported_as_zero: bool) -> c_int {
+    let status = error_to_status(error);
+    if unsupported_as_zero && status == NFC_EDEVNOTSUPP {
+        0
+    } else {
+        status
+    }
 }
 
 unsafe fn unsupported_driver_operation(device: *mut nfc_device) -> c_int {
@@ -175,183 +116,54 @@ unsafe fn dispatch_driver_call(
     }
 }
 
-struct InfiniteSelectGuard {
+unsafe fn input_bytes<'a>(
     device: *mut nfc_device,
-    previous: Option<bool>,
-    temporary_value: bool,
-    active: bool,
+    bytes: *const u8,
+    len: size_t,
+) -> Result<&'a [u8], c_int> {
+    if len == 0 {
+        return Ok(&[]);
+    }
+    if bytes.is_null() {
+        unsafe { set_device_last_error(device, NFC_EINVARG) };
+        return Err(NFC_EINVARG);
+    }
+    Ok(unsafe { slice::from_raw_parts(bytes, len) })
 }
 
-impl InfiniteSelectGuard {
-    unsafe fn set(device: *mut nfc_device, temporary_value: bool) -> Result<Self, c_int> {
-        let previous = unsafe { as_ref(device) }.map(|device| device.bInfiniteSelect);
-        let result = unsafe {
-            nfc_device_set_property_bool(device, nfc_property::NP_INFINITE_SELECT, temporary_value)
-        };
-        if result < 0 {
-            return Err(result);
-        }
-
-        Ok(Self {
-            device,
-            previous,
-            temporary_value,
-            active: true,
-        })
+unsafe fn output_bytes<'a>(
+    device: *mut nfc_device,
+    bytes: *mut u8,
+    len: size_t,
+) -> Result<&'a mut [u8], c_int> {
+    if len == 0 {
+        return Ok(&mut []);
     }
-
-    fn restore(&mut self) -> c_int {
-        if !self.active {
-            return NFC_SUCCESS;
-        }
-        self.active = false;
-
-        let Some(previous) = self.previous else {
-            return NFC_SUCCESS;
-        };
-        if previous == self.temporary_value {
-            return NFC_SUCCESS;
-        }
-
-        unsafe {
-            nfc_device_set_property_bool(self.device, nfc_property::NP_INFINITE_SELECT, previous)
-        }
+    if bytes.is_null() {
+        unsafe { set_device_last_error(device, NFC_EINVARG) };
+        return Err(NFC_EINVARG);
     }
+    Ok(unsafe { slice::from_raw_parts_mut(bytes, len) })
+}
 
-    fn finish(mut self, result: c_int) -> c_int {
-        let restore_result = self.restore();
-        if restore_result < 0 {
-            restore_result
-        } else {
-            result
-        }
+unsafe fn marker_bytes<'a>(bytes: *const u8) -> Option<&'a [u8]> {
+    if bytes.is_null() {
+        None
+    } else {
+        Some(unsafe { slice::from_raw_parts(bytes, 1) })
     }
 }
 
-impl Drop for InfiniteSelectGuard {
-    fn drop(&mut self) {
-        let _ = self.restore();
+unsafe fn marker_bytes_mut<'a>(bytes: *mut u8) -> Option<&'a mut [u8]> {
+    if bytes.is_null() {
+        None
+    } else {
+        Some(unsafe { slice::from_raw_parts_mut(bytes, 1) })
     }
 }
 
 fn property_name(property: nfc_property) -> &'static str {
-    let index = property as usize;
-    PROPERTY_NAMES
-        .get(index)
-        .copied()
-        .unwrap_or("UNKNOWN_PROPERTY")
-}
-
-#[cfg(all(not(test), libnfc_external_bridges))]
-unsafe fn bridge_iso14443_cascade_uid(
-    abt_uid: *const u8,
-    sz_uid: size_t,
-    pbt_cascaded_uid: *mut u8,
-    psz_cascaded_uid: *mut size_t,
-) {
-    unsafe {
-        iso14443_cascade_uid(abt_uid, sz_uid, pbt_cascaded_uid, psz_cascaded_uid);
-    }
-}
-
-#[cfg(any(test, not(libnfc_external_bridges)))]
-unsafe fn bridge_iso14443_cascade_uid(
-    abt_uid: *const u8,
-    sz_uid: size_t,
-    pbt_cascaded_uid: *mut u8,
-    psz_cascaded_uid: *mut size_t,
-) {
-    if psz_cascaded_uid.is_null() || pbt_cascaded_uid.is_null() {
-        return;
-    }
-
-    unsafe {
-        match sz_uid as usize {
-            4 => {
-                *psz_cascaded_uid = sz_uid;
-                ptr::copy_nonoverlapping(abt_uid, pbt_cascaded_uid, 4);
-            }
-            7 => {
-                *psz_cascaded_uid = 8;
-                *pbt_cascaded_uid.add(0) = 0x88;
-                ptr::copy_nonoverlapping(abt_uid, pbt_cascaded_uid.add(1), 3);
-                ptr::copy_nonoverlapping(abt_uid.add(3), pbt_cascaded_uid.add(4), 4);
-            }
-            10 => {
-                *psz_cascaded_uid = 12;
-                *pbt_cascaded_uid.add(0) = 0x88;
-                ptr::copy_nonoverlapping(abt_uid, pbt_cascaded_uid.add(1), 3);
-                *pbt_cascaded_uid.add(4) = 0x88;
-                ptr::copy_nonoverlapping(abt_uid.add(3), pbt_cascaded_uid.add(5), 3);
-                ptr::copy_nonoverlapping(abt_uid.add(6), pbt_cascaded_uid.add(8), 4);
-            }
-            _ => {
-                *psz_cascaded_uid = 0;
-            }
-        }
-    }
-}
-
-unsafe fn call_device_set_property_bool_impl(
-    device: *mut nfc_device,
-    property: nfc_property,
-    enable: bool,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .device_set_property_bool
-                .map(|callback| callback(device, property, enable))
-        })
-    }
-}
-
-unsafe fn call_device_set_property_int_impl(
-    device: *mut nfc_device,
-    property: nfc_property,
-    value: c_int,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .device_set_property_int
-                .map(|callback| callback(device, property, value))
-        })
-    }
-}
-
-unsafe fn call_initiator_init_impl(device: *mut nfc_device) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver.initiator_init.map(|callback| callback(device))
-        })
-    }
-}
-
-unsafe fn call_initiator_init_secure_element_impl(device: *mut nfc_device) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .initiator_init_secure_element
-                .map(|callback| callback(device))
-        })
-    }
-}
-
-unsafe fn call_initiator_select_passive_target_impl(
-    device: *mut nfc_device,
-    nm: nfc_modulation,
-    init_data: *const u8,
-    init_data_len: usize,
-    target: *mut nfc_target,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .initiator_select_passive_target
-                .map(|callback| callback(device, nm, init_data, init_data_len, target))
-        })
-    }
+    property_from_c(property).name()
 }
 
 unsafe fn call_initiator_poll_target_impl(
@@ -374,191 +186,6 @@ unsafe fn call_initiator_poll_target_impl(
                     target,
                 )
             })
-        })
-    }
-}
-
-unsafe fn call_initiator_select_dep_target_impl(
-    device: *mut nfc_device,
-    ndm: nfc_dep_mode,
-    nbr: nfc_baud_rate,
-    initiator: *const nfc_dep_info,
-    target: *mut nfc_target,
-    timeout: c_int,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .initiator_select_dep_target
-                .map(|callback| callback(device, ndm, nbr, initiator, target, timeout))
-        })
-    }
-}
-
-unsafe fn call_initiator_deselect_target_impl(device: *mut nfc_device) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .initiator_deselect_target
-                .map(|callback| callback(device))
-        })
-    }
-}
-
-unsafe fn call_initiator_transceive_bytes_impl(
-    device: *mut nfc_device,
-    tx: *const u8,
-    tx_len: usize,
-    rx: *mut u8,
-    rx_len: usize,
-    timeout: c_int,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .initiator_transceive_bytes
-                .map(|callback| callback(device, tx, tx_len, rx, rx_len, timeout))
-        })
-    }
-}
-
-unsafe fn call_initiator_transceive_bits_impl(
-    device: *mut nfc_device,
-    tx: *const u8,
-    tx_bits_len: usize,
-    tx_parity: *const u8,
-    rx: *mut u8,
-    rx_parity: *mut u8,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .initiator_transceive_bits
-                .map(|callback| callback(device, tx, tx_bits_len, tx_parity, rx, rx_parity))
-        })
-    }
-}
-
-unsafe fn call_initiator_transceive_bytes_timed_impl(
-    device: *mut nfc_device,
-    tx: *const u8,
-    tx_len: usize,
-    rx: *mut u8,
-    rx_len: usize,
-    cycles: *mut u32,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .initiator_transceive_bytes_timed
-                .map(|callback| callback(device, tx, tx_len, rx, rx_len, cycles))
-        })
-    }
-}
-
-unsafe fn call_initiator_transceive_bits_timed_impl(
-    device: *mut nfc_device,
-    tx: *const u8,
-    tx_bits_len: usize,
-    tx_parity: *const u8,
-    rx: *mut u8,
-    rx_parity: *mut u8,
-    cycles: *mut u32,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .initiator_transceive_bits_timed
-                .map(|callback| callback(device, tx, tx_bits_len, tx_parity, rx, rx_parity, cycles))
-        })
-    }
-}
-
-unsafe fn call_initiator_target_is_present_impl(
-    device: *mut nfc_device,
-    target: *const nfc_target,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .initiator_target_is_present
-                .map(|callback| callback(device, target))
-        })
-    }
-}
-
-unsafe fn call_target_init_impl(
-    device: *mut nfc_device,
-    target: *mut nfc_target,
-    rx: *mut u8,
-    rx_len: usize,
-    timeout: c_int,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .target_init
-                .map(|callback| callback(device, target, rx, rx_len, timeout))
-        })
-    }
-}
-
-unsafe fn call_target_send_bytes_impl(
-    device: *mut nfc_device,
-    tx: *const u8,
-    tx_len: usize,
-    timeout: c_int,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .target_send_bytes
-                .map(|callback| callback(device, tx, tx_len, timeout))
-        })
-    }
-}
-
-unsafe fn call_target_receive_bytes_impl(
-    device: *mut nfc_device,
-    rx: *mut u8,
-    rx_len: usize,
-    timeout: c_int,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .target_receive_bytes
-                .map(|callback| callback(device, rx, rx_len, timeout))
-        })
-    }
-}
-
-unsafe fn call_target_send_bits_impl(
-    device: *mut nfc_device,
-    tx: *const u8,
-    tx_bits_len: usize,
-    tx_parity: *const u8,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .target_send_bits
-                .map(|callback| callback(device, tx, tx_bits_len, tx_parity))
-        })
-    }
-}
-
-unsafe fn call_target_receive_bits_impl(
-    device: *mut nfc_device,
-    rx: *mut u8,
-    rx_len: usize,
-    rx_parity: *mut u8,
-) -> c_int {
-    unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .target_receive_bits
-                .map(|callback| callback(device, rx, rx_len, rx_parity))
         })
     }
 }
@@ -618,162 +245,11 @@ unsafe fn call_idle_impl(device: *mut nfc_device) -> c_int {
     }
 }
 
-fn apply_property_sequence(device: *mut nfc_device, settings: &[PropertyBoolSetting]) -> c_int {
-    for setting in settings {
-        let res = unsafe { nfc_device_set_property_bool(device, setting.property, setting.value) };
-        if res < 0 {
-            return res;
-        }
-    }
-
-    NFC_SUCCESS
-}
-
-unsafe fn read_modulation_type(nm: *const nfc_modulation) -> nfc_modulation_type {
-    unsafe { ptr::addr_of!((*nm).nmt).read_unaligned() }
-}
-
-unsafe fn read_baud_rate(nm: *const nfc_modulation) -> nfc_baud_rate {
-    unsafe { ptr::addr_of!((*nm).nbr).read_unaligned() }
-}
-
-fn modulation_supported(supported: *const nfc_modulation_type, value: nfc_modulation_type) -> bool {
-    if supported.is_null() {
-        return false;
-    }
-
-    let mut index = 0usize;
-    loop {
-        let candidate = unsafe { supported.add(index).read() };
-        if candidate as c_int == 0 {
-            return false;
-        }
-        if candidate == value {
-            return true;
-        }
-        index += 1;
-    }
-}
-
-fn baud_rate_supported(supported: *const nfc_baud_rate, value: nfc_baud_rate) -> bool {
-    if supported.is_null() {
-        return false;
-    }
-
-    let mut index = 0usize;
-    loop {
-        let candidate = unsafe { supported.add(index).read() };
-        if candidate as c_int == 0 {
-            return false;
-        }
-        if candidate == value {
-            return true;
-        }
-        index += 1;
-    }
-}
-
-unsafe fn get_baud_rates_for_mode(
-    device: *mut nfc_device,
-    mode: nfc_mode,
-    modulation_type: nfc_modulation_type,
-    status: &mut c_int,
-) -> *const nfc_baud_rate {
-    let mut supported = ptr::null();
-    *status =
-        unsafe { get_supported_baud_rate_impl(device, mode, modulation_type, &mut supported) };
-    if *status < 0 {
-        return ptr::null();
-    }
-    supported
-}
-
-unsafe fn validate_modulation(
-    device: *mut nfc_device,
-    mode: nfc_mode,
-    nm: *const nfc_modulation,
-) -> c_int {
-    let mut supported_types = ptr::null();
-    let mut res = unsafe { get_supported_modulation_impl(device, mode, &mut supported_types) };
-    if res < 0 {
-        return res;
-    }
-
-    let modulation_type = unsafe { read_modulation_type(nm) };
-    if !modulation_supported(supported_types, modulation_type) {
-        log_general_debug("Modulation type not supported");
-        return NFC_EINVARG;
-    }
-
-    let supported_rates =
-        unsafe { get_baud_rates_for_mode(device, mode, modulation_type, &mut res) };
-    if res < 0 {
-        return res;
-    }
-
-    let baud_rate = unsafe { read_baud_rate(nm) };
-    if baud_rate_supported(supported_rates, baud_rate) {
-        return NFC_SUCCESS;
-    }
-
-    log_general_debug("Baud rate not supported");
-    NFC_EINVARG
-}
-
-fn default_initiator_data(nm: nfc_modulation) -> (*const u8, usize) {
-    match unsafe { ptr::addr_of!(nm.nmt).read_unaligned() } {
-        nfc_modulation_type::NMT_ISO14443B => {
-            static ISO14443B: [u8; 1] = [0x00];
-            (ISO14443B.as_ptr(), ISO14443B.len())
-        }
-        nfc_modulation_type::NMT_ISO14443BI => {
-            static ISO14443BI: [u8; 4] = [0x01, 0x0b, 0x3f, 0x80];
-            (ISO14443BI.as_ptr(), ISO14443BI.len())
-        }
-        nfc_modulation_type::NMT_FELICA => {
-            static FELICA: [u8; 5] = [0x00, 0xff, 0xff, 0x01, 0x00];
-            (FELICA.as_ptr(), FELICA.len())
-        }
-        _ => (ptr::null(), 0),
-    }
-}
-
+#[cfg(test)]
 unsafe fn copy_target_bytes(dst: *mut nfc_target, src: *const nfc_target) {
     unsafe {
         ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, size_of::<nfc_target>());
     }
-}
-
-fn targets_equal(left: *const nfc_target, right: *const nfc_target) -> bool {
-    let left_bytes = unsafe { slice::from_raw_parts(left as *const u8, size_of::<nfc_target>()) };
-    let right_bytes = unsafe { slice::from_raw_parts(right as *const u8, size_of::<nfc_target>()) };
-    left_bytes == right_bytes
-}
-
-fn target_already_seen(
-    targets: *const nfc_target,
-    count: usize,
-    candidate: *const nfc_target,
-) -> bool {
-    for index in 0..count {
-        if targets_equal(unsafe { targets.add(index) }, candidate) {
-            return true;
-        }
-    }
-
-    false
-}
-
-fn modulation_requires_single_attempt(nm: nfc_modulation) -> bool {
-    matches!(
-        unsafe { ptr::addr_of!(nm.nmt).read_unaligned() },
-        nfc_modulation_type::NMT_FELICA
-            | nfc_modulation_type::NMT_JEWEL
-            | nfc_modulation_type::NMT_BARCODE
-            | nfc_modulation_type::NMT_ISO14443BI
-            | nfc_modulation_type::NMT_ISO14443B2SR
-            | nfc_modulation_type::NMT_ISO14443B2CT
-    )
 }
 
 pub unsafe fn nfc_device_set_property_int(
@@ -787,7 +263,11 @@ pub unsafe fn nfc_device_set_property_int(
             property_name(property),
             if value != 0 { "True" } else { "False" }
         ));
-        unsafe { call_device_set_property_int_impl(device, property, value) }
+        let mut adapter = borrowed_device(device);
+        match adapter.set_property_int(property_from_c(property), value) {
+            Ok(()) => 0,
+            Err(error) => runtime_result_status(&error, true),
+        }
     })
 }
 
@@ -802,59 +282,31 @@ pub unsafe fn nfc_device_set_property_bool(
             property_name(property),
             if enable { "True" } else { "False" }
         ));
-        unsafe { call_device_set_property_bool_impl(device, property, enable) }
+        let mut adapter = borrowed_device(device);
+        match adapter.set_property_bool(property_from_c(property), enable) {
+            Ok(()) => 0,
+            Err(error) => runtime_result_status(&error, true),
+        }
     })
 }
 
 pub unsafe fn nfc_initiator_init(device: *mut nfc_device) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_init", NFC_ESOFT, || {
-        const INITIATOR_SETTINGS: [PropertyBoolSetting; 8] = [
-            PropertyBoolSetting {
-                property: nfc_property::NP_ACTIVATE_FIELD,
-                value: false,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_ACTIVATE_FIELD,
-                value: true,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_INFINITE_SELECT,
-                value: true,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_AUTO_ISO14443_4,
-                value: true,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_FORCE_ISO14443_A,
-                value: true,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_FORCE_SPEED_106,
-                value: true,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_ACCEPT_INVALID_FRAMES,
-                value: false,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_ACCEPT_MULTIPLE_FRAMES,
-                value: false,
-            },
-        ];
-
-        let res = apply_property_sequence(device, &INITIATOR_SETTINGS);
-        if res < 0 {
-            return res;
+        let mut adapter = borrowed_device(device);
+        match adapter.initiator_init() {
+            Ok(status) => status,
+            Err(error) => runtime_result_status(&error, true),
         }
-
-        unsafe { call_initiator_init_impl(device) }
     })
 }
 
 pub unsafe fn nfc_initiator_init_secure_element(device: *mut nfc_device) -> c_int {
-    ffi_catch_unwind_int("nfc_initiator_init_secure_element", NFC_ESOFT, || unsafe {
-        call_initiator_init_secure_element_impl(device)
+    ffi_catch_unwind_int("nfc_initiator_init_secure_element", NFC_ESOFT, || {
+        let mut adapter = borrowed_device(device);
+        match adapter.initiator_init_secure_element() {
+            Ok(status) => status,
+            Err(error) => runtime_result_status(&error, true),
+        }
     })
 }
 
@@ -869,50 +321,23 @@ pub unsafe fn nfc_initiator_select_passive_target(
         "nfc_initiator_select_passive_target",
         NFC_ESOFT,
         || unsafe {
-            let validation = validate_modulation(device, nfc_mode::N_INITIATOR, ptr::addr_of!(nm));
-            if validation != NFC_SUCCESS {
-                return validation;
+            let payload = match input_bytes(device, init_data, init_data_len) {
+                Ok(bytes) if bytes.is_empty() => None,
+                Ok(bytes) => Some(bytes),
+                Err(status) => return status,
+            };
+
+            let mut adapter = borrowed_device(device);
+            match adapter.select_passive_target(modulation_from_c(nm), payload) {
+                Ok(Some(runtime_target)) => {
+                    if !target.is_null() {
+                        write_target_to_c(&runtime_target, target);
+                    }
+                    1
+                }
+                Ok(None) => 0,
+                Err(error) => runtime_result_status(&error, true),
             }
-
-            if init_data_len == 0 {
-                let (default_data, default_len) = default_initiator_data(nm);
-                return call_initiator_select_passive_target_impl(
-                    device,
-                    nm,
-                    default_data,
-                    default_len,
-                    target,
-                );
-            }
-
-            if init_data.is_null() {
-                log_general_error("Failed to copy init data");
-                return NFC_EINVARG;
-            }
-
-            let max_abt = (init_data_len as usize).max(12);
-            let mut abt_init = vec![0u8; max_abt];
-            let mut cascaded_len = 0usize;
-
-            if read_modulation_type(ptr::addr_of!(nm)) == nfc_modulation_type::NMT_ISO14443A {
-                bridge_iso14443_cascade_uid(
-                    init_data,
-                    init_data_len,
-                    abt_init.as_mut_ptr(),
-                    &mut cascaded_len,
-                );
-            } else {
-                ptr::copy_nonoverlapping(init_data, abt_init.as_mut_ptr(), init_data_len as usize);
-                cascaded_len = init_data_len as usize;
-            }
-
-            call_initiator_select_passive_target_impl(
-                device,
-                nm,
-                abt_init.as_ptr(),
-                cascaded_len,
-                target,
-            )
         },
     )
 }
@@ -927,40 +352,21 @@ pub unsafe fn nfc_initiator_list_passive_targets(
         if targets_len == 0 {
             return 0;
         }
-
-        reset_device_last_error(device);
-        let guard = match InfiniteSelectGuard::set(device, false) {
-            Ok(guard) => guard,
-            Err(error) => return error,
-        };
-
-        let (init_data, init_data_len) = default_initiator_data(nm);
-        let mut target_count = 0usize;
-        let mut candidate = std::mem::zeroed::<nfc_target>();
-
-        while nfc_initiator_select_passive_target(
-            device,
-            nm,
-            init_data,
-            init_data_len,
-            ptr::addr_of_mut!(candidate),
-        ) > 0
-        {
-            if target_already_seen(targets, target_count, ptr::addr_of!(candidate)) {
-                break;
-            }
-
-            copy_target_bytes(targets.add(target_count), ptr::addr_of!(candidate));
-            target_count += 1;
-
-            if target_count >= targets_len as usize || modulation_requires_single_attempt(nm) {
-                break;
-            }
-
-            nfc_initiator_deselect_target(device);
+        if targets.is_null() {
+            set_device_last_error(device, NFC_EINVARG);
+            return NFC_EINVARG;
         }
 
-        guard.finish(target_count as c_int)
+        let mut adapter = borrowed_device(device);
+        match adapter.list_passive_targets(modulation_from_c(nm), targets_len as usize) {
+            Ok(runtime_targets) => {
+                for (index, runtime_target) in runtime_targets.iter().enumerate() {
+                    write_target_to_c(runtime_target, targets.add(index));
+                }
+                runtime_targets.len() as c_int
+            }
+            Err(error) => runtime_result_status(&error, true),
+        }
     })
 }
 
@@ -993,7 +399,11 @@ pub unsafe fn nfc_initiator_select_dep_target(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_select_dep_target", NFC_ESOFT, || unsafe {
-        call_initiator_select_dep_target_impl(device, ndm, nbr, initiator, target, timeout)
+        dispatch_driver_call(device, |driver| {
+            driver.initiator_select_dep_target.map(|callback| {
+                callback(device, ndm, nbr, initiator, target, timeout)
+            })
+        })
     })
 }
 
@@ -1006,38 +416,39 @@ pub unsafe fn nfc_initiator_poll_dep_target(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_poll_dep_target", NFC_ESOFT, || unsafe {
-        const PERIOD: c_int = 300;
-        let mut remaining_time = timeout;
-        let mut result = 0;
-        let guard = match InfiniteSelectGuard::set(device, true) {
-            Ok(guard) => guard,
-            Err(error) => return error,
+        let initiator_info = if initiator.is_null() {
+            None
+        } else {
+            Some(crate::runtime_bridge::dep_info_from_c(ptr::read_unaligned(
+                initiator,
+            )))
         };
-
-        while remaining_time > 0 {
-            let select_res =
-                nfc_initiator_select_dep_target(device, ndm, nbr, initiator, target, PERIOD);
-
-            if select_res < 0 && select_res != NFC_ETIMEOUT {
-                result = select_res;
-                break;
+        let mut adapter = borrowed_device(device);
+        match adapter.poll_dep_target(
+            dep_mode_from_c(ndm),
+            baud_rate_from_c(nbr),
+            initiator_info.as_ref(),
+            timeout,
+        ) {
+            Ok(Some(runtime_target)) => {
+                if !target.is_null() {
+                    write_target_to_c(&runtime_target, target);
+                }
+                1
             }
-
-            if select_res == 1 {
-                result = select_res;
-                break;
-            }
-
-            remaining_time -= PERIOD;
+            Ok(None) => 0,
+            Err(error) => runtime_result_status(&error, true),
         }
-
-        guard.finish(result)
     })
 }
 
 pub unsafe fn nfc_initiator_deselect_target(device: *mut nfc_device) -> c_int {
-    ffi_catch_unwind_int("nfc_initiator_deselect_target", NFC_ESOFT, || unsafe {
-        call_initiator_deselect_target_impl(device)
+    ffi_catch_unwind_int("nfc_initiator_deselect_target", NFC_ESOFT, || {
+        let mut adapter = borrowed_device(device);
+        match adapter.deselect_target() {
+            Ok(()) => 0,
+            Err(error) => runtime_result_status(&error, true),
+        }
     })
 }
 
@@ -1045,8 +456,14 @@ pub unsafe fn nfc_initiator_target_is_present(
     device: *mut nfc_device,
     target: *const nfc_target,
 ) -> c_int {
-    ffi_catch_unwind_int("nfc_initiator_target_is_present", NFC_ESOFT, || unsafe {
-        call_initiator_target_is_present_impl(device, target)
+    ffi_catch_unwind_int("nfc_initiator_target_is_present", NFC_ESOFT, || {
+        let runtime_target = (!target.is_null()).then(|| target_from_c(target));
+        let mut adapter = borrowed_device(device);
+        match adapter.target_is_present(runtime_target.as_ref()) {
+            Ok(true) => 1,
+            Ok(false) => 0,
+            Err(error) => runtime_result_status(&error, true),
+        }
     })
 }
 
@@ -1058,47 +475,24 @@ pub unsafe fn nfc_target_init(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_target_init", NFC_ESOFT, || unsafe {
-        const TARGET_SETTINGS: [PropertyBoolSetting; 8] = [
-            PropertyBoolSetting {
-                property: nfc_property::NP_ACCEPT_INVALID_FRAMES,
-                value: false,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_ACCEPT_MULTIPLE_FRAMES,
-                value: false,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_HANDLE_CRC,
-                value: true,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_HANDLE_PARITY,
-                value: true,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_AUTO_ISO14443_4,
-                value: true,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_EASY_FRAMING,
-                value: true,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_ACTIVATE_CRYPTO1,
-                value: false,
-            },
-            PropertyBoolSetting {
-                property: nfc_property::NP_ACTIVATE_FIELD,
-                value: false,
-            },
-        ];
-
-        let res = apply_property_sequence(device, &TARGET_SETTINGS);
-        if res < 0 {
-            return res;
+        if target.is_null() {
+            set_device_last_error(device, NFC_EINVARG);
+            return NFC_EINVARG;
         }
+        let mut runtime_target = target_from_c(target.cast_const());
+        let mut adapter = borrowed_device(device);
+        let rx = match output_bytes(device, rx, rx_len) {
+            Ok(bytes) => bytes,
+            Err(status) => return status,
+        };
 
-        call_target_init_impl(device, target, rx, rx_len, timeout)
+        match adapter.target_init(&mut runtime_target, rx, timeout) {
+            Ok(count) => {
+                write_target_to_c(&runtime_target, target);
+                count as c_int
+            }
+            Err(error) => runtime_result_status(&error, true),
+        }
     })
 }
 
@@ -1111,7 +505,19 @@ pub unsafe fn nfc_initiator_transceive_bytes(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_transceive_bytes", NFC_ESOFT, || unsafe {
-        call_initiator_transceive_bytes_impl(device, tx, tx_len, rx, rx_len, timeout)
+        let tx = match input_bytes(device, tx, tx_len) {
+            Ok(bytes) => bytes,
+            Err(status) => return status,
+        };
+        let rx = match output_bytes(device, rx, rx_len) {
+            Ok(bytes) => bytes,
+            Err(status) => return status,
+        };
+        let mut adapter = borrowed_device(device);
+        match adapter.transceive_bytes(tx, rx, timeout) {
+            Ok(count) => count as c_int,
+            Err(error) => runtime_result_status(&error, true),
+        }
     })
 }
 
@@ -1125,8 +531,37 @@ pub unsafe fn nfc_initiator_transceive_bits(
     rx_parity: *mut u8,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_transceive_bits", NFC_ESOFT, || unsafe {
-        let _ = rx_len;
-        call_initiator_transceive_bits_impl(device, tx, tx_bits_len, tx_parity, rx, rx_parity)
+        let tx_bytes_len = tx_bits_len.div_ceil(8);
+        if tx_bytes_len > 0 && tx.is_null() {
+            set_device_last_error(device, NFC_EINVARG);
+            return NFC_EINVARG;
+        }
+        if !is_rust_shim_device(device) {
+            return dispatch_driver_call(device, |driver| {
+                driver.initiator_transceive_bits.map(|callback| {
+                    callback(device, tx, tx_bits_len, tx_parity, rx, rx_parity)
+                })
+            });
+        }
+        let tx = match input_bytes(device, tx, tx_bytes_len) {
+            Ok(bytes) => bytes,
+            Err(status) => return status,
+        };
+        let rx = match output_bytes(device, rx, rx_len) {
+            Ok(bytes) => bytes,
+            Err(status) => return status,
+        };
+        let mut adapter = borrowed_device(device);
+        match adapter.transceive_bits(
+            tx,
+            tx_bits_len,
+            marker_bytes(tx_parity),
+            rx,
+            marker_bytes_mut(rx_parity),
+        ) {
+            Ok(count) => count as c_int,
+            Err(error) => runtime_result_status(&error, true),
+        }
     })
 }
 
@@ -1142,7 +577,24 @@ pub unsafe fn nfc_initiator_transceive_bytes_timed(
         "nfc_initiator_transceive_bytes_timed",
         NFC_ESOFT,
         || unsafe {
-            call_initiator_transceive_bytes_timed_impl(device, tx, tx_len, rx, rx_len, cycles)
+            let tx = match input_bytes(device, tx, tx_len) {
+                Ok(bytes) => bytes,
+                Err(status) => return status,
+            };
+            let rx = match output_bytes(device, rx, rx_len) {
+                Ok(bytes) => bytes,
+                Err(status) => return status,
+            };
+            let mut adapter = borrowed_device(device);
+            match adapter.transceive_bytes_timed(tx, rx) {
+                Ok((count, measured_cycles)) => {
+                    if let Some(cycles) = as_mut(cycles) {
+                        *cycles = measured_cycles;
+                    }
+                    count as c_int
+                }
+                Err(error) => runtime_result_status(&error, true),
+            }
         },
     )
 }
@@ -1161,16 +613,42 @@ pub unsafe fn nfc_initiator_transceive_bits_timed(
         "nfc_initiator_transceive_bits_timed",
         NFC_ESOFT,
         || unsafe {
-            let _ = rx_len;
-            call_initiator_transceive_bits_timed_impl(
-                device,
+            let tx_bytes_len = tx_bits_len.div_ceil(8);
+            if tx_bytes_len > 0 && tx.is_null() {
+                set_device_last_error(device, NFC_EINVARG);
+                return NFC_EINVARG;
+            }
+            if !is_rust_shim_device(device) {
+                return dispatch_driver_call(device, |driver| {
+                    driver.initiator_transceive_bits_timed.map(|callback| {
+                        callback(device, tx, tx_bits_len, tx_parity, rx, rx_parity, cycles)
+                    })
+                });
+            }
+            let tx = match input_bytes(device, tx, tx_bytes_len) {
+                Ok(bytes) => bytes,
+                Err(status) => return status,
+            };
+            let rx = match output_bytes(device, rx, rx_len) {
+                Ok(bytes) => bytes,
+                Err(status) => return status,
+            };
+            let mut adapter = borrowed_device(device);
+            match adapter.transceive_bits_timed(
                 tx,
                 tx_bits_len,
-                tx_parity,
+                marker_bytes(tx_parity),
                 rx,
-                rx_parity,
-                cycles,
-            )
+                marker_bytes_mut(rx_parity),
+            ) {
+                Ok((count, measured_cycles)) => {
+                    if let Some(cycles) = as_mut(cycles) {
+                        *cycles = measured_cycles;
+                    }
+                    count as c_int
+                }
+                Err(error) => runtime_result_status(&error, true),
+            }
         },
     )
 }
@@ -1182,7 +660,15 @@ pub unsafe fn nfc_target_send_bytes(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_target_send_bytes", NFC_ESOFT, || unsafe {
-        call_target_send_bytes_impl(device, tx, tx_len, timeout)
+        let tx = match input_bytes(device, tx, tx_len) {
+            Ok(bytes) => bytes,
+            Err(status) => return status,
+        };
+        let mut adapter = borrowed_device(device);
+        match adapter.target_send_bytes(tx, timeout) {
+            Ok(count) => count as c_int,
+            Err(error) => runtime_result_status(&error, true),
+        }
     })
 }
 
@@ -1193,7 +679,15 @@ pub unsafe fn nfc_target_receive_bytes(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_target_receive_bytes", NFC_ESOFT, || unsafe {
-        call_target_receive_bytes_impl(device, rx, rx_len, timeout)
+        let rx = match output_bytes(device, rx, rx_len) {
+            Ok(bytes) => bytes,
+            Err(status) => return status,
+        };
+        let mut adapter = borrowed_device(device);
+        match adapter.target_receive_bytes(rx, timeout) {
+            Ok(count) => count as c_int,
+            Err(error) => runtime_result_status(&error, true),
+        }
     })
 }
 
@@ -1204,7 +698,16 @@ pub unsafe fn nfc_target_send_bits(
     tx_parity: *const u8,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_target_send_bits", NFC_ESOFT, || unsafe {
-        call_target_send_bits_impl(device, tx, tx_bits_len, tx_parity)
+        let tx_bytes_len = tx_bits_len.div_ceil(8);
+        let tx = match input_bytes(device, tx, tx_bytes_len) {
+            Ok(bytes) => bytes,
+            Err(status) => return status,
+        };
+        let mut adapter = borrowed_device(device);
+        match adapter.target_send_bits(tx, tx_bits_len, marker_bytes(tx_parity)) {
+            Ok(count) => count as c_int,
+            Err(error) => runtime_result_status(&error, true),
+        }
     })
 }
 
@@ -1215,7 +718,15 @@ pub unsafe fn nfc_target_receive_bits(
     rx_parity: *mut u8,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_target_receive_bits", NFC_ESOFT, || unsafe {
-        call_target_receive_bits_impl(device, rx, rx_len, rx_parity)
+        let rx = match output_bytes(device, rx, rx_len) {
+            Ok(bytes) => bytes,
+            Err(status) => return status,
+        };
+        let mut adapter = borrowed_device(device);
+        match adapter.target_receive_bits(rx, marker_bytes_mut(rx_parity)) {
+            Ok(count) => count as c_int,
+            Err(error) => runtime_result_status(&error, true),
+        }
     })
 }
 
@@ -2321,6 +1832,36 @@ mod tests {
     }
 
     #[test]
+    fn select_dep_target_preserves_positive_driver_status() {
+        let _guard = initiator_test_guard();
+        reset_test_state();
+
+        with_test_state(|state| {
+            state.select_dep_responses = vec![4];
+        });
+
+        let device = unsafe { make_device(ptr::addr_of!(TEST_DRIVER_FULL)) };
+        let mut target = zeroed_target_with_marker(0);
+
+        assert_eq!(
+            unsafe {
+                nfc_initiator_select_dep_target(
+                    device,
+                    nfc_dep_mode::NDM_PASSIVE,
+                    nfc_baud_rate::NBR_106,
+                    ptr::null(),
+                    ptr::addr_of_mut!(target),
+                    123,
+                )
+            },
+            4
+        );
+        assert_eq!(snapshot_test_state().select_dep_calls, 1);
+
+        unsafe { destroy_device(device) };
+    }
+
+    #[test]
     fn transceive_wrappers_dispatch_and_preserve_hal_style_szrx_behavior() {
         let _guard = initiator_test_guard();
         reset_test_state();
@@ -2354,7 +1895,7 @@ mod tests {
                     7,
                     tx_parity.as_ptr(),
                     rx_bits.as_mut_ptr(),
-                    64,
+                    0,
                     rx_parity.as_mut_ptr(),
                 )
             },
@@ -2381,7 +1922,7 @@ mod tests {
                     5,
                     tx_parity.as_ptr(),
                     rx_bits.as_mut_ptr(),
-                    99,
+                    0,
                     rx_parity.as_mut_ptr(),
                     ptr::addr_of_mut!(cycles),
                 )

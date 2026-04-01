@@ -84,8 +84,8 @@ mod tests {
         // process to be terminated by a signal; treat either case as a
         // valid handling of the protected region. If the API returns
         // success, treat that as unexpected and exit non-zero.
-        let rc = unsafe { proximate::nfc_secure_memset(mem as *mut c_void, 0x5, len) };
-        if rc != proximate::NFC_SECURE_SUCCESS {
+        let rc = unsafe { proximate_sys::nfc_secure_memset(mem as *mut c_void, 0x5, len) };
+        if rc != proximate_sys::NFC_SECURE_SUCCESS {
             eprintln!("nfc_secure_memset returned error code: {}", rc);
             std::process::exit(0);
         }
@@ -256,8 +256,8 @@ mod tests_windows {
         }
 
         // Try to call secure memset on protected memory.
-        let rc = unsafe { proximate::nfc_secure_memset(mem as *mut c_void, 0x5, len) };
-        if rc != proximate::NFC_SECURE_SUCCESS {
+        let rc = unsafe { proximate_sys::nfc_secure_memset(mem as *mut c_void, 0x5, len) };
+        if rc != proximate_sys::NFC_SECURE_SUCCESS {
             eprintln!("nfc_secure_memset returned error code: {}", rc);
             std::process::exit(0);
         }

@@ -7,6 +7,7 @@
 
 #![allow(non_camel_case_types, non_snake_case)]
 
+use crate::c_api_impl::{LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING};
 use crate::ffi_support::{as_mut, copy_bytes_to_c_buffer};
 use crate::ffi_types::{
     nfc_baud_rate, nfc_felica_info, nfc_iso14443a_info, nfc_iso14443b_info, nfc_iso14443b2ct_info,
@@ -18,8 +19,8 @@ use crate::lifecycle::{
     nfc_driver, scan_type_enum,
 };
 use crate::{
-    LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING, emit_log_message, log_debug,
-    log_error, release_allocated_ptr, reset_last_error, set_last_error_message,
+    emit_log_message, log_debug, log_error, release_allocated_ptr, reset_last_error,
+    set_last_error_message,
 };
 use libc::{c_char, c_int, c_uchar, c_uint, c_void, size_t};
 use std::ffi::{CStr, CString};

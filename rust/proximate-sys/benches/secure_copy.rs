@@ -24,7 +24,7 @@ fn criterion_config_from_env() -> Criterion {
         .warm_up_time(Duration::from_secs(warmup_secs))
 }
 
-use proximate::{nfc_safe_memcpy, nfc_safe_memmove};
+use proximate_sys::{nfc_safe_memcpy, nfc_safe_memmove};
 
 fn bench_secure_copy(c: &mut Criterion) {
     let mut group = c.benchmark_group("nfc_secure_copy");

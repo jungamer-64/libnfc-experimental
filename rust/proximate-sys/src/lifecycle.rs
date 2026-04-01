@@ -13,34 +13,37 @@
 // Copyright (C) 2020      Adam Laurie
 // See AUTHORS file for a more comprehensive list of contributors.
 
-use crate::ffi_support::{
-    as_mut, bounded_strlen, copy_bytes_to_c_buffer, copy_c_string_to_c_buffer,
-    fixed_c_buffer_to_string,
-};
+use crate::c_api_impl::{LOG_PRIORITY_DEBUG, LOG_PRIORITY_NONE, NFC_BUFSIZE_CONNSTRING};
+use crate::ffi_support::{as_mut, bounded_strlen, fixed_c_buffer_to_string};
 use crate::ffi_types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_mode, nfc_modulation, nfc_modulation_type,
     nfc_property, nfc_target,
 };
+use crate::runtime_bridge::write_context_to_c;
 use crate::{
-    LOG_PRIORITY_DEBUG, LOG_PRIORITY_NONE, NFC_BUFSIZE_CONNSTRING, ffi_catch_unwind_ptr,
-    ffi_catch_unwind_void, log_error, log_message, release_allocated_ptr, reset_last_error,
-    set_last_error_message,
+    emit_log_message, ffi_catch_unwind_ptr, ffi_catch_unwind_void, log_error, log_message,
+    release_allocated_ptr, reset_last_error, set_last_error_message,
 };
 use libc::{c_char, c_int, c_uint, c_void};
+use proximate::rust_api as rt;
+use std::ffi::CString;
 use std::mem::size_of;
 use std::ptr;
 
+/// cbindgen:no-export
 pub const DEVICE_NAME_LENGTH: usize = 256;
+/// cbindgen:no-export
 pub const MAX_USER_DEFINED_DEVICES: usize = 4;
+/// cbindgen:no-export
 pub const NFC_DRIVER_NAME_MAX: usize = 64;
+#[cfg(test)]
 const DEFAULT_CONTEXT_LOG_LEVEL: u32 = if cfg!(libnfc_debug) { 3 } else { 1 };
 const USER_DEFINED_DEFAULT_DEVICE_NAME: &[u8] = b"user defined default device";
 const USER_DEFINED_DEVICE_NAME: &[u8] = b"user defined device";
-const ENV_LIBNFC_DEFAULT_DEVICE: &[u8] = b"LIBNFC_DEFAULT_DEVICE\0";
-const ENV_LIBNFC_DEVICE: &[u8] = b"LIBNFC_DEVICE\0";
-const ENV_LIBNFC_AUTO_SCAN: &[u8] = b"LIBNFC_AUTO_SCAN\0";
-const ENV_LIBNFC_INTRUSIVE_SCAN: &[u8] = b"LIBNFC_INTRUSIVE_SCAN\0";
-const ENV_LIBNFC_LOG_LEVEL: &[u8] = b"LIBNFC_LOG_LEVEL\0";
+const LOG_GROUP_CONFIG: u8 = 2;
+const LOG_PRIORITY_ERROR: u8 = 1;
+const LOG_PRIORITY_INFO: u8 = 2;
+const LOG_CATEGORY_CONFIG: *const c_char = b"libnfc.config\0" as *const u8 as *const c_char;
 
 #[allow(non_camel_case_types)]
 pub type nfc_connstring = [c_char; NFC_BUFSIZE_CONNSTRING];
@@ -285,12 +288,7 @@ unsafe fn nfc_context_alloc_defaults_impl() -> *mut nfc_context {
     if context.is_null() {
         return ptr::null_mut();
     }
-
-    unsafe {
-        (*context).allow_autoscan = true;
-        (*context).allow_intrusive_scan = false;
-        (*context).log_level = DEFAULT_CONTEXT_LOG_LEVEL;
-    }
+    write_context_to_c(&proximate::Context::default(), context);
 
     reset_last_error();
     context
@@ -328,61 +326,41 @@ unsafe fn nfc_device_new_impl(
     device
 }
 
-fn set_copy_error(message: &str) {
-    log_error(message);
-    set_last_error_message(message.to_string());
+fn log_config_diagnostic(priority: u8, message: &str) {
+    if let Ok(c_msg) = CString::new(message) {
+        unsafe {
+            emit_log_message(
+                LOG_GROUP_CONFIG,
+                LOG_CATEGORY_CONFIG,
+                priority,
+                c_msg.as_ptr(),
+            )
+        };
+    }
 }
 
-unsafe fn apply_user_defined_device(
-    context: *mut nfc_context,
-    device_name: &[u8],
-    connstring: *const c_char,
-    count: c_uint,
-    connstring_error_message: &str,
-) -> bool {
-    let Some(context) = (unsafe { as_mut(context) }) else {
-        return false;
-    };
-    let device = &mut context.user_defined_devices[0];
-
-    if !unsafe { copy_bytes_to_c_buffer(device.name.as_mut_ptr(), DEVICE_NAME_LENGTH, device_name) }
-    {
-        set_copy_error("Failed to copy device name");
-        return false;
-    }
-
-    if !unsafe {
-        copy_c_string_to_c_buffer(
-            device.connstring.as_mut_ptr(),
-            NFC_BUFSIZE_CONNSTRING,
-            connstring,
-        )
-    } {
-        set_copy_error(connstring_error_message);
-        return false;
-    }
-
-    context.user_defined_device_count = count;
-    true
-}
-
-fn apply_boolean_string(value: *const c_char, target: &mut bool) {
-    if value.is_null() {
-        return;
-    }
-
-    let bytes = unsafe { std::ffi::CStr::from_ptr(value).to_bytes() };
-    if !(*target) {
-        if matches!(bytes, b"yes" | b"true" | b"1") {
-            *target = true;
+fn emit_context_load_diagnostics(diagnostics: &[rt::ContextDiagnostic]) {
+    for diagnostic in diagnostics {
+        match diagnostic.category {
+            rt::ContextDiagnosticCategory::General => match diagnostic.priority {
+                rt::ContextDiagnosticPriority::Error => log_error(&diagnostic.message),
+                rt::ContextDiagnosticPriority::Info => {
+                    log_message(LOG_PRIORITY_INFO, &diagnostic.message)
+                }
+                rt::ContextDiagnosticPriority::Debug => {
+                    log_message(LOG_PRIORITY_DEBUG, &diagnostic.message)
+                }
+            },
+            rt::ContextDiagnosticCategory::Config => {
+                let priority = match diagnostic.priority {
+                    rt::ContextDiagnosticPriority::Error => LOG_PRIORITY_ERROR,
+                    rt::ContextDiagnosticPriority::Info => LOG_PRIORITY_INFO,
+                    rt::ContextDiagnosticPriority::Debug => LOG_PRIORITY_DEBUG,
+                };
+                log_config_diagnostic(priority, &diagnostic.message);
+            }
         }
-    } else if matches!(bytes, b"no" | b"false" | b"0") {
-        *target = false;
     }
-}
-
-unsafe fn getenv(name: &[u8]) -> *mut c_char {
-    unsafe { libc::getenv(name.as_ptr() as *const c_char) }
 }
 
 fn log_context_state(context: &nfc_context) {
@@ -448,66 +426,25 @@ unsafe fn free_context_allocation(context: *mut nfc_context) {
 }
 
 unsafe fn nfc_context_new_impl() -> *mut nfc_context {
+    let loaded = match proximate::Context::load_with_diagnostics() {
+        Ok(outcome) => outcome,
+        Err(failure) => {
+            emit_context_load_diagnostics(&failure.diagnostics);
+            if let Some(message) = failure.last_error {
+                set_last_error_message(message);
+            }
+            return ptr::null_mut();
+        }
+    };
+
+    emit_context_load_diagnostics(&loaded.diagnostics);
+
     let context = unsafe { nfc_context_alloc_defaults_impl() };
     if context.is_null() {
         return ptr::null_mut();
     }
 
-    if cfg!(libnfc_envvars) {
-        let default_device = unsafe { getenv(ENV_LIBNFC_DEFAULT_DEVICE) };
-        if !default_device.is_null()
-            && !unsafe {
-                apply_user_defined_device(
-                    context,
-                    USER_DEFINED_DEFAULT_DEVICE_NAME,
-                    default_device,
-                    1,
-                    "Failed to copy LIBNFC_DEFAULT_DEVICE environment variable",
-                )
-            }
-        {
-            unsafe { free_context_allocation(context) };
-            return ptr::null_mut();
-        }
-    }
-
-    if cfg!(libnfc_conffiles) {
-        unsafe { crate::conf::load_context_config(context) };
-    }
-
-    if cfg!(libnfc_envvars) {
-        let selected_device = unsafe { getenv(ENV_LIBNFC_DEVICE) };
-        if !selected_device.is_null()
-            && !unsafe {
-                apply_user_defined_device(
-                    context,
-                    USER_DEFINED_DEVICE_NAME,
-                    selected_device,
-                    1,
-                    "Failed to copy LIBNFC_DEVICE environment variable",
-                )
-            }
-        {
-            unsafe { free_context_allocation(context) };
-            return ptr::null_mut();
-        }
-
-        if let Some(context_ref) = unsafe { as_mut(context) } {
-            apply_boolean_string(
-                unsafe { getenv(ENV_LIBNFC_AUTO_SCAN) } as *const c_char,
-                &mut context_ref.allow_autoscan,
-            );
-            apply_boolean_string(
-                unsafe { getenv(ENV_LIBNFC_INTRUSIVE_SCAN) } as *const c_char,
-                &mut context_ref.allow_intrusive_scan,
-            );
-
-            let env_log_level = unsafe { getenv(ENV_LIBNFC_LOG_LEVEL) };
-            if !env_log_level.is_null() {
-                context_ref.log_level = unsafe { libc::atoi(env_log_level) as u32 };
-            }
-        }
-    }
+    write_context_to_c(&loaded.context, context);
 
     unsafe {
         bridge_context_log_init(context);
@@ -616,7 +553,7 @@ pub unsafe fn nfc_rs_context_log_exit() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::conf::set_test_conf_root;
+    use proximate::rust_api::set_test_conf_root;
     use std::ffi::{CStr, CString, OsString};
     use std::fs;
     use std::path::PathBuf;
@@ -1071,7 +1008,7 @@ mod tests {
         let device = unsafe { nfc_device_new(ptr::null(), ptr::null()) };
         assert!(device.is_null());
 
-        let err = crate::nfc_get_last_error();
+        let err = crate::c_api_impl::nfc_get_last_error();
         assert!(!err.is_null());
         let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
         assert!(recovered.contains("NULL connstring in nfc_device_new"));
@@ -1083,7 +1020,7 @@ mod tests {
         let ptr = ffi_catch_unwind_ptr::<nfc_context, _>("lifecycle_ptr_panic", || panic!("boom"));
         assert!(ptr.is_null());
 
-        let err = crate::nfc_get_last_error();
+        let err = crate::c_api_impl::nfc_get_last_error();
         assert!(!err.is_null());
         let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
         assert!(recovered.contains("panic in lifecycle_ptr_panic"));
@@ -1094,7 +1031,7 @@ mod tests {
         reset_last_error();
         ffi_catch_unwind_void("lifecycle_void_panic", || panic!("boom"));
 
-        let err = crate::nfc_get_last_error();
+        let err = crate::c_api_impl::nfc_get_last_error();
         assert!(!err.is_null());
         let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
         assert!(recovered.contains("panic in lifecycle_void_panic"));

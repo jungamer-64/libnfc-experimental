@@ -7,6 +7,9 @@
 
 #![allow(non_camel_case_types)]
 
+use crate::c_api_impl::{
+    LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING, connstring_decode,
+};
 use crate::ffi_support::{
     as_mut, as_ref, copy_bytes_to_c_buffer, copy_bytes_with_truncation, fixed_c_buffer_to_string,
 };
@@ -21,10 +24,7 @@ use crate::lifecycle::{
 #[cfg(not(test))]
 use crate::usbbus::usb_device_get_bulk_endpoints;
 use crate::usbbus::{usb_bulk_endpoints, usb_dev_handle, usb_device, usb_device_list};
-use crate::{
-    LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING, connstring_decode,
-    emit_log_message, release_allocated_ptr, reset_last_error, set_last_error_message,
-};
+use crate::{emit_log_message, release_allocated_ptr, reset_last_error, set_last_error_message};
 use libc::{c_char, c_int, c_uchar, c_void};
 #[cfg(test)]
 use std::collections::VecDeque;
@@ -855,11 +855,12 @@ unsafe extern "C" fn pn53x_usb_close(device: *mut nfc_device) {
 
     let _ = unsafe { pn53x_idle_bridge(device) };
 
-    let (handle, interface_number) = if let Some(data) = driver_data(device) {
-        (data.pudh, data.interface_number)
-    } else {
-        (ptr::null_mut(), 0)
-    };
+    let (handle, interface_number): (*mut usb_dev_handle, c_int) =
+        if let Some(data) = driver_data(device) {
+            (data.pudh, data.interface_number)
+        } else {
+            (ptr::null_mut(), 0)
+        };
 
     if !handle.is_null() {
         let release_rc = unsafe { usb_release_interface_bridge(handle, interface_number) };
@@ -2297,7 +2298,7 @@ unsafe fn usb_get_string_simple_bridge(
         2 => handle.product_string.as_deref(),
         _ => None,
     };
-    let Some(value) = value else {
+    let Some(value): Option<&str> = value else {
         return 0;
     };
     if unsafe { copy_bytes_to_c_buffer(buffer, buffer_size, value.as_bytes()) } {

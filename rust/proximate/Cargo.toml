@@ -8,34 +8,12 @@ build = "build.rs"
 name = "proximate"
 
 [dependencies]
-libc = "0.2"
 nusb = { version = "0.2", optional = true }
 
 [features]
-default = ["secure", "lifecycle", "orchestration", "usb_helper"]
-secure = []
+default = ["lifecycle", "orchestration", "usb_helper"]
 lifecycle = []
 orchestration = ["lifecycle"]
 usb_helper = ["dep:nusb"]
-# Internal support feature used by the facade crate when it exposes a C ABI.
-c_ffi_support = []
-# Debug helpers for nfc-secure (buffers overlap checks, suspicious size warnings)
-nfc_secure_debug = ["secure"]
 # Feature used by the nightly ASan job to compile sanitizer-only tests cleanly.
 asan_tests = []
-# Opt-in test feature to disable the panic-catching wrapper so tests can
-# observe panics directly. Enable in test runs only: e.g.
-# `cargo test --features test_no_catch`
-test_no_catch = []
-# Feature to expose test-only helpers to integration tests. Enable
-# during `cargo test` when integration tests need access to internal
-# test helpers, e.g. `cargo test --features "secure test_helpers"`.
-test_helpers = []
-
-[dev-dependencies]
-criterion = "0.8"
-
-[[test]]
-name = "mprotect"
-path = "tests/mprotect.rs"
-required-features = ["secure"]

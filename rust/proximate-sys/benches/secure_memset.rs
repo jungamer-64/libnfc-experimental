@@ -28,7 +28,7 @@ fn criterion_config_from_env() -> Criterion {
         .warm_up_time(Duration::from_secs(warmup_secs))
 }
 
-use proximate::nfc_secure_memset;
+use proximate_sys::nfc_secure_memset;
 
 fn bench_secure_memset(c: &mut Criterion) {
     let mut group = c.benchmark_group("nfc_secure_memset");

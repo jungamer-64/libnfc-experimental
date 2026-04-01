@@ -10,21 +10,30 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 libc = "0.2"
+nusb = { version = "0.2", optional = true }
 proximate = { path = "../proximate", default-features = false }
 
 [features]
 default = ["secure", "lifecycle", "orchestration", "usb_helper"]
-secure = ["proximate/secure"]
+secure = []
 lifecycle = ["proximate/lifecycle"]
-orchestration = ["lifecycle", "proximate/orchestration"]
-usb_helper = ["proximate/usb_helper"]
-c_ffi = ["proximate/c_ffi_support"]
-nfc_secure_debug = ["proximate/nfc_secure_debug"]
-asan_tests = ["proximate/asan_tests"]
-test_no_catch = ["proximate/test_no_catch"]
-test_helpers = ["proximate/test_helpers"]
+orchestration = ["lifecycle", "dep:nusb", "proximate/orchestration"]
+usb_helper = ["dep:nusb", "proximate/usb_helper"]
+c_ffi = ["secure", "lifecycle", "orchestration"]
+nfc_secure_debug = []
+asan_tests = []
+test_no_catch = []
+test_helpers = []
+
+[dev-dependencies]
+criterion = "0.8"
 
 [[test]]
 name = "cbindgen_diff"
 path = "tests/cbindgen_diff.rs"
+required-features = ["c_ffi"]
+
+[[test]]
+name = "mprotect"
+path = "tests/mprotect.rs"
 required-features = ["c_ffi"]

@@ -4,35 +4,24 @@
 //
 // Ported from libnfc/nfc.c.
 
-#[cfg(all(not(test), libnfc_driver_pn53x_usb))]
-use crate::drivers::pn53x_usb::builtin_driver_ptr as pn53x_usb_builtin_driver_ptr;
-#[cfg(all(not(test), libnfc_driver_pn71xx))]
-use crate::drivers::pn71xx::builtin_driver_ptr as pn71xx_builtin_driver_ptr;
-#[cfg(all(not(test), libnfc_driver_pn532_i2c))]
-use crate::drivers::pn532_i2c::builtin_driver_ptr as pn532_i2c_builtin_driver_ptr;
-#[cfg(all(not(test), libnfc_driver_pn532_spi))]
-use crate::drivers::pn532_spi::builtin_driver_ptr as pn532_spi_builtin_driver_ptr;
-#[cfg(all(not(test), libnfc_driver_pn532_uart))]
-use crate::drivers::pn532_uart::builtin_driver_ptr as pn532_uart_builtin_driver_ptr;
+use crate::c_api_impl::{
+    LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING,
+};
+use crate::ffi_support::{as_ref, bounded_strlen, c_string_ptr_to_string, copy_bytes_to_c_buffer};
 #[cfg(test)]
-use crate::ffi_support::copy_bytes_to_c_buffer;
-use crate::ffi_support::{
-    as_ref, bounded_strlen, c_string_ptr_to_string, copy_c_string_to_c_buffer,
-    fixed_c_buffer_to_string,
-};
-use crate::lifecycle::{
-    DEVICE_NAME_LENGTH, NFC_DRIVER_NAME_MAX, nfc_connstring, nfc_context, nfc_context_new,
-    nfc_device, nfc_driver, scan_type_enum,
-};
+use crate::ffi_support::{copy_c_string_to_c_buffer, fixed_c_buffer_to_string};
+#[cfg(test)]
+use crate::lifecycle::{DEVICE_NAME_LENGTH, NFC_DRIVER_NAME_MAX, scan_type_enum};
+use crate::lifecycle::{nfc_connstring, nfc_context, nfc_context_new, nfc_device, nfc_driver};
+use crate::runtime_bridge::{attach_rust_device, context_from_c, register_external_drivers};
 use crate::{
-    LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, MALLOC_LABEL,
-    NFC_BUFSIZE_CONNSTRING, emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr,
+    MALLOC_LABEL, emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr,
     ffi_catch_unwind_void,
 };
 use libc::{c_char, c_int, size_t};
+use proximate::rust_api as rt;
 use std::ffi::CString;
 use std::ptr;
-use std::slice;
 use std::sync::{Mutex, OnceLock};
 
 const NFC_SUCCESS: c_int = 0;
@@ -40,40 +29,35 @@ const NFC_EINVARG: c_int = -2;
 const NFC_ESOFT: c_int = -80;
 
 const LOG_PRIORITY_INFO: u8 = 2;
-const LOG_PRIORITY_WARN: u8 = LOG_PRIORITY_INFO;
 const GENERAL_LOG_CATEGORY: *const c_char = b"libnfc.general\0" as *const u8 as *const c_char;
-const USB_PREFIX: &[u8] = b"usb";
-const USB_SUFFIX: &[u8] = b"_usb";
+#[cfg(test)]
 const ENV_LIBNFC_LOG_LEVEL: &[u8] = b"LIBNFC_LOG_LEVEL\0";
+#[cfg(test)]
 const ENV_LIBNFC_LOG_LEVEL_NAME: &str = "LIBNFC_LOG_LEVEL";
 
 #[derive(Clone, Copy)]
-struct DriverHandle(*const nfc_driver);
+pub(crate) struct DriverHandle(pub(crate) *const nfc_driver);
 
 unsafe impl Send for DriverHandle {}
 
-static DRIVER_REGISTRY: OnceLock<Mutex<Vec<DriverHandle>>> = OnceLock::new();
+static DRIVER_REGISTRY: OnceLock<Mutex<rt::RegisteredDriverSet<DriverHandle>>> = OnceLock::new();
 
-fn driver_registry() -> &'static Mutex<Vec<DriverHandle>> {
-    DRIVER_REGISTRY.get_or_init(|| Mutex::new(Vec::new()))
+fn driver_registry() -> &'static Mutex<rt::RegisteredDriverSet<DriverHandle>> {
+    DRIVER_REGISTRY.get_or_init(|| Mutex::new(rt::RegisteredDriverSet::new()))
 }
 
-fn with_registry<R>(f: impl FnOnce(&mut Vec<DriverHandle>) -> R) -> R {
+fn with_registry<R>(f: impl FnOnce(&mut rt::RegisteredDriverSet<DriverHandle>) -> R) -> R {
     let mut registry = driver_registry()
         .lock()
         .expect("driver registry mutex should not be poisoned");
     f(&mut registry)
 }
 
-fn registry_snapshot() -> Vec<DriverHandle> {
-    with_registry(|registry| registry.clone())
+pub(crate) fn registry_snapshot() -> Vec<DriverHandle> {
+    with_registry(|registry| registry.snapshot())
 }
 
-fn registry_is_empty() -> bool {
-    with_registry(|registry| registry.is_empty())
-}
-
-fn clear_registry() {
+pub(crate) fn clear_registry() {
     with_registry(|registry| registry.clear());
 }
 
@@ -102,10 +86,7 @@ fn log_general_info(message: &str) {
     log_general_message(LOG_PRIORITY_INFO, message);
 }
 
-fn log_general_warn(message: &str) {
-    log_general_message(LOG_PRIORITY_WARN, message);
-}
-
+#[cfg(test)]
 fn string_contains_control_chars(value: *const c_char, length: usize) -> bool {
     if value.is_null() {
         return false;
@@ -121,26 +102,12 @@ fn string_contains_control_chars(value: *const c_char, length: usize) -> bool {
     false
 }
 
-fn string_is_numeric(value: *const c_char, length: usize) -> bool {
-    if value.is_null() || length == 0 {
-        return false;
-    }
-
-    for index in 0..length {
-        let byte = unsafe { *value.add(index) as u8 };
-        if unsafe { libc::isdigit(byte as c_int) } == 0 {
-            return false;
-        }
-    }
-
-    true
-}
-
 #[cfg(test)]
 unsafe fn write_bytes_to_char_buffer(dst: *mut c_char, dst_size: usize, src: &[u8]) -> bool {
     unsafe { copy_bytes_to_c_buffer(dst, dst_size, src) }
 }
 
+#[cfg(test)]
 unsafe fn copy_connstring_safely(source: *const c_char, destination: *mut nfc_connstring) -> bool {
     if source.is_null() || destination.is_null() {
         return false;
@@ -158,7 +125,8 @@ unsafe fn copy_connstring_safely(source: *const c_char, destination: *mut nfc_co
         return false;
     }
 
-    let Some(destination) = (unsafe { as_ref(destination.cast_const()) }) else {
+    let Some(destination): Option<&nfc_connstring> = (unsafe { as_ref(destination.cast_const()) })
+    else {
         return false;
     };
     unsafe {
@@ -170,245 +138,6 @@ unsafe fn copy_connstring_safely(source: *const c_char, destination: *mut nfc_co
     }
 }
 
-fn connstring_is_usb_request(ncs: &nfc_connstring) -> bool {
-    let bytes = unsafe { slice::from_raw_parts(ncs.as_ptr() as *const u8, USB_PREFIX.len()) };
-    bytes == USB_PREFIX
-}
-
-unsafe fn prepare_connstring(
-    context: *mut nfc_context,
-    connstring: *const c_char,
-    destination: *mut nfc_connstring,
-) -> bool {
-    if connstring.is_null() {
-        let mut discovered = [[0 as c_char; NFC_BUFSIZE_CONNSTRING]; 1];
-        if unsafe { nfc_list_devices_impl(context, discovered.as_mut_ptr(), 1) } == 0 {
-            return false;
-        }
-        return unsafe { copy_connstring_safely(discovered[0].as_ptr(), destination) };
-    }
-
-    unsafe { copy_connstring_safely(connstring, destination) }
-}
-
-fn driver_matches_connstring(
-    driver: &nfc_driver,
-    ncs: &nfc_connstring,
-    request_is_usb: bool,
-) -> bool {
-    if driver.name.is_null() {
-        return false;
-    }
-
-    let name_len = bounded_strlen(driver.name, NFC_DRIVER_NAME_MAX);
-
-    if unsafe { libc::strncmp(driver.name, ncs.as_ptr(), name_len) } == 0 {
-        return true;
-    }
-
-    if request_is_usb && name_len >= USB_SUFFIX.len() {
-        let name_bytes = unsafe { slice::from_raw_parts(driver.name as *const u8, name_len) };
-        return name_bytes.ends_with(USB_SUFFIX);
-    }
-
-    false
-}
-
-unsafe fn apply_user_defined_device_name(
-    context: *mut nfc_context,
-    ncs: *const c_char,
-    device: *mut nfc_device,
-) -> bool {
-    let Some(context) = (unsafe { as_ref(context) }) else {
-        return true;
-    };
-    let Some(device) = (unsafe { as_ref(device.cast_const()) }) else {
-        return true;
-    };
-
-    for configured in
-        context.user_defined_devices[..context.user_defined_device_count as usize].iter()
-    {
-        if unsafe { libc::strcmp(ncs, configured.connstring.as_ptr()) } != 0 {
-            continue;
-        }
-
-        let name_len = bounded_strlen(configured.name.as_ptr(), DEVICE_NAME_LENGTH);
-        if name_len >= DEVICE_NAME_LENGTH {
-            return false;
-        }
-
-        let dst = device.name.as_ptr().cast_mut();
-        unsafe {
-            if name_len > 0 {
-                ptr::copy_nonoverlapping(configured.name.as_ptr(), dst, name_len);
-            }
-            *dst.add(name_len) = 0;
-        }
-        break;
-    }
-
-    true
-}
-
-unsafe fn copy_connstring_entry(
-    connstrings: *mut nfc_connstring,
-    index: usize,
-    source: *const c_char,
-) -> bool {
-    unsafe { copy_connstring_safely(source, connstrings.add(index)) }
-}
-
-unsafe fn duplicate_log_level_env() -> (Option<CString>, bool) {
-    let env_log_level = unsafe { libc::getenv(ENV_LIBNFC_LOG_LEVEL.as_ptr() as *const c_char) };
-    if env_log_level.is_null() {
-        return (None, false);
-    }
-
-    let env_len = bounded_strlen(env_log_level, 256);
-    if env_len >= 256 {
-        log_general_warn("LIBNFC_LOG_LEVEL value is too long");
-        return (None, true);
-    }
-
-    if !string_is_numeric(env_log_level, env_len)
-        || string_contains_control_chars(env_log_level, env_len)
-    {
-        log_general_warn("Ignoring invalid LIBNFC_LOG_LEVEL value");
-        return (None, true);
-    }
-
-    let bytes = unsafe { slice::from_raw_parts(env_log_level as *const u8, env_len) };
-    (CString::new(bytes).ok(), true)
-}
-
-unsafe fn restore_log_level_env(old_value: Option<&CString>, had_env: bool) {
-    if let Some(value) = old_value {
-        unsafe { std::env::set_var(ENV_LIBNFC_LOG_LEVEL_NAME, value.to_string_lossy().as_ref()) };
-    } else if !had_env {
-        unsafe { std::env::remove_var(ENV_LIBNFC_LOG_LEVEL_NAME) };
-    }
-}
-
-unsafe fn optional_device_available(
-    context: *mut nfc_context,
-    device: &crate::lifecycle::nfc_user_defined_device,
-) -> bool {
-    let (old_env_log_level, had_env) = if cfg!(libnfc_envvars) {
-        unsafe { duplicate_log_level_env() }
-    } else {
-        (None, false)
-    };
-
-    if cfg!(libnfc_envvars) && (!had_env || old_env_log_level.is_some()) {
-        unsafe { std::env::set_var(ENV_LIBNFC_LOG_LEVEL_NAME, "0") };
-    }
-
-    let opened = unsafe { nfc_open_impl(context, device.connstring.as_ptr()) };
-
-    if cfg!(libnfc_envvars) {
-        unsafe { restore_log_level_env(old_env_log_level.as_ref(), had_env) };
-    }
-
-    if opened.is_null() {
-        return false;
-    }
-
-    unsafe { bridge_close_device(opened) };
-    log_general_debug(&format!(
-        "User device {} found",
-        fixed_c_buffer_to_string(&device.name)
-    ));
-    true
-}
-
-unsafe fn append_user_defined_devices(
-    context: *mut nfc_context,
-    connstrings: *mut nfc_connstring,
-    connstrings_len: usize,
-) -> usize {
-    let Some(context_ref) = (unsafe { as_ref(context) }) else {
-        return 0;
-    };
-    let mut device_found = 0usize;
-
-    for device in
-        context_ref.user_defined_devices[..context_ref.user_defined_device_count as usize].iter()
-    {
-        if device_found >= connstrings_len {
-            break;
-        }
-
-        if device.optional && !unsafe { optional_device_available(context, device) } {
-            continue;
-        }
-
-        if unsafe { copy_connstring_entry(connstrings, device_found, device.connstring.as_ptr()) } {
-            device_found += 1;
-        }
-    }
-
-    device_found
-}
-
-fn scan_allowed_for_driver(context: &nfc_context, driver: &nfc_driver) -> bool {
-    let _ = [
-        scan_type_enum::NOT_INTRUSIVE,
-        scan_type_enum::INTRUSIVE,
-        scan_type_enum::NOT_AVAILABLE,
-    ];
-    match driver.scan_type {
-        scan_type_enum::NOT_INTRUSIVE => true,
-        scan_type_enum::INTRUSIVE => context.allow_intrusive_scan,
-        scan_type_enum::NOT_AVAILABLE => false,
-    }
-}
-
-unsafe fn autoscan_devices(
-    context: *mut nfc_context,
-    connstrings: *mut nfc_connstring,
-    start_index: usize,
-    connstrings_len: usize,
-) -> usize {
-    let Some(context_ref) = (unsafe { as_ref(context) }) else {
-        return start_index;
-    };
-    let mut device_found = start_index;
-    let snapshot = registry_snapshot();
-
-    for handle in snapshot.iter().rev() {
-        if device_found >= connstrings_len {
-            break;
-        }
-
-        let driver = unsafe { &*handle.0 };
-        if driver.scan.is_none() || !scan_allowed_for_driver(context_ref, driver) {
-            continue;
-        }
-
-        let remaining = connstrings_len - device_found;
-        let newly_found = unsafe {
-            driver.scan.expect("checked above")(
-                context as *const nfc_context,
-                connstrings.add(device_found),
-                remaining,
-            )
-        };
-
-        log_general_debug(&format!(
-            "{} device(s) found using {} driver",
-            newly_found,
-            c_string_ptr_to_string(driver.name, NFC_DRIVER_NAME_MAX)
-        ));
-
-        if newly_found > 0 {
-            device_found += newly_found;
-        }
-    }
-
-    device_found
-}
-
 unsafe fn push_driver(driver: *const nfc_driver) -> c_int {
     if driver.is_null() {
         log_general_debug("nfc_register_driver: NULL driver");
@@ -416,11 +145,9 @@ unsafe fn push_driver(driver: *const nfc_driver) -> c_int {
     }
 
     with_registry(|registry| {
-        if registry.try_reserve(1).is_err() {
+        if registry.register(DriverHandle(driver)).is_err() {
             return NFC_ESOFT;
         }
-
-        registry.push(DriverHandle(driver));
         NFC_SUCCESS
     })
 }
@@ -446,12 +173,12 @@ unsafe fn invoke_driver_close(device: *mut nfc_device) {
 }
 
 #[cfg(all(not(test), libnfc_external_bridges))]
-unsafe fn bridge_close_device(device: *mut nfc_device) {
+pub(crate) unsafe fn bridge_close_device(device: *mut nfc_device) {
     unsafe { nfc_close(device) };
 }
 
 #[cfg(any(test, not(libnfc_external_bridges)))]
-unsafe fn bridge_close_device(device: *mut nfc_device) {
+pub(crate) unsafe fn bridge_close_device(device: *mut nfc_device) {
     #[cfg(test)]
     unsafe {
         nfc_close(device);
@@ -484,94 +211,60 @@ unsafe extern "C" {
 unsafe extern "C" {
     static arygon_driver: nfc_driver;
 }
-fn builtin_driver_ptrs() -> Vec<*const nfc_driver> {
-    #[allow(unused_mut)]
-    let mut drivers = Vec::new();
-
-    #[cfg(all(not(test), libnfc_driver_pn71xx))]
-    drivers.push(pn71xx_builtin_driver_ptr());
-    #[cfg(all(not(test), libnfc_driver_pn53x_usb))]
-    drivers.push(pn53x_usb_builtin_driver_ptr());
+fn register_compiled_bridge_drivers(_registry: &mut rt::DriverRegistry) {
     #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pcsc))]
-    drivers.push(ptr::addr_of!(pcsc_driver));
+    _registry.register_driver(rt::wrap_driver_backend(Box::new(
+        crate::runtime_bridge::DriverAdapter::new(ptr::addr_of!(pcsc_driver)),
+    )));
     #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_acr122_pcsc))]
-    drivers.push(ptr::addr_of!(acr122_pcsc_driver));
+    _registry.register_driver(rt::wrap_driver_backend(Box::new(
+        crate::runtime_bridge::DriverAdapter::new(ptr::addr_of!(acr122_pcsc_driver)),
+    )));
     #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_acr122_usb))]
-    drivers.push(ptr::addr_of!(acr122_usb_driver));
+    _registry.register_driver(rt::wrap_driver_backend(Box::new(
+        crate::runtime_bridge::DriverAdapter::new(ptr::addr_of!(acr122_usb_driver)),
+    )));
     #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_acr122s))]
-    drivers.push(ptr::addr_of!(acr122s_driver));
+    _registry.register_driver(rt::wrap_driver_backend(Box::new(
+        crate::runtime_bridge::DriverAdapter::new(ptr::addr_of!(acr122s_driver)),
+    )));
     #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_arygon))]
-    drivers.push(ptr::addr_of!(arygon_driver));
-    #[cfg(all(not(test), libnfc_driver_pn532_uart))]
-    drivers.push(pn532_uart_builtin_driver_ptr());
-    #[cfg(all(not(test), libnfc_driver_pn532_spi))]
-    drivers.push(pn532_spi_builtin_driver_ptr());
-    #[cfg(all(not(test), libnfc_driver_pn532_i2c))]
-    drivers.push(pn532_i2c_builtin_driver_ptr());
-
-    drivers
+    _registry.register_driver(rt::wrap_driver_backend(Box::new(
+        crate::runtime_bridge::DriverAdapter::new(ptr::addr_of!(arygon_driver)),
+    )));
 }
 
-fn register_builtin_drivers_if_needed(driver_ptrs: &[*const nfc_driver]) {
-    if !registry_is_empty() {
-        return;
-    }
-
-    for &driver in driver_ptrs {
-        let _ = unsafe { push_driver(driver) };
-    }
+fn create_runtime_registry() -> rt::DriverRegistry {
+    let mut registry = rt::DriverRegistry::new();
+    registry.register_builtin_drivers();
+    register_compiled_bridge_drivers(&mut registry);
+    register_external_drivers(&mut registry, &registry_snapshot());
+    registry
 }
 
 unsafe fn nfc_open_impl(context: *mut nfc_context, connstring: *const c_char) -> *mut nfc_device {
-    let mut ncs = [0 as c_char; NFC_BUFSIZE_CONNSTRING];
-    if !unsafe { prepare_connstring(context, connstring, &mut ncs) } {
-        return ptr::null_mut();
+    let runtime_context = context_from_c(context.cast_const());
+    let registry = create_runtime_registry();
+    let requested = if connstring.is_null() {
+        None
+    } else {
+        let value = c_string_ptr_to_string(
+            connstring,
+            bounded_strlen(connstring, NFC_BUFSIZE_CONNSTRING),
+        );
+        match proximate::ConnectionString::new(value) {
+            Ok(connstring) => Some(connstring),
+            Err(_) => return ptr::null_mut(),
+        }
+    };
+
+    match registry.open(&runtime_context, requested.as_ref()) {
+        Ok(device) => attach_rust_device(device, context.cast_const()).unwrap_or(ptr::null_mut()),
+        Err(error) => {
+            log_general_debug(&format!("nfc_open failed: {:?}", error));
+            ptr::null_mut()
+        }
     }
-
-    let request_is_usb = connstring_is_usb_request(&ncs);
-    let requested = fixed_c_buffer_to_string(&ncs);
-    let snapshot = registry_snapshot();
-
-    for handle in snapshot.iter().rev() {
-        let driver = unsafe { &*handle.0 };
-        if !driver_matches_connstring(driver, &ncs, request_is_usb) {
-            continue;
-        }
-
-        let Some(open) = driver.open else {
-            continue;
-        };
-
-        let candidate = unsafe { open(context as *const nfc_context, ncs.as_ptr()) };
-        if candidate.is_null() {
-            if request_is_usb {
-                continue;
-            }
-
-            log_general_debug(&format!("Unable to open \"{}\".", requested));
-            return ptr::null_mut();
-        }
-
-        if !unsafe { apply_user_defined_device_name(context, ncs.as_ptr(), candidate) } {
-            log_general_error("Failed to copy device name");
-            unsafe { bridge_close_device(candidate) };
-            return ptr::null_mut();
-        }
-
-        let Some(candidate_ref) = (unsafe { as_ref(candidate) }) else {
-            unsafe { bridge_close_device(candidate) };
-            return ptr::null_mut();
-        };
-        log_general_debug(&format!(
-            "\"{}\" ({}) has been claimed.",
-            fixed_c_buffer_to_string(&candidate_ref.name),
-            fixed_c_buffer_to_string(&candidate_ref.connstring)
-        ));
-        return candidate;
-    }
-
-    log_general_debug(&format!("No driver available to handle \"{}\".", requested));
-    ptr::null_mut()
 }
 
 unsafe fn nfc_list_devices_impl(
@@ -582,34 +275,29 @@ unsafe fn nfc_list_devices_impl(
     if connstrings.is_null() || connstrings_len == 0 {
         return 0;
     }
-
-    let Some(context_ref) = (unsafe { as_ref(context) }) else {
+    let runtime_context = context_from_c(context.cast_const());
+    let registry = create_runtime_registry();
+    let Ok(outcome) = registry.list_devices_outcome(&runtime_context) else {
         return 0;
     };
-
-    let mut device_found = 0usize;
-
-    if cfg!(libnfc_conffiles) {
-        device_found =
-            unsafe { append_user_defined_devices(context, connstrings, connstrings_len) };
-        if device_found >= connstrings_len {
-            return device_found;
-        }
+    if outcome.warn_manual_selection {
+        log_general_info("Warning: user must specify device(s) manually when autoscan is disabled");
     }
 
-    if !context_ref.allow_autoscan {
-        if context_ref.user_defined_device_count == 0 {
-            log_general_info(
-                "Warning: user must specify device(s) manually when autoscan is disabled",
-            );
+    let mut written = 0usize;
+    for connstring in outcome.devices.into_iter().take(connstrings_len) {
+        let value = connstring.as_str();
+        let destination = unsafe { connstrings.add(written) };
+        if unsafe {
+            copy_bytes_to_c_buffer(destination.cast(), NFC_BUFSIZE_CONNSTRING, value.as_bytes())
+        } {
+            written += 1;
         }
-        return device_found;
     }
-
-    unsafe { autoscan_devices(context, connstrings, device_found, connstrings_len) }
+    written
 }
 
-unsafe fn nfc_init_impl(context: *mut *mut nfc_context, builtin_drivers: &[*const nfc_driver]) {
+unsafe fn nfc_init_impl(context: *mut *mut nfc_context) {
     if context.is_null() {
         log_general_error("nfc_init: NULL context pointer");
         return;
@@ -622,8 +310,6 @@ unsafe fn nfc_init_impl(context: *mut *mut nfc_context, builtin_drivers: &[*cons
             return;
         }
     }
-
-    register_builtin_drivers_if_needed(builtin_drivers);
 }
 
 pub unsafe fn nfc_register_driver(driver: *const nfc_driver) -> c_int {
@@ -670,10 +356,7 @@ pub unsafe fn nfc_list_devices(
 }
 
 pub unsafe fn nfc_init(context: *mut *mut nfc_context) {
-    ffi_catch_unwind_void("nfc_init", || unsafe {
-        let builtin_drivers = builtin_driver_ptrs();
-        nfc_init_impl(context, &builtin_drivers);
-    });
+    ffi_catch_unwind_void("nfc_init", || unsafe { nfc_init_impl(context) });
 }
 
 pub unsafe fn nfc_exit(context: *mut nfc_context) {
@@ -1138,16 +821,12 @@ mod tests {
         let _guard = core_test_guard();
         reset_core_test_world();
 
-        let builtins = [
-            ptr::addr_of!(TEST_DRIVER_ALPHA),
-            ptr::addr_of!(TEST_DRIVER_BETA_USB),
-        ];
         let mut context = ptr::null_mut();
 
         unsafe {
-            nfc_init_impl(&mut context, &builtins);
+            nfc_init_impl(&mut context);
             assert!(!context.is_null());
-            nfc_init_impl(&mut context, &builtins);
+            nfc_init_impl(&mut context);
             nfc_exit(context);
         }
 
@@ -1163,7 +842,6 @@ mod tests {
         let _guard = core_test_guard();
         reset_core_test_world();
 
-        let builtins = [ptr::addr_of!(TEST_DRIVER_ALPHA)];
         let mut context = ptr::null_mut();
 
         unsafe {
@@ -1171,7 +849,7 @@ mod tests {
                 nfc_register_driver(ptr::addr_of!(TEST_DRIVER_BETA_USB)),
                 NFC_SUCCESS
             );
-            nfc_init_impl(&mut context, &builtins);
+            nfc_init_impl(&mut context);
         }
 
         assert_eq!(registry_probe_order_names(), vec!["beta_usb".to_string()]);
@@ -1375,7 +1053,12 @@ mod tests {
         }
 
         let original = CString::new("7").unwrap();
-        unsafe { std::env::set_var(ENV_LIBNFC_LOG_LEVEL_NAME, original.to_string_lossy().as_ref()) };
+        unsafe {
+            std::env::set_var(
+                ENV_LIBNFC_LOG_LEVEL_NAME,
+                original.to_string_lossy().as_ref(),
+            )
+        };
 
         let mut connstrings = [[0 as c_char; NFC_BUFSIZE_CONNSTRING]; 2];
         let found =

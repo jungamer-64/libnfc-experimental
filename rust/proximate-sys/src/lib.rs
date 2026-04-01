@@ -1,30 +1,132 @@
-#[cfg(not(feature = "c_ffi"))]
-pub use proximate::{
-    BaudRate, ConnectionString, Context, ContextConfig, DecodedConnectionString, DepMode, Device,
-    Driver, DriverRegistry, Logger, Mode, Modulation, ModulationType, OpenedDevice, Property,
-    RustError, ScanType, SecureError, Target, UserDefinedDevice, build_connstring,
-    decode_connstring, parse_connstring,
-};
-#[cfg(all(feature = "secure", not(feature = "c_ffi")))]
-pub use proximate::{safe_memcpy, safe_memmove, secure_zero};
+#[cfg(any(feature = "orchestration", cbindgen))]
+/// cbindgen:ignore
+mod buses;
+/// cbindgen:ignore
+mod c_api_impl;
+#[cfg(any(feature = "lifecycle", cbindgen))]
+/// cbindgen:ignore
+mod compat;
+#[cfg(any(feature = "lifecycle", cbindgen))]
+/// cbindgen:ignore
+mod core;
+#[cfg(any(feature = "orchestration", cbindgen))]
+/// cbindgen:ignore
+mod drivers;
+/// cbindgen:ignore
+mod ffi_support;
+#[cfg(any(feature = "lifecycle", cbindgen))]
+mod ffi_types;
+#[cfg(any(feature = "orchestration", cbindgen))]
+/// cbindgen:ignore
+mod initiator;
+#[cfg(any(feature = "lifecycle", cbindgen))]
+mod lifecycle;
+#[cfg(any(feature = "lifecycle", feature = "orchestration", cbindgen))]
+/// cbindgen:ignore
+mod runtime_bridge;
+#[cfg(any(feature = "secure", cbindgen))]
+/// cbindgen:ignore
+mod secure_ffi;
+#[cfg(any(feature = "orchestration", feature = "usb_helper", cbindgen))]
+mod usbbus;
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
-pub use proximate::{
-    DEVICE_NAME_LENGTH, LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR,
-    MAX_USER_DEFINED_DEVICES, NFC_BUFSIZE_CONNSTRING, NFC_COMMON_ERROR, NFC_COMMON_INVALID,
-    NFC_COMMON_SUCCESS, NFC_DRIVER_NAME_MAX, NFC_SECURE_SUCCESS, nfc_barcode_info, nfc_baud_rate,
-    nfc_context, nfc_dep_info, nfc_dep_mode, nfc_device, nfc_driver, nfc_felica_info,
+pub use c_api_impl::{
+    LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING,
+    NFC_COMMON_ERROR, NFC_COMMON_INVALID, NFC_COMMON_SUCCESS,
+};
+#[cfg(any(feature = "c_ffi", cbindgen))]
+pub use ffi_types::{
+    nfc_barcode_info, nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_felica_info,
     nfc_iso14443a_info, nfc_iso14443b_info, nfc_iso14443b2ct_info, nfc_iso14443b2sr_info,
     nfc_iso14443bi_info, nfc_iso14443biclass_info, nfc_jewel_info, nfc_mode, nfc_modulation,
-    nfc_modulation_type, nfc_property, nfc_target, nfc_target_info, nfc_user_defined_device,
-    scan_type_enum,
+    nfc_modulation_type, nfc_property, nfc_target, nfc_target_info,
 };
-
-#[cfg(all(feature = "usb_helper", any(feature = "c_ffi", cbindgen)))]
-pub use proximate::{
+#[cfg(any(feature = "c_ffi", cbindgen))]
+pub use lifecycle::{
+    DEVICE_NAME_LENGTH, MAX_USER_DEFINED_DEVICES, NFC_DRIVER_NAME_MAX, nfc_context, nfc_device,
+    nfc_driver, nfc_user_defined_device, scan_type_enum,
+};
+#[cfg(any(all(feature = "secure", feature = "c_ffi"), cbindgen))]
+pub use secure_ffi::{
+    NFC_SECURE_ERROR_INVALID, NFC_SECURE_ERROR_OVERFLOW, NFC_SECURE_ERROR_RANGE,
+    NFC_SECURE_ERROR_ZERO_SIZE, NFC_SECURE_SUCCESS,
+};
+#[cfg(any(all(feature = "usb_helper", feature = "c_ffi"), cbindgen))]
+pub use usbbus::{
     usb_bulk_endpoints, usb_dev_handle, usb_device, usb_device_list, usb_endpoint_descriptor,
     usb_interface_descriptor,
 };
+
+pub(crate) use c_api_impl::{
+    LOG_PRIORITY_NONE, MALLOC_LABEL, emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr,
+    ffi_catch_unwind_void, log_debug, log_error, log_message, release_allocated_ptr,
+    reset_last_error, set_last_error_message,
+};
+#[cfg(test)]
+pub(crate) use c_api_impl::{test_clear_last_log, test_get_last_log, test_get_logs};
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+/// cbindgen:ignore
+mod proximate {
+    #[cfg(any(feature = "orchestration", cbindgen))]
+    pub use crate::buses::i2c::{i2c_close, i2c_list_ports, i2c_open, i2c_read, i2c_write};
+    #[cfg(any(feature = "orchestration", cbindgen))]
+    pub use crate::buses::spi::{
+        spi_close, spi_get_speed, spi_list_ports, spi_open, spi_receive, spi_send,
+        spi_send_receive, spi_set_mode, spi_set_speed,
+    };
+    #[cfg(any(feature = "orchestration", cbindgen))]
+    pub use crate::buses::uart::{
+        uart_close, uart_flush_input, uart_get_speed, uart_list_ports, uart_open, uart_receive,
+        uart_send, uart_set_speed,
+    };
+    pub use crate::c_api_impl::connstring_decode;
+    pub use crate::c_api_impl::{
+        nfc_build_connstring, nfc_clear_last_error, nfc_get_last_error, nfc_parse_connstring,
+        nfc_rs_free, nfc_set_last_error,
+    };
+    #[cfg(any(feature = "lifecycle", cbindgen))]
+    pub use crate::compat::{
+        nfc_close, nfc_free, nfc_version, str_nfc_baud_rate, str_nfc_modulation_type,
+        str_nfc_target,
+    };
+    #[cfg(any(feature = "orchestration", cbindgen))]
+    pub use crate::core::{nfc_exit, nfc_init, nfc_list_devices, nfc_open, nfc_register_driver};
+    #[cfg(any(feature = "orchestration", cbindgen))]
+    pub use crate::initiator::{
+        nfc_abort_command, nfc_device_get_connstring, nfc_device_get_information_about,
+        nfc_device_get_last_error, nfc_device_get_name, nfc_device_get_supported_baud_rate,
+        nfc_device_get_supported_baud_rate_target_mode, nfc_device_get_supported_modulation,
+        nfc_device_set_property_bool, nfc_device_set_property_int, nfc_idle,
+        nfc_initiator_deselect_target, nfc_initiator_init, nfc_initiator_init_secure_element,
+        nfc_initiator_list_passive_targets, nfc_initiator_poll_dep_target,
+        nfc_initiator_poll_target, nfc_initiator_select_dep_target,
+        nfc_initiator_select_passive_target, nfc_initiator_target_is_present,
+        nfc_initiator_transceive_bits, nfc_initiator_transceive_bits_timed,
+        nfc_initiator_transceive_bytes, nfc_initiator_transceive_bytes_timed, nfc_perror,
+        nfc_strerror, nfc_strerror_r, nfc_target_init, nfc_target_receive_bits,
+        nfc_target_receive_bytes, nfc_target_send_bits, nfc_target_send_bytes,
+    };
+    #[cfg(any(feature = "lifecycle", cbindgen))]
+    pub use crate::lifecycle::{
+        nfc_connstring, nfc_context_alloc_defaults, nfc_context_free, nfc_context_new, nfc_device,
+        nfc_device_free, nfc_device_new,
+    };
+    #[cfg(any(feature = "secure", cbindgen))]
+    pub use crate::secure_ffi::{
+        nfc_ensure_null_terminated, nfc_is_null_terminated, nfc_safe_memcpy, nfc_safe_memmove,
+        nfc_safe_strlen, nfc_secure_memset, nfc_secure_strerror, nfc_secure_zero,
+    };
+    #[cfg(any(feature = "orchestration", feature = "usb_helper", cbindgen))]
+    pub use crate::usbbus::{
+        usb_bulk_read, usb_bulk_write, usb_claim_interface, usb_close,
+        usb_device_get_bulk_endpoints, usb_error_is_access, usb_error_is_timeout,
+        usb_free_device_list, usb_get_bus_device_strings, usb_get_device_list,
+        usb_get_string_simple, usb_open, usb_prepare, usb_release_interface, usb_reset,
+        usb_set_altinterface, usb_set_configuration, usb_strerror,
+    };
+}
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
 #[unsafe(no_mangle)]

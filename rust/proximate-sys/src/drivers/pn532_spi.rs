@@ -11,6 +11,7 @@ use crate::buses::spi::{
     spi_send_receive, spi_set_mode, spi_set_speed,
 };
 use crate::buses::{claimed_spi_port, invalid_spi_port};
+use crate::c_api_impl::{NFC_BUFSIZE_CONNSTRING, connstring_decode};
 use crate::drivers::pn53x_native::{
     NFC_EIO, NFC_EOPABORTED, NFC_ETIMEOUT, NFC_SUCCESS, PN532_BUFFER_LEN, PN532_TIMER_CORRECTION,
     chip_data, free_decode_param, pn53x_ack_frame_bytes, pn53x_build_frame_bridge,
@@ -31,16 +32,15 @@ use crate::drivers::pn53x_native::{
 };
 #[cfg(test)]
 use crate::drivers::pn53x_native::{
+    test_lock as test_lock_native,
     test_queue_check_communication_result as test_queue_check_communication_result_native,
     test_reset as test_reset_native, test_snapshot as test_snapshot_native,
-    test_lock as test_lock_native,
 };
 use crate::ffi_support::{as_mut, copy_bytes_to_c_buffer};
 use crate::lifecycle::{
     DEVICE_NAME_LENGTH, nfc_connstring, nfc_context, nfc_device, nfc_device_free, nfc_device_new,
     nfc_driver, scan_type_enum,
 };
-use crate::{NFC_BUFSIZE_CONNSTRING, connstring_decode};
 use libc::{c_char, c_int, c_void};
 use std::ffi::CString;
 use std::ptr;
@@ -736,7 +736,7 @@ pub(crate) use crate::buses::spi::{
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lifecycle::nfc_context;
+    use crate::lifecycle::{nfc_context, nfc_context_free, nfc_context_new};
 
     fn bit_reverse(byte: u8) -> u8 {
         let mut value = byte;
@@ -751,7 +751,7 @@ mod tests {
     }
 
     fn context() -> *mut nfc_context {
-        unsafe { crate::nfc_context_new() }
+        unsafe { nfc_context_new() }
     }
 
     #[test]
@@ -804,6 +804,6 @@ mod tests {
         let native = test_snapshot_native();
         assert_eq!(native.data_new_calls, 1);
         assert_eq!(native.data_free_calls, 1);
-        unsafe { crate::nfc_context_free(ctx) };
+        unsafe { nfc_context_free(ctx) };
     }
 }
