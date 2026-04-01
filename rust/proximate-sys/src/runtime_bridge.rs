@@ -2644,9 +2644,7 @@ mod tests {
                 Some(current) => {
                     *current = (*current & !symbol_mask) | (value & symbol_mask);
                 }
-                None => self
-                    .registers
-                    .push((register, value & symbol_mask)),
+                None => self.registers.push((register, value & symbol_mask)),
             }
             Ok(())
         }
@@ -2773,7 +2771,9 @@ mod tests {
             1
         );
         assert_eq!(
-            unsafe { crate::initiator::nfc_target_send_bits(raw, tx.as_ptr(), 5, tx_parity.as_ptr()) },
+            unsafe {
+                crate::initiator::nfc_target_send_bits(raw, tx.as_ptr(), 5, tx_parity.as_ptr())
+            },
             5
         );
         assert_eq!(

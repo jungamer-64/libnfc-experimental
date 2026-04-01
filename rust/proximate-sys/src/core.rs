@@ -193,10 +193,6 @@ pub(crate) unsafe fn bridge_close_device(device: *mut nfc_device) {
     }
 }
 
-#[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_acr122_usb))]
-unsafe extern "C" {
-    static acr122_usb_driver: nfc_driver;
-}
 #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_acr122s))]
 unsafe extern "C" {
     static acr122s_driver: nfc_driver;
@@ -206,10 +202,6 @@ unsafe extern "C" {
     static arygon_driver: nfc_driver;
 }
 fn register_compiled_bridge_drivers(_registry: &mut rt::DriverRegistry) {
-    #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_acr122_usb))]
-    _registry.register_driver(rt::wrap_driver_backend(Box::new(
-        crate::runtime_bridge::DriverAdapter::new(ptr::addr_of!(acr122_usb_driver)),
-    )));
     #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_acr122s))]
     _registry.register_driver(rt::wrap_driver_backend(Box::new(
         crate::runtime_bridge::DriverAdapter::new(ptr::addr_of!(acr122s_driver)),

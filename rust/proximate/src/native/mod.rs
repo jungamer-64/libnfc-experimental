@@ -7,10 +7,13 @@
 mod acr122;
 #[cfg(all(feature = "pcsc_helper", libnfc_driver_acr122_pcsc))]
 mod acr122_pcsc;
+#[cfg(all(feature = "usb_helper", libnfc_driver_acr122_usb))]
+mod acr122_usb;
 #[cfg(any(
     test,
     all(feature = "pcsc_helper", libnfc_driver_pcsc),
     all(feature = "pcsc_helper", libnfc_driver_acr122_pcsc),
+    all(feature = "usb_helper", libnfc_driver_acr122_usb),
     all(
         target_os = "linux",
         any(
@@ -41,6 +44,8 @@ pub(crate) fn register_builtin_drivers(_registry: &mut DriverRegistry) {
     _registry.register_driver(Box::new(pcsc::PcscDriver::new()));
     #[cfg(all(feature = "pcsc_helper", libnfc_driver_acr122_pcsc))]
     _registry.register_driver(Box::new(acr122_pcsc::Acr122PcscDriver::new()));
+    #[cfg(all(feature = "usb_helper", libnfc_driver_acr122_usb))]
+    _registry.register_driver(Box::new(acr122_usb::Acr122UsbDriver::new()));
     #[cfg(all(target_os = "linux", libnfc_driver_pn532_uart))]
     _registry.register_driver(Box::new(uart::Pn532UartDriver::new()));
     #[cfg(all(target_os = "linux", libnfc_driver_pn532_spi))]
@@ -62,6 +67,7 @@ mod tests {
         #[cfg(any(
             all(feature = "pcsc_helper", libnfc_driver_pcsc),
             all(feature = "pcsc_helper", libnfc_driver_acr122_pcsc),
+            all(feature = "usb_helper", libnfc_driver_acr122_usb),
             all(target_os = "linux", libnfc_driver_pn532_uart),
             all(target_os = "linux", libnfc_driver_pn532_spi),
             all(target_os = "linux", libnfc_driver_pn532_i2c),
@@ -71,6 +77,7 @@ mod tests {
         #[cfg(not(any(
             all(feature = "pcsc_helper", libnfc_driver_pcsc),
             all(feature = "pcsc_helper", libnfc_driver_acr122_pcsc),
+            all(feature = "usb_helper", libnfc_driver_acr122_usb),
             all(target_os = "linux", libnfc_driver_pn532_uart),
             all(target_os = "linux", libnfc_driver_pn532_spi),
             all(target_os = "linux", libnfc_driver_pn532_i2c),

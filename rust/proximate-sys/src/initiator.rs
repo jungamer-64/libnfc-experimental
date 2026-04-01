@@ -781,13 +781,7 @@ pub unsafe fn nfc_emulate_target(
         let mut rx_len = init_len as usize;
         let mut io_res = init_len;
         while io_res >= 0 {
-            io_res = callback(
-                emulator,
-                rx.as_ptr(),
-                rx_len,
-                tx.as_mut_ptr(),
-                tx.len(),
-            );
+            io_res = callback(emulator, rx.as_ptr(), rx_len, tx.as_mut_ptr(), tx.len());
             if io_res > 0 {
                 let sent = nfc_target_send_bytes(device, tx.as_ptr(), io_res as usize, timeout);
                 if sent < 0 {
@@ -2337,7 +2331,10 @@ mod tests {
         );
 
         let snapshot = snapshot_test_state();
-        assert_eq!(snapshot.target_init_calls, vec![(ISO7816_SHORT_R_APDU_MAX_LEN, 250)]);
+        assert_eq!(
+            snapshot.target_init_calls,
+            vec![(ISO7816_SHORT_R_APDU_MAX_LEN, 250)]
+        );
         assert_eq!(snapshot.target_send_bytes_calls, vec![(2, 250)]);
         assert_eq!(
             snapshot.target_receive_bytes_calls,

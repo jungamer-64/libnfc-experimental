@@ -450,12 +450,7 @@ pub trait OpenedDevice: Send + Any {
     }
 
     #[doc(hidden)]
-    fn pn53x_transceive(
-        &mut self,
-        tx: &[u8],
-        rx: &mut [u8],
-        timeout: i32,
-    ) -> Result<usize, Error> {
+    fn pn53x_transceive(&mut self, tx: &[u8], rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
         self.pn53x_transceive_driver(tx, rx, timeout)
     }
 

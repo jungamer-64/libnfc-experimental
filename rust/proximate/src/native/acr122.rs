@@ -1,16 +1,27 @@
 use crate::rust_api::Error;
 
+#[cfg_attr(not(test), allow(dead_code))]
 const ACR122_APDU_CLASS: u8 = 0xFF;
+#[cfg_attr(not(test), allow(dead_code))]
 const ACR122_APDU_INS_DIRECT_TRANSMIT: u8 = 0x00;
+#[cfg_attr(not(test), allow(dead_code))]
 const ACR122_APDU_INS_GET_ADDITIONAL_DATA: u8 = 0xC0;
+#[cfg_attr(not(test), allow(dead_code))]
 const ACR122_APDU_P1_GET_FIRMWARE_VERSION: u8 = 0x48;
+#[cfg_attr(not(test), allow(dead_code))]
 const ACR122_PN53X_HOST_TO_READER: u8 = 0xD4;
+#[cfg_attr(not(test), allow(dead_code))]
 const ACR122_SW1_MORE_DATA_AVAILABLE: u8 = 0x61;
+#[cfg_attr(not(test), allow(dead_code))]
 const ACR122_SW1_WARNING_WITH_NV_CHANGED: u8 = 0x63;
+#[cfg_attr(not(test), allow(dead_code))]
 const ACR122_SW1_SUCCESS: u8 = 0x90;
+#[cfg_attr(not(test), allow(dead_code))]
 const ACR122_SW2_SUCCESS: u8 = 0x00;
+#[cfg_attr(not(test), allow(dead_code))]
 const ACR122_SW2_PN53X_APPLICATION_LEVEL_ERROR: u8 = 0x7F;
 
+#[cfg_attr(not(test), allow(dead_code))]
 const PCSC_READER_PREFIXES: &[&str] = &[
     "ACS ACR122",
     "ACS ACR 38U-CCID",
@@ -55,6 +66,7 @@ pub(super) fn usb_device_name(vendor_id: u16, product_id: u16) -> Option<&'stati
         .map(|(_, _, name)| *name)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn is_pcsc_reader_name(reader_name: &str) -> bool {
     PCSC_READER_PREFIXES
         .iter()
@@ -88,6 +100,7 @@ pub(super) fn build_direct_transmit_apdu(payload: &[u8]) -> Result<Vec<u8>, Erro
     build_apdu(ACR122_APDU_INS_DIRECT_TRANSMIT, 0x00, 0x00, &data, 0x00)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn build_get_firmware_version_apdu() -> Result<Vec<u8>, Error> {
     build_apdu(0x00, ACR122_APDU_P1_GET_FIRMWARE_VERSION, 0x00, &[], 0x00)
 }
@@ -125,6 +138,7 @@ pub(super) fn has_firmware_prefix(firmware: &str, prefix: &str) -> bool {
     firmware.starts_with(prefix)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn is_acr122u_firmware(firmware: &str) -> bool {
     has_firmware_prefix(firmware, "ACR122U")
 }

@@ -397,9 +397,7 @@ mod tests {
         state
             .transmit_responses
             .push_back(Ok(vec![0x00, 0x00, 0x90, 0x00]));
-        state
-            .transmit_responses
-            .push_back(Ok(vec![0x61, 0x01]));
+        state.transmit_responses.push_back(Ok(vec![0x61, 0x01]));
         state
             .transmit_responses
             .push_back(Ok(vec![0x00, 0x00, 0x02, 0x90, 0x00]));

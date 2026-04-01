@@ -238,6 +238,17 @@ impl Pn53xProfile {
         }
     }
 
+    pub(crate) const fn acr122_usb() -> Self {
+        Self {
+            driver_name: "acr122_usb",
+            initial_power_mode: Pn53xPowerMode::Normal,
+            sam_mode_on_low_vbat: None,
+            secure_element_mode: None,
+            timer_correction: 46,
+            usb_model: None,
+        }
+    }
+
     fn supported_modulations(self, mode: Mode) -> Vec<ModulationType> {
         match (self.usb_model, mode) {
             (Some(Pn53xUsbModel::AskLogo), Mode::Target) => Vec::new(),
@@ -625,10 +636,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
 
     fn sam_configuration(&mut self, mode: Pn532SamMode, timeout_ms: i32) -> Result<i32, Error> {
         if self.core.chip_type() != Pn53xType::Pn532 {
-            return self.remember(Err(status_error(
-                "pn532_SAMConfiguration",
-                NFC_EDEVNOTSUPP,
-            )));
+            return self.remember(Err(status_error("pn532_SAMConfiguration", NFC_EDEVNOTSUPP)));
         }
         let payload = match mode {
             Pn532SamMode::Normal => [mode as u8, 0x00],
@@ -720,11 +728,8 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             payload.push((register >> 8) as u8);
             payload.push(*register as u8);
         }
-        let response = self.exchange_raw(
-            PN53X_READ_REGISTER,
-            &payload,
-            self.core.timeout_command_ms,
-        )?;
+        let response =
+            self.exchange_raw(PN53X_READ_REGISTER, &payload, self.core.timeout_command_ms)?;
         let values = if self.core.chip_type() == Pn53xType::Pn533 {
             let (status, data) = split_status_response(PN53X_READ_REGISTER, &response)?;
             self.core.last_status_byte = status;
@@ -752,11 +757,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             payload.push(*register as u8);
             payload.push(*value);
         }
-        let _ = self.exchange_raw(
-            PN53X_WRITE_REGISTER,
-            &payload,
-            self.core.timeout_command_ms,
-        )?;
+        let _ = self.exchange_raw(PN53X_WRITE_REGISTER, &payload, self.core.timeout_command_ms)?;
         Ok(())
     }
 
@@ -792,8 +793,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         self.write_registers(&[
             (
                 PN53X_REG_CIU_TMODE,
-                SYMBOL_TAUTO
-                    | (((self.core.timer_prescaler >> 8) as u8) & SYMBOL_TPRESCALERHI),
+                SYMBOL_TAUTO | (((self.core.timer_prescaler >> 8) as u8) & SYMBOL_TPRESCALERHI),
             ),
             (
                 PN53X_REG_CIU_TPRESCALER,
@@ -805,10 +805,8 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
     }
 
     fn timer_cycles(&mut self, last_cmd_byte: u8) -> Result<u32, Error> {
-        let values = self.read_registers(&[
-            PN53X_REG_CIU_TCOUNTER_VAL_HI,
-            PN53X_REG_CIU_TCOUNTER_VAL_LO,
-        ])?;
+        let values =
+            self.read_registers(&[PN53X_REG_CIU_TCOUNTER_VAL_HI, PN53X_REG_CIU_TCOUNTER_VAL_LO])?;
         let counter = u16::from(values[0]) << 8 | u16::from(values[1]);
         if counter == 0 {
             return Ok(u32::MAX);
@@ -992,7 +990,10 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         } else if tx_bits_len == 0 {
             (Vec::new(), 0)
         } else {
-            (pn53x_wrap_frame(tx, tx_bits_len, tx_parity)?, tx_bits_len + (tx_bits_len / 8))
+            (
+                pn53x_wrap_frame(tx, tx_bits_len, tx_parity)?,
+                tx_bits_len + (tx_bits_len / 8),
+            )
         };
 
         self.set_tx_bits((payload_bits_len % 8) as u8)?;
@@ -1067,9 +1068,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             TargetInfo::Iso14443A { atqa, sak, uid, .. } if sak & SAK_ISO14443_4_COMPLIANT != 0 => {
                 self.presence_transceive_bytes(&[0xb2], 300, false)
             }
-            TargetInfo::Iso14443A { atqa, sak, .. }
-                if *sak == 0x00 && *atqa == [0x00, 0x44] =>
-            {
+            TargetInfo::Iso14443A { atqa, sak, .. } if *sak == 0x00 && *atqa == [0x00, 0x44] => {
                 self.presence_transceive_bytes(&[0x30, 0x00], 300, true)
             }
             TargetInfo::Iso14443A { sak, uid, .. } if *sak & SAK_MIFARE_CLASSIC_MASK != 0 => {
@@ -2496,7 +2495,9 @@ mod tests {
 
     fn queue_command_response(transport: &mut FakeTransport, command: u8, payload: &[u8]) {
         transport.received.push_back(PN53X_ACK_FRAME.to_vec());
-        transport.received.push_back(response_frame(command, payload));
+        transport
+            .received
+            .push_back(response_frame(command, payload));
     }
 
     fn probed_device() -> Pn53xDevice<FakeTransport> {
@@ -2525,7 +2526,12 @@ mod tests {
 
         queue_command_response(&mut device.transport, 0x40, &[0xaa, 0xbb]);
         let mut rx = [0u8; 4];
-        assert_eq!(device.pn53x_transceive(&[0x40, 0xde, 0xad], &mut rx, 25).unwrap(), 2);
+        assert_eq!(
+            device
+                .pn53x_transceive(&[0x40, 0xde, 0xad], &mut rx, 25)
+                .unwrap(),
+            2
+        );
         assert_eq!(&rx[..2], &[0xaa, 0xbb]);
 
         queue_command_response(&mut device.transport, PN532_SAM_CONFIGURATION, &[]);
@@ -2897,12 +2903,12 @@ mod tests {
     #[test]
     fn transceive_bits_supports_short_frames_with_register_backed_last_bits() {
         let mut device = probed_device();
-        queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[SYMBOL_TX_CRC_ENABLE]);
         queue_command_response(
             &mut device.transport,
-            PN53X_WRITE_REGISTER,
-            &[],
+            PN53X_READ_REGISTER,
+            &[SYMBOL_TX_CRC_ENABLE],
         );
+        queue_command_response(&mut device.transport, PN53X_WRITE_REGISTER, &[]);
         queue_command_response(
             &mut device.transport,
             PN53X_IN_COMMUNICATE_THRU,
@@ -2963,7 +2969,11 @@ mod tests {
         let wrapped = pn53x_wrap_frame(&[0x93, 0x20], 16, Some(&[1, 0])).unwrap();
         queue_command_response(&mut device.transport, PN53X_WRITE_REGISTER, &[]);
         queue_command_response(&mut device.transport, PN53X_WRITE_REGISTER, &[]);
-        queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[wrapped.len() as u8]);
+        queue_command_response(
+            &mut device.transport,
+            PN53X_READ_REGISTER,
+            &[wrapped.len() as u8],
+        );
         let mut fifo_payload = wrapped.clone();
         fifo_payload.push(0x00);
         queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &fifo_payload);
@@ -2989,10 +2999,16 @@ mod tests {
             .unwrap();
         queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0x00]);
         queue_command_response(&mut device.transport, PN53X_WRITE_REGISTER, &[]);
-        queue_command_response(&mut device.transport, PN53X_TG_RESPONSE_TO_INITIATOR, &[0x00]);
+        queue_command_response(
+            &mut device.transport,
+            PN53X_TG_RESPONSE_TO_INITIATOR,
+            &[0x00],
+        );
         queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0x00]);
 
-        let sent = device.target_send_bits(&[0x93, 0x20], 16, Some(&[1, 0])).unwrap();
+        let sent = device
+            .target_send_bits(&[0x93, 0x20], 16, Some(&[1, 0]))
+            .unwrap();
         assert_eq!(sent, 16);
     }
 
@@ -3011,7 +3027,11 @@ mod tests {
         queue_command_response(&mut device.transport, PN53X_WRITE_REGISTER, &[]);
         queue_command_response(&mut device.transport, PN53X_WRITE_REGISTER, &[]);
         queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0x02]);
-        queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0x90, 0x00, 0x00]);
+        queue_command_response(
+            &mut device.transport,
+            PN53X_READ_REGISTER,
+            &[0x90, 0x00, 0x00],
+        );
         queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0xf0, 0x00]);
 
         let mut rx = [0u8; 4];
@@ -3022,7 +3042,10 @@ mod tests {
         assert_eq!(device.transport.sent[sent_before][6], PN53X_READ_REGISTER);
         assert_eq!(
             &device.transport.sent[sent_before][7..9],
-            &[(PN53X_REG_CIU_TX_MODE >> 8) as u8, PN53X_REG_CIU_TX_MODE as u8]
+            &[
+                (PN53X_REG_CIU_TX_MODE >> 8) as u8,
+                PN53X_REG_CIU_TX_MODE as u8
+            ]
         );
     }
 

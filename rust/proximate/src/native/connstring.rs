@@ -1,14 +1,15 @@
 use crate::rust_api::{ConnectionString, Error};
 
-const USB_DRIVER_NAME: &str = "pn53x_usb";
 const USB_BUS_NAME: &str = "usb";
 
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PathSpeedDescriptor {
     pub path: String,
     pub speed: u32,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PathDescriptor {
     pub path: String,
@@ -20,6 +21,7 @@ pub(crate) struct UsbSelector {
     pub device: Option<u8>,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn decode_path_speed_descriptor(
     connstring: &ConnectionString,
     driver_name: &str,
@@ -48,6 +50,7 @@ pub(crate) fn decode_path_speed_descriptor(
     Ok(PathSpeedDescriptor { path, speed })
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn decode_path_descriptor(
     connstring: &ConnectionString,
     driver_name: &str,
@@ -69,12 +72,15 @@ pub(crate) fn decode_path_descriptor(
     Ok(PathDescriptor { path })
 }
 
-pub(crate) fn decode_usb_selector(connstring: &ConnectionString) -> Result<UsbSelector, Error> {
-    let decoded = crate::decode_connstring(connstring, USB_DRIVER_NAME, USB_BUS_NAME)?;
+pub(crate) fn decode_usb_selector_for(
+    connstring: &ConnectionString,
+    driver_name: &str,
+) -> Result<UsbSelector, Error> {
+    let decoded = crate::decode_connstring(connstring, driver_name, USB_BUS_NAME)?;
     match decoded.match_depth {
         0 => Err(Error::InvalidConnectionString(format!(
-            "connstring '{}' does not match pn53x_usb",
-            connstring
+            "connstring '{}' does not match {driver_name}",
+            connstring,
         ))),
         1 => Ok(UsbSelector {
             bus: None,
@@ -95,12 +101,18 @@ pub(crate) fn decode_usb_selector(connstring: &ConnectionString) -> Result<UsbSe
             })
         }
         _ => Err(Error::InvalidConnectionString(format!(
-            "invalid pn53x_usb connstring '{}'",
-            connstring
+            "invalid {driver_name} connstring '{}'",
+            connstring,
         ))),
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn decode_usb_selector(connstring: &ConnectionString) -> Result<UsbSelector, Error> {
+    decode_usb_selector_for(connstring, "pn53x_usb")
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn build_path_speed_connstring(
     driver_name: &str,
     path: &str,
@@ -109,6 +121,7 @@ pub(crate) fn build_path_speed_connstring(
     ConnectionString::new(format!("{driver_name}:{path}:{speed}"))
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn build_path_connstring(
     driver_name: &str,
     path: &str,
@@ -116,8 +129,17 @@ pub(crate) fn build_path_connstring(
     ConnectionString::new(format!("{driver_name}:{path}"))
 }
 
+pub(crate) fn build_usb_connstring_for(
+    driver_name: &str,
+    bus: u8,
+    device: u8,
+) -> Result<ConnectionString, Error> {
+    ConnectionString::new(format!("{driver_name}:{bus:03}:{device:03}"))
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn build_usb_connstring(bus: u8, device: u8) -> Result<ConnectionString, Error> {
-    ConnectionString::new(format!("{USB_DRIVER_NAME}:{bus:03}:{device:03}"))
+    build_usb_connstring_for("pn53x_usb", bus, device)
 }
 
 fn parse_usb_number(kind: &str, value: &str) -> Result<u8, Error> {
@@ -196,6 +218,25 @@ mod tests {
         assert_eq!(
             build_usb_connstring(1, 2).unwrap().as_str(),
             "pn53x_usb:001:002"
+        );
+        assert_eq!(
+            build_usb_connstring_for("acr122_usb", 1, 2)
+                .unwrap()
+                .as_str(),
+            "acr122_usb:001:002"
+        );
+    }
+
+    #[test]
+    fn decode_usb_selector_for_supports_non_default_driver_name() {
+        let connstring = ConnectionString::new("acr122_usb:001:002").unwrap();
+        let decoded = decode_usb_selector_for(&connstring, "acr122_usb").unwrap();
+        assert_eq!(
+            decoded,
+            UsbSelector {
+                bus: Some(1),
+                device: Some(2),
+            }
         );
     }
 }
