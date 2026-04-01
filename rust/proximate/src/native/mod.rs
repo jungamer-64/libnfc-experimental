@@ -1,5 +1,16 @@
 #[cfg(any(
     test,
+    all(feature = "pcsc_helper", libnfc_driver_acr122_pcsc),
+    all(feature = "usb_helper", libnfc_driver_acr122_usb),
+    libnfc_driver_acr122s
+))]
+mod acr122;
+#[cfg(all(feature = "pcsc_helper", libnfc_driver_acr122_pcsc))]
+mod acr122_pcsc;
+#[cfg(any(
+    test,
+    all(feature = "pcsc_helper", libnfc_driver_pcsc),
+    all(feature = "pcsc_helper", libnfc_driver_acr122_pcsc),
     all(
         target_os = "linux",
         any(
@@ -13,6 +24,8 @@
 mod connstring;
 #[cfg(all(target_os = "linux", libnfc_driver_pn532_i2c))]
 mod i2c;
+#[cfg(all(feature = "pcsc_helper", libnfc_driver_pcsc))]
+mod pcsc;
 mod pn53x;
 #[cfg(all(target_os = "linux", libnfc_driver_pn532_spi))]
 mod spi;
@@ -24,6 +37,10 @@ mod usb;
 use crate::rust_api::DriverRegistry;
 
 pub(crate) fn register_builtin_drivers(_registry: &mut DriverRegistry) {
+    #[cfg(all(feature = "pcsc_helper", libnfc_driver_pcsc))]
+    _registry.register_driver(Box::new(pcsc::PcscDriver::new()));
+    #[cfg(all(feature = "pcsc_helper", libnfc_driver_acr122_pcsc))]
+    _registry.register_driver(Box::new(acr122_pcsc::Acr122PcscDriver::new()));
     #[cfg(all(target_os = "linux", libnfc_driver_pn532_uart))]
     _registry.register_driver(Box::new(uart::Pn532UartDriver::new()));
     #[cfg(all(target_os = "linux", libnfc_driver_pn532_spi))]
@@ -43,6 +60,8 @@ mod tests {
         let mut registry = DriverRegistry::new();
         register_builtin_drivers(&mut registry);
         #[cfg(any(
+            all(feature = "pcsc_helper", libnfc_driver_pcsc),
+            all(feature = "pcsc_helper", libnfc_driver_acr122_pcsc),
             all(target_os = "linux", libnfc_driver_pn532_uart),
             all(target_os = "linux", libnfc_driver_pn532_spi),
             all(target_os = "linux", libnfc_driver_pn532_i2c),
@@ -50,6 +69,8 @@ mod tests {
         ))]
         assert!(!registry.is_empty());
         #[cfg(not(any(
+            all(feature = "pcsc_helper", libnfc_driver_pcsc),
+            all(feature = "pcsc_helper", libnfc_driver_acr122_pcsc),
             all(target_os = "linux", libnfc_driver_pn532_uart),
             all(target_os = "linux", libnfc_driver_pn532_spi),
             all(target_os = "linux", libnfc_driver_pn532_i2c),

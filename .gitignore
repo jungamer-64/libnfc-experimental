@@ -78,3 +78,4 @@ build-*
 cargo.lock
 /tmp
 .codex
+/Testing

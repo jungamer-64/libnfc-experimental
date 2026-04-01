@@ -6,21 +6,30 @@
 
 #![allow(non_camel_case_types)]
 
-#[cfg(any(all(not(test), unix, not(target_os = "linux")), all(not(test), windows)))]
+#[cfg(any(
+    all(not(test), unix, not(target_os = "linux")),
+    all(not(test), windows)
+))]
 use crate::buses::{allocate_c_string_array, c_path_to_string};
 #[cfg(any(
     all(not(test), unix, not(target_os = "linux")),
     all(not(test), windows)
 ))]
 use crate::buses::{claimed_serial_port, invalid_serial_port};
-#[cfg(any(all(not(test), unix, not(target_os = "linux")), all(not(test), windows)))]
+#[cfg(any(
+    all(not(test), unix, not(target_os = "linux")),
+    all(not(test), windows)
+))]
 use crate::ffi_support::{as_mut, as_ref};
 use libc::{c_char, c_int, c_void};
 #[cfg(all(not(test), unix, not(target_os = "linux")))]
 use std::cmp::min;
 #[cfg(all(not(test), unix, not(target_os = "linux")))]
 use std::fs;
-#[cfg(any(all(not(test), unix, not(target_os = "linux")), all(not(test), windows)))]
+#[cfg(any(
+    all(not(test), unix, not(target_os = "linux")),
+    all(not(test), windows)
+))]
 use std::ptr;
 #[cfg(all(not(test), unix, not(target_os = "linux")))]
 use std::time::Duration;

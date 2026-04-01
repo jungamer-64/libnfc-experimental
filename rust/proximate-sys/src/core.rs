@@ -7,7 +7,9 @@
 use crate::c_api_impl::{
     LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING,
 };
-use crate::ffi_support::{as_ref, bounded_strlen, c_string_ptr_to_string, copy_bytes_to_c_buffer};
+#[cfg(any(test, not(libnfc_external_bridges)))]
+use crate::ffi_support::as_ref;
+use crate::ffi_support::{bounded_strlen, c_string_ptr_to_string, copy_bytes_to_c_buffer};
 #[cfg(test)]
 use crate::ffi_support::{copy_c_string_to_c_buffer, fixed_c_buffer_to_string};
 #[cfg(test)]
@@ -191,14 +193,6 @@ pub(crate) unsafe fn bridge_close_device(device: *mut nfc_device) {
     }
 }
 
-#[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pcsc))]
-unsafe extern "C" {
-    static pcsc_driver: nfc_driver;
-}
-#[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_acr122_pcsc))]
-unsafe extern "C" {
-    static acr122_pcsc_driver: nfc_driver;
-}
 #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_acr122_usb))]
 unsafe extern "C" {
     static acr122_usb_driver: nfc_driver;
@@ -212,14 +206,6 @@ unsafe extern "C" {
     static arygon_driver: nfc_driver;
 }
 fn register_compiled_bridge_drivers(_registry: &mut rt::DriverRegistry) {
-    #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_pcsc))]
-    _registry.register_driver(rt::wrap_driver_backend(Box::new(
-        crate::runtime_bridge::DriverAdapter::new(ptr::addr_of!(pcsc_driver)),
-    )));
-    #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_acr122_pcsc))]
-    _registry.register_driver(rt::wrap_driver_backend(Box::new(
-        crate::runtime_bridge::DriverAdapter::new(ptr::addr_of!(acr122_pcsc_driver)),
-    )));
     #[cfg(all(not(test), libnfc_external_bridges, libnfc_driver_acr122_usb))]
     _registry.register_driver(rt::wrap_driver_backend(Box::new(
         crate::runtime_bridge::DriverAdapter::new(ptr::addr_of!(acr122_usb_driver)),

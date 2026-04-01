@@ -397,7 +397,11 @@ mod tests {
         let driver = Pn532UartDriver::new();
         assert_eq!(driver.name(), DRIVER_NAME);
         assert_eq!(driver.scan_type(), ScanType::Intrusive);
-        assert!(list_candidate_paths().iter().all(|path| path.starts_with("/dev/")));
+        assert!(
+            list_candidate_paths()
+                .iter()
+                .all(|path| path.starts_with("/dev/"))
+        );
 
         let connstring = ConnectionString::new("pn532_uart:/definitely/missing").unwrap();
         let error = match driver.open(&Context::new(), &connstring) {

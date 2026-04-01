@@ -9,6 +9,7 @@ name = "proximate"
 
 [dependencies]
 nusb = { version = "0.2", optional = true }
+pcsc = { version = "2.9.0", optional = true }
 linux-raw-sys = { version = "0.12", features = ["general", "ioctl"] }
 rustix = { version = "1.1", default-features = false, features = ["std", "fs", "event", "termios", "time"] }
 
@@ -17,6 +18,7 @@ default = ["lifecycle", "orchestration", "usb_helper"]
 lifecycle = []
 orchestration = ["lifecycle"]
 usb_helper = ["dep:nusb"]
+pcsc_helper = ["dep:pcsc"]
 ffi_internal_native = []
 # Feature used by the nightly ASan job to compile sanitizer-only tests cleanly.
 asan_tests = []

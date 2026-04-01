@@ -1,18 +1,71 @@
 #![allow(dead_code)]
 
 use crate::rust_api::{
-    BaudRate, ConnectionString, Error, Mode, ModulationType, OpenedDevice, Property,
+    BaudRate, ConnectionString, DepInfo, DepMode, Error, Mode, Modulation, ModulationType,
+    OpenedDevice, Property, Target, TargetInfo,
 };
+use std::thread;
+use std::time::{Duration, Instant};
 
 const NFC_EIO: i32 = -1;
+const NFC_EINVARG: i32 = -2;
+const NFC_EDEVNOTSUPP: i32 = -3;
+const NFC_ENOTSUCHDEV: i32 = -4;
+const NFC_EOVFLOW: i32 = -5;
 const NFC_ETIMEOUT: i32 = -6;
 const NFC_EOPABORTED: i32 = -7;
 const NFC_ENOTIMPL: i32 = -8;
+const NFC_ETGRELEASED: i32 = -10;
+const NFC_ERFTRANS: i32 = -20;
 
 const HOST_TO_PN53X_TFI: u8 = 0xD4;
 const PN53X_TO_HOST_TFI: u8 = 0xD5;
 const PN53X_GET_FIRMWARE_VERSION: u8 = 0x02;
 const PN532_SAM_CONFIGURATION: u8 = 0x14;
+const PN53X_IN_DATA_EXCHANGE: u8 = 0x40;
+const PN53X_IN_COMMUNICATE_THRU: u8 = 0x42;
+const PN53X_IN_DESELECT: u8 = 0x44;
+const PN53X_IN_LIST_PASSIVE_TARGET: u8 = 0x4A;
+const PN53X_IN_JUMP_FOR_DEP: u8 = 0x56;
+const PN53X_TG_GET_DATA: u8 = 0x86;
+const PN53X_TG_INIT_AS_TARGET: u8 = 0x8C;
+const PN53X_TG_SET_DATA: u8 = 0x8E;
+const PN53X_TG_GET_INITIATOR_COMMAND: u8 = 0x88;
+const PN53X_TG_RESPONSE_TO_INITIATOR: u8 = 0x90;
+
+const PN53X_STATUS_TIMEOUT: u8 = 0x01;
+const PN53X_STATUS_CRC: u8 = 0x02;
+const PN53X_STATUS_PARITY: u8 = 0x03;
+const PN53X_STATUS_BITCOUNT: u8 = 0x04;
+const PN53X_STATUS_FRAMING: u8 = 0x05;
+const PN53X_STATUS_BITCOLL: u8 = 0x06;
+const PN53X_STATUS_SMALLBUF: u8 = 0x07;
+const PN53X_STATUS_BUFOVF: u8 = 0x09;
+const PN53X_STATUS_RFTIMEOUT: u8 = 0x0a;
+const PN53X_STATUS_RFPROTO: u8 = 0x0b;
+const PN53X_STATUS_OVHEAT: u8 = 0x0d;
+const PN53X_STATUS_INBUFOVF: u8 = 0x0e;
+const PN53X_STATUS_INVPARAM: u8 = 0x10;
+const PN53X_STATUS_DEPUNKCMD: u8 = 0x12;
+const PN53X_STATUS_INVRXFRAM: u8 = 0x13;
+const PN53X_STATUS_MFAUTH: u8 = 0x14;
+const PN53X_STATUS_SECNOTSUPP: u8 = 0x18;
+const PN53X_STATUS_BCC: u8 = 0x23;
+const PN53X_STATUS_DEPINVSTATE: u8 = 0x25;
+const PN53X_STATUS_OPNOTALL: u8 = 0x26;
+const PN53X_STATUS_CMD: u8 = 0x27;
+const PN53X_STATUS_TGREL: u8 = 0x29;
+const PN53X_STATUS_CID: u8 = 0x2a;
+const PN53X_STATUS_CDISCARDED: u8 = 0x2b;
+const PN53X_STATUS_NFCID3: u8 = 0x2c;
+const PN53X_STATUS_OVCURRENT: u8 = 0x2d;
+const PN53X_STATUS_NAD: u8 = 0x2e;
+
+const PN53X_TARGET_MODE_NORMAL: u8 = 0x00;
+const PN53X_TARGET_MODE_PASSIVE_ONLY: u8 = 0x01;
+const PN53X_TARGET_MODE_DEP_ONLY: u8 = 0x02;
+const PN53X_TARGET_MODE_ISO14443_4_PICC_ONLY: u8 = 0x04;
+const SAK_ISO14443_4_COMPLIANT: u8 = 0x20;
 
 pub(crate) const PN53X_ACK_FRAME: [u8; 6] = [0x00, 0x00, 0xff, 0x00, 0xff, 0x00];
 const PN53X_EXTENDED_FRAME_DATA_MAX_LEN: usize = 264;
@@ -119,6 +172,16 @@ impl Pn53xProfile {
             sam_mode_on_low_vbat: None,
             secure_element_mode: None,
             usb_model: Some(model),
+        }
+    }
+
+    pub(crate) const fn acr122_pcsc() -> Self {
+        Self {
+            driver_name: "acr122_pcsc",
+            initial_power_mode: Pn53xPowerMode::Normal,
+            sam_mode_on_low_vbat: None,
+            secure_element_mode: None,
+            usb_model: None,
         }
     }
 
@@ -252,6 +315,7 @@ pub(crate) struct Pn53xCore {
     timeout_atr_ms: i32,
     timeout_communication_ms: i32,
     properties: PropertyState,
+    current_target: Option<Target>,
 }
 
 impl Default for Pn53xCore {
@@ -266,6 +330,7 @@ impl Default for Pn53xCore {
             timeout_atr_ms: 103,
             timeout_communication_ms: 52,
             properties: PropertyState::default(),
+            current_target: None,
         }
     }
 }
@@ -348,6 +413,18 @@ impl Pn53xCore {
 
     pub(crate) fn property_bool_state(&self, property: Property) -> Option<bool> {
         self.properties.get(property)
+    }
+
+    pub(crate) fn current_target(&self) -> Option<&Target> {
+        self.current_target.as_ref()
+    }
+
+    fn remember_target(&mut self, target: Target) {
+        self.current_target = Some(target);
+    }
+
+    fn clear_target(&mut self) {
+        self.current_target = None;
     }
 
     pub(crate) fn set_property_bool(
@@ -504,6 +581,511 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             .map(|_| 0);
         self.remember(result)
     }
+
+    fn exchange_raw(
+        &mut self,
+        command: u8,
+        payload: &[u8],
+        timeout_ms: i32,
+    ) -> Result<Vec<u8>, Error> {
+        let result = self.core.exchange_command(
+            self.profile,
+            &mut self.transport,
+            command,
+            payload,
+            timeout_ms,
+        );
+        self.remember(result)
+    }
+
+    fn exchange_with_status(
+        &mut self,
+        operation: &'static str,
+        command: u8,
+        payload: &[u8],
+        timeout_ms: i32,
+    ) -> Result<Vec<u8>, Error> {
+        let response = self.exchange_raw(command, payload, timeout_ms)?;
+        let (status, data) = split_status_response(command, &response)?;
+        self.core.last_status_byte = status;
+        let mapped = pn53x_translate_status(status);
+        if mapped < 0 {
+            self.last_error = mapped;
+            return Err(status_error(operation, mapped));
+        }
+        self.last_error = 0;
+        Ok(data)
+    }
+
+    fn copy_into(
+        operation: &'static str,
+        source: &[u8],
+        destination: &mut [u8],
+    ) -> Result<usize, Error> {
+        if source.len() > destination.len() {
+            return Err(Error::DeviceOperationFailed {
+                operation,
+                code: NFC_EOVFLOW,
+            });
+        }
+        destination[..source.len()].copy_from_slice(source);
+        Ok(source.len())
+    }
+}
+
+fn command_uses_status_byte(command: u8) -> bool {
+    matches!(
+        command,
+        PN53X_IN_DATA_EXCHANGE
+            | PN53X_IN_COMMUNICATE_THRU
+            | PN53X_IN_JUMP_FOR_DEP
+            | PN53X_TG_GET_DATA
+            | PN53X_TG_SET_DATA
+            | PN53X_TG_GET_INITIATOR_COMMAND
+            | PN53X_TG_RESPONSE_TO_INITIATOR
+            | PN53X_IN_DESELECT
+    )
+}
+
+fn split_status_response(command: u8, response: &[u8]) -> Result<(u8, Vec<u8>), Error> {
+    if !command_uses_status_byte(command) {
+        return Ok((0, response.to_vec()));
+    }
+    let Some((&status_flags, data)) = response.split_first() else {
+        return Err(status_error("pn53x_status_response", NFC_EIO));
+    };
+    if status_flags & 0x80 != 0 {
+        return Ok((PN53X_STATUS_NAD, data.to_vec()));
+    }
+    Ok((status_flags & 0x3f, data.to_vec()))
+}
+
+fn pn53x_translate_status(status: u8) -> i32 {
+    match status {
+        0 => 0,
+        PN53X_STATUS_TIMEOUT
+        | PN53X_STATUS_CRC
+        | PN53X_STATUS_PARITY
+        | PN53X_STATUS_BITCOUNT
+        | PN53X_STATUS_FRAMING
+        | PN53X_STATUS_BITCOLL
+        | PN53X_STATUS_RFPROTO
+        | PN53X_STATUS_RFTIMEOUT
+        | PN53X_STATUS_DEPUNKCMD
+        | PN53X_STATUS_DEPINVSTATE
+        | PN53X_STATUS_NAD
+        | PN53X_STATUS_NFCID3
+        | PN53X_STATUS_INVRXFRAM
+        | PN53X_STATUS_BCC
+        | PN53X_STATUS_CID => NFC_ERFTRANS,
+        PN53X_STATUS_SMALLBUF
+        | PN53X_STATUS_OVCURRENT
+        | PN53X_STATUS_BUFOVF
+        | PN53X_STATUS_OVHEAT
+        | PN53X_STATUS_INBUFOVF => NFC_EIO,
+        PN53X_STATUS_INVPARAM
+        | PN53X_STATUS_OPNOTALL
+        | PN53X_STATUS_CMD
+        | PN53X_STATUS_SECNOTSUPP => NFC_EINVARG,
+        PN53X_STATUS_TGREL | PN53X_STATUS_CDISCARDED => NFC_ETGRELEASED,
+        PN53X_STATUS_MFAUTH => -30,
+        _ => NFC_EIO,
+    }
+}
+
+fn default_initiator_payload(modulation: Modulation) -> &'static [u8] {
+    match modulation.modulation_type {
+        ModulationType::Iso14443B => &[0x00],
+        ModulationType::Felica => &[0x00, 0xff, 0xff, 0x01, 0x00],
+        _ => &[],
+    }
+}
+
+fn nm_to_pm(modulation: Modulation) -> Option<u8> {
+    match (modulation.modulation_type, modulation.baud_rate) {
+        (ModulationType::Iso14443A, _) => Some(0x00),
+        (ModulationType::Felica, BaudRate::Br212) => Some(0x01),
+        (ModulationType::Felica, BaudRate::Br424) => Some(0x02),
+        (ModulationType::Iso14443B, BaudRate::Br106) => Some(0x03),
+        (ModulationType::Jewel, _) => Some(0x04),
+        _ => None,
+    }
+}
+
+fn nm_to_ptt(modulation: Modulation) -> Option<u8> {
+    match (modulation.modulation_type, modulation.baud_rate) {
+        (ModulationType::Iso14443A, _) => Some(0x10),
+        (ModulationType::Iso14443B, BaudRate::Br106) => Some(0x03),
+        (ModulationType::Jewel, _) => Some(0x04),
+        (ModulationType::Felica, BaudRate::Br212) => Some(0x11),
+        (ModulationType::Felica, BaudRate::Br424) => Some(0x12),
+        _ => None,
+    }
+}
+
+fn ptt_to_modulation(value: u8) -> Modulation {
+    match value {
+        0x03 | 0x23 => Modulation {
+            modulation_type: ModulationType::Iso14443B,
+            baud_rate: BaudRate::Br106,
+        },
+        0x04 => Modulation {
+            modulation_type: ModulationType::Jewel,
+            baud_rate: BaudRate::Br106,
+        },
+        0x11 => Modulation {
+            modulation_type: ModulationType::Felica,
+            baud_rate: BaudRate::Br212,
+        },
+        0x12 => Modulation {
+            modulation_type: ModulationType::Felica,
+            baud_rate: BaudRate::Br424,
+        },
+        0x40 | 0x80 => Modulation {
+            modulation_type: ModulationType::Dep,
+            baud_rate: BaudRate::Br106,
+        },
+        0x41 | 0x81 => Modulation {
+            modulation_type: ModulationType::Dep,
+            baud_rate: BaudRate::Br212,
+        },
+        0x42 | 0x82 => Modulation {
+            modulation_type: ModulationType::Dep,
+            baud_rate: BaudRate::Br424,
+        },
+        _ => Modulation {
+            modulation_type: ModulationType::Iso14443A,
+            baud_rate: BaudRate::Br106,
+        },
+    }
+}
+
+fn process_cascade_uid(uid: &[u8]) -> Vec<u8> {
+    match uid {
+        [0x88, a, b, c, tail @ ..] if tail.len() == 4 => {
+            let mut real = vec![*a, *b, *c];
+            real.extend_from_slice(tail);
+            real
+        }
+        [0x88, a, b, c, 0x88, d, e, f, tail @ ..] if tail.len() == 4 => {
+            let mut real = vec![*a, *b, *c, *d, *e, *f];
+            real.extend_from_slice(tail);
+            real
+        }
+        value => value.to_vec(),
+    }
+}
+
+fn decode_target_data(
+    chip_type: Pn53xType,
+    modulation: Modulation,
+    raw: &[u8],
+) -> Result<Target, Error> {
+    let info = match modulation.modulation_type {
+        ModulationType::Iso14443A => decode_iso14443a_target(chip_type, raw)?,
+        ModulationType::Iso14443B => decode_iso14443b_target(raw)?,
+        ModulationType::Felica => decode_felica_target(raw)?,
+        ModulationType::Jewel => decode_jewel_target(raw)?,
+        _ => return Err(Error::UnsupportedOperation("decode_target_data")),
+    };
+    Ok(Target { modulation, info })
+}
+
+fn decode_iso14443a_target(chip_type: Pn53xType, raw: &[u8]) -> Result<TargetInfo, Error> {
+    if raw.len() < 5 {
+        return Err(status_error("decode_iso14443a_target", NFC_EIO));
+    }
+
+    let mut offset = 1;
+    let atqa = if chip_type == Pn53xType::Pn531 {
+        let value = [raw[offset + 1], raw[offset]];
+        offset += 2;
+        value
+    } else {
+        let value = [raw[offset], raw[offset + 1]];
+        offset += 2;
+        value
+    };
+    let sak = raw[offset];
+    offset += 1;
+    let uid_len = raw[offset] as usize;
+    offset += 1;
+    if raw.len() < offset + uid_len {
+        return Err(status_error("decode_iso14443a_target", NFC_EIO));
+    }
+    let uid = process_cascade_uid(&raw[offset..offset + uid_len]);
+    offset += uid_len;
+
+    let mut ats = Vec::new();
+    if let Some(&ats_header) = raw.get(offset) {
+        offset += 1;
+        if ats_header > 1 {
+            let ats_len = usize::from(ats_header - 1);
+            if raw.len() < offset + ats_len {
+                return Err(status_error("decode_iso14443a_target", NFC_EIO));
+            }
+            ats.extend_from_slice(&raw[offset..offset + ats_len]);
+        }
+    }
+
+    Ok(TargetInfo::Iso14443A {
+        atqa,
+        sak,
+        uid,
+        ats,
+    })
+}
+
+fn decode_iso14443b_target(raw: &[u8]) -> Result<TargetInfo, Error> {
+    if raw.len() < 13 {
+        return Err(status_error("decode_iso14443b_target", NFC_EIO));
+    }
+    let mut offset = 2;
+    let mut pupi = [0u8; 4];
+    pupi.copy_from_slice(&raw[offset..offset + 4]);
+    offset += 4;
+    let mut application_data = [0u8; 4];
+    application_data.copy_from_slice(&raw[offset..offset + 4]);
+    offset += 4;
+    let mut protocol_info = [0u8; 3];
+    protocol_info.copy_from_slice(&raw[offset..offset + 3]);
+    offset += 3;
+    let card_identifier = if raw.len() > offset + 1 && raw[offset] > 0 {
+        raw[offset + 1]
+    } else {
+        0
+    };
+    Ok(TargetInfo::Iso14443B {
+        pupi,
+        application_data,
+        protocol_info,
+        card_identifier,
+    })
+}
+
+fn decode_felica_target(raw: &[u8]) -> Result<TargetInfo, Error> {
+    if raw.len() < 19 {
+        return Err(status_error("decode_felica_target", NFC_EIO));
+    }
+    let len = raw[1] as usize;
+    let response_code = raw[2];
+    let mut id = [0u8; 8];
+    id.copy_from_slice(&raw[3..11]);
+    let mut pad = [0u8; 8];
+    pad.copy_from_slice(&raw[11..19]);
+    let mut system_code = [0u8; 2];
+    if len > 18 && raw.len() >= 21 {
+        system_code.copy_from_slice(&raw[19..21]);
+    }
+    Ok(TargetInfo::Felica {
+        len,
+        response_code,
+        id,
+        pad,
+        system_code,
+    })
+}
+
+fn decode_jewel_target(raw: &[u8]) -> Result<TargetInfo, Error> {
+    if raw.len() < 7 {
+        return Err(status_error("decode_jewel_target", NFC_EIO));
+    }
+    let mut sens_res = [0u8; 2];
+    sens_res.copy_from_slice(&raw[1..3]);
+    let mut id = [0u8; 4];
+    id.copy_from_slice(&raw[3..7]);
+    Ok(TargetInfo::Jewel { sens_res, id })
+}
+
+fn build_injump_for_dep_command(
+    mode: DepMode,
+    baud_rate: BaudRate,
+    initiator: Option<&DepInfo>,
+) -> Result<Vec<u8>, Error> {
+    let (baud_code, passive_initiator) = match baud_rate {
+        BaudRate::Br106 => (0x00, None),
+        BaudRate::Br212 => (0x01, Some(&[0x00, 0xff, 0xff, 0x00, 0x0f][..])),
+        BaudRate::Br424 => (0x02, Some(&[0x00, 0xff, 0xff, 0x00, 0x0f][..])),
+        _ => return Err(Error::InvalidArgument("baud_rate")),
+    };
+
+    let mut payload = vec![
+        if mode == DepMode::Active { 0x01 } else { 0x00 },
+        baud_code,
+        0x00,
+    ];
+
+    if mode == DepMode::Passive
+        && let Some(passive) = passive_initiator
+    {
+        payload[2] |= 0x01;
+        payload.extend_from_slice(passive);
+    }
+
+    if let Some(initiator) = initiator {
+        payload[2] |= 0x02;
+        payload.extend_from_slice(&initiator.nfcid3);
+        if !initiator.general_bytes.is_empty() {
+            payload[2] |= 0x04;
+            payload.extend_from_slice(&initiator.general_bytes);
+        }
+    }
+
+    Ok(payload)
+}
+
+fn parse_dep_target(
+    payload: &[u8],
+    mode: DepMode,
+    baud_rate: BaudRate,
+) -> Result<Option<Target>, Error> {
+    if payload.is_empty() {
+        return Err(status_error("parse_dep_target", NFC_EIO));
+    }
+    if payload[0] == 0 {
+        return Ok(None);
+    }
+    if payload.len() < 16 {
+        return Err(status_error("parse_dep_target", NFC_EIO));
+    }
+    let mut nfcid3 = [0u8; 10];
+    nfcid3.copy_from_slice(&payload[1..11]);
+    let general_bytes = if payload.len() > 16 {
+        payload[16..].to_vec()
+    } else {
+        Vec::new()
+    };
+    Ok(Some(Target {
+        modulation: Modulation {
+            modulation_type: ModulationType::Dep,
+            baud_rate,
+        },
+        info: TargetInfo::Dep(DepInfo {
+            nfcid3,
+            did: payload[11],
+            bs: payload[12],
+            br: payload[13],
+            timeout: payload[14],
+            pp: payload[15],
+            general_bytes,
+            mode,
+        }),
+    }))
+}
+
+fn is_iso14443_4_target(target: &Target) -> bool {
+    matches!(
+        target.info,
+        TargetInfo::Iso14443A { sak, .. } if sak & SAK_ISO14443_4_COMPLIANT != 0
+    )
+}
+
+fn build_target_init_command(
+    chip_type: Pn53xType,
+    properties: PropertyState,
+    target: &Target,
+) -> Result<Vec<u8>, Error> {
+    let mut command = vec![0u8; 39 + 47 + 48];
+    command[0] = PN53X_TG_INIT_AS_TARGET;
+    let mut target_mode = PN53X_TARGET_MODE_NORMAL;
+    let optional_bytes;
+
+    match &target.info {
+        TargetInfo::Iso14443A { atqa, sak, uid, .. } => {
+            if uid.len() != 4 || uid[0] != 0x08 {
+                return Err(Error::InvalidArgument("target.uid"));
+            }
+            target_mode |= PN53X_TARGET_MODE_PASSIVE_ONLY;
+            if chip_type == Pn53xType::Pn532
+                && properties.auto_iso14443_4
+                && sak & SAK_ISO14443_4_COMPLIANT != 0
+            {
+                target_mode |= PN53X_TARGET_MODE_ISO14443_4_PICC_ONLY;
+            }
+            command[2] = atqa[1];
+            command[3] = atqa[0];
+            command[4] = uid[1];
+            command[5] = uid[2];
+            command[6] = uid[3];
+            command[7] = *sak;
+            command[36] = 0;
+            optional_bytes = 2;
+        }
+        TargetInfo::Felica {
+            id,
+            pad,
+            system_code,
+            ..
+        } => {
+            target_mode |= PN53X_TARGET_MODE_PASSIVE_ONLY;
+            command[8..16].copy_from_slice(id);
+            command[16..24].copy_from_slice(pad);
+            command[24..26].copy_from_slice(system_code);
+            command[36] = 0;
+            optional_bytes = 2;
+        }
+        TargetInfo::Dep(dep) => {
+            target_mode |= PN53X_TARGET_MODE_DEP_ONLY;
+            if dep.mode == DepMode::Passive {
+                target_mode |= PN53X_TARGET_MODE_PASSIVE_ONLY;
+            }
+            command[2] = 0x08;
+            command[3] = 0x00;
+            command[4] = 0x12;
+            command[5] = 0x34;
+            command[6] = 0x56;
+            command[7] = 0x40;
+            command[8..16].copy_from_slice(&[0x01, 0xfe, 0x12, 0x34, 0x56, 0x78, 0x90, 0x12]);
+            command[16..24].copy_from_slice(&[0xc0, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7]);
+            command[24..26].copy_from_slice(&[0x0f, 0xab]);
+            command[26..36].copy_from_slice(&dep.nfcid3);
+            let gb_len = dep.general_bytes.len().min(47);
+            command[36] = gb_len as u8;
+            command[37..37 + gb_len].copy_from_slice(&dep.general_bytes[..gb_len]);
+            command[37 + gb_len] = 0;
+            optional_bytes = gb_len + 2;
+        }
+        _ => return Err(Error::UnsupportedOperation("target_init")),
+    }
+
+    command[1] = target_mode;
+    command.truncate(36 + optional_bytes);
+    Ok(command)
+}
+
+fn decode_activation_mode(mode: u8) -> (Modulation, DepMode) {
+    let baud_rate = match mode & 0x70 {
+        0x10 => BaudRate::Br212,
+        0x20 => BaudRate::Br424,
+        _ => BaudRate::Br106,
+    };
+    if mode & 0x04 != 0 {
+        let dep_mode = if mode & 0x03 == 0x01 {
+            DepMode::Active
+        } else {
+            DepMode::Passive
+        };
+        (
+            Modulation {
+                modulation_type: ModulationType::Dep,
+                baud_rate,
+            },
+            dep_mode,
+        )
+    } else {
+        let modulation_type = if mode & 0x03 == 0x02 {
+            ModulationType::Felica
+        } else {
+            ModulationType::Iso14443A
+        };
+        (
+            Modulation {
+                modulation_type,
+                baud_rate,
+            },
+            DepMode::Undefined,
+        )
+    }
 }
 
 impl<T: Pn53xTransport + Send + 'static> OpenedDevice for Pn53xDevice<T> {
@@ -572,6 +1154,337 @@ impl<T: Pn53xTransport + Send + 'static> OpenedDevice for Pn53xDevice<T> {
             return Err(Error::UnsupportedOperation("initiator_init_secure_element"));
         };
         self.sam_configuration(mode, self.core.timeout_command_ms)
+    }
+
+    fn select_passive_target_driver(
+        &mut self,
+        nm: Modulation,
+        init_data: &[u8],
+    ) -> Result<Option<Target>, Error> {
+        let Some(pm) = nm_to_pm(nm) else {
+            return self.remember(Err(Error::UnsupportedOperation("select_passive_target")));
+        };
+        let mut payload = Vec::with_capacity(init_data.len() + 3);
+        payload.push(0x01);
+        payload.push(pm);
+        payload.extend_from_slice(init_data);
+
+        let response = self.exchange_raw(
+            PN53X_IN_LIST_PASSIVE_TARGET,
+            &payload,
+            self.core.timeout_command_ms,
+        )?;
+        let target = if response.first().copied().unwrap_or(0) == 0 {
+            None
+        } else {
+            Some(decode_target_data(
+                self.core.chip_type(),
+                nm,
+                &response[1..],
+            )?)
+        };
+        if let Some(target) = &target {
+            self.core.remember_target(target.clone());
+        } else {
+            self.core.clear_target();
+        }
+        self.last_error = 0;
+        Ok(target)
+    }
+
+    fn poll_target_driver(
+        &mut self,
+        modulations: &[Modulation],
+        poll_nr: u8,
+        period: u8,
+    ) -> Result<Option<Target>, Error> {
+        if modulations.is_empty() {
+            return self.remember(Err(Error::InvalidArgument("modulations")));
+        }
+
+        let delay = Duration::from_micros(u64::from(period) * 150_000);
+        let mut remaining = if poll_nr == 0xff {
+            usize::MAX
+        } else {
+            usize::from(poll_nr.max(1))
+        };
+
+        while remaining > 0 {
+            for modulation in modulations {
+                if let Some(target) = self.select_passive_target_driver(
+                    *modulation,
+                    default_initiator_payload(*modulation),
+                )? {
+                    self.last_error = 0;
+                    return Ok(Some(target));
+                }
+            }
+            if poll_nr != 0xff {
+                remaining -= 1;
+            }
+            thread::sleep(delay);
+        }
+
+        self.last_error = 0;
+        Ok(None)
+    }
+
+    fn select_dep_target_driver(
+        &mut self,
+        ndm: DepMode,
+        nbr: BaudRate,
+        initiator: Option<&DepInfo>,
+        timeout: i32,
+    ) -> Result<Option<Target>, Error> {
+        let payload = build_injump_for_dep_command(ndm, nbr, initiator)?;
+        let timeout = if timeout >= 0 {
+            timeout
+        } else {
+            self.core.timeout_command_ms
+        };
+        let response = self.exchange_with_status(
+            "select_dep_target",
+            PN53X_IN_JUMP_FOR_DEP,
+            &payload,
+            timeout,
+        )?;
+        let target = parse_dep_target(&response, ndm, nbr)?;
+        if let Some(target) = &target {
+            self.core.remember_target(target.clone());
+        } else {
+            self.core.clear_target();
+        }
+        self.last_error = 0;
+        Ok(target)
+    }
+
+    fn deselect_target_driver(&mut self) -> Result<(), Error> {
+        let _ = self.exchange_with_status(
+            "deselect_target",
+            PN53X_IN_DESELECT,
+            &[0x00],
+            self.core.timeout_command_ms,
+        )?;
+        self.core.clear_target();
+        self.last_error = 0;
+        Ok(())
+    }
+
+    fn target_is_present_driver(&mut self, target: Option<&Target>) -> Result<bool, Error> {
+        let Some(current) = self.core.current_target().cloned() else {
+            return self.remember(Err(status_error("target_is_present", NFC_EINVARG)));
+        };
+        if target.is_some_and(|target| *target != current) {
+            self.core.clear_target();
+            return self.remember(Err(status_error("target_is_present", NFC_ETGRELEASED)));
+        }
+        self.last_error = 0;
+        Ok(true)
+    }
+
+    fn target_init_driver(
+        &mut self,
+        target: &mut Target,
+        rx: &mut [u8],
+        timeout: i32,
+    ) -> Result<usize, Error> {
+        let command =
+            build_target_init_command(self.core.chip_type(), self.core.properties, target)?;
+        let timeout = if timeout >= 0 {
+            timeout
+        } else {
+            self.core.timeout_command_ms
+        };
+        let response = self.exchange_raw(PN53X_TG_INIT_AS_TARGET, &command[1..], timeout)?;
+        let Some((&activation_mode, payload)) = response.split_first() else {
+            return self.remember(Err(status_error("target_init", NFC_EIO)));
+        };
+        let (modulation, dep_mode) = decode_activation_mode(activation_mode);
+        target.modulation = modulation;
+        if let TargetInfo::Dep(info) = &mut target.info {
+            info.mode = dep_mode;
+        }
+        let written = Self::copy_into("target_init", payload, rx)?;
+        self.core.remember_target(target.clone());
+        self.last_error = 0;
+        Ok(written)
+    }
+
+    fn transceive_bytes_driver(
+        &mut self,
+        tx: &[u8],
+        rx: &mut [u8],
+        timeout: i32,
+    ) -> Result<usize, Error> {
+        let timeout = if timeout >= 0 {
+            timeout
+        } else {
+            self.core.timeout_communication_ms
+        };
+        let response = if self.core.properties.easy_framing {
+            let mut payload = Vec::with_capacity(tx.len() + 1);
+            payload.push(0x01);
+            payload.extend_from_slice(tx);
+            self.exchange_with_status(
+                "transceive_bytes",
+                PN53X_IN_DATA_EXCHANGE,
+                &payload,
+                timeout,
+            )?
+        } else {
+            self.exchange_with_status("transceive_bytes", PN53X_IN_COMMUNICATE_THRU, tx, timeout)?
+        };
+        let written = Self::copy_into("transceive_bytes", &response, rx)?;
+        self.last_error = 0;
+        Ok(written)
+    }
+
+    fn transceive_bits_driver(
+        &mut self,
+        tx: &[u8],
+        tx_bits_len: usize,
+        tx_parity: Option<&[u8]>,
+        rx: &mut [u8],
+        rx_parity: Option<&mut [u8]>,
+    ) -> Result<usize, Error> {
+        if tx_bits_len % 8 != 0
+            || tx_parity.is_some()
+            || rx_parity.is_some()
+            || !self.core.properties.handle_parity
+        {
+            return self.remember(Err(Error::UnsupportedOperation("transceive_bits")));
+        }
+        let byte_len = tx_bits_len / 8;
+        let response = self.exchange_with_status(
+            "transceive_bits",
+            PN53X_IN_COMMUNICATE_THRU,
+            &tx[..byte_len],
+            self.core.timeout_communication_ms,
+        )?;
+        let written = Self::copy_into("transceive_bits", &response, rx)?;
+        self.last_error = 0;
+        Ok(written * 8)
+    }
+
+    fn transceive_bytes_timed_driver(
+        &mut self,
+        tx: &[u8],
+        rx: &mut [u8],
+    ) -> Result<(usize, u32), Error> {
+        let start = Instant::now();
+        let written = self.transceive_bytes_driver(tx, rx, self.core.timeout_communication_ms)?;
+        let elapsed = start.elapsed().as_micros().min(u128::from(u32::MAX)) as u32;
+        self.last_error = 0;
+        Ok((written, elapsed))
+    }
+
+    fn transceive_bits_timed_driver(
+        &mut self,
+        tx: &[u8],
+        tx_bits_len: usize,
+        tx_parity: Option<&[u8]>,
+        rx: &mut [u8],
+        rx_parity: Option<&mut [u8]>,
+    ) -> Result<(usize, u32), Error> {
+        let start = Instant::now();
+        let written = self.transceive_bits_driver(tx, tx_bits_len, tx_parity, rx, rx_parity)?;
+        let elapsed = start.elapsed().as_micros().min(u128::from(u32::MAX)) as u32;
+        self.last_error = 0;
+        Ok((written, elapsed))
+    }
+
+    fn target_send_bytes_driver(&mut self, tx: &[u8], timeout: i32) -> Result<usize, Error> {
+        let timeout = if timeout >= 0 {
+            timeout
+        } else {
+            self.core.timeout_communication_ms
+        };
+        let command = match self.core.current_target() {
+            Some(target) if self.core.properties.easy_framing => {
+                match target.modulation.modulation_type {
+                    ModulationType::Dep => PN53X_TG_SET_DATA,
+                    ModulationType::Iso14443A
+                        if self.core.chip_type() == Pn53xType::Pn532
+                            && self.core.properties.auto_iso14443_4
+                            && is_iso14443_4_target(target) =>
+                    {
+                        PN53X_TG_SET_DATA
+                    }
+                    _ => PN53X_TG_RESPONSE_TO_INITIATOR,
+                }
+            }
+            _ => PN53X_TG_RESPONSE_TO_INITIATOR,
+        };
+        let _ = self.exchange_with_status("target_send_bytes", command, tx, timeout)?;
+        self.last_error = 0;
+        Ok(tx.len())
+    }
+
+    fn target_receive_bytes_driver(&mut self, rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
+        let timeout = if timeout >= 0 {
+            timeout
+        } else {
+            self.core.timeout_communication_ms
+        };
+        let command = match self.core.current_target() {
+            Some(target) if self.core.properties.easy_framing => {
+                match target.modulation.modulation_type {
+                    ModulationType::Dep => PN53X_TG_GET_DATA,
+                    ModulationType::Iso14443A
+                        if self.core.chip_type() == Pn53xType::Pn532
+                            && self.core.properties.auto_iso14443_4
+                            && is_iso14443_4_target(target) =>
+                    {
+                        PN53X_TG_GET_DATA
+                    }
+                    _ => PN53X_TG_GET_INITIATOR_COMMAND,
+                }
+            }
+            _ => PN53X_TG_GET_INITIATOR_COMMAND,
+        };
+        let response = self.exchange_with_status("target_receive_bytes", command, &[], timeout)?;
+        let written = Self::copy_into("target_receive_bytes", &response, rx)?;
+        self.last_error = 0;
+        Ok(written)
+    }
+
+    fn target_send_bits_driver(
+        &mut self,
+        tx: &[u8],
+        tx_bits_len: usize,
+        tx_parity: Option<&[u8]>,
+    ) -> Result<usize, Error> {
+        if tx_bits_len % 8 != 0 || tx_parity.is_some() || !self.core.properties.handle_parity {
+            return self.remember(Err(Error::UnsupportedOperation("target_send_bits")));
+        }
+        let byte_len = tx_bits_len / 8;
+        let _ = self.exchange_with_status(
+            "target_send_bits",
+            PN53X_TG_RESPONSE_TO_INITIATOR,
+            &tx[..byte_len],
+            self.core.timeout_communication_ms,
+        )?;
+        self.last_error = 0;
+        Ok(tx_bits_len)
+    }
+
+    fn target_receive_bits_driver(
+        &mut self,
+        rx: &mut [u8],
+        rx_parity: Option<&mut [u8]>,
+    ) -> Result<usize, Error> {
+        if rx_parity.is_some() || !self.core.properties.handle_parity {
+            return self.remember(Err(Error::UnsupportedOperation("target_receive_bits")));
+        }
+        let response = self.exchange_with_status(
+            "target_receive_bits",
+            PN53X_TG_GET_INITIATOR_COMMAND,
+            &[],
+            self.core.timeout_communication_ms,
+        )?;
+        let written = Self::copy_into("target_receive_bits", &response, rx)?;
+        self.last_error = 0;
+        Ok(written * 8)
     }
 
     fn abort_command_driver(&mut self) -> Result<(), Error> {
@@ -688,24 +1601,45 @@ pub(crate) fn build_response_frame(command: u8, payload: &[u8]) -> Result<Vec<u8
 }
 
 pub(crate) fn command_from_host_frame(frame: &[u8]) -> Result<u8, Error> {
+    Ok(payload_from_host_frame(frame)?[0])
+}
+
+pub(crate) fn payload_from_host_frame(frame: &[u8]) -> Result<Vec<u8>, Error> {
     if frame.len() < 8 || !frame.starts_with(&[0x00, 0x00, 0xff]) {
         return Err(status_error("pn53x_command_from_host_frame", NFC_EIO));
     }
 
-    let body_offset = if frame[3] == 0xff && frame[4] == 0xff {
+    let (body_offset, body_len) = if frame[3] == 0xff && frame[4] == 0xff {
         if frame.len() < 10 {
             return Err(status_error("pn53x_command_from_host_frame", NFC_EIO));
         }
-        8
+        let length = ((frame[5] as usize) << 8) | frame[6] as usize;
+        if frame[5].wrapping_add(frame[6]).wrapping_add(frame[7]) != 0 {
+            return Err(status_error("pn53x_command_from_host_frame", NFC_EIO));
+        }
+        (8, length)
     } else {
-        5
+        if frame[3].wrapping_add(frame[4]) != 0 {
+            return Err(status_error("pn53x_command_from_host_frame", NFC_EIO));
+        }
+        (5, frame[3] as usize)
     };
 
-    if frame.len() <= body_offset + 1 || frame[body_offset] != HOST_TO_PN53X_TFI {
+    let trailer_offset = body_offset + body_len;
+    if frame.len() < trailer_offset + 2 || body_len < 2 || frame[body_offset] != HOST_TO_PN53X_TFI {
         return Err(status_error("pn53x_command_from_host_frame", NFC_EIO));
     }
 
-    Ok(frame[body_offset + 1])
+    let body = &frame[body_offset..trailer_offset];
+    let expected_dcs = body
+        .iter()
+        .fold(0u8, |sum, byte| sum.wrapping_add(*byte))
+        .wrapping_neg();
+    if frame[trailer_offset] != expected_dcs || frame[trailer_offset + 1] != 0x00 {
+        return Err(status_error("pn53x_command_from_host_frame", NFC_EIO));
+    }
+
+    Ok(body[1..].to_vec())
 }
 
 fn parse_response_frame(frame: &[u8], expected_command: u8) -> Result<Vec<u8>, Error> {
@@ -835,6 +1769,20 @@ mod tests {
         transport
             .received
             .push_back(response_frame(0x02, &[0x32, 0x01, 0x06, 0x07]));
+    }
+
+    fn probed_device() -> Pn53xDevice<FakeTransport> {
+        let mut transport = FakeTransport::default();
+        queue_probe_responses(&mut transport);
+        let connstring = ConnectionString::new("pn532_uart:/dev/null:115200").unwrap();
+        Pn53xDevice::probe_with_profile(
+            "PN532",
+            connstring,
+            Pn53xProfile::pn532("pn532_uart"),
+            transport,
+            25,
+        )
+        .unwrap()
     }
 
     #[test]
@@ -1017,5 +1965,188 @@ mod tests {
     #[test]
     fn status_constants_match_expected_negative_codes() {
         assert_eq!(NFC_EOPABORTED, -7);
+    }
+
+    #[test]
+    fn select_passive_target_decodes_iso14443a_and_tracks_current_target() {
+        let mut device = probed_device();
+        device
+            .transport
+            .received
+            .push_back(PN53X_ACK_FRAME.to_vec());
+        device.transport.received.push_back(response_frame(
+            PN53X_IN_LIST_PASSIVE_TARGET,
+            &[
+                0x01, 0x01, 0x04, 0x00, 0x08, 0x04, 0xde, 0xad, 0xbe, 0xef, 0x05, 0x75, 0x77, 0x81,
+                0x02,
+            ],
+        ));
+
+        let target = device
+            .select_passive_target(
+                Modulation {
+                    modulation_type: ModulationType::Iso14443A,
+                    baud_rate: BaudRate::Br106,
+                },
+                None,
+            )
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            target.info,
+            TargetInfo::Iso14443A {
+                atqa: [0x04, 0x00],
+                sak: 0x08,
+                uid: vec![0xde, 0xad, 0xbe, 0xef],
+                ats: vec![0x75, 0x77, 0x81, 0x02],
+            }
+        );
+        assert_eq!(device.core.current_target(), Some(&target));
+    }
+
+    #[test]
+    fn select_dep_target_and_deselect_share_runtime_logic() {
+        let mut device = probed_device();
+        device
+            .transport
+            .received
+            .push_back(PN53X_ACK_FRAME.to_vec());
+        device.transport.received.push_back(response_frame(
+            PN53X_IN_JUMP_FOR_DEP,
+            &[
+                0x00, 0x01, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x22, 0x33,
+                0x44, 0x55, 0x66, 0xaa, 0xbb,
+            ],
+        ));
+        device
+            .transport
+            .received
+            .push_back(PN53X_ACK_FRAME.to_vec());
+        device
+            .transport
+            .received
+            .push_back(response_frame(PN53X_IN_DESELECT, &[0x00]));
+
+        let target = device
+            .select_dep_target(DepMode::Passive, BaudRate::Br106, None, 250)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            target.info,
+            TargetInfo::Dep(DepInfo {
+                nfcid3: [0x11; 10],
+                did: 0x22,
+                bs: 0x33,
+                br: 0x44,
+                timeout: 0x55,
+                pp: 0x66,
+                general_bytes: vec![0xaa, 0xbb],
+                mode: DepMode::Passive,
+            })
+        );
+        assert!(device.target_is_present(Some(&target)).unwrap());
+
+        device.deselect_target().unwrap();
+        assert!(device.core.current_target().is_none());
+    }
+
+    #[test]
+    fn transceive_bytes_and_timed_variant_measure_elapsed_time() {
+        let mut device = probed_device();
+        device
+            .transport
+            .received
+            .push_back(PN53X_ACK_FRAME.to_vec());
+        device
+            .transport
+            .received
+            .push_back(response_frame(PN53X_IN_DATA_EXCHANGE, &[0x00, 0x90, 0x00]));
+        device
+            .transport
+            .received
+            .push_back(PN53X_ACK_FRAME.to_vec());
+        device
+            .transport
+            .received
+            .push_back(response_frame(PN53X_IN_DATA_EXCHANGE, &[0x00, 0xaa]));
+
+        let mut rx = [0u8; 8];
+        let written = device
+            .transceive_bytes(&[0x30, 0x04], &mut rx, 250)
+            .unwrap();
+        assert_eq!(written, 2);
+        assert_eq!(&rx[..written], &[0x90, 0x00]);
+
+        let (timed_written, elapsed) = device.transceive_bytes_timed(&[0x50], &mut rx).unwrap();
+        assert_eq!(timed_written, 1);
+        assert_eq!(&rx[..timed_written], &[0xaa]);
+        assert!(elapsed <= u32::MAX);
+    }
+
+    #[test]
+    fn target_init_and_target_byte_io_are_shared() {
+        let mut device = probed_device();
+        device
+            .transport
+            .received
+            .push_back(PN53X_ACK_FRAME.to_vec());
+        device
+            .transport
+            .received
+            .push_back(response_frame(PN53X_TG_INIT_AS_TARGET, &[0x04, 0xca, 0xfe]));
+        device
+            .transport
+            .received
+            .push_back(PN53X_ACK_FRAME.to_vec());
+        device
+            .transport
+            .received
+            .push_back(response_frame(PN53X_TG_SET_DATA, &[0x00]));
+        device
+            .transport
+            .received
+            .push_back(PN53X_ACK_FRAME.to_vec());
+        device
+            .transport
+            .received
+            .push_back(response_frame(PN53X_TG_GET_DATA, &[0x00, 0xbe, 0xef]));
+
+        let mut target = Target {
+            modulation: Modulation {
+                modulation_type: ModulationType::Dep,
+                baud_rate: BaudRate::Undefined,
+            },
+            info: TargetInfo::Dep(DepInfo {
+                nfcid3: [0x22; 10],
+                did: 0x01,
+                bs: 0x02,
+                br: 0x03,
+                timeout: 0x04,
+                pp: 0x05,
+                general_bytes: vec![0xaa],
+                mode: DepMode::Passive,
+            }),
+        };
+        let mut rx = [0u8; 8];
+        let init_len = device.target_init(&mut target, &mut rx, 250).unwrap();
+        assert_eq!(init_len, 2);
+        assert_eq!(&rx[..init_len], &[0xca, 0xfe]);
+        assert_eq!(target.modulation.baud_rate, BaudRate::Br106);
+
+        assert_eq!(device.target_send_bytes(&[0x90], 250).unwrap(), 1);
+        let recv_len = device.target_receive_bytes(&mut rx, 250).unwrap();
+        assert_eq!(recv_len, 2);
+        assert_eq!(&rx[..recv_len], &[0xbe, 0xef]);
+    }
+
+    #[test]
+    fn non_byte_aligned_bits_report_unsupported_operation() {
+        let mut device = probed_device();
+        let mut rx = [0u8; 8];
+        assert_eq!(
+            device.transceive_bits(&[0x26], 7, None, &mut rx, None),
+            Err(Error::UnsupportedOperation("transceive_bits"))
+        );
     }
 }
