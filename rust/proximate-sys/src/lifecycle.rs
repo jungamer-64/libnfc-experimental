@@ -38,7 +38,9 @@ pub const MAX_USER_DEFINED_DEVICES: usize = 4;
 pub const NFC_DRIVER_NAME_MAX: usize = 64;
 #[cfg(test)]
 const DEFAULT_CONTEXT_LOG_LEVEL: u32 = if cfg!(libnfc_debug) { 3 } else { 1 };
+#[cfg(test)]
 const USER_DEFINED_DEFAULT_DEVICE_NAME: &[u8] = b"user defined default device";
+#[cfg(test)]
 const USER_DEFINED_DEVICE_NAME: &[u8] = b"user defined device";
 const LOG_GROUP_CONFIG: u8 = 2;
 const LOG_PRIORITY_ERROR: u8 = 1;

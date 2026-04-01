@@ -465,7 +465,7 @@ unsafe extern "C" fn pn532_spi_receive(
         return NFC_EIO;
     };
     let mut header = [0u8; 5];
-    let mut len;
+    let len;
 
     let wait_rc = unsafe { pn532_spi_wait_for_data(device, timeout) };
     unsafe { (*device).last_error = wait_rc };
@@ -730,7 +730,7 @@ static PN532_SPI_DRIVER: nfc_driver = nfc_driver {
 #[cfg(test)]
 pub(crate) use crate::buses::spi::{
     test_add_port, test_queue_rx as test_queue_rx_spi_raw, test_reset as test_reset_spi,
-    test_snapshot as test_snapshot_spi, test_take_tx,
+    test_take_tx,
 };
 
 #[cfg(test)]

@@ -3,8 +3,8 @@ use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use super::*;
@@ -247,7 +247,11 @@ impl DeviceBackend for BackendDevice {
     }
 
     fn set_property_bool_backend(&mut self, property: Property, enable: bool) -> Result<(), Error> {
-        self.state.lock().unwrap().property_calls.push((property, enable));
+        self.state
+            .lock()
+            .unwrap()
+            .property_calls
+            .push((property, enable));
         self.property_bool_result.clone()
     }
 
@@ -574,10 +578,7 @@ fn backend_driver_wrapper_grows_scan_capacity_until_result_is_not_saturated() {
     let listed = registry.list_devices(&context).unwrap();
 
     assert_eq!(listed.len(), 3);
-    assert_eq!(
-        state.lock().unwrap().scan_capacities,
-        vec![4, 8, 16]
-    );
+    assert_eq!(state.lock().unwrap().scan_capacities, vec![4, 8, 16]);
 }
 
 #[test]
@@ -644,8 +645,10 @@ fn backend_driver_registry_keeps_usb_fallback_and_name_override_behavior() {
 #[test]
 fn backend_device_wrapper_normalizes_unsupported_operations_and_clears_last_error_on_success() {
     let mut backend = BackendDevice::new("alpha:001");
-    backend.information_about_result = Err(Error::UnsupportedOperation("device_get_information_about"));
-    backend.supported_modulations_result = Err(Error::UnsupportedOperation("get_supported_modulation"));
+    backend.information_about_result =
+        Err(Error::UnsupportedOperation("device_get_information_about"));
+    backend.supported_modulations_result =
+        Err(Error::UnsupportedOperation("get_supported_modulation"));
     backend.property_bool_result = Ok(());
 
     let state = backend.state.clone();
@@ -696,7 +699,10 @@ fn backend_device_wrapper_uses_custom_strerror_fallback_and_delegates_native_pay
     }))
     .into_native_payload()
     .unwrap();
-    assert_eq!(*payload.downcast::<String>().unwrap(), "payload".to_string());
+    assert_eq!(
+        *payload.downcast::<String>().unwrap(),
+        "payload".to_string()
+    );
 }
 
 #[test]

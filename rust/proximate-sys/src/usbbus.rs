@@ -2,22 +2,20 @@
 //
 // Free/Libre Near Field Communication (NFC) library
 //
-// USB helper layer backed by `nusb`.
+// USB helper layer backed by `proximate::ffi_internal_native`.
 
 #![allow(non_camel_case_types)]
 
 use crate::ffi_support::{as_mut, as_ref, copy_bytes_with_truncation};
-use libc::{c_char, c_int, c_void, size_t};
-use nusb::descriptors::{ConfigurationDescriptor, TransferType, language_id};
-use nusb::transfer::{Buffer, Bulk, In, Out, TransferError};
-use nusb::{
-    Device, DeviceInfo, Error as NusbError, ErrorKind as NusbErrorKind, Interface, MaybeFuture,
+use ::proximate::ffi_internal_native::usb::{
+    UsbBulkEndpoints as NativeUsbBulkEndpoints, UsbDeviceInfo as NativeUsbDeviceInfo,
+    UsbDeviceSelector, UsbError as NativeUsbError, UsbHandle as NativeUsbHandle,
+    bulk_endpoints as native_bulk_endpoints, bus_device_strings as native_bus_device_strings,
+    list_devices as native_list_devices, prepare as native_prepare,
 };
-use std::collections::HashMap;
-use std::num::NonZeroU8;
+use libc::{c_char, c_int, c_void, size_t};
 use std::ptr;
 use std::slice;
-use std::time::Duration;
 
 const USB_SUCCESS: c_int = 0;
 const USB_ERROR_IO: c_int = -1;
@@ -39,7 +37,6 @@ const USB_ENDPOINT_TYPE_BULK: u8 = 0x02;
 const USB_ENDPOINT_DIR_MASK: u8 = 0x80;
 const USB_ENDPOINT_IN: u8 = 0x80;
 const USB_ENDPOINT_OUT: u8 = 0x00;
-const STRING_DESCRIPTOR_TIMEOUT: Duration = Duration::from_millis(250);
 const INVALID_STRING_DESCRIPTOR_FALLBACK: &[u8] = b"?";
 
 #[repr(C)]
@@ -96,138 +93,35 @@ pub struct usb_dev_handle {
     _private: [u8; 0],
 }
 
-#[derive(Clone, Debug)]
-struct UsbDeviceKey {
-    vendor_id: u16,
-    product_id: u16,
-    bus_number: u8,
-    device_address: u8,
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    bus_id: String,
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    port_chain: Vec<u8>,
-}
-
-#[derive(Clone, Debug)]
-struct UsbNativeDevice {
-    key: UsbDeviceKey,
-    manufacturer_index: u8,
-    product_index: u8,
-    manufacturer_string: Option<String>,
-    product_string: Option<String>,
-}
-
 struct UsbHandleState {
-    key: UsbDeviceKey,
-    device: Device,
-    claimed_interfaces: HashMap<u8, Interface>,
-    read_overflow: HashMap<u8, Vec<u8>>,
-    string_descriptors: HashMap<u8, String>,
+    handle: NativeUsbHandle,
 }
 
-impl UsbDeviceKey {
-    fn from_device_info(info: &DeviceInfo) -> Self {
-        Self {
-            vendor_id: info.vendor_id(),
-            product_id: info.product_id(),
-            bus_number: device_bus_number(info),
-            device_address: info.device_address(),
-            #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-            bus_id: info.bus_id().to_owned(),
-            #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-            port_chain: info.port_chain().to_vec(),
-        }
-    }
-
-    fn matches(&self, info: &DeviceInfo) -> bool {
-        if info.vendor_id() != self.vendor_id || info.product_id() != self.product_id {
-            return false;
-        }
-
-        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-        {
-            if info.bus_id() != self.bus_id {
-                return false;
-            }
-
-            if !self.port_chain.is_empty() {
-                return info.port_chain() == self.port_chain.as_slice();
-            }
-        }
-
-        info.device_address() == self.device_address && device_bus_number(info) == self.bus_number
-    }
-}
-
-fn device_bus_number(info: &DeviceInfo) -> u8 {
-    #[cfg(target_os = "linux")]
-    {
-        return info.busnum();
-    }
-
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        return info.bus_id().parse::<u8>().unwrap_or(0);
-    }
-}
-
-fn duration_from_timeout(timeout: c_int) -> Duration {
-    if timeout <= 0 {
-        Duration::MAX
-    } else {
-        Duration::from_millis(timeout as u64)
-    }
-}
-
-fn round_up_transfer_len(size: usize, packet_size: usize) -> usize {
-    if size == 0 {
-        0
-    } else if packet_size == 0 {
-        size
-    } else {
-        size.div_ceil(packet_size) * packet_size
-    }
-}
-
-fn map_nusb_error(error: &NusbError) -> c_int {
-    match error.kind() {
-        NusbErrorKind::Disconnected => USB_ERROR_NO_DEVICE,
-        NusbErrorKind::Busy => USB_ERROR_BUSY,
-        NusbErrorKind::PermissionDenied => USB_ERROR_ACCESS,
-        NusbErrorKind::NotFound => USB_ERROR_NOT_FOUND,
-        NusbErrorKind::Unsupported => USB_ERROR_NOT_SUPPORTED,
-        NusbErrorKind::Other => USB_ERROR_OTHER,
-        _ => USB_ERROR_OTHER,
-    }
-}
-
-fn map_transfer_error(error: TransferError) -> c_int {
+fn map_usb_error(error: NativeUsbError) -> c_int {
     match error {
-        TransferError::Cancelled => USB_ERROR_TIMEOUT,
-        TransferError::Stall => USB_ERROR_PIPE,
-        TransferError::Disconnected => USB_ERROR_NO_DEVICE,
-        TransferError::Fault => USB_ERROR_IO,
-        TransferError::InvalidArgument => USB_ERROR_INVALID_PARAM,
-        TransferError::Unknown(_) => USB_ERROR_OTHER,
+        NativeUsbError::Io => USB_ERROR_IO,
+        NativeUsbError::InvalidParam => USB_ERROR_INVALID_PARAM,
+        NativeUsbError::Access => USB_ERROR_ACCESS,
+        NativeUsbError::NoDevice => USB_ERROR_NO_DEVICE,
+        NativeUsbError::NotFound => USB_ERROR_NOT_FOUND,
+        NativeUsbError::Busy => USB_ERROR_BUSY,
+        NativeUsbError::Timeout => USB_ERROR_TIMEOUT,
+        NativeUsbError::Overflow => USB_ERROR_OVERFLOW,
+        NativeUsbError::Pipe => USB_ERROR_PIPE,
+        NativeUsbError::Interrupted => USB_ERROR_INTERRUPTED,
+        NativeUsbError::NoMem => USB_ERROR_NO_MEM,
+        NativeUsbError::NotSupported => USB_ERROR_NOT_SUPPORTED,
+        NativeUsbError::Other => USB_ERROR_OTHER,
     }
 }
 
-fn result_string(code: c_int) -> *const c_char {
-    match code {
-        x if x >= 0 => b"success\0".as_ptr().cast(),
-        USB_ERROR_IO => b"input/output error\0".as_ptr().cast(),
-        USB_ERROR_INVALID_PARAM => b"invalid parameter\0".as_ptr().cast(),
-        USB_ERROR_ACCESS => b"access denied\0".as_ptr().cast(),
-        USB_ERROR_NO_DEVICE => b"no such device\0".as_ptr().cast(),
-        USB_ERROR_NOT_FOUND => b"entity not found\0".as_ptr().cast(),
-        USB_ERROR_BUSY => b"resource busy\0".as_ptr().cast(),
-        USB_ERROR_TIMEOUT => b"operation timed out\0".as_ptr().cast(),
-        USB_ERROR_OVERFLOW => b"overflow\0".as_ptr().cast(),
-        USB_ERROR_PIPE => b"pipe error\0".as_ptr().cast(),
-        USB_ERROR_INTERRUPTED => b"system call interrupted\0".as_ptr().cast(),
-        USB_ERROR_NO_MEM => b"out of memory\0".as_ptr().cast(),
-        USB_ERROR_NOT_SUPPORTED => b"operation not supported\0".as_ptr().cast(),
-        _ => b"other error\0".as_ptr().cast(),
+fn map_bulk_endpoints(value: NativeUsbBulkEndpoints) -> usb_bulk_endpoints {
+    usb_bulk_endpoints {
+        interface_number: value.interface_number,
+        alternate_setting: value.alternate_setting,
+        endpoint_in: value.endpoint_in,
+        endpoint_out: value.endpoint_out,
+        max_packet_size: value.max_packet_size,
     }
 }
 
@@ -235,133 +129,19 @@ unsafe fn handle_state<'a>(handle: *mut usb_dev_handle) -> Result<&'a mut UsbHan
     let Some(handle_ref) = (unsafe { as_mut(handle.cast::<UsbHandleState>()) }) else {
         return Err(USB_ERROR_INVALID_PARAM);
     };
-
     Ok(handle_ref)
 }
 
 unsafe fn native_device<'a>(
     device: *const usb_device,
-) -> Result<Option<&'a UsbNativeDevice>, c_int> {
+) -> Result<Option<&'a NativeUsbDeviceInfo>, c_int> {
     let Some(device_ref) = (unsafe { as_ref(device) }) else {
         return Err(USB_ERROR_INVALID_PARAM);
     };
-
     if device_ref.native_device.is_null() {
         return Ok(None);
     }
-
-    Ok(unsafe { as_ref(device_ref.native_device.cast::<UsbNativeDevice>()) })
-}
-
-fn populate_string_cache(state: &mut UsbHandleState, native: &UsbNativeDevice) {
-    if native.manufacturer_index != 0 {
-        if let Some(value) = native.manufacturer_string.clone() {
-            state
-                .string_descriptors
-                .insert(native.manufacturer_index, value);
-        }
-    }
-
-    if native.product_index != 0 {
-        if let Some(value) = native.product_string.clone() {
-            state.string_descriptors.insert(native.product_index, value);
-        }
-    }
-}
-
-fn open_matching_device(key: &UsbDeviceKey) -> Result<(DeviceInfo, Device), c_int> {
-    let mut devices = nusb::list_devices()
-        .wait()
-        .map_err(|error| map_nusb_error(&error))?;
-    let Some(info) = devices.find(|info| key.matches(info)) else {
-        return Err(USB_ERROR_NO_DEVICE);
-    };
-
-    let device = info.open().wait().map_err(|error| map_nusb_error(&error))?;
-    Ok((info, device))
-}
-
-fn collect_interfaces(
-    config: ConfigurationDescriptor<'_>,
-) -> Result<Vec<usb_interface_descriptor>, c_int> {
-    let mut interfaces = Vec::new();
-    for group in config.interfaces() {
-        let alt = group.first_alt_setting();
-        let endpoints: Vec<usb_endpoint_descriptor> = alt
-            .endpoints()
-            .map(|endpoint| usb_endpoint_descriptor {
-                address: endpoint.address(),
-                attributes: endpoint.attributes(),
-                max_packet_size: endpoint.max_packet_size() as u16,
-            })
-            .collect();
-        let endpoint_count = endpoints.len();
-        let endpoints_ptr = if endpoint_count == 0 {
-            ptr::null_mut()
-        } else {
-            Box::into_raw(endpoints.into_boxed_slice()) as *mut usb_endpoint_descriptor
-        };
-
-        interfaces.push(usb_interface_descriptor {
-            number: alt.interface_number(),
-            alternate_setting: alt.alternate_setting(),
-            endpoint_count,
-            endpoints: endpoints_ptr,
-        });
-    }
-
-    Ok(interfaces)
-}
-
-fn build_usb_device(info: &DeviceInfo) -> usb_device {
-    let mut native = UsbNativeDevice {
-        key: UsbDeviceKey::from_device_info(info),
-        manufacturer_index: 0,
-        product_index: 0,
-        manufacturer_string: info.manufacturer_string().map(str::to_owned),
-        product_string: info.product_string().map(str::to_owned),
-    };
-
-    let mut device = usb_device {
-        native_device: ptr::null_mut(),
-        vendor_id: info.vendor_id(),
-        product_id: info.product_id(),
-        manufacturer_string_index: 0,
-        product_string_index: 0,
-        bus_number: device_bus_number(info),
-        device_address: info.device_address(),
-        configuration_value: 1,
-        interface_count: 0,
-        interfaces: ptr::null_mut(),
-    };
-
-    if let Ok(opened) = info.open().wait() {
-        let descriptor = opened.device_descriptor();
-        device.manufacturer_string_index = descriptor
-            .manufacturer_string_index()
-            .map(NonZeroU8::get)
-            .unwrap_or(0);
-        device.product_string_index = descriptor
-            .product_string_index()
-            .map(NonZeroU8::get)
-            .unwrap_or(0);
-        native.manufacturer_index = device.manufacturer_string_index;
-        native.product_index = device.product_string_index;
-
-        if let Some(config) = opened.configurations().next() {
-            device.configuration_value = config.configuration_value();
-            if let Ok(interfaces) = collect_interfaces(config) {
-                device.interface_count = interfaces.len();
-                if !interfaces.is_empty() {
-                    device.interfaces = Box::into_raw(interfaces.into_boxed_slice())
-                        as *mut usb_interface_descriptor;
-                }
-            }
-        }
-    }
-
-    device.native_device = Box::into_raw(Box::new(native)).cast();
-    device
+    Ok(unsafe { as_ref(device_ref.native_device.cast::<NativeUsbDeviceInfo>()) })
 }
 
 unsafe fn free_usb_device(device: &mut usb_device) {
@@ -389,57 +169,117 @@ unsafe fn free_usb_device(device: &mut usb_device) {
     }
 
     if !device.native_device.is_null() {
-        let _ = unsafe { Box::from_raw(device.native_device.cast::<UsbNativeDevice>()) };
+        let _ = unsafe { Box::from_raw(device.native_device.cast::<NativeUsbDeviceInfo>()) };
         device.native_device = ptr::null_mut();
     }
 }
 
-fn clear_interface_state(state: &mut UsbHandleState) {
-    state.claimed_interfaces.clear();
-    state.read_overflow.clear();
-}
+fn build_usb_device(native: NativeUsbDeviceInfo) -> usb_device {
+    let vendor_id = native.vendor_id;
+    let product_id = native.product_id;
+    let manufacturer_string_index = native.manufacturer_string_index;
+    let product_string_index = native.product_string_index;
+    let bus_number = native.bus_number;
+    let device_address = native.device_address;
+    let configuration_value = native.configuration_value;
 
-fn find_bulk_interface(state: &UsbHandleState, endpoint: u8) -> Result<&Interface, c_int> {
-    state
-        .claimed_interfaces
-        .values()
-        .find(|interface| {
-            interface
-                .descriptor()
-                .map(|descriptor| {
-                    descriptor.endpoints().any(|candidate| {
-                        candidate.address() == endpoint
-                            && candidate.transfer_type() == TransferType::Bulk
-                    })
+    let interfaces = native
+        .interfaces
+        .iter()
+        .map(|interface| {
+            let endpoints = interface
+                .endpoints
+                .iter()
+                .map(|endpoint| usb_endpoint_descriptor {
+                    address: endpoint.address,
+                    attributes: endpoint.attributes,
+                    max_packet_size: endpoint.max_packet_size,
                 })
-                .unwrap_or(false)
+                .collect::<Vec<_>>();
+            let endpoint_count = endpoints.len();
+            let endpoints_ptr = if endpoint_count == 0 {
+                ptr::null_mut()
+            } else {
+                Box::into_raw(endpoints.into_boxed_slice()) as *mut usb_endpoint_descriptor
+            };
+            usb_interface_descriptor {
+                number: interface.number,
+                alternate_setting: interface.alternate_setting,
+                endpoint_count,
+                endpoints: endpoints_ptr,
+            }
         })
-        .ok_or(USB_ERROR_NOT_FOUND)
+        .collect::<Vec<_>>();
+
+    let interface_count = interfaces.len();
+    let interfaces_ptr = if interface_count == 0 {
+        ptr::null_mut()
+    } else {
+        Box::into_raw(interfaces.into_boxed_slice()) as *mut usb_interface_descriptor
+    };
+
+    usb_device {
+        native_device: Box::into_raw(Box::new(native)).cast(),
+        vendor_id,
+        product_id,
+        manufacturer_string_index,
+        product_string_index,
+        bus_number,
+        device_address,
+        configuration_value,
+        interface_count,
+        interfaces: interfaces_ptr,
+    }
 }
 
-fn copy_from_overflow(state: &mut UsbHandleState, endpoint: u8, out: &mut [u8]) -> usize {
-    if out.is_empty() {
-        return 0;
+fn bulk_endpoints_from_c(device: &usb_device) -> Option<usb_bulk_endpoints> {
+    if device.interfaces.is_null() {
+        return None;
     }
 
-    let mut copied = 0;
-    let mut remove_entry = false;
-    if let Some(overflow) = state.read_overflow.get_mut(&endpoint) {
-        copied = overflow.len().min(out.len());
-        out[..copied].copy_from_slice(&overflow[..copied]);
-        overflow.drain(..copied);
-        remove_entry = overflow.is_empty();
+    let interfaces = unsafe { slice::from_raw_parts(device.interfaces, device.interface_count) };
+    for interface in interfaces {
+        let mut result = usb_bulk_endpoints {
+            interface_number: interface.number,
+            alternate_setting: interface.alternate_setting as c_int,
+            ..usb_bulk_endpoints::default()
+        };
+        let mut found_in = false;
+        let mut found_out = false;
+
+        if interface.endpoints.is_null() {
+            continue;
+        }
+        let endpoints =
+            unsafe { slice::from_raw_parts(interface.endpoints, interface.endpoint_count) };
+        for endpoint in endpoints {
+            if endpoint.attributes & USB_ENDPOINT_TYPE_MASK != USB_ENDPOINT_TYPE_BULK {
+                continue;
+            }
+            if endpoint.address & USB_ENDPOINT_DIR_MASK == USB_ENDPOINT_IN {
+                result.endpoint_in = endpoint.address;
+                result.max_packet_size = result.max_packet_size.max(endpoint.max_packet_size);
+                found_in = true;
+            } else if endpoint.address & USB_ENDPOINT_DIR_MASK == USB_ENDPOINT_OUT {
+                result.endpoint_out = endpoint.address;
+                result.max_packet_size = result.max_packet_size.max(endpoint.max_packet_size);
+                found_out = true;
+            }
+        }
+
+        if found_in && found_out {
+            return Some(result);
+        }
     }
 
-    if remove_entry {
-        state.read_overflow.remove(&endpoint);
-    }
-
-    copied
+    None
 }
 
 pub unsafe fn usb_prepare() -> c_int {
-    USB_SUCCESS
+    match native_prepare() {
+        Ok(()) => USB_SUCCESS,
+        Err(error) => map_usb_error(error),
+    }
 }
 
 pub unsafe fn usb_get_device_list(list: *mut usb_device_list) -> c_int {
@@ -450,15 +290,18 @@ pub unsafe fn usb_get_device_list(list: *mut usb_device_list) -> c_int {
     list_ref.devices = ptr::null_mut();
     list_ref.count = 0;
 
-    let devices = match nusb::list_devices().wait() {
-        Ok(devices) => devices.collect::<Vec<_>>(),
-        Err(error) => return map_nusb_error(&error),
+    let devices = match native_list_devices() {
+        Ok(devices) => devices,
+        Err(error) => return map_usb_error(error),
     };
 
-    let usb_devices: Vec<usb_device> = devices.iter().map(build_usb_device).collect();
-    list_ref.count = usb_devices.len();
-    if !usb_devices.is_empty() {
-        list_ref.devices = Box::into_raw(usb_devices.into_boxed_slice()) as *mut usb_device;
+    let devices = devices
+        .into_iter()
+        .map(build_usb_device)
+        .collect::<Vec<_>>();
+    list_ref.count = devices.len();
+    if !devices.is_empty() {
+        list_ref.devices = Box::into_raw(devices.into_boxed_slice()) as *mut usb_device;
     }
 
     USB_SUCCESS
@@ -499,8 +342,14 @@ pub unsafe fn usb_get_bus_device_strings(
         return USB_ERROR_INVALID_PARAM;
     }
 
-    let bus = format!("{:03}", device_ref.bus_number);
-    let address = format!("{:03}", device_ref.device_address);
+    let (bus, address) = match unsafe { native_device(device) } {
+        Ok(Some(native)) => native_bus_device_strings(native),
+        Ok(None) => (
+            format!("{:03}", device_ref.bus_number),
+            format!("{:03}", device_ref.device_address),
+        ),
+        Err(error) => return error,
+    };
 
     if bus.len() >= bus_buffer_size || address.len() >= device_buffer_size {
         return USB_ERROR_OVERFLOW;
@@ -510,7 +359,6 @@ pub unsafe fn usb_get_bus_device_strings(
         copy_bytes_with_truncation(bus_buffer, bus_buffer_size, bus.as_bytes());
         copy_bytes_with_truncation(device_buffer, device_buffer_size, address.as_bytes());
     }
-
     USB_SUCCESS
 }
 
@@ -527,45 +375,16 @@ pub unsafe fn usb_device_get_bulk_endpoints(
 
     *endpoints_ref = usb_bulk_endpoints::default();
 
-    if device_ref.interfaces.is_null() {
-        return false;
+    if let Ok(Some(native)) = unsafe { native_device(device) }
+        && let Some(found) = native_bulk_endpoints(native)
+    {
+        *endpoints_ref = map_bulk_endpoints(found);
+        return true;
     }
 
-    let interfaces =
-        unsafe { slice::from_raw_parts(device_ref.interfaces, device_ref.interface_count) };
-    for interface in interfaces {
-        let mut found_in = false;
-        let mut found_out = false;
-        endpoints_ref.interface_number = interface.number;
-        endpoints_ref.alternate_setting = interface.alternate_setting as c_int;
-
-        if interface.endpoints.is_null() {
-            continue;
-        }
-
-        let endpoint_slice =
-            unsafe { slice::from_raw_parts(interface.endpoints, interface.endpoint_count) };
-        for endpoint in endpoint_slice {
-            if (endpoint.attributes & USB_ENDPOINT_TYPE_MASK) != USB_ENDPOINT_TYPE_BULK {
-                continue;
-            }
-
-            if (endpoint.address & USB_ENDPOINT_DIR_MASK) == USB_ENDPOINT_IN {
-                endpoints_ref.endpoint_in = endpoint.address;
-                endpoints_ref.max_packet_size =
-                    endpoints_ref.max_packet_size.max(endpoint.max_packet_size);
-                found_in = true;
-            } else if (endpoint.address & USB_ENDPOINT_DIR_MASK) == USB_ENDPOINT_OUT {
-                endpoints_ref.endpoint_out = endpoint.address;
-                endpoints_ref.max_packet_size =
-                    endpoints_ref.max_packet_size.max(endpoint.max_packet_size);
-                found_out = true;
-            }
-        }
-
-        if found_in && found_out {
-            return true;
-        }
+    if let Some(found) = bulk_endpoints_from_c(device_ref) {
+        *endpoints_ref = found;
+        return true;
     }
 
     false
@@ -575,62 +394,44 @@ pub unsafe fn usb_open(device: *const usb_device, handle: *mut *mut usb_dev_hand
     if handle.is_null() {
         return USB_ERROR_INVALID_PARAM;
     }
-
     unsafe {
         *handle = ptr::null_mut();
     }
 
-    let Some(device_ref) = (unsafe { as_ref(device) }) else {
-        return USB_ERROR_INVALID_PARAM;
-    };
-
-    let native = match unsafe { native_device(device) } {
-        Ok(Some(native)) => native.clone(),
-        Ok(None) => UsbNativeDevice {
-            key: UsbDeviceKey {
+    let native_handle = match unsafe { native_device(device) } {
+        Ok(Some(device)) => NativeUsbHandle::open(device),
+        Ok(None) => {
+            let Some(device_ref) = (unsafe { as_ref(device) }) else {
+                return USB_ERROR_INVALID_PARAM;
+            };
+            NativeUsbHandle::open_by_selector(UsbDeviceSelector {
                 vendor_id: device_ref.vendor_id,
                 product_id: device_ref.product_id,
                 bus_number: device_ref.bus_number,
                 device_address: device_ref.device_address,
-                #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-                bus_id: format!("{}", device_ref.bus_number),
-                #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-                port_chain: Vec::new(),
-            },
-            manufacturer_index: device_ref.manufacturer_string_index,
-            product_index: device_ref.product_string_index,
-            manufacturer_string: None,
-            product_string: None,
-        },
+            })
+        }
         Err(error) => return error,
     };
 
-    let (info, opened) = match open_matching_device(&native.key) {
-        Ok(result) => result,
-        Err(error) => return error,
-    };
-
-    let mut state = UsbHandleState {
-        key: UsbDeviceKey::from_device_info(&info),
-        device: opened,
-        claimed_interfaces: HashMap::new(),
-        read_overflow: HashMap::new(),
-        string_descriptors: HashMap::new(),
-    };
-    populate_string_cache(&mut state, &native);
-
-    let raw = Box::into_raw(Box::new(state)).cast::<usb_dev_handle>();
-    unsafe {
-        *handle = raw;
+    match native_handle {
+        Ok(handle_state) => {
+            unsafe {
+                *handle = Box::into_raw(Box::new(UsbHandleState {
+                    handle: handle_state,
+                }))
+                .cast::<usb_dev_handle>();
+            }
+            USB_SUCCESS
+        }
+        Err(error) => map_usb_error(error),
     }
-    USB_SUCCESS
 }
 
 pub unsafe fn usb_close(handle: *mut usb_dev_handle) -> c_int {
     if handle.is_null() {
         return USB_SUCCESS;
     }
-
     let _ = unsafe { Box::from_raw(handle.cast::<UsbHandleState>()) };
     USB_SUCCESS
 }
@@ -643,18 +444,12 @@ pub unsafe fn usb_set_configuration(
         Ok(state) => state,
         Err(error) => return error,
     };
-
     if !(0..=u8::MAX as c_int).contains(&configuration_value) {
         return USB_ERROR_INVALID_PARAM;
     }
-
-    match state
-        .device
-        .set_configuration(configuration_value as u8)
-        .wait()
-    {
+    match state.handle.set_configuration(configuration_value as u8) {
         Ok(()) => USB_SUCCESS,
-        Err(error) => map_nusb_error(&error),
+        Err(error) => map_usb_error(error),
     }
 }
 
@@ -663,22 +458,12 @@ pub unsafe fn usb_claim_interface(handle: *mut usb_dev_handle, interface_number:
         Ok(state) => state,
         Err(error) => return error,
     };
-
     if !(0..=u8::MAX as c_int).contains(&interface_number) {
         return USB_ERROR_INVALID_PARAM;
     }
-    let interface_number = interface_number as u8;
-
-    if state.claimed_interfaces.contains_key(&interface_number) {
-        return USB_SUCCESS;
-    }
-
-    match state.device.claim_interface(interface_number).wait() {
-        Ok(interface) => {
-            state.claimed_interfaces.insert(interface_number, interface);
-            USB_SUCCESS
-        }
-        Err(error) => map_nusb_error(&error),
+    match state.handle.claim_interface(interface_number as u8) {
+        Ok(()) => USB_SUCCESS,
+        Err(error) => map_usb_error(error),
     }
 }
 
@@ -687,20 +472,12 @@ pub unsafe fn usb_release_interface(handle: *mut usb_dev_handle, interface_numbe
         Ok(state) => state,
         Err(error) => return error,
     };
-
     if !(0..=u8::MAX as c_int).contains(&interface_number) {
         return USB_ERROR_INVALID_PARAM;
     }
-
-    if state
-        .claimed_interfaces
-        .remove(&(interface_number as u8))
-        .is_some()
-    {
-        state.read_overflow.clear();
-        USB_SUCCESS
-    } else {
-        USB_ERROR_NOT_FOUND
+    match state.handle.release_interface(interface_number as u8) {
+        Ok(()) => USB_SUCCESS,
+        Err(error) => map_usb_error(error),
     }
 }
 
@@ -713,23 +490,18 @@ pub unsafe fn usb_set_altinterface(
         Ok(state) => state,
         Err(error) => return error,
     };
-
     if !(0..=u8::MAX as c_int).contains(&interface_number)
         || !(0..=u8::MAX as c_int).contains(&alternate_setting)
     {
         return USB_ERROR_INVALID_PARAM;
     }
 
-    let Some(interface) = state.claimed_interfaces.get(&(interface_number as u8)) else {
-        return USB_ERROR_NOT_FOUND;
-    };
-
-    match interface.set_alt_setting(alternate_setting as u8).wait() {
-        Ok(()) => {
-            state.read_overflow.clear();
-            USB_SUCCESS
-        }
-        Err(error) => map_nusb_error(&error),
+    match state
+        .handle
+        .set_altinterface(interface_number as u8, alternate_setting as u8)
+    {
+        Ok(()) => USB_SUCCESS,
+        Err(error) => map_usb_error(error),
     }
 }
 
@@ -738,19 +510,10 @@ pub unsafe fn usb_reset(handle: *mut usb_dev_handle) -> c_int {
         Ok(state) => state,
         Err(error) => return error,
     };
-
-    if let Err(error) = state.device.reset().wait() {
-        return map_nusb_error(&error);
+    match state.handle.reset() {
+        Ok(()) => USB_SUCCESS,
+        Err(error) => map_usb_error(error),
     }
-
-    let (_, reopened) = match open_matching_device(&state.key) {
-        Ok(result) => result,
-        Err(error) => return error,
-    };
-
-    state.device = reopened;
-    clear_interface_state(state);
-    USB_SUCCESS
 }
 
 pub unsafe fn usb_bulk_read(
@@ -767,53 +530,15 @@ pub unsafe fn usb_bulk_read(
     if size != 0 && data.is_null() {
         return USB_ERROR_INVALID_PARAM;
     }
-    if (endpoint & USB_ENDPOINT_DIR_MASK) != USB_ENDPOINT_IN {
-        return USB_ERROR_INVALID_PARAM;
-    }
-
-    if size == 0 {
-        return 0;
-    }
-
-    let out = unsafe { slice::from_raw_parts_mut(data, size) };
-    let mut copied = copy_from_overflow(state, endpoint, out);
-    if copied == size {
-        return copied as c_int;
-    }
-
-    let interface = match find_bulk_interface(state, endpoint) {
-        Ok(interface) => interface,
-        Err(error) => return error,
+    let out = if size == 0 {
+        &mut [][..]
+    } else {
+        unsafe { slice::from_raw_parts_mut(data, size) }
     };
-
-    let mut bulk_in = match interface.endpoint::<Bulk, In>(endpoint) {
-        Ok(endpoint) => endpoint,
-        Err(error) => return map_nusb_error(&error),
-    };
-
-    let request_len = round_up_transfer_len(size - copied, bulk_in.max_packet_size());
-    let completion =
-        bulk_in.transfer_blocking(Buffer::new(request_len), duration_from_timeout(timeout));
-    let actual_len = completion.actual_len;
-    let buffer = match completion.into_result() {
-        Ok(buffer) => buffer.into_vec(),
-        Err(error) => return map_transfer_error(error),
-    };
-
-    let transfer_len = actual_len.min(buffer.len());
-    let copy_len = transfer_len.min(size - copied);
-    out[copied..copied + copy_len].copy_from_slice(&buffer[..copy_len]);
-    copied += copy_len;
-
-    if transfer_len > copy_len {
-        state
-            .read_overflow
-            .entry(endpoint)
-            .or_default()
-            .extend_from_slice(&buffer[copy_len..transfer_len]);
+    match state.handle.bulk_read(endpoint, out, timeout) {
+        Ok(read_len) => read_len as c_int,
+        Err(error) => map_usb_error(error),
     }
-
-    copied as c_int
 }
 
 pub unsafe fn usb_bulk_write(
@@ -830,31 +555,14 @@ pub unsafe fn usb_bulk_write(
     if size != 0 && data.is_null() {
         return USB_ERROR_INVALID_PARAM;
     }
-    if (endpoint & USB_ENDPOINT_DIR_MASK) != USB_ENDPOINT_OUT {
-        return USB_ERROR_INVALID_PARAM;
-    }
-
-    let interface = match find_bulk_interface(state, endpoint) {
-        Ok(interface) => interface,
-        Err(error) => return error,
-    };
-
-    let mut bulk_out = match interface.endpoint::<Bulk, Out>(endpoint) {
-        Ok(endpoint) => endpoint,
-        Err(error) => return map_nusb_error(&error),
-    };
-
-    let buffer = if size == 0 {
-        Buffer::new(0)
+    let bytes = if size == 0 {
+        &[][..]
     } else {
-        unsafe { slice::from_raw_parts(data, size) }.to_vec().into()
+        unsafe { slice::from_raw_parts(data, size) }
     };
-
-    let completion = bulk_out.transfer_blocking(buffer, duration_from_timeout(timeout));
-    let actual_len = completion.actual_len;
-    match completion.into_result() {
-        Ok(_) => actual_len as c_int,
-        Err(error) => map_transfer_error(error),
+    match state.handle.bulk_write(endpoint, bytes, timeout) {
+        Ok(written) => written as c_int,
+        Err(error) => map_usb_error(error),
     }
 }
 
@@ -876,60 +584,46 @@ pub unsafe fn usb_get_string_simple(
         return 0;
     }
 
-    let state = match unsafe { handle_state(handle) } {
-        Ok(state) => state,
-        Err(error) => return error,
-    };
     if string_index > u8::MAX as c_int {
         return USB_ERROR_INVALID_PARAM;
     }
 
-    let string_index = string_index as u8;
-    if let Some(value) = state.string_descriptors.get(&string_index) {
-        let copy_len = value.len().min(buffer_size.saturating_sub(1));
-        unsafe { copy_bytes_with_truncation(buffer, buffer_size, value.as_bytes()) };
-        return copy_len as c_int;
-    }
-
-    let Some(string_index_nonzero) = NonZeroU8::new(string_index) else {
-        return 0;
+    let state = match unsafe { handle_state(handle) } {
+        Ok(state) => state,
+        Err(error) => return error,
     };
-
-    let value = match state
-        .device
-        .get_string_descriptor(
-            string_index_nonzero,
-            language_id::US_ENGLISH,
-            STRING_DESCRIPTOR_TIMEOUT,
-        )
-        .wait()
-    {
-        Ok(value) => value,
-        Err(error) => {
-            return match error {
-                nusb::GetDescriptorError::Transfer(error) => map_transfer_error(error),
-                nusb::GetDescriptorError::InvalidDescriptor => {
-                    unsafe {
-                        copy_bytes_with_truncation(
-                            buffer,
-                            buffer_size,
-                            INVALID_STRING_DESCRIPTOR_FALLBACK,
-                        )
-                    };
-                    INVALID_STRING_DESCRIPTOR_FALLBACK.len() as c_int
-                }
+    match state.handle.get_string_simple(string_index as u8) {
+        Ok(value) => {
+            let bytes = if value.is_empty() {
+                INVALID_STRING_DESCRIPTOR_FALLBACK
+            } else {
+                value.as_bytes()
             };
+            let copy_len = bytes.len().min(buffer_size.saturating_sub(1));
+            unsafe { copy_bytes_with_truncation(buffer, buffer_size, bytes) };
+            copy_len as c_int
         }
-    };
-
-    let copy_len = value.len().min(buffer_size.saturating_sub(1));
-    unsafe { copy_bytes_with_truncation(buffer, buffer_size, value.as_bytes()) };
-    state.string_descriptors.insert(string_index, value);
-    copy_len as c_int
+        Err(error) => map_usb_error(error),
+    }
 }
 
 pub unsafe fn usb_strerror(result: c_int) -> *const c_char {
-    result_string(result)
+    match result {
+        x if x >= 0 => c"success".as_ptr(),
+        USB_ERROR_IO => c"input/output error".as_ptr(),
+        USB_ERROR_INVALID_PARAM => c"invalid parameter".as_ptr(),
+        USB_ERROR_ACCESS => c"access denied".as_ptr(),
+        USB_ERROR_NO_DEVICE => c"no such device".as_ptr(),
+        USB_ERROR_NOT_FOUND => c"entity not found".as_ptr(),
+        USB_ERROR_BUSY => c"resource busy".as_ptr(),
+        USB_ERROR_TIMEOUT => c"operation timed out".as_ptr(),
+        USB_ERROR_OVERFLOW => c"overflow".as_ptr(),
+        USB_ERROR_PIPE => c"pipe error".as_ptr(),
+        USB_ERROR_INTERRUPTED => c"system call interrupted".as_ptr(),
+        USB_ERROR_NO_MEM => c"out of memory".as_ptr(),
+        USB_ERROR_NOT_SUPPORTED => c"operation not supported".as_ptr(),
+        _ => c"other error".as_ptr(),
+    }
 }
 
 pub unsafe fn usb_error_is_timeout(result: c_int) -> bool {

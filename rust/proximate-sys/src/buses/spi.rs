@@ -6,161 +6,65 @@
 
 #![allow(non_camel_case_types)]
 
-use crate::buses::{allocate_c_string_array, c_path_to_string, claimed_spi_port, invalid_spi_port};
+#[cfg(test)]
+use crate::buses::claimed_spi_port;
+use crate::buses::{allocate_c_string_array, c_path_to_string, invalid_spi_port};
 use libc::{c_char, c_int, c_void};
 use std::ptr;
 
 const NFC_SUCCESS: c_int = 0;
 const NFC_EIO: c_int = -1;
-const NFC_ESOFT: c_int = -80;
 
 pub type spi_port = *mut c_void;
 
 #[cfg(all(not(test), target_os = "linux"))]
 mod linux_impl {
     use super::*;
-    use std::fs;
+    use ::proximate::ffi_internal_native::spi::{
+        SpiHandle, SpiIoError, SpiOpenError, list_ports as list_internal_ports,
+    };
 
-    const SPI_IOC_MAGIC: u8 = b'k';
-    const IOC_NRBITS: u32 = 8;
-    const IOC_TYPEBITS: u32 = 8;
-    const IOC_SIZEBITS: u32 = 14;
-    const IOC_NRSHIFT: u32 = 0;
-    const IOC_TYPESHIFT: u32 = IOC_NRSHIFT + IOC_NRBITS;
-    const IOC_SIZESHIFT: u32 = IOC_TYPESHIFT + IOC_TYPEBITS;
-    const IOC_DIRSHIFT: u32 = IOC_SIZESHIFT + IOC_SIZEBITS;
-    const IOC_WRITE: u32 = 1;
-    const IOC_READ: u32 = 2;
-    const SPI_MODE_0: u32 = 0;
-
-    #[repr(C)]
-    struct spi_ioc_transfer {
-        tx_buf: u64,
-        rx_buf: u64,
-        len: u32,
-        speed_hz: u32,
-        delay_usecs: u16,
-        bits_per_word: u8,
-        cs_change: u8,
-        tx_nbits: u8,
-        rx_nbits: u8,
-        word_delay_usecs: u8,
-        pad: u8,
-    }
-
-    #[repr(C)]
-    struct SpiPortLinux {
-        fd: c_int,
-    }
-
-    const fn ioc(dir: u32, ty: u8, nr: u8, size: u32) -> libc::c_ulong {
-        ((dir << IOC_DIRSHIFT)
-            | ((ty as u32) << IOC_TYPESHIFT)
-            | ((nr as u32) << IOC_NRSHIFT)
-            | (size << IOC_SIZESHIFT)) as libc::c_ulong
-    }
-
-    const fn iow<T>(ty: u8, nr: u8) -> libc::c_ulong {
-        ioc(IOC_WRITE, ty, nr, std::mem::size_of::<T>() as u32)
-    }
-
-    const fn ior<T>(ty: u8, nr: u8) -> libc::c_ulong {
-        ioc(IOC_READ, ty, nr, std::mem::size_of::<T>() as u32)
-    }
-
-    const fn iowr<T>(ty: u8, nr: u8) -> libc::c_ulong {
-        ioc(
-            IOC_READ | IOC_WRITE,
-            ty,
-            nr,
-            std::mem::size_of::<T>() as u32,
-        )
-    }
-
-    fn spi_ioc_message(count: usize) -> libc::c_ulong {
-        iowr_raw(
-            SPI_IOC_MAGIC,
-            0,
-            (std::mem::size_of::<spi_ioc_transfer>() * count) as u32,
-        )
-    }
-
-    const fn iowr_raw(ty: u8, nr: u8, size: u32) -> libc::c_ulong {
-        ioc(IOC_READ | IOC_WRITE, ty, nr, size)
-    }
-
-    const SPI_IOC_WR_MODE: libc::c_ulong = iow::<u8>(SPI_IOC_MAGIC, 1);
-    const SPI_IOC_WR_MAX_SPEED_HZ: libc::c_ulong = iow::<u32>(SPI_IOC_MAGIC, 4);
-    const SPI_IOC_RD_MAX_SPEED_HZ: libc::c_ulong = ior::<u32>(SPI_IOC_MAGIC, 4);
-
-    unsafe fn port_ref<'a>(port: spi_port) -> Option<&'a mut SpiPortLinux> {
-        unsafe { (port.cast::<SpiPortLinux>()).as_mut() }
-    }
-
-    fn bit_reversal(byte: u8) -> u8 {
-        let mut value = byte;
-        value = ((value & 0xaa) >> 1) | ((value & 0x55) << 1);
-        value = ((value & 0xcc) >> 2) | ((value & 0x33) << 2);
-        ((value & 0xf0) >> 4) | ((value & 0x0f) << 4)
+    unsafe fn port_ref<'a>(port: spi_port) -> Option<&'a mut SpiHandle> {
+        unsafe { (port.cast::<SpiHandle>()).as_mut() }
     }
 
     pub unsafe fn spi_open(port_name: *const c_char) -> spi_port {
         let Some(port_name) = (unsafe { c_path_to_string(port_name) }) else {
             return invalid_spi_port();
         };
-
-        let fd = unsafe {
-            libc::open(
-                port_name.as_ptr().cast::<c_char>(),
-                libc::O_RDWR | libc::O_NOCTTY | libc::O_NONBLOCK,
-            )
-        };
-        if fd < 0 {
-            return invalid_spi_port();
+        match SpiHandle::open(&port_name) {
+            Ok(handle) => Box::into_raw(Box::new(handle)).cast::<c_void>(),
+            Err(SpiOpenError::InvalidPort) => invalid_spi_port(),
         }
-
-        Box::into_raw(Box::new(SpiPortLinux { fd })).cast::<c_void>()
     }
 
     pub unsafe fn spi_close(port: spi_port) {
-        let raw = port.cast::<SpiPortLinux>();
+        let raw = port.cast::<SpiHandle>();
         if raw.is_null() {
             return;
         }
-        unsafe {
-            libc::close((*raw).fd);
-            drop(Box::from_raw(raw));
-        }
+        unsafe { drop(Box::from_raw(raw)) };
     }
 
     pub unsafe fn spi_set_speed(port: spi_port, speed: u32) {
         let Some(port) = (unsafe { port_ref(port) }) else {
             return;
         };
-        unsafe {
-            libc::ioctl(port.fd, SPI_IOC_WR_MAX_SPEED_HZ, &speed);
-        }
+        let _ = port.set_speed(speed);
     }
 
     pub unsafe fn spi_set_mode(port: spi_port, mode: u32) {
         let Some(port) = (unsafe { port_ref(port) }) else {
             return;
         };
-        let mode = mode as u8;
-        unsafe {
-            libc::ioctl(port.fd, SPI_IOC_WR_MODE, &mode);
-        }
+        let _ = port.set_mode(mode);
     }
 
     pub unsafe fn spi_get_speed(port: spi_port) -> u32 {
         let Some(port) = (unsafe { port_ref(port) }) else {
             return 0;
         };
-        let mut speed = 0u32;
-        unsafe {
-            libc::ioctl(port.fd, SPI_IOC_RD_MAX_SPEED_HZ, &mut speed);
-        }
-        speed
+        port.get_speed()
     }
 
     pub unsafe fn spi_send_receive(
@@ -174,70 +78,20 @@ mod linux_impl {
         let Some(port) = (unsafe { port_ref(port) }) else {
             return NFC_EIO;
         };
-
-        let mut tx_storage = Vec::new();
-        if tx_len > 0 {
-            let source = unsafe { std::slice::from_raw_parts(tx, tx_len) };
-            tx_storage = source.to_vec();
-            if lsb_first {
-                for byte in &mut tx_storage {
-                    *byte = bit_reversal(*byte);
-                }
-            }
+        let tx = if tx_len == 0 {
+            &[][..]
+        } else {
+            unsafe { std::slice::from_raw_parts(tx, tx_len) }
+        };
+        let rx = if rx_len == 0 {
+            &mut [][..]
+        } else {
+            unsafe { std::slice::from_raw_parts_mut(rx, rx_len) }
+        };
+        match port.send_receive(tx, rx, lsb_first) {
+            Ok(()) => NFC_SUCCESS,
+            Err(SpiIoError::Io) => NFC_EIO,
         }
-
-        let mut transfers = Vec::with_capacity(2);
-        if tx_len > 0 {
-            transfers.push(spi_ioc_transfer {
-                tx_buf: tx_storage.as_ptr() as u64,
-                rx_buf: 0,
-                len: tx_len as u32,
-                speed_hz: 0,
-                delay_usecs: 0,
-                bits_per_word: 0,
-                cs_change: 0,
-                tx_nbits: 0,
-                rx_nbits: 0,
-                word_delay_usecs: 0,
-                pad: 0,
-            });
-        }
-        if rx_len > 0 {
-            transfers.push(spi_ioc_transfer {
-                tx_buf: 0,
-                rx_buf: rx as u64,
-                len: rx_len as u32,
-                speed_hz: 0,
-                delay_usecs: 0,
-                bits_per_word: 0,
-                cs_change: 0,
-                tx_nbits: 0,
-                rx_nbits: 0,
-                word_delay_usecs: 0,
-                pad: 0,
-            });
-        }
-
-        if !transfers.is_empty() {
-            let rc = unsafe {
-                libc::ioctl(
-                    port.fd,
-                    spi_ioc_message(transfers.len()),
-                    transfers.as_mut_ptr(),
-                )
-            };
-            if rc != (tx_len + rx_len) as c_int {
-                return NFC_EIO;
-            }
-            if rx_len > 0 && lsb_first {
-                let rx_slice = unsafe { std::slice::from_raw_parts_mut(rx, rx_len) };
-                for byte in rx_slice {
-                    *byte = bit_reversal(*byte);
-                }
-            }
-        }
-
-        NFC_SUCCESS
     }
 
     pub unsafe fn spi_receive(
@@ -254,30 +108,15 @@ mod linux_impl {
     }
 
     pub unsafe fn spi_list_ports() -> *mut *mut c_char {
-        let mut matches = Vec::new();
-        let Ok(entries) = fs::read_dir("/dev") else {
-            return unsafe { allocate_c_string_array(&matches) };
-        };
-
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if !name.starts_with("spidev")
-                || name
-                    .bytes()
-                    .last()
-                    .is_none_or(|byte| !byte.is_ascii_digit())
-            {
-                continue;
-            }
-            matches.push(format!("/dev/{name}").into_bytes());
-        }
-
-        unsafe { allocate_c_string_array(&matches) }
+        let ports = list_internal_ports()
+            .into_iter()
+            .map(|port| port.into_bytes())
+            .collect::<Vec<_>>();
+        unsafe { allocate_c_string_array(&ports) }
     }
 
     #[allow(dead_code)]
-    pub const SPI_MODE_0_VALUE: u32 = SPI_MODE_0;
+    pub const SPI_MODE_0_VALUE: u32 = 0;
 }
 
 #[cfg(all(not(test), target_os = "linux"))]
@@ -416,16 +255,6 @@ mod tests_backend {
         state().lock().unwrap().ports.get(name).cloned()
     }
 
-    pub(crate) fn set_send_receive_error(name: &str, code: c_int) {
-        state()
-            .lock()
-            .unwrap()
-            .ports
-            .entry(name.to_string())
-            .or_default()
-            .send_receive_error = Some(code);
-    }
-
     pub unsafe fn spi_open(port_name: *const c_char) -> spi_port {
         let Some(port_name) = (unsafe { c_path_to_string(port_name) }) else {
             return invalid_spi_port();
@@ -539,8 +368,7 @@ mod tests_backend {
 #[cfg(test)]
 pub(crate) use tests_backend::{
     add_port as test_add_port, queue_rx as test_queue_rx, reset as test_reset,
-    set_send_receive_error as test_set_send_receive_error, snapshot as test_snapshot,
-    take_tx as test_take_tx,
+    snapshot as test_snapshot, take_tx as test_take_tx,
 };
 #[cfg(test)]
 pub use tests_backend::{

@@ -403,7 +403,9 @@ dependencies = [
 name = "proximate"
 version = "0.1.0"
 dependencies = [
+ "linux-raw-sys",
  "nusb",
+ "rustix",
 ]
 
 [[package]]

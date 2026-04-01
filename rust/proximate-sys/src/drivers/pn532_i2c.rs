@@ -42,7 +42,6 @@ use crate::lifecycle::{
 use libc::{c_char, c_int, c_void, ssize_t};
 use std::ffi::CString;
 use std::ptr;
-use std::slice;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 

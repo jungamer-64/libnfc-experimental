@@ -14,8 +14,8 @@ use crate::ffi_types::{
 };
 use crate::lifecycle::nfc_device;
 use crate::runtime_bridge::{
-    baud_rate_from_c, borrowed_device, dep_mode_from_c, error_to_status, modulation_from_c,
-    is_rust_shim_device, property_from_c, target_from_c, write_target_to_c,
+    baud_rate_from_c, borrowed_device, dep_mode_from_c, error_to_status, is_rust_shim_device,
+    modulation_from_c, property_from_c, target_from_c, write_target_to_c,
 };
 use crate::{emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr, ffi_catch_unwind_void};
 use libc::{c_char, c_int, size_t};
@@ -26,19 +26,11 @@ use std::mem::size_of;
 use std::ptr;
 use std::slice;
 
-const NFC_SUCCESS: c_int = 0;
 const NFC_EINVARG: c_int = -2;
 const NFC_EDEVNOTSUPP: c_int = -3;
-const NFC_ENOTSUCHDEV: c_int = -4;
-const NFC_EOVFLOW: c_int = -5;
+#[cfg(test)]
 const NFC_ETIMEOUT: c_int = -6;
-const NFC_EOPABORTED: c_int = -7;
-const NFC_ENOTIMPL: c_int = -8;
-const NFC_ETGRELEASED: c_int = -10;
-const NFC_ERFTRANS: c_int = -20;
-const NFC_EMFCAUTHFAIL: c_int = -30;
 const NFC_ESOFT: c_int = -80;
-const NFC_ECHIP: c_int = -90;
 
 const GENERAL_LOG_CATEGORY: *const c_char = b"libnfc.general\0" as *const u8 as *const c_char;
 const NULL_ERROR_PREFIX: *const c_char = b"(null)\0" as *const u8 as *const c_char;
@@ -400,9 +392,9 @@ pub unsafe fn nfc_initiator_select_dep_target(
 ) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_select_dep_target", NFC_ESOFT, || unsafe {
         dispatch_driver_call(device, |driver| {
-            driver.initiator_select_dep_target.map(|callback| {
-                callback(device, ndm, nbr, initiator, target, timeout)
-            })
+            driver
+                .initiator_select_dep_target
+                .map(|callback| callback(device, ndm, nbr, initiator, target, timeout))
         })
     })
 }
@@ -538,9 +530,9 @@ pub unsafe fn nfc_initiator_transceive_bits(
         }
         if !is_rust_shim_device(device) {
             return dispatch_driver_call(device, |driver| {
-                driver.initiator_transceive_bits.map(|callback| {
-                    callback(device, tx, tx_bits_len, tx_parity, rx, rx_parity)
-                })
+                driver
+                    .initiator_transceive_bits
+                    .map(|callback| callback(device, tx, tx_bits_len, tx_parity, rx, rx_parity))
             });
         }
         let tx = match input_bytes(device, tx, tx_bytes_len) {

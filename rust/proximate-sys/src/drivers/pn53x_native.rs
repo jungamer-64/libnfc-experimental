@@ -38,6 +38,7 @@ pub(crate) const PN53X_PREAMBLE_AND_START: [u8; 3] = [0x00, 0x00, 0xff];
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[cfg_attr(test, allow(dead_code))]
 pub(crate) enum pn53x_type {
     PN53X = 0x00,
     PN531 = 0x01,
@@ -575,6 +576,7 @@ static TEST_BAUD_RATES: [nfc_baud_rate; 2] = [nfc_baud_rate::NBR_106, nfc_baud_r
 
 #[cfg(test)]
 #[derive(Default, Clone, Debug)]
+#[allow(dead_code)]
 pub(crate) struct TestStateSnapshot {
     pub check_communication_calls: usize,
     pub check_communication_results_remaining: usize,

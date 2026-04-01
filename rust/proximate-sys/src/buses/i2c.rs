@@ -20,66 +20,42 @@ pub type i2c_device = *mut c_void;
 #[cfg(all(not(test), target_os = "linux"))]
 mod linux_impl {
     use super::*;
-    use std::fs;
+    use ::proximate::ffi_internal_native::i2c::{
+        I2cHandle, I2cIoError, I2cOpenError, list_ports as list_internal_ports,
+    };
 
-    const I2C_SLAVE: libc::c_ulong = 0x0703;
-
-    #[repr(C)]
-    struct I2cDeviceLinux {
-        fd: c_int,
-    }
-
-    unsafe fn device_ref<'a>(device: i2c_device) -> Option<&'a mut I2cDeviceLinux> {
-        unsafe { (device.cast::<I2cDeviceLinux>()).as_mut() }
+    unsafe fn device_ref<'a>(device: i2c_device) -> Option<&'a mut I2cHandle> {
+        unsafe { (device.cast::<I2cHandle>()).as_mut() }
     }
 
     pub unsafe fn i2c_open(bus_name: *const c_char, address: u32) -> i2c_device {
         let Some(bus_name) = (unsafe { c_path_to_string(bus_name) }) else {
             return invalid_i2c_bus();
         };
-
-        let fd = unsafe {
-            libc::open(
-                bus_name.as_ptr().cast::<c_char>(),
-                libc::O_RDWR | libc::O_NOCTTY | libc::O_NONBLOCK,
-            )
-        };
-        if fd < 0 {
-            return invalid_i2c_bus();
+        match I2cHandle::open(&bus_name, address) {
+            Ok(handle) => Box::into_raw(Box::new(handle)).cast::<c_void>(),
+            Err(I2cOpenError::InvalidBus) => invalid_i2c_bus(),
+            Err(I2cOpenError::InvalidAddress) => invalid_i2c_address(),
         }
-
-        if unsafe { libc::ioctl(fd, I2C_SLAVE, address) } < 0 {
-            unsafe {
-                libc::close(fd);
-            }
-            return invalid_i2c_address();
-        }
-
-        Box::into_raw(Box::new(I2cDeviceLinux { fd })).cast::<c_void>()
     }
 
     pub unsafe fn i2c_close(device: i2c_device) {
-        let raw = device.cast::<I2cDeviceLinux>();
+        let raw = device.cast::<I2cHandle>();
         if raw.is_null() {
             return;
         }
-        unsafe {
-            libc::close((*raw).fd);
-            drop(Box::from_raw(raw));
-        }
+        unsafe { drop(Box::from_raw(raw)) };
     }
 
     pub unsafe fn i2c_read(device: i2c_device, rx: *mut u8, rx_len: usize) -> ssize_t {
         let Some(device) = (unsafe { device_ref(device) }) else {
             return NFC_EIO as ssize_t;
         };
-        let rc = unsafe { libc::read(device.fd, rx.cast::<c_void>(), rx_len) };
-        if rc < 0 {
-            NFC_EIO as ssize_t
-        } else if rc < rx_len as isize {
-            NFC_EINVARG as ssize_t
-        } else {
-            rc
+        let rx = unsafe { std::slice::from_raw_parts_mut(rx, rx_len) };
+        match device.read(rx) {
+            Ok(()) => rx_len as ssize_t,
+            Err(I2cIoError::Io) => NFC_EIO as ssize_t,
+            Err(I2cIoError::InvalidArgument) => NFC_EINVARG as ssize_t,
         }
     }
 
@@ -87,29 +63,19 @@ mod linux_impl {
         let Some(device) = (unsafe { device_ref(device) }) else {
             return NFC_EIO;
         };
-        let rc = unsafe { libc::write(device.fd, tx.cast::<c_void>(), tx_len) };
-        if rc == tx_len as isize {
-            NFC_SUCCESS
-        } else {
-            NFC_EIO
+        let tx = unsafe { std::slice::from_raw_parts(tx, tx_len) };
+        match device.write(tx) {
+            Ok(()) => NFC_SUCCESS,
+            Err(_) => NFC_EIO,
         }
     }
 
     pub unsafe fn i2c_list_ports() -> *mut *mut c_char {
-        let mut matches = Vec::new();
-        let Ok(entries) = fs::read_dir("/dev") else {
-            return unsafe { allocate_c_string_array(&matches) };
-        };
-
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name.starts_with("i2c-") {
-                matches.push(format!("/dev/{name}").into_bytes());
-            }
-        }
-
-        unsafe { allocate_c_string_array(&matches) }
+        let ports = list_internal_ports()
+            .into_iter()
+            .map(|port| port.into_bytes())
+            .collect::<Vec<_>>();
+        unsafe { allocate_c_string_array(&ports) }
     }
 }
 
@@ -216,10 +182,6 @@ mod tests_backend {
         std::mem::take(&mut guard.buses.entry(name.to_string()).or_default().tx)
     }
 
-    pub(crate) fn snapshot(name: &str) -> Option<FakeI2cDevice> {
-        state().lock().unwrap().buses.get(name).cloned()
-    }
-
     pub(crate) fn set_read_error(name: &str, code: ssize_t) {
         state()
             .lock()
@@ -228,16 +190,6 @@ mod tests_backend {
             .entry(name.to_string())
             .or_default()
             .read_error = Some(code);
-    }
-
-    pub(crate) fn set_write_error(name: &str, code: c_int) {
-        state()
-            .lock()
-            .unwrap()
-            .buses
-            .entry(name.to_string())
-            .or_default()
-            .write_error = Some(code);
     }
 
     pub unsafe fn i2c_open(bus_name: *const c_char, _address: u32) -> i2c_device {
@@ -316,8 +268,7 @@ mod tests_backend {
 #[cfg(test)]
 pub(crate) use tests_backend::{
     add_bus as test_add_bus, queue_rx as test_queue_rx, reset as test_reset,
-    set_read_error as test_set_read_error, set_write_error as test_set_write_error,
-    snapshot as test_snapshot, take_tx as test_take_tx,
+    set_read_error as test_set_read_error, take_tx as test_take_tx,
 };
 #[cfg(test)]
 pub use tests_backend::{i2c_close, i2c_list_ports, i2c_open, i2c_read, i2c_write};

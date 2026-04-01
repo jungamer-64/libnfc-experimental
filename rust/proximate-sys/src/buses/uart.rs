@@ -6,16 +6,23 @@
 
 #![allow(non_camel_case_types)]
 
-use crate::buses::{
-    allocate_c_string_array, c_path_to_string, claimed_serial_port, invalid_serial_port,
-};
+#[cfg(any(all(not(test), unix, not(target_os = "linux")), all(not(test), windows)))]
+use crate::buses::{allocate_c_string_array, c_path_to_string};
+#[cfg(any(
+    all(not(test), unix, not(target_os = "linux")),
+    all(not(test), windows)
+))]
+use crate::buses::{claimed_serial_port, invalid_serial_port};
+#[cfg(any(all(not(test), unix, not(target_os = "linux")), all(not(test), windows)))]
 use crate::ffi_support::{as_mut, as_ref};
 use libc::{c_char, c_int, c_void};
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 use std::cmp::min;
-#[cfg(not(test))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 use std::fs;
+#[cfg(any(all(not(test), unix, not(target_os = "linux")), all(not(test), windows)))]
 use std::ptr;
-#[cfg(not(test))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 use std::time::Duration;
 
 const NFC_SUCCESS: c_int = 0;
@@ -25,7 +32,132 @@ const NFC_EOPABORTED: c_int = -7;
 
 pub type serial_port = *mut c_void;
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), target_os = "linux"))]
+mod linux_impl {
+    use super::*;
+    use crate::buses::{
+        allocate_c_string_array, c_path_to_string, claimed_serial_port, invalid_serial_port,
+    };
+    use ::proximate::ffi_internal_native::uart::{
+        UartHandle, UartIoError, UartOpenError, list_ports as list_internal_ports,
+    };
+
+    unsafe fn handle<'a>(port: serial_port) -> Option<&'a mut UartHandle> {
+        unsafe { (port.cast::<UartHandle>()).as_mut() }
+    }
+
+    pub unsafe fn uart_open(port_name: *const c_char) -> serial_port {
+        let Some(port_name) = (unsafe { c_path_to_string(port_name) }) else {
+            return invalid_serial_port();
+        };
+        match UartHandle::open(&port_name) {
+            Ok(handle) => Box::into_raw(Box::new(handle)).cast::<c_void>(),
+            Err(UartOpenError::InvalidPort) => invalid_serial_port(),
+            Err(UartOpenError::ClaimedPort) => claimed_serial_port(),
+        }
+    }
+
+    pub unsafe fn uart_close(port: serial_port) {
+        let raw = port.cast::<UartHandle>();
+        if raw.is_null() {
+            return;
+        }
+        unsafe { drop(Box::from_raw(raw)) };
+    }
+
+    pub unsafe fn uart_flush_input(port: serial_port, wait: bool) {
+        let Some(port) = (unsafe { handle(port) }) else {
+            return;
+        };
+        let _ = port.flush_input(wait);
+    }
+
+    pub unsafe fn uart_set_speed(port: serial_port, speed: u32) {
+        let Some(port) = (unsafe { handle(port) }) else {
+            return;
+        };
+        let _ = port.set_speed(speed);
+    }
+
+    pub unsafe fn uart_get_speed(port: serial_port) -> u32 {
+        let Some(port) = (unsafe { handle(port) }) else {
+            return 0;
+        };
+        port.get_speed()
+    }
+
+    pub unsafe fn uart_receive(
+        port: serial_port,
+        rx: *mut u8,
+        rx_len: usize,
+        abort_p: *mut c_void,
+        timeout: c_int,
+    ) -> c_int {
+        let Some(port) = (unsafe { handle(port) }) else {
+            return NFC_EIO;
+        };
+        if rx.is_null() && rx_len != 0 {
+            return NFC_EIO;
+        }
+
+        let abort_fd = if abort_p.is_null() {
+            None
+        } else {
+            Some(unsafe { *(abort_p.cast::<c_int>()) })
+        };
+        let rx = if rx_len == 0 {
+            &mut [][..]
+        } else {
+            unsafe { std::slice::from_raw_parts_mut(rx, rx_len) }
+        };
+        match port.receive(rx, abort_fd, timeout) {
+            Ok(()) => NFC_SUCCESS,
+            Err(UartIoError::Io) => NFC_EIO,
+            Err(UartIoError::Timeout) => NFC_ETIMEOUT,
+            Err(UartIoError::Aborted) => NFC_EOPABORTED,
+        }
+    }
+
+    pub unsafe fn uart_send(
+        port: serial_port,
+        tx: *const u8,
+        tx_len: usize,
+        timeout: c_int,
+    ) -> c_int {
+        let Some(port) = (unsafe { handle(port) }) else {
+            return NFC_EIO;
+        };
+        if tx.is_null() && tx_len != 0 {
+            return NFC_EIO;
+        }
+
+        let tx = if tx_len == 0 {
+            &[][..]
+        } else {
+            unsafe { std::slice::from_raw_parts(tx, tx_len) }
+        };
+        match port.send(tx, timeout) {
+            Ok(()) => NFC_SUCCESS,
+            Err(_) => NFC_EIO,
+        }
+    }
+
+    pub unsafe fn uart_list_ports() -> *mut *mut c_char {
+        let ports = list_internal_ports()
+            .into_iter()
+            .map(|port| port.into_bytes())
+            .collect::<Vec<_>>();
+        unsafe { allocate_c_string_array(&ports) }
+    }
+}
+
+#[cfg(all(not(test), target_os = "linux"))]
+pub use linux_impl::{
+    uart_close, uart_flush_input, uart_get_speed, uart_list_ports, uart_open, uart_receive,
+    uart_send, uart_set_speed,
+};
+
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 #[repr(C)]
 struct SerialPortUnix {
     fd: c_int,
@@ -33,17 +165,17 @@ struct SerialPortUnix {
     termios_new: libc::termios,
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 unsafe fn serial_port_unix<'a>(port: serial_port) -> Option<&'a mut SerialPortUnix> {
     unsafe { as_mut(port.cast::<SerialPortUnix>()) }
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 fn sleep_ms(ms: u64) {
     std::thread::sleep(Duration::from_millis(ms));
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 fn baud_to_speed_t(speed: u32) -> Option<libc::speed_t> {
     match speed {
         9600 => Some(libc::B9600),
@@ -77,7 +209,7 @@ fn baud_to_speed_t(speed: u32) -> Option<libc::speed_t> {
     }
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 fn speed_t_to_baud(speed: libc::speed_t) -> u32 {
     match speed {
         x if x == libc::B9600 => 9600,
@@ -111,7 +243,7 @@ fn speed_t_to_baud(speed: libc::speed_t) -> u32 {
     }
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 fn serial_name_prefixes() -> &'static [&'static str] {
     #[cfg(target_os = "macos")]
     {
@@ -131,12 +263,12 @@ fn serial_name_prefixes() -> &'static [&'static str] {
     }
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 fn serial_name_must_end_with_digit() -> bool {
     !cfg!(target_os = "macos")
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 pub unsafe fn uart_open(port_name: *const c_char) -> serial_port {
     let Some(port_name) = (unsafe { c_path_to_string(port_name) }) else {
         return invalid_serial_port();
@@ -187,7 +319,7 @@ pub unsafe fn uart_open(port_name: *const c_char) -> serial_port {
     .cast::<c_void>()
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 pub unsafe fn uart_close(port: serial_port) {
     let Some(port) = (unsafe { serial_port_unix(port) }) else {
         return;
@@ -201,7 +333,7 @@ pub unsafe fn uart_close(port: serial_port) {
     }
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 pub unsafe fn uart_flush_input(port: serial_port, wait: bool) {
     let Some(port) = (unsafe { serial_port_unix(port) }) else {
         return;
@@ -230,7 +362,7 @@ pub unsafe fn uart_flush_input(port: serial_port, wait: bool) {
     }
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 pub unsafe fn uart_set_speed(port: serial_port, speed: u32) {
     let Some(port) = (unsafe { serial_port_unix(port) }) else {
         return;
@@ -246,7 +378,7 @@ pub unsafe fn uart_set_speed(port: serial_port, speed: u32) {
     }
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 pub unsafe fn uart_get_speed(port: serial_port) -> u32 {
     let Some(port) = (unsafe { serial_port_unix(port) }) else {
         return 0;
@@ -256,7 +388,7 @@ pub unsafe fn uart_get_speed(port: serial_port) -> u32 {
     speed_t_to_baud(speed)
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 pub unsafe fn uart_receive(
     port: serial_port,
     rx: *mut u8,
@@ -337,7 +469,7 @@ pub unsafe fn uart_receive(
     NFC_SUCCESS
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 pub unsafe fn uart_send(port: serial_port, tx: *const u8, tx_len: usize, _timeout: c_int) -> c_int {
     let Some(port) = (unsafe { serial_port_unix(port) }) else {
         return NFC_EIO;
@@ -354,7 +486,7 @@ pub unsafe fn uart_send(port: serial_port, tx: *const u8, tx_len: usize, _timeou
     }
 }
 
-#[cfg(all(not(test), unix))]
+#[cfg(all(not(test), unix, not(target_os = "linux")))]
 pub unsafe fn uart_list_ports() -> *mut *mut c_char {
     let mut matches = Vec::new();
     let Ok(entries) = fs::read_dir("/dev") else {
@@ -730,14 +862,10 @@ compile_error!("uart helper is only implemented for unix and windows targets");
 
 #[cfg(test)]
 mod tests_backend {
-    use super::{
-        NFC_EIO, NFC_EOPABORTED, NFC_ETIMEOUT, NFC_SUCCESS, claimed_serial_port,
-        invalid_serial_port, serial_port,
-    };
-    use crate::buses::allocate_c_string_array;
+    use super::{NFC_EIO, NFC_EOPABORTED, NFC_ETIMEOUT, NFC_SUCCESS, serial_port};
+    use crate::buses::{allocate_c_string_array, claimed_serial_port, invalid_serial_port};
     use libc::{c_char, c_int, c_void};
     use std::collections::{HashMap, VecDeque};
-    use std::ptr;
     use std::sync::{Mutex, OnceLock};
 
     #[derive(Clone, Debug, Default)]
@@ -818,20 +946,6 @@ mod tests_backend {
 
     pub(crate) fn snapshot(name: &str) -> Option<FakeSerialPort> {
         state().lock().unwrap().ports.get(name).cloned()
-    }
-
-    pub(crate) fn set_receive_error(name: &str, code: c_int) {
-        let mut guard = state().lock().unwrap();
-        guard
-            .ports
-            .entry(name.to_string())
-            .or_default()
-            .receive_error = Some(code);
-    }
-
-    pub(crate) fn set_send_error(name: &str, code: c_int) {
-        let mut guard = state().lock().unwrap();
-        guard.ports.entry(name.to_string()).or_default().send_error = Some(code);
     }
 
     pub unsafe fn uart_open(port_name: *const c_char) -> serial_port {
@@ -965,8 +1079,7 @@ mod tests_backend {
 #[cfg(test)]
 pub(crate) use tests_backend::{
     add_port as test_add_port, queue_rx as test_queue_rx, queue_stale_rx as test_queue_stale_rx,
-    reset as test_reset, set_receive_error as test_set_receive_error,
-    set_send_error as test_set_send_error, snapshot as test_snapshot, take_tx as test_take_tx,
+    reset as test_reset, snapshot as test_snapshot, take_tx as test_take_tx,
 };
 #[cfg(test)]
 pub use tests_backend::{
@@ -977,8 +1090,10 @@ pub use tests_backend::{
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::buses::{claimed_serial_port, invalid_serial_port};
     use crate::ffi_support::bounded_strlen;
     use std::ffi::CString;
+    use std::ptr;
     use std::sync::{Mutex, OnceLock};
 
     fn test_lock() -> std::sync::MutexGuard<'static, ()> {

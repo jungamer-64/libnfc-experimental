@@ -11,7 +11,6 @@
 use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
 use crate::ffi_support::{bounded_strlen, copy_bytes_to_c_buffer};
 use libc::{c_char, c_void};
-use std::ffi::CStr;
 use std::ptr;
 
 pub(crate) mod i2c;
@@ -79,12 +78,6 @@ pub(crate) unsafe fn allocate_c_string_array(values: &[Vec<u8>]) -> *mut *mut c_
     array
 }
 
-pub(crate) fn leak_static_cstr(bytes: &'static [u8]) -> *const c_char {
-    CStr::from_bytes_with_nul(bytes)
-        .expect("static cstr must be nul-terminated")
-        .as_ptr()
-}
-
 pub(crate) const fn invalid_serial_port() -> *mut c_void {
     sentinel_ptr(INVALID_MINUS_ONE)
 }
@@ -97,6 +90,7 @@ pub(crate) const fn invalid_spi_port() -> *mut c_void {
     sentinel_ptr(INVALID_MINUS_ONE)
 }
 
+#[cfg(any(test, all(libnfc_driver_pn532_spi, not(target_os = "linux"))))]
 pub(crate) const fn claimed_spi_port() -> *mut c_void {
     sentinel_ptr(INVALID_MINUS_TWO)
 }

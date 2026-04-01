@@ -58,10 +58,12 @@ pub use usbbus::{
     usb_interface_descriptor,
 };
 
+#[cfg(any(test, libnfc_driver_pn71xx))]
+pub(crate) use c_api_impl::log_debug;
 pub(crate) use c_api_impl::{
-    LOG_PRIORITY_NONE, MALLOC_LABEL, emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr,
-    ffi_catch_unwind_void, log_debug, log_error, log_message, release_allocated_ptr,
-    reset_last_error, set_last_error_message,
+    MALLOC_LABEL, emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr,
+    ffi_catch_unwind_void, log_error, log_message, release_allocated_ptr, reset_last_error,
+    set_last_error_message,
 };
 #[cfg(test)]
 pub(crate) use c_api_impl::{test_clear_last_log, test_get_last_log, test_get_logs};
@@ -110,7 +112,7 @@ mod proximate {
     };
     #[cfg(any(feature = "lifecycle", cbindgen))]
     pub use crate::lifecycle::{
-        nfc_connstring, nfc_context_alloc_defaults, nfc_context_free, nfc_context_new, nfc_device,
+        nfc_connstring, nfc_context_alloc_defaults, nfc_context_free, nfc_context_new,
         nfc_device_free, nfc_device_new,
     };
     #[cfg(any(feature = "secure", cbindgen))]

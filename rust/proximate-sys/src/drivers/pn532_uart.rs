@@ -536,7 +536,7 @@ unsafe extern "C" fn pn532_uart_receive(
     }
     let abort_p = unsafe { abort_marker_ptr(driver_data) };
     let mut header = [0u8; 5];
-    let mut len;
+    let len;
     let rc = unsafe {
         uart_receive(
             driver_data.port,
@@ -789,11 +789,8 @@ static PN532_UART_DRIVER: nfc_driver = nfc_driver {
 
 #[cfg(test)]
 pub(crate) use crate::buses::uart::{
-    test_add_port, test_queue_rx, test_reset as test_reset_uart,
-    test_snapshot as test_snapshot_uart, test_take_tx,
+    test_add_port, test_queue_rx, test_reset as test_reset_uart, test_take_tx,
 };
-#[cfg(test)]
-pub(crate) use crate::drivers::pn53x_native::TestStateSnapshot as NativeTestSnapshot;
 
 #[cfg(test)]
 mod tests {

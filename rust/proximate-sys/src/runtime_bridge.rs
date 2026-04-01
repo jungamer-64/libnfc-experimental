@@ -23,7 +23,6 @@ const NFC_EINVARG: c_int = -2;
 const NFC_EDEVNOTSUPP: c_int = -3;
 const NFC_ENOTSUCHDEV: c_int = -4;
 const NFC_EOVFLOW: c_int = -5;
-const NFC_ETIMEOUT: c_int = -6;
 const NFC_ENOTIMPL: c_int = -8;
 const NFC_ESOFT: c_int = -80;
 
@@ -182,13 +181,22 @@ fn option_target_from_result(
     }
 }
 
-fn copy_device_identity(device: *mut nfc_device, name: &str, connstring: &rt::ConnectionString) -> bool {
+fn copy_device_identity(
+    device: *mut nfc_device,
+    name: &str,
+    connstring: &rt::ConnectionString,
+) -> bool {
     let Some(device) = (unsafe { as_mut(device) }) else {
         return false;
     };
 
-    let copied_name =
-        unsafe { copy_bytes_to_c_buffer(device.name.as_mut_ptr(), DEVICE_NAME_LENGTH, name.as_bytes()) };
+    let copied_name = unsafe {
+        copy_bytes_to_c_buffer(
+            device.name.as_mut_ptr(),
+            DEVICE_NAME_LENGTH,
+            name.as_bytes(),
+        )
+    };
     let copied_connstring = unsafe {
         copy_bytes_to_c_buffer(
             device.connstring.as_mut_ptr(),
@@ -667,7 +675,9 @@ unsafe extern "C" fn rust_device_poll_target(
     option_target_from_result(
         device,
         target,
-        state.handle.poll_target(&runtime_modulations, poll_nr, period),
+        state
+            .handle
+            .poll_target(&runtime_modulations, poll_nr, period),
     )
 }
 
@@ -854,7 +864,10 @@ unsafe extern "C" fn rust_device_target_is_present(
     let Some(state) = (unsafe { rust_device_state(device) }) else {
         return NFC_EINVARG;
     };
-    bool_from_result(device, state.handle.target_is_present(runtime_target.as_ref()))
+    bool_from_result(
+        device,
+        state.handle.target_is_present(runtime_target.as_ref()),
+    )
 }
 
 unsafe extern "C" fn rust_device_target_init(
@@ -979,7 +992,10 @@ unsafe extern "C" fn rust_device_set_property_bool(
     };
     match state.handle.set_property_bool(runtime_property, enable) {
         Ok(()) => {
-            let mirrored = state.handle.property_bool_state(runtime_property).unwrap_or(enable);
+            let mirrored = state
+                .handle
+                .property_bool_state(runtime_property)
+                .unwrap_or(enable);
             sync_bool_property(device, runtime_property, mirrored);
             set_device_last_error(device, 0);
             0
@@ -1072,7 +1088,9 @@ unsafe extern "C" fn rust_device_get_supported_baud_rate(
     ) {
         Ok(values) => {
             state.supported_baud_rates = values.into_iter().map(baud_rate_to_c).collect();
-            state.supported_baud_rates.push(nfc_baud_rate::NBR_UNDEFINED);
+            state
+                .supported_baud_rates
+                .push(nfc_baud_rate::NBR_UNDEFINED);
             *supported = state.supported_baud_rates.as_ptr();
             set_device_last_error(device, 0);
             0
@@ -1107,7 +1125,8 @@ unsafe extern "C" fn rust_device_get_information_about(
                 set_device_last_error(device, NFC_ESOFT);
                 return NFC_ESOFT;
             }
-            if !unsafe { copy_bytes_to_c_buffer(allocation, message.len() + 1, message.as_bytes()) } {
+            if !unsafe { copy_bytes_to_c_buffer(allocation, message.len() + 1, message.as_bytes()) }
+            {
                 unsafe { release_allocated_ptr(allocation.cast()) };
                 set_device_last_error(device, NFC_ESOFT);
                 return NFC_ESOFT;
@@ -1149,7 +1168,8 @@ unsafe extern "C" fn rust_device_powerdown(device: *mut nfc_device) -> c_int {
     status_from_result(device, state.handle.powerdown().map(|()| 0))
 }
 
-const RUST_DEVICE_DRIVER_NAME: *const c_char = b"proximate_rust_shim\0" as *const u8 as *const c_char;
+const RUST_DEVICE_DRIVER_NAME: *const c_char =
+    b"proximate_rust_shim\0" as *const u8 as *const c_char;
 
 static RUST_DEVICE_SHIM_DRIVER: nfc_driver = nfc_driver {
     name: RUST_DEVICE_DRIVER_NAME,
@@ -1420,9 +1440,7 @@ impl rt::DeviceBackend for RustBorrowedDeviceBackend {
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<usize, rt::Error> {
-        self.with_handle(|handle| {
-            handle.transceive_bits(tx, tx_bits_len, tx_parity, rx, rx_parity)
-        })
+        self.with_handle(|handle| handle.transceive_bits(tx, tx_bits_len, tx_parity, rx, rx_parity))
     }
 
     fn transceive_bytes_timed_backend(
@@ -1446,11 +1464,7 @@ impl rt::DeviceBackend for RustBorrowedDeviceBackend {
         })
     }
 
-    fn target_send_bytes_backend(
-        &mut self,
-        tx: &[u8],
-        timeout: i32,
-    ) -> Result<usize, rt::Error> {
+    fn target_send_bytes_backend(&mut self, tx: &[u8], timeout: i32) -> Result<usize, rt::Error> {
         self.with_handle(|handle| handle.target_send_bytes(tx, timeout))
     }
 
@@ -2486,7 +2500,10 @@ mod tests {
             &mut self,
             _mode: rt::Mode,
         ) -> Result<Vec<rt::ModulationType>, rt::Error> {
-            Ok(vec![rt::ModulationType::Iso14443A, rt::ModulationType::Felica])
+            Ok(vec![
+                rt::ModulationType::Iso14443A,
+                rt::ModulationType::Felica,
+            ])
         }
 
         fn supported_baud_rates(
@@ -2553,8 +2570,9 @@ mod tests {
         let device = registry.open(&context, Some(&connstring)).unwrap();
         let raw = attach_rust_device(device, ptr::null()).unwrap();
 
-        let name =
-            unsafe { CStr::from_ptr(crate::initiator::nfc_device_get_name(raw)) }.to_str().unwrap();
+        let name = unsafe { CStr::from_ptr(crate::initiator::nfc_device_get_name(raw)) }
+            .to_str()
+            .unwrap();
         assert_eq!(name, "shim-device");
 
         assert_eq!(
@@ -2581,7 +2599,10 @@ mod tests {
             0
         );
         assert_eq!(unsafe { *supported }, nfc_modulation_type::NMT_ISO14443A);
-        assert_eq!(unsafe { *supported.add(1) }, nfc_modulation_type::NMT_FELICA);
+        assert_eq!(
+            unsafe { *supported.add(1) },
+            nfc_modulation_type::NMT_FELICA
+        );
 
         let tx = [0x01u8];
         let mut rx = [0u8; 4];

@@ -12,6 +12,7 @@ const NFC_ENOTIMPL: i32 = -8;
 const HOST_TO_PN53X_TFI: u8 = 0xD4;
 const PN53X_TO_HOST_TFI: u8 = 0xD5;
 const PN53X_GET_FIRMWARE_VERSION: u8 = 0x02;
+const PN532_SAM_CONFIGURATION: u8 = 0x14;
 
 pub(crate) const PN53X_ACK_FRAME: [u8; 6] = [0x00, 0x00, 0xff, 0x00, 0xff, 0x00];
 const PN53X_EXTENDED_FRAME_DATA_MAX_LEN: usize = 264;
@@ -24,7 +25,9 @@ fn status_error(operation: &'static str, code: i32) -> Error {
 
 fn status_code(error: &Error) -> i32 {
     match error {
-        Error::InvalidArgument(_) | Error::InvalidEncoding(_) | Error::InvalidConnectionString(_) => -2,
+        Error::InvalidArgument(_)
+        | Error::InvalidEncoding(_)
+        | Error::InvalidConnectionString(_) => -2,
         Error::BufferTooSmall { .. } => -5,
         Error::DriverNotFound(_) => -4,
         Error::DriverOpenFailed(_) => -80,
@@ -69,6 +72,73 @@ pub(crate) enum Pn53xPowerMode {
     Normal,
     PowerDown,
     LowVbat,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Pn532SamMode {
+    Normal = 0x01,
+    WiredCard = 0x03,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Pn53xUsbModel {
+    Unknown,
+    NxpPn531,
+    NxpPn533,
+    ScmScl3711,
+    ScmScl3712,
+    SonyPn531,
+    AskLogo,
+    SonyRcs360,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Pn53xProfile {
+    pub driver_name: &'static str,
+    pub initial_power_mode: Pn53xPowerMode,
+    pub sam_mode_on_low_vbat: Option<Pn532SamMode>,
+    pub secure_element_mode: Option<Pn532SamMode>,
+    pub usb_model: Option<Pn53xUsbModel>,
+}
+
+impl Pn53xProfile {
+    pub(crate) const fn pn532(driver_name: &'static str) -> Self {
+        Self {
+            driver_name,
+            initial_power_mode: Pn53xPowerMode::LowVbat,
+            sam_mode_on_low_vbat: Some(Pn532SamMode::Normal),
+            secure_element_mode: Some(Pn532SamMode::WiredCard),
+            usb_model: None,
+        }
+    }
+
+    pub(crate) const fn pn53x_usb(model: Pn53xUsbModel) -> Self {
+        Self {
+            driver_name: "pn53x_usb",
+            initial_power_mode: Pn53xPowerMode::Normal,
+            sam_mode_on_low_vbat: None,
+            secure_element_mode: None,
+            usb_model: Some(model),
+        }
+    }
+
+    fn supported_modulations(self, mode: Mode) -> Vec<ModulationType> {
+        match (self.usb_model, mode) {
+            (Some(Pn53xUsbModel::AskLogo), Mode::Target) => Vec::new(),
+            (_, Mode::Initiator) => vec![
+                ModulationType::Iso14443A,
+                ModulationType::Jewel,
+                ModulationType::Iso14443B,
+                ModulationType::Felica,
+                ModulationType::Dep,
+            ],
+            (_, Mode::Target) => vec![
+                ModulationType::Iso14443A,
+                ModulationType::Felica,
+                ModulationType::Dep,
+            ],
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -201,52 +271,13 @@ impl Default for Pn53xCore {
 }
 
 impl Pn53xCore {
-    pub(crate) fn chip_type(&self) -> Pn53xType {
-        self.chip_type
-    }
-
-    pub(crate) fn firmware(&self) -> Option<&Pn53xFirmwareVersion> {
-        self.firmware.as_ref()
-    }
-
-    pub(crate) fn power_mode(&self) -> Pn53xPowerMode {
-        self.power_mode
-    }
-
-    pub(crate) fn last_command(&self) -> Option<u8> {
-        self.last_command
-    }
-
-    pub(crate) fn property_bool_state(&self, property: Property) -> Option<bool> {
-        self.properties.get(property)
-    }
-
-    pub(crate) fn set_property_bool(&mut self, property: Property, enable: bool) -> Result<(), Error> {
-        self.properties.set(property, enable)
-    }
-
-    pub(crate) fn set_property_int(&mut self, property: Property, value: i32) -> Result<(), Error> {
-        match property {
-            Property::TimeoutCommand => self.timeout_command_ms = value,
-            Property::TimeoutAtr => self.timeout_atr_ms = value,
-            Property::TimeoutCom => self.timeout_communication_ms = value,
-            _ => return Err(Error::InvalidArgument("property")),
-        }
-        Ok(())
-    }
-
-    pub(crate) fn exchange_command<T: Pn53xTransport>(
+    fn exchange_prepared_command<T: Pn53xTransport>(
         &mut self,
         transport: &mut T,
         command: u8,
         payload: &[u8],
         timeout_ms: i32,
     ) -> Result<Vec<u8>, Error> {
-        if self.power_mode != Pn53xPowerMode::Normal {
-            transport.wake_up()?;
-            self.power_mode = Pn53xPowerMode::Normal;
-        }
-
         let mut command_payload = Vec::with_capacity(payload.len() + 1);
         command_payload.push(command);
         command_payload.extend_from_slice(payload);
@@ -267,12 +298,101 @@ impl Pn53xCore {
         Ok(payload)
     }
 
+    fn ensure_ready<T: Pn53xTransport>(
+        &mut self,
+        profile: Pn53xProfile,
+        transport: &mut T,
+        timeout_ms: i32,
+    ) -> Result<(), Error> {
+        if self.power_mode == Pn53xPowerMode::Normal {
+            return Ok(());
+        }
+
+        let previous_mode = self.power_mode;
+        transport.wake_up()?;
+        self.power_mode = Pn53xPowerMode::Normal;
+
+        if previous_mode == Pn53xPowerMode::LowVbat {
+            if let Some(mode) = profile.sam_mode_on_low_vbat {
+                let payload = match mode {
+                    Pn532SamMode::Normal => [mode as u8, 0x00],
+                    Pn532SamMode::WiredCard => [mode as u8, 0x00],
+                };
+                let _ = self.exchange_prepared_command(
+                    transport,
+                    PN532_SAM_CONFIGURATION,
+                    &payload,
+                    timeout_ms,
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn chip_type(&self) -> Pn53xType {
+        self.chip_type
+    }
+
+    pub(crate) fn firmware(&self) -> Option<&Pn53xFirmwareVersion> {
+        self.firmware.as_ref()
+    }
+
+    pub(crate) fn power_mode(&self) -> Pn53xPowerMode {
+        self.power_mode
+    }
+
+    pub(crate) fn last_command(&self) -> Option<u8> {
+        self.last_command
+    }
+
+    pub(crate) fn property_bool_state(&self, property: Property) -> Option<bool> {
+        self.properties.get(property)
+    }
+
+    pub(crate) fn set_property_bool(
+        &mut self,
+        property: Property,
+        enable: bool,
+    ) -> Result<(), Error> {
+        self.properties.set(property, enable)
+    }
+
+    pub(crate) fn set_property_int(&mut self, property: Property, value: i32) -> Result<(), Error> {
+        match property {
+            Property::TimeoutCommand => self.timeout_command_ms = value,
+            Property::TimeoutAtr => self.timeout_atr_ms = value,
+            Property::TimeoutCom => self.timeout_communication_ms = value,
+            _ => return Err(Error::InvalidArgument("property")),
+        }
+        Ok(())
+    }
+
+    pub(crate) fn exchange_command<T: Pn53xTransport>(
+        &mut self,
+        profile: Pn53xProfile,
+        transport: &mut T,
+        command: u8,
+        payload: &[u8],
+        timeout_ms: i32,
+    ) -> Result<Vec<u8>, Error> {
+        self.ensure_ready(profile, transport, timeout_ms)?;
+        self.exchange_prepared_command(transport, command, payload, timeout_ms)
+    }
+
     pub(crate) fn get_firmware_version<T: Pn53xTransport>(
         &mut self,
+        profile: Pn53xProfile,
         transport: &mut T,
         timeout_ms: i32,
     ) -> Result<Pn53xFirmwareVersion, Error> {
-        let payload = self.exchange_command(transport, PN53X_GET_FIRMWARE_VERSION, &[], timeout_ms)?;
+        let payload = self.exchange_command(
+            profile,
+            transport,
+            PN53X_GET_FIRMWARE_VERSION,
+            &[],
+            timeout_ms,
+        )?;
         if payload.len() < 4 {
             return Err(status_error("pn53x_get_firmware_version", NFC_EIO));
         }
@@ -303,27 +423,48 @@ pub(crate) trait Pn53xTransport {
 pub(crate) struct Pn53xDevice<T> {
     name: String,
     connstring: ConnectionString,
+    profile: Pn53xProfile,
     transport: T,
     core: Pn53xCore,
     last_error: i32,
 }
 
 impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
-    pub(crate) fn probe_pn532(
+    pub(crate) fn probe_with_profile(
         name: impl Into<String>,
         connstring: ConnectionString,
+        profile: Pn53xProfile,
         mut transport: T,
         timeout_ms: i32,
     ) -> Result<Self, Error> {
-        let mut core = Pn53xCore::default();
-        core.get_firmware_version(&mut transport, timeout_ms)?;
+        let mut core = Pn53xCore {
+            power_mode: profile.initial_power_mode,
+            ..Pn53xCore::default()
+        };
+        core.get_firmware_version(profile, &mut transport, timeout_ms)?;
         Ok(Self {
             name: name.into(),
             connstring,
+            profile,
             transport,
             core,
             last_error: 0,
         })
+    }
+
+    pub(crate) fn probe_pn532(
+        name: impl Into<String>,
+        connstring: ConnectionString,
+        transport: T,
+        timeout_ms: i32,
+    ) -> Result<Self, Error> {
+        Self::probe_with_profile(
+            name,
+            connstring,
+            Pn53xProfile::pn532("pn532"),
+            transport,
+            timeout_ms,
+        )
     }
 
     #[allow(dead_code)]
@@ -344,6 +485,24 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             .firmware()
             .map(Pn53xFirmwareVersion::text)
             .unwrap_or_else(|| format!("{} firmware unknown", self.core.chip_type().label()))
+    }
+
+    fn sam_configuration(&mut self, mode: Pn532SamMode, timeout_ms: i32) -> Result<i32, Error> {
+        let payload = match mode {
+            Pn532SamMode::Normal => [mode as u8, 0x00],
+            Pn532SamMode::WiredCard => [mode as u8, 0x00],
+        };
+        let result = self
+            .core
+            .exchange_command(
+                self.profile,
+                &mut self.transport,
+                PN532_SAM_CONFIGURATION,
+                &payload,
+                timeout_ms,
+            )
+            .map(|_| 0);
+        self.remember(result)
     }
 }
 
@@ -378,20 +537,7 @@ impl<T: Pn53xTransport + Send + 'static> OpenedDevice for Pn53xDevice<T> {
 
     fn supported_modulations(&mut self, mode: Mode) -> Result<Vec<ModulationType>, Error> {
         self.last_error = 0;
-        Ok(match mode {
-            Mode::Initiator => vec![
-                ModulationType::Iso14443A,
-                ModulationType::Jewel,
-                ModulationType::Iso14443B,
-                ModulationType::Felica,
-                ModulationType::Dep,
-            ],
-            Mode::Target => vec![
-                ModulationType::Iso14443A,
-                ModulationType::Felica,
-                ModulationType::Dep,
-            ],
-        })
+        Ok(self.profile.supported_modulations(mode))
     }
 
     fn supported_baud_rates(
@@ -419,6 +565,13 @@ impl<T: Pn53xTransport + Send + 'static> OpenedDevice for Pn53xDevice<T> {
     fn initiator_init_driver(&mut self) -> Result<i32, Error> {
         self.last_error = 0;
         Ok(0)
+    }
+
+    fn initiator_init_secure_element_driver(&mut self) -> Result<i32, Error> {
+        let Some(mode) = self.profile.secure_element_mode else {
+            return Err(Error::UnsupportedOperation("initiator_init_secure_element"));
+        };
+        self.sam_configuration(mode, self.core.timeout_command_ms)
     }
 
     fn abort_command_driver(&mut self) -> Result<(), Error> {
@@ -491,6 +644,68 @@ pub(crate) fn build_frame(payload: &[u8]) -> Result<Vec<u8>, Error> {
 
 pub(crate) fn is_ack_frame(frame: &[u8]) -> bool {
     frame.starts_with(&PN53X_ACK_FRAME)
+}
+
+pub(crate) fn build_response_frame(command: u8, payload: &[u8]) -> Result<Vec<u8>, Error> {
+    if payload.len() > PN53X_EXTENDED_FRAME_DATA_MAX_LEN {
+        return Err(Error::BufferTooSmall {
+            needed: payload.len(),
+            available: PN53X_EXTENDED_FRAME_DATA_MAX_LEN,
+        });
+    }
+
+    let mut body = Vec::with_capacity(payload.len() + 2);
+    body.push(PN53X_TO_HOST_TFI);
+    body.push(command.wrapping_add(1));
+    body.extend_from_slice(payload);
+
+    let mut frame = Vec::with_capacity(body.len() + PN53X_EXTENDED_FRAME_OVERHEAD);
+    if body.len() <= 0xfe {
+        let len = body.len() as u8;
+        frame.extend_from_slice(&[0x00, 0x00, 0xff, len, (!len).wrapping_add(1)]);
+    } else {
+        let high = (body.len() >> 8) as u8;
+        let low = (body.len() & 0xff) as u8;
+        frame.extend_from_slice(&[
+            0x00,
+            0x00,
+            0xff,
+            0xff,
+            0xff,
+            high,
+            low,
+            (0u8).wrapping_sub(high.wrapping_add(low)),
+        ]);
+    }
+    frame.extend_from_slice(&body);
+    let dcs = body
+        .iter()
+        .fold(0u8, |sum, byte| sum.wrapping_add(*byte))
+        .wrapping_neg();
+    frame.push(dcs);
+    frame.push(0x00);
+    Ok(frame)
+}
+
+pub(crate) fn command_from_host_frame(frame: &[u8]) -> Result<u8, Error> {
+    if frame.len() < 8 || !frame.starts_with(&[0x00, 0x00, 0xff]) {
+        return Err(status_error("pn53x_command_from_host_frame", NFC_EIO));
+    }
+
+    let body_offset = if frame[3] == 0xff && frame[4] == 0xff {
+        if frame.len() < 10 {
+            return Err(status_error("pn53x_command_from_host_frame", NFC_EIO));
+        }
+        8
+    } else {
+        5
+    };
+
+    if frame.len() <= body_offset + 1 || frame[body_offset] != HOST_TO_PN53X_TFI {
+        return Err(status_error("pn53x_command_from_host_frame", NFC_EIO));
+    }
+
+    Ok(frame[body_offset + 1])
 }
 
 fn parse_response_frame(frame: &[u8], expected_command: u8) -> Result<Vec<u8>, Error> {
@@ -611,12 +826,25 @@ mod tests {
         frame
     }
 
+    fn queue_probe_responses(transport: &mut FakeTransport) {
+        transport.received.push_back(PN53X_ACK_FRAME.to_vec());
+        transport
+            .received
+            .push_back(response_frame(PN532_SAM_CONFIGURATION, &[]));
+        transport.received.push_back(PN53X_ACK_FRAME.to_vec());
+        transport
+            .received
+            .push_back(response_frame(0x02, &[0x32, 0x01, 0x06, 0x07]));
+    }
+
     #[test]
     fn build_frame_supports_standard_frames() {
         let frame = build_frame(&[0x02, 0x03, 0x04]).unwrap();
         assert_eq!(
             frame,
-            vec![0x00, 0x00, 0xff, 0x04, 0xfc, 0xD4, 0x02, 0x03, 0x04, 0x23, 0x00]
+            vec![
+                0x00, 0x00, 0xff, 0x04, 0xfc, 0xD4, 0x02, 0x03, 0x04, 0x23, 0x00
+            ]
         );
     }
 
@@ -624,7 +852,10 @@ mod tests {
     fn build_frame_supports_extended_frames() {
         let payload = vec![0xAB; 255];
         let frame = build_frame(&payload).unwrap();
-        assert_eq!(&frame[..9], &[0x00, 0x00, 0xff, 0xff, 0xff, 0x01, 0x00, 0xff, 0xD4]);
+        assert_eq!(
+            &frame[..9],
+            &[0x00, 0x00, 0xff, 0xff, 0xff, 0x01, 0x00, 0xff, 0xD4]
+        );
         assert_eq!(frame.len(), payload.len() + 11);
         assert_eq!(*frame.last().unwrap(), 0x00);
     }
@@ -665,16 +896,15 @@ mod tests {
     #[test]
     fn exchange_command_wakes_up_and_tracks_last_command() {
         let mut transport = FakeTransport::default();
-        transport.received.push_back(PN53X_ACK_FRAME.to_vec());
-        transport
-            .received
-            .push_back(response_frame(0x02, &[0x32, 0x01, 0x06, 0x07]));
+        queue_probe_responses(&mut transport);
 
         let mut core = Pn53xCore::default();
-        let payload = core.get_firmware_version(&mut transport, 25).unwrap();
+        let payload = core
+            .get_firmware_version(Pn53xProfile::pn532("pn532_uart"), &mut transport, 25)
+            .unwrap();
 
         assert_eq!(transport.wake_up_calls, 1);
-        assert_eq!(transport.sent.len(), 1);
+        assert_eq!(transport.sent.len(), 2);
         assert_eq!(payload.ic, 0x32);
         assert_eq!(core.chip_type(), Pn53xType::Pn532);
         assert_eq!(core.last_command(), Some(0x02));
@@ -684,13 +914,17 @@ mod tests {
     #[test]
     fn probe_builds_pure_rust_device_and_reports_information() {
         let mut transport = FakeTransport::default();
-        transport.received.push_back(PN53X_ACK_FRAME.to_vec());
-        transport
-            .received
-            .push_back(response_frame(0x02, &[0x32, 0x01, 0x06, 0x07]));
+        queue_probe_responses(&mut transport);
 
         let connstring = ConnectionString::new("pn532_uart:/dev/ttyUSB0:115200").unwrap();
-        let mut device = Pn53xDevice::probe_pn532("PN532", connstring, transport, 25).unwrap();
+        let mut device = Pn53xDevice::probe_with_profile(
+            "PN532",
+            connstring,
+            Pn53xProfile::pn532("pn532_uart"),
+            transport,
+            25,
+        )
+        .unwrap();
 
         assert_eq!(device.name(), "PN532");
         assert_eq!(device.last_error(), 0);
@@ -703,35 +937,59 @@ mod tests {
     #[test]
     fn device_property_state_and_initiator_defaults_are_pure_rust() {
         let mut transport = FakeTransport::default();
-        transport.received.push_back(PN53X_ACK_FRAME.to_vec());
-        transport
-            .received
-            .push_back(response_frame(0x02, &[0x32, 0x01, 0x06, 0x07]));
+        queue_probe_responses(&mut transport);
 
         let connstring = ConnectionString::new("pn532_uart:/dev/null:115200").unwrap();
-        let mut device = Pn53xDevice::probe_pn532("PN532", connstring, transport, 25).unwrap();
+        let mut device = Pn53xDevice::probe_with_profile(
+            "PN532",
+            connstring,
+            Pn53xProfile::pn532("pn532_uart"),
+            transport,
+            25,
+        )
+        .unwrap();
 
-        assert_eq!(device.property_bool_state(Property::EasyFraming), Some(true));
-        device.set_property_bool(Property::EasyFraming, false).unwrap();
-        device.set_property_int(Property::TimeoutCommand, 900).unwrap();
+        assert_eq!(
+            device.property_bool_state(Property::EasyFraming),
+            Some(true)
+        );
+        device
+            .set_property_bool(Property::EasyFraming, false)
+            .unwrap();
+        device
+            .set_property_int(Property::TimeoutCommand, 900)
+            .unwrap();
         device.initiator_init().unwrap();
 
-        assert_eq!(device.property_bool_state(Property::EasyFraming), Some(false));
-        assert_eq!(device.property_bool_state(Property::InfiniteSelect), Some(true));
-        assert_eq!(device.property_bool_state(Property::ForceSpeed106), Some(true));
+        assert_eq!(
+            device.property_bool_state(Property::EasyFraming),
+            Some(false)
+        );
+        assert_eq!(
+            device.property_bool_state(Property::InfiniteSelect),
+            Some(true)
+        );
+        assert_eq!(
+            device.property_bool_state(Property::ForceSpeed106),
+            Some(true)
+        );
         assert_eq!(device.last_error(), 0);
     }
 
     #[test]
     fn abort_command_delegates_to_transport() {
         let mut transport = FakeTransport::default();
-        transport.received.push_back(PN53X_ACK_FRAME.to_vec());
-        transport
-            .received
-            .push_back(response_frame(0x02, &[0x32, 0x01, 0x06, 0x07]));
+        queue_probe_responses(&mut transport);
 
         let connstring = ConnectionString::new("pn532_uart:/dev/null:115200").unwrap();
-        let mut device = Pn53xDevice::probe_pn532("PN532", connstring, transport, 25).unwrap();
+        let mut device = Pn53xDevice::probe_with_profile(
+            "PN532",
+            connstring,
+            Pn53xProfile::pn532("pn532_uart"),
+            transport,
+            25,
+        )
+        .unwrap();
         device.abort_command().unwrap();
 
         assert_eq!(device.transport.abort_calls, 1);
@@ -743,7 +1001,9 @@ mod tests {
         transport.received.push_back(PN53X_ACK_FRAME.to_vec());
 
         let mut core = Pn53xCore::default();
-        let error = core.get_firmware_version(&mut transport, 25).unwrap_err();
+        let error = core
+            .get_firmware_version(Pn53xProfile::pn532("pn532_uart"), &mut transport, 25)
+            .unwrap_err();
 
         assert_eq!(
             error,
