@@ -147,7 +147,7 @@ int main(int argc, const char *argv[])
         ret = fgets(cmd, n, stdin);
       }
       // cmd buffer size is n, use safe strlen with that bound
-      if (ret == NULL || nfc_safe_strlen(cmd, n) <= 0) {
+      if (ret == NULL || nfc_util_bounded_strlen(cmd, n) <= 0) {
         printf("Bye!\n");
         free(cmd);
         break;

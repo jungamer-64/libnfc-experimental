@@ -32,15 +32,7 @@ asan_tests = []
 test_no_catch = []
 test_helpers = []
 
-[dev-dependencies]
-criterion = "0.8"
-
 [[test]]
 name = "cbindgen_diff"
 path = "tests/cbindgen_diff.rs"
-required-features = ["c_ffi"]
-
-[[test]]
-name = "mprotect"
-path = "tests/mprotect.rs"
 required-features = ["c_ffi"]

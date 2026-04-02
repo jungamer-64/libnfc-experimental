@@ -139,7 +139,7 @@ static int scan_hex_fd3(uint8_t *pbtData, size_t *pszBytes, const char *pchPrefi
   }
   // pchPrefix is always a short constant string ("UID", "ATQA", "SAK", "ATS", "C-APDU", "R-APDU")
   // Use safe strlen with reasonable bound of 64 bytes
-  if (nfc_safe_memcpy(pchScan, sizeof(pchScan) - 8, pchPrefix, nfc_safe_strlen(pchPrefix, 64) + 1) < 0) {
+  if (!nfc_util_copy_bytes(pchScan, sizeof(pchScan) - 8, pchPrefix, nfc_util_bounded_strlen(pchPrefix, 64) + 1)) {
     return -1;
   }
   pchScan[sizeof(pchScan) - 8] = '\0';
@@ -374,7 +374,7 @@ int main(int argc, char *argv[])
     pbtTk = iso14443a_locate_historical_bytes(ntEmulatedTarget.nti.nai.abtAts, ntEmulatedTarget.nti.nai.szAtsLen, &szTk);
     szTk = (szTk > 48) ? 48 : szTk;
     uint8_t pbtTkt[48];
-    if (nfc_safe_memcpy(pbtTkt, sizeof(pbtTkt), pbtTk, szTk) < 0) {
+    if (!nfc_util_copy_bytes(pbtTkt, sizeof(pbtTkt), pbtTk, szTk)) {
       ERR("Failed to copy historical bytes");
       nfc_close(pndTarget);
       nfc_exit(context);
@@ -385,7 +385,7 @@ int main(int argc, char *argv[])
     ntEmulatedTarget.nti.nai.abtAts[2] = 0x92;
     ntEmulatedTarget.nti.nai.abtAts[3] = 0x03;
     ntEmulatedTarget.nti.nai.szAtsLen = 4 + szTk;
-    if (nfc_safe_memcpy(&(ntEmulatedTarget.nti.nai.abtAts[4]), sizeof(ntEmulatedTarget.nti.nai.abtAts) - 4, pbtTkt, szTk) < 0) {
+    if (!nfc_util_copy_bytes(&(ntEmulatedTarget.nti.nai.abtAts[4]), sizeof(ntEmulatedTarget.nti.nai.abtAts) - 4, pbtTkt, szTk)) {
       ERR("Failed to copy historical bytes to ATS");
       nfc_close(pndTarget);
       nfc_exit(context);

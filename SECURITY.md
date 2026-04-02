@@ -52,15 +52,17 @@ Security updates are released as soon as fixes are available and tested. Users a
 
 ## Security Measures Implemented
 
-### Memory Safety Refactoring (Completed 2025-10-11)
+### Memory Safety Maintenance
 
-A comprehensive memory safety refactoring effort has been completed:
+This branch no longer ships a separate `nfc_safe_*` / `nfc_secure_*` helper
+ABI. Current hardening work lives in the Rust-backed core paths and in
+targeted C-side bounds checks within the maintained in-tree tools.
 
-**Memory Safety Infrastructure:**
+**Current approach:**
 
-- **nfc_safe_memcpy()**: Bounds-checked memory copy with overflow prevention
-- **nfc_secure_memset()**: Compiler-optimization-resistant memory clearing
-- **206/218 operations** (94.5%) converted to secure wrappers
+- Rust-backed lifecycle and orchestration entrypoints replace several former ad-hoc C helpers
+- Maintained examples and utilities use local bounded-copy helpers instead of exported secure wrappers
+- Build and test coverage checks both the Rust-backed core and the in-tree C programs that still ship in this branch
 
 **Security Features:**
 
@@ -89,11 +91,10 @@ A comprehensive memory safety refactoring effort has been completed:
 
 ### Known Security Considerations
 
-#### 1. Memory Operations (Resolved)
+#### 1. Memory Operations
 
-- **Status**: 206/218 operations (94.5%) use secure wrappers
-- **Remaining**: 1 false positive (comment line only)
-- **Mitigation**: Complete
+- **Status**: Maintained code paths use ordinary bounds checks and explicit validation rather than a dedicated exported helper layer
+- **Mitigation**: Continue reviewing array copies, string parsing, and driver-facing buffer handling during ongoing refactors
 
 #### 2. Format String Handling (Verified Safe)
 
@@ -156,12 +157,9 @@ nfc_exit(context);   // Always exit context
 
 ### 4. Sensitive Data Handling
 
-```c
-// Use nfc_secure_memset for sensitive data
-uint8_t mifare_key[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-// ... use key ...
-nfc_secure_memset(mifare_key, 0, sizeof(mifare_key));  // Clear before exit
-```
+Clear application-owned secrets promptly when they are no longer needed,
+using the wipe primitive that your target platform and threat model require.
+This branch does not expose a dedicated secure erase helper in its supported ABI.
 
 ## Security Testing
 
@@ -226,7 +224,6 @@ We recognize and thank security researchers who help improve libnfc:
 
 ### Documentation
 
-- [Memory Safety Implementation](./NFC_SECURE_IMPROVEMENTS.md)
 - [HACKING.md](./HACKING.md) - Development guidelines
 - [libnfc API Documentation](https://nfc-tools.github.io/libnfc/)
 

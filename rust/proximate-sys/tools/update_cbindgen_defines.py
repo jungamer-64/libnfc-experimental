@@ -2,9 +2,8 @@
 """
 Helper script: run cbindgen, collect missing `[defines]` warnings and
 append corresponding entries to cbindgen.toml mapping them to
-`RUST_SECURE` when the missing expression mentions the `secure`
-feature. This is a convenience to iteratively add mappings discovered
-by cbindgen.
+the matching preprocessor macro. This is a convenience to iteratively
+add mappings discovered by cbindgen.
 
 Usage: python3 tools/update_cbindgen_defines.py
 
@@ -63,10 +62,6 @@ def derive_macro_for_expr(expr: str):
     # Prefer explicit known mappings
     if 'nfc_secure_debug' in expr:
         return 'NFC_SECURE_DEBUG'
-    if 'feature = "secure"' in expr or 'feature="secure"' in expr:
-        return 'RUST_SECURE'
-    if 'nfc_secure' in expr:
-        return 'RUST_SECURE'
     # feature = "..." pattern -> uppercased macro name
     feat = re.search(r'feature\s*=\s*"([^"]+)"', expr)
     if feat:

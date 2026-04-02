@@ -41,6 +41,7 @@
 
 #include "libnfc_rs_private.h"
 #include "mifare.h"
+#include "nfc-utils.h"
 
 /**
  * @brief Execute a MIFARE Classic Command
@@ -97,7 +98,7 @@ bool nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_
 
   // When available, copy the parameter bytes
   if (szParamLen) {
-    if (nfc_safe_memcpy(abtCmd + 2, sizeof(abtCmd) - 2, (uint8_t *)pmp, szParamLen) < 0) {
+    if (!nfc_util_copy_bytes(abtCmd + 2, sizeof(abtCmd) - 2, (uint8_t *)pmp, szParamLen)) {
       return false;
     }
   }
@@ -134,7 +135,7 @@ bool nfc_initiator_mifare_cmd(nfc_device *pnd, const mifare_cmd mc, const uint8_
 
     // Check the length of response data, with PCSC reader, there have 2 bytes for SW value
     if (res == 16 || res == (16 + 2)) {
-      if (nfc_safe_memcpy(pmp->mpd.abtData, sizeof(pmp->mpd.abtData), abtRx, 16) < 0) {
+      if (!nfc_util_copy_bytes(pmp->mpd.abtData, sizeof(pmp->mpd.abtData), abtRx, 16)) {
         return false;
       }
     } else {

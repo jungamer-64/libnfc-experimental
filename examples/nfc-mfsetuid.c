@@ -163,11 +163,11 @@ int main(int argc, char *argv[])
 
     /* Safely determine argument length with bounds check */
     /* This prevents buffer over-read if argv[arg] is not null-terminated (CWE-126) */
-    if (!nfc_is_null_terminated(argv[arg], 256)) {
+    if (!nfc_util_string_fits(argv[arg], 256)) {
       ERR("Argument %d is not properly null-terminated", arg);
       exit(EXIT_FAILURE);
     }
-    arg_len = nfc_safe_strlen(argv[arg], 256);
+    arg_len = nfc_util_bounded_strlen(argv[arg], 256);
 
     if (0 == strcmp(argv[arg], "-h")) {
       print_usage(argv);
@@ -178,7 +178,7 @@ int main(int argc, char *argv[])
       quiet_output = true;
     } else if (arg_len == 8) {
       for (i = 0; i < 4; ++i) {
-        if (nfc_safe_memcpy(tmp, sizeof(tmp), argv[arg] + i * 2, 2) < 0) {
+        if (!nfc_util_copy_bytes(tmp, sizeof(tmp), argv[arg] + i * 2, 2)) {
           ERR("Failed to copy UID bytes");
           exit(EXIT_FAILURE);
         }
@@ -189,7 +189,7 @@ int main(int argc, char *argv[])
       iso14443a_crc_append(abtData, 16);
     } else if (arg_len == 32) {
       for (i = 0; i < 16; ++i) {
-        if (nfc_safe_memcpy(tmp, sizeof(tmp), argv[arg] + i * 2, 2) < 0) {
+        if (!nfc_util_copy_bytes(tmp, sizeof(tmp), argv[arg] + i * 2, 2)) {
           ERR("Failed to copy BLOCK0 bytes");
           exit(EXIT_FAILURE);
         }
@@ -260,7 +260,7 @@ int main(int argc, char *argv[])
     nfc_exit(context);
     exit(EXIT_FAILURE);
   }
-  if (nfc_safe_memcpy(abtAtqa, sizeof(abtAtqa), abtRx, 2) < 0) {
+  if (!nfc_util_copy_bytes(abtAtqa, sizeof(abtAtqa), abtRx, 2)) {
     ERR("Failed to copy ATQA");
     nfc_close(pnd);
     nfc_exit(context);
@@ -276,7 +276,7 @@ int main(int argc, char *argv[])
   }
 
   // Save the UID CL1
-  if (nfc_safe_memcpy(abtRawUid, sizeof(abtRawUid), abtRx, 4) < 0) {
+  if (!nfc_util_copy_bytes(abtRawUid, sizeof(abtRawUid), abtRx, 4)) {
     ERR("Failed to save UID CL1");
     nfc_close(pnd);
     nfc_exit(context);
@@ -284,7 +284,7 @@ int main(int argc, char *argv[])
   }
 
   // Prepare and send CL1 Select-Command
-  if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0) {
+  if (!nfc_util_copy_bytes(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5)) {
     ERR("Failed to prepare CL1 Select command");
     nfc_close(pnd);
     nfc_exit(context);
@@ -318,7 +318,7 @@ int main(int argc, char *argv[])
     }
 
     // Save UID CL2
-    if (nfc_safe_memcpy(abtRawUid + 4, sizeof(abtRawUid) - 4, abtRx, 4) < 0) {
+    if (!nfc_util_copy_bytes(abtRawUid + 4, sizeof(abtRawUid) - 4, abtRx, 4)) {
       ERR("Failed to save UID CL2");
       nfc_close(pnd);
       nfc_exit(context);
@@ -327,7 +327,7 @@ int main(int argc, char *argv[])
 
     // Selection
     abtSelectTag[0] = 0x95;
-    if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0) {
+    if (!nfc_util_copy_bytes(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5)) {
       ERR("Failed to prepare CL2 Select command");
       nfc_close(pnd);
       nfc_exit(context);
@@ -359,7 +359,7 @@ int main(int argc, char *argv[])
       }
 
       // Save UID CL3
-      if (nfc_safe_memcpy(abtRawUid + 8, sizeof(abtRawUid) - 8, abtRx, 4) < 0) {
+      if (!nfc_util_copy_bytes(abtRawUid + 8, sizeof(abtRawUid) - 8, abtRx, 4)) {
         ERR("Failed to save UID CL3");
         nfc_close(pnd);
         nfc_exit(context);
@@ -368,7 +368,7 @@ int main(int argc, char *argv[])
 
       // Prepare and send final Select-Command
       abtSelectTag[0] = 0x97;
-      if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0) {
+      if (!nfc_util_copy_bytes(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5)) {
         ERR("Failed to prepare CL3 Select command");
         nfc_close(pnd);
         nfc_exit(context);

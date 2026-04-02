@@ -42,12 +42,6 @@ EXPORTS
   nfc_open
   nfc_perror
   nfc_register_driver
-  nfc_safe_memcpy
-  nfc_safe_memmove
-  nfc_safe_strlen
-  nfc_secure_memset
-  nfc_secure_strerror
-  nfc_secure_zero
   nfc_strerror
   nfc_strerror_r
   nfc_target_init

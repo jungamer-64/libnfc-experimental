@@ -97,12 +97,12 @@ build_felica_frame(const nfc_felica_info nfi, const uint8_t command, const uint8
   frame[0] = 1 + 1 + 8 + payload_len;
   *frame_len = frame[0];
   frame[1] = command;
-  if (nfc_safe_memcpy(frame + 2, 8, nfi.abtId, 8) < 0) {
+  if (!nfc_util_copy_bytes(frame + 2, 8, nfi.abtId, 8)) {
     ERR("Failed to copy FeliCa ID to frame");
     *frame_len = 0;
     return;
   }
-  if (nfc_safe_memcpy(frame + 10, payload_len, payload, payload_len) < 0) {
+  if (!nfc_util_copy_bytes(frame + 10, payload_len, payload, payload_len)) {
     ERR("Failed to copy FeliCa payload to frame");
     *frame_len = 0;
     return;
@@ -171,7 +171,7 @@ nfc_forum_tag_type3_check(nfc_device *dev, const nfc_target *nt, const uint16_t 
   }
   // const uint8_t res_block_count = res[12];
   *data_len = res - res_overhead + 1; // +1 => block count is stored on 1 byte
-  if (nfc_safe_memcpy(data, *data_len, &rx[res_overhead + 1], *data_len) < 0) {
+  if (!nfc_util_copy_bytes(data, *data_len, &rx[res_overhead + 1], *data_len)) {
     ERR("Failed to copy FeliCa block data");
     return -1;
   }
@@ -211,7 +211,7 @@ int main(int argc, char *argv[])
   FILE *ndef_stream = NULL;
 
   // ndef_output is from command line argument, use safe strlen with PATH_MAX bound
-  if ((nfc_safe_strlen(ndef_output, PATH_MAX) == 1) && (ndef_output[0] == '-')) {
+  if ((nfc_util_bounded_strlen(ndef_output, PATH_MAX) == 1) && (ndef_output[0] == '-')) {
     message_stream = stderr;
     ndef_stream = stdout;
   } else {

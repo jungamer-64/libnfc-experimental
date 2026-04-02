@@ -33,6 +33,22 @@
 
 #include "libnfc_rs_private.h"
 
+static inline size_t
+log_bounded_strlen(const char *str, size_t maxlen)
+{
+  size_t len = 0;
+
+  if (str == NULL) {
+    return 0;
+  }
+
+  while ((len < maxlen) && (str[len] != '\0')) {
+    len++;
+  }
+
+  return len;
+}
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -127,7 +143,7 @@ extern "C"
       break;                                                                                                                         \
     }                                                                                                                                \
     snprintf(__acBuf + __szBuf, sizeof(__acBuf) - __szBuf, "%s: ", pcTag);                                                           \
-    __szBuf += nfc_safe_strlen(pcTag, sizeof(__acBuf) - __szBuf) + 2;                                                                \
+    __szBuf += log_bounded_strlen(pcTag, sizeof(__acBuf) - __szBuf) + 2;                                                             \
     for (__szPos = 0; (__szPos < (size_t)(szBytes)) && (__szBuf < sizeof(__acBuf)); __szPos++)                                       \
     {                                                                                                                                \
       snprintf(__acBuf + __szBuf, sizeof(__acBuf) - __szBuf, "%02x ", ((uint8_t *)(pbtData))[__szPos]);                              \

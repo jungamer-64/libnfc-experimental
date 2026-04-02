@@ -56,41 +56,34 @@ The regression test suite depends on the cutter framework:
 The project includes the following quality measures:
 
 * **Coverage**: Test suite development in progress
-* **Security**: Memory-safe operations via [nfc-secure](SECURITY.md)
+* **Security**: Ongoing bounds checks and validation hardening across the Rust-backed core and maintained C paths
 * **Build System**: Automated compilation checks
 
 **Recent Changes**:
 
 * Driver refactoring with unified error handling
-* Memory safety improvements (nfc-secure layer)
 * Code duplication reduction
 * Automated build verification
 
 For security information, see [SECURITY.md](SECURITY.md).
 
-## Memory Safety (`nfc-secure`)
+## Internal Rust/C ABI
 
-This experimental tree includes an internal memory safety layer in
-the repo-local generated header `libnfc_rs_private.h`, backed by the Rust
-bridge.
+This experimental tree tracks repo-local generated headers
+`rust/proximate-sys/include/libnfc_rs.h` and
+`rust/proximate-sys/include/libnfc_rs_private.h` for ABI snapshot checks and
+private in-tree integration.
 
-It is used by the in-tree library, utilities, and examples, but it is not
-installed as part of the orig-compatible public headers. External consumers
-should continue to treat `<nfc/nfc.h>` as the supported include surface.
-
-**Current focus**:
-
-* Buffer overflow prevention (size checking)
-* Compiler optimization-resistant secure memory erasure
-* Platform-optimized implementations (C23/C11/POSIX/Windows)
-* Compile-time type safety (C11+ array vs pointer detection)
-* Debug mode overlap detection
+They are not installed as part of the orig-compatible public headers.
+External consumers should continue to treat `<nfc/nfc.h>` as the supported
+include surface. The temporary `nfc_safe_*` / `nfc_secure_*` helper ABI has
+been retired from this branch; maintained examples and utilities use local C
+helpers where they need bounded copies or argument checks.
 
 **Documentation**:
 
 * **Security Notes**: [SECURITY.md](SECURITY.md)
 * **Internal API**: `rust/proximate-sys/include/libnfc_rs_private.h`
-* **In-tree Examples**: `libnfc/nfc-secure-examples.c`
 
 **Standards Support**: C89/C99/C11/C23
 

@@ -92,6 +92,47 @@
 #define MAX(a,b) (((a) > (b)) ? (a) : (b))
 #endif
 
+static inline size_t
+nfc_util_bounded_strlen(const char *value, size_t maxlen)
+{
+  size_t len = 0;
+
+  if (value == NULL) {
+    return 0;
+  }
+
+  while ((len < maxlen) && (value[len] != '\0')) {
+    len++;
+  }
+
+  return len;
+}
+
+static inline bool
+nfc_util_string_fits(const char *value, size_t maxlen)
+{
+  if ((value == NULL) || (maxlen == 0)) {
+    return false;
+  }
+
+  return nfc_util_bounded_strlen(value, maxlen) < maxlen;
+}
+
+static inline bool
+nfc_util_copy_bytes(void *dst, size_t dst_size, const void *src, size_t src_size)
+{
+  if (src_size == 0) {
+    return true;
+  }
+
+  if ((dst == NULL) || (src == NULL) || (dst_size < src_size)) {
+    return false;
+  }
+
+  memmove(dst, src, src_size);
+  return true;
+}
+
 uint8_t  oddparity(const uint8_t bt);
 void    oddparity_bytes_ts(const uint8_t *pbtData, const size_t szLen, uint8_t *pbtPar);
 

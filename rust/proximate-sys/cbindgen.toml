@@ -16,13 +16,6 @@ header = """
 #define LOG_GROUP_GENERAL 1
 #define LOG_PRIORITY_ERROR 1
 #define LOG_PRIORITY_DEBUG 3
-#define NFC_SECURE_SUCCESS 0
-#define NFC_SECURE_ERROR_INVALID -1
-#define NFC_SECURE_ERROR_OVERFLOW -2
-#define NFC_SECURE_ERROR_RANGE -3
-#define NFC_SECURE_ERROR_ZERO_SIZE -4
-#define NFC_SECURE_ERROR_INTERNAL -5
-
 #if defined(_MSC_VER)
 #include <BaseTsd.h>
 typedef SSIZE_T ssize_t;
@@ -49,14 +42,6 @@ include = [
     "nfc_close",
     "nfc_free",
     "nfc_version",
-    "nfc_safe_memcpy",
-    "nfc_safe_memmove",
-    "nfc_secure_memset",
-    "nfc_secure_zero",
-    "nfc_secure_strerror",
-    "nfc_safe_strlen",
-    "nfc_is_null_terminated",
-    "nfc_ensure_null_terminated",
     "str_nfc_baud_rate",
     "str_nfc_modulation_type",
     "str_nfc_target",
@@ -166,11 +151,6 @@ exclude = [
 # Multiple key variants to cover different stringification styles emitted
 # by cbindgen when it reports missing defines. This ensures the mapping
 # is recognized regardless of spacing or whether `cfg(...)` is included.
-"feature = \"secure\"" = "RUST_SECURE"
-"feature=\"secure\"" = "RUST_SECURE"
-"cfg(feature = \"secure\")" = "RUST_SECURE"
-"cfg(feature=\"secure\")" = "RUST_SECURE"
-
 "feature = \"nfc_secure_debug\"" = "NFC_SECURE_DEBUG"
 "feature=\"nfc_secure_debug\"" = "NFC_SECURE_DEBUG"
 "cfg(feature = \"nfc_secure_debug\")" = "NFC_SECURE_DEBUG"
@@ -195,23 +175,3 @@ exclude = [
 "feature=\"asan_tests\"" = "ASAN_TESTS"
 "cfg(feature = \"asan_tests\")" = "ASAN_TESTS"
 "cfg(feature=\"asan_tests\")" = "ASAN_TESTS"
-
-# Additional mappings for composite/wrapped cfg expressions that
-# cbindgen may emit when parsing attribute expressions. These cover
-# forms like `any(...)`, `all(...)`, and `not(...)` that include a
-# `feature = "secure"` sub-expression so the generator can
-# correctly map them to the C preprocessor macro `RUST_SECURE`.
-"any(feature = \"secure\")" = "RUST_SECURE"
-"any(feature=\"secure\")" = "RUST_SECURE"
-"cfg(any(feature = \"secure\"))" = "RUST_SECURE"
-"cfg(any(feature=\"secure\"))" = "RUST_SECURE"
-
-"all(feature = \"secure\")" = "RUST_SECURE"
-"all(feature=\"secure\")" = "RUST_SECURE"
-"cfg(all(feature = \"secure\"))" = "RUST_SECURE"
-"cfg(all(feature=\"secure\"))" = "RUST_SECURE"
-
-"not(feature = \"secure\")" = "RUST_SECURE"
-"not(feature=\"secure\")" = "RUST_SECURE"
-"cfg(not(feature = \"secure\"))" = "RUST_SECURE"
-"cfg(not(feature=\"secure\"))" = "RUST_SECURE"

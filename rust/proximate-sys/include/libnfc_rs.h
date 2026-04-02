@@ -10,13 +10,6 @@
 #define LOG_GROUP_GENERAL 1
 #define LOG_PRIORITY_ERROR 1
 #define LOG_PRIORITY_DEBUG 3
-#define NFC_SECURE_SUCCESS 0
-#define NFC_SECURE_ERROR_INVALID -1
-#define NFC_SECURE_ERROR_OVERFLOW -2
-#define NFC_SECURE_ERROR_RANGE -3
-#define NFC_SECURE_ERROR_ZERO_SIZE -4
-#define NFC_SECURE_ERROR_INTERNAL -5
-
 #if defined(_MSC_VER)
 #include <BaseTsd.h>
 typedef SSIZE_T ssize_t;
@@ -149,25 +142,9 @@ int pn53x_write_register(struct nfc_device *device,
 
 int pn532_SAMConfiguration(struct nfc_device *device, int mode, int timeout);
 
-int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size);
-
-int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_size);
-
-int nfc_secure_memset(void *ptr, int val, size_t size);
-
-int nfc_secure_zero(void *ptr, size_t size);
-
-size_t nfc_safe_strlen(const char *str, size_t maxlen);
-
-int nfc_is_null_terminated(const char *buf, size_t bufsize);
-
-void nfc_ensure_null_terminated(char *buf, size_t bufsize);
-
 const char *nfc_get_last_error(void);
 
 void nfc_clear_last_error(void);
-
-const char *nfc_secure_strerror(int code);
 
 #endif  /* LIBNFC_RS_H */
 

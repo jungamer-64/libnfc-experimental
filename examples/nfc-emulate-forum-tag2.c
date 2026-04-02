@@ -182,8 +182,8 @@ nfcforum_tag2_io(struct nfc_emulator *emulator, const uint8_t *data_in, const si
   switch (data_in[0]) {
     case READ:
       if (data_out_len >= 16) {
-        if (nfc_safe_memcpy(data_out, data_out_len,
-                            nfcforum_tag2_memory_area + (data_in[1] * 4), 16) < 0) {
+        if (!nfc_util_copy_bytes(data_out, data_out_len,
+                                 nfcforum_tag2_memory_area + (data_in[1] * 4), 16)) {
           ERR("Failed to copy tag memory");
           res = -EIO;
         } else {

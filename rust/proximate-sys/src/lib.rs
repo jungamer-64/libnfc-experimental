@@ -23,13 +23,15 @@ mod private_ffi;
 #[cfg(any(feature = "lifecycle", feature = "orchestration", cbindgen))]
 /// cbindgen:ignore
 mod runtime_bridge;
-#[cfg(any(feature = "secure", cbindgen))]
-/// cbindgen:ignore
-mod secure_ffi;
 #[cfg(any(feature = "c_ffi", cbindgen))]
 pub use c_api_impl::{
     LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING,
     NFC_COMMON_ERROR, NFC_COMMON_INVALID, NFC_COMMON_SUCCESS,
+};
+pub(crate) use c_api_impl::{
+    MALLOC_LABEL, emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr,
+    ffi_catch_unwind_void, log_error, log_message, release_allocated_ptr, reset_last_error,
+    set_last_error_message,
 };
 #[cfg(any(feature = "c_ffi", cbindgen))]
 pub use ffi_types::{
@@ -42,16 +44,6 @@ pub use ffi_types::{
 pub use lifecycle::{
     DEVICE_NAME_LENGTH, MAX_USER_DEFINED_DEVICES, NFC_DRIVER_NAME_MAX, nfc_context, nfc_device,
     nfc_driver, nfc_user_defined_device, scan_type_enum,
-};
-#[cfg(any(all(feature = "secure", feature = "c_ffi"), cbindgen))]
-pub use secure_ffi::{
-    NFC_SECURE_ERROR_INVALID, NFC_SECURE_ERROR_OVERFLOW, NFC_SECURE_ERROR_RANGE,
-    NFC_SECURE_ERROR_ZERO_SIZE, NFC_SECURE_SUCCESS,
-};
-pub(crate) use c_api_impl::{
-    MALLOC_LABEL, emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr,
-    ffi_catch_unwind_void, log_error, log_message, release_allocated_ptr, reset_last_error,
-    set_last_error_message,
 };
 #[cfg(test)]
 pub(crate) use logger::{
@@ -91,11 +83,6 @@ mod proximate {
     pub use crate::lifecycle::{
         nfc_connstring, nfc_context_alloc_defaults, nfc_context_free, nfc_context_new,
         nfc_device_free, nfc_device_new,
-    };
-    #[cfg(any(feature = "secure", cbindgen))]
-    pub use crate::secure_ffi::{
-        nfc_ensure_null_terminated, nfc_is_null_terminated, nfc_safe_memcpy, nfc_safe_memmove,
-        nfc_safe_strlen, nfc_secure_memset, nfc_secure_strerror, nfc_secure_zero,
     };
 }
 
@@ -736,71 +723,6 @@ pub unsafe extern "C" fn nfc_perror(device: *const nfc_device, message: *const l
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_safe_memcpy(
-    dst: *mut libc::c_void,
-    dst_size: libc::size_t,
-    src: *const libc::c_void,
-    src_size: libc::size_t,
-) -> libc::c_int {
-    unsafe { proximate::nfc_safe_memcpy(dst, dst_size, src, src_size) }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_safe_memmove(
-    dst: *mut libc::c_void,
-    dst_size: libc::size_t,
-    src: *const libc::c_void,
-    src_size: libc::size_t,
-) -> libc::c_int {
-    unsafe { proximate::nfc_safe_memmove(dst, dst_size, src, src_size) }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_secure_memset(
-    ptr: *mut libc::c_void,
-    val: libc::c_int,
-    size: libc::size_t,
-) -> libc::c_int {
-    unsafe { proximate::nfc_secure_memset(ptr, val, size) }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_secure_zero(
-    ptr: *mut libc::c_void,
-    size: libc::size_t,
-) -> libc::c_int {
-    unsafe { proximate::nfc_secure_zero(ptr, size) }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_safe_strlen(
-    str: *const libc::c_char,
-    maxlen: libc::size_t,
-) -> libc::size_t {
-    unsafe { proximate::nfc_safe_strlen(str, maxlen) }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_is_null_terminated(
-    buf: *const libc::c_char,
-    bufsize: libc::size_t,
-) -> libc::c_int {
-    unsafe { proximate::nfc_is_null_terminated(buf, bufsize) }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_ensure_null_terminated(buf: *mut libc::c_char, bufsize: libc::size_t) {
-    unsafe { proximate::nfc_ensure_null_terminated(buf, bufsize) }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
 pub extern "C" fn nfc_get_last_error() -> *const libc::c_char {
     proximate::nfc_get_last_error()
 }
@@ -809,10 +731,4 @@ pub extern "C" fn nfc_get_last_error() -> *const libc::c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn nfc_clear_last_error() {
     proximate::nfc_clear_last_error()
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub extern "C" fn nfc_secure_strerror(code: libc::c_int) -> *const libc::c_char {
-    proximate::nfc_secure_strerror(code)
 }

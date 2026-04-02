@@ -64,6 +64,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "libnfc_rs_private.h"
+#include "utils/nfc-utils.h"
 
 #if defined(WIN32) /* mingw compiler */
 #include <getopt.h>
@@ -125,12 +126,12 @@ int main(int argc, char *argv[])
       case 'w':
         if (optarg) {
           /* Safely determine optarg length with bounds check (CWE-126) */
-          if (!nfc_is_null_terminated(optarg, 1024)) {
+          if (!nfc_util_string_fits(optarg, 1024)) {
             fprintf(stderr, "Error: Option argument not properly null-terminated\n");
             bIsBadCli = true;
             break;
           }
-          cbData = nfc_safe_strlen(optarg, 1024);
+          cbData = nfc_util_bounded_strlen(optarg, 1024);
           if ((cbData == (2 * 2)) || ((cbData == (4 * 2)))) {
             cbData >>= 1;
             if (cbData == 2) {
@@ -261,7 +262,7 @@ bool get_block_at(nfc_device *pnd, uint8_t block, uint8_t *data, uint8_t cbData,
   if ((res == 2) || (res == 4)) {
     if (data) {
       if (cbData == res) {
-        if (nfc_safe_memcpy(data, cbData, rx, res) < 0) {
+        if (!nfc_util_copy_bytes(data, cbData, rx, res)) {
           printf("ERROR - Failed to copy received data\n");
           return false;
         }
@@ -291,7 +292,7 @@ bool set_block_at(nfc_device *pnd, uint8_t block, uint8_t *data, uint8_t cbData,
   int res;
 
   if (cbData <= ST25TB_SR_BLOCK_MAX_SIZE) {
-    if (nfc_safe_memcpy(tx + 2, ST25TB_SR_BLOCK_MAX_SIZE, data, cbData) < 0) {
+    if (!nfc_util_copy_bytes(tx + 2, ST25TB_SR_BLOCK_MAX_SIZE, data, cbData)) {
       printf("ERROR - Failed to copy data for transmission\n");
       return false;
     }

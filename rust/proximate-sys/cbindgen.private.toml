@@ -31,13 +31,6 @@ header = """
 #define LOG_GROUP_GENERAL 1
 #define LOG_PRIORITY_ERROR 1
 #define LOG_PRIORITY_DEBUG 3
-#define NFC_SECURE_SUCCESS 0
-#define NFC_SECURE_ERROR_INVALID -1
-#define NFC_SECURE_ERROR_OVERFLOW -2
-#define NFC_SECURE_ERROR_RANGE -3
-#define NFC_SECURE_ERROR_ZERO_SIZE -4
-#define NFC_SECURE_ERROR_INTERNAL -5
-
 #if defined(_MSC_VER)
 #include <BaseTsd.h>
 typedef SSIZE_T ssize_t;
@@ -114,11 +107,6 @@ exclude = [
 
 [defines]
 "test" = "RUST_TEST"
-
-"feature = \"secure\"" = "RUST_SECURE"
-"feature=\"secure\"" = "RUST_SECURE"
-"cfg(feature = \"secure\")" = "RUST_SECURE"
-"cfg(feature=\"secure\")" = "RUST_SECURE"
 
 "feature = \"nfc_secure_debug\"" = "NFC_SECURE_DEBUG"
 "feature=\"nfc_secure_debug\"" = "NFC_SECURE_DEBUG"

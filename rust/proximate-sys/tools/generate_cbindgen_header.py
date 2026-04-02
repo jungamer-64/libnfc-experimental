@@ -147,31 +147,6 @@ def postprocess_private_header(path: Path) -> None:
         "typedef struct nfc_target nfc_target;\n\n"
         "typedef struct nfc_target_info nfc_target_info;\n"
     )
-    inline_secure_helpers = (
-        "static inline int\n"
-        "nfc_is_null_terminated(const char *buf, size_t bufsize)\n"
-        "{\n"
-        "  if (buf == NULL || bufsize == 0) {\n"
-        "    return 0;\n"
-        "  }\n\n"
-        "  for (size_t i = 0; i < bufsize; i++) {\n"
-        "    if (buf[i] == '\\0') {\n"
-        "      return 1;\n"
-        "    }\n"
-        "  }\n\n"
-        "  return 0;\n"
-        "}\n\n"
-        "static inline void\n"
-        "nfc_ensure_null_terminated(char *buf, size_t bufsize)\n"
-        "{\n"
-        "  if (buf == NULL || bufsize == 0) {\n"
-        "    return;\n"
-        "  }\n\n"
-        "  if (!nfc_is_null_terminated(buf, bufsize)) {\n"
-        "    buf[bufsize - 1] = '\\0';\n"
-        "  }\n"
-        "}\n"
-    )
     state_block = (
         "typedef struct nfc_emulation_state_machine {\n"
         "  nfc_emulation_io_fn io;\n"
@@ -215,12 +190,6 @@ def postprocess_private_header(path: Path) -> None:
     text = text.replace(state_block, fn_block + "\n" + state_block, 1)
     if "struct nfc_emulator;\n\n" not in text:
         text = text.replace(fn_block + "\n", "struct nfc_emulator;\n\n" + fn_block + "\n", 1)
-    text = text.replace(
-        "int nfc_is_null_terminated(const char *buf, size_t bufsize);\n\n"
-        "void nfc_ensure_null_terminated(char *buf, size_t bufsize);\n",
-        inline_secure_helpers + "\n",
-        1,
-    )
     path.write_text(text)
 
 cmd = [

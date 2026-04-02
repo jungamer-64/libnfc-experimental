@@ -25,13 +25,6 @@
 #define LOG_GROUP_GENERAL 1
 #define LOG_PRIORITY_ERROR 1
 #define LOG_PRIORITY_DEBUG 3
-#define NFC_SECURE_SUCCESS 0
-#define NFC_SECURE_ERROR_INVALID -1
-#define NFC_SECURE_ERROR_OVERFLOW -2
-#define NFC_SECURE_ERROR_RANGE -3
-#define NFC_SECURE_ERROR_ZERO_SIZE -4
-#define NFC_SECURE_ERROR_INTERNAL -5
-
 #if defined(_MSC_VER)
 #include <BaseTsd.h>
 typedef SSIZE_T ssize_t;
@@ -617,50 +610,9 @@ int nfc_strerror_r(const struct nfc_device *device, char *buf, size_t buflen);
 
 void nfc_perror(const struct nfc_device *device, const char *message);
 
-int nfc_safe_memcpy(void *dst, size_t dst_size, const void *src, size_t src_size);
-
-int nfc_safe_memmove(void *dst, size_t dst_size, const void *src, size_t src_size);
-
-int nfc_secure_memset(void *ptr, int val, size_t size);
-
-int nfc_secure_zero(void *ptr, size_t size);
-
-size_t nfc_safe_strlen(const char *str, size_t maxlen);
-
-static inline int
-nfc_is_null_terminated(const char *buf, size_t bufsize)
-{
-  if (buf == NULL || bufsize == 0) {
-    return 0;
-  }
-
-  for (size_t i = 0; i < bufsize; i++) {
-    if (buf[i] == '\0') {
-      return 1;
-    }
-  }
-
-  return 0;
-}
-
-static inline void
-nfc_ensure_null_terminated(char *buf, size_t bufsize)
-{
-  if (buf == NULL || bufsize == 0) {
-    return;
-  }
-
-  if (!nfc_is_null_terminated(buf, bufsize)) {
-    buf[bufsize - 1] = '\0';
-  }
-}
-
-
 const char *nfc_get_last_error(void);
 
 void nfc_clear_last_error(void);
-
-const char *nfc_secure_strerror(int code);
 
 #if !defined(RUST_TEST)
 void nfc_rs_context_log_init(const struct nfc_context *context);
