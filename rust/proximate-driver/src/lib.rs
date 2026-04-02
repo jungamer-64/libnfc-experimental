@@ -20,10 +20,11 @@ pub mod diagnostics {
 }
 #[doc(hidden)]
 pub use context::set_test_conf_root;
+#[doc(hidden)]
+pub use device::DeviceHandle;
 pub use device::{
-    ChipDebugOps, Device, DeviceBackend, DeviceMeta, InfoBackend, InitiatorBackend,
-    InitiatorDevice, InitiatorOps, Logger, OpenedDevice, Pn53xBackend, Pn53xDevice,
-    PropertyBackend, PropertyOps, TargetBackend, TargetDevice, TargetOps,
+    Device, DeviceMeta, InfoBackend, InitiatorBackend, InitiatorDevice, Logger, Pn53xBackend,
+    Pn53xDevice, PropertyBackend, TargetBackend, TargetDevice,
 };
 pub use driver::{Driver, DriverRegistry};
 

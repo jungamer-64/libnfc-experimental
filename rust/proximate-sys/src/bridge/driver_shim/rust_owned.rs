@@ -1,7 +1,7 @@
 use super::*;
 
 pub(crate) struct RustDeviceState {
-    pub(crate) handle: Box<dyn rt::DeviceBackend>,
+    pub(crate) handle: Box<dyn rt::DeviceHandle>,
     pub(crate) strerror: CString,
     pub(crate) supported_modulations: Vec<nfc_modulation_type>,
     pub(crate) supported_baud_rates: Vec<nfc_baud_rate>,
@@ -56,7 +56,7 @@ pub(crate) fn attach_rust_device(
     }
 
     let mut state = Box::new(RustDeviceState {
-        handle: device.into_backend(),
+        handle: device.into_handle(),
         strerror: CString::new("success").expect("static string is valid"),
         supported_modulations: Vec::new(),
         supported_baud_rates: Vec::new(),

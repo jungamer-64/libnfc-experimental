@@ -1,5 +1,5 @@
 use crate::{
-    ConnectionString, Context, ContextConfig, Device, DeviceBackend, DriverCaps, Error, ScanType,
+    ConnectionString, Context, ContextConfig, Device, DeviceHandle, DriverCaps, Error, ScanType,
 };
 
 pub trait Driver: Send + Sync {
@@ -17,7 +17,7 @@ pub trait Driver: Send + Sync {
         &self,
         context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn DeviceBackend>, Error>;
+    ) -> Result<Box<dyn DeviceHandle>, Error>;
 }
 
 #[doc(hidden)]

@@ -3,7 +3,7 @@ use super::pn53x::{
     Pn53xDevice, Pn53xProfile, Pn53xTransport, command_from_host_frame, is_ack_frame,
 };
 use crate::spi::{SpiHandle, SpiOpenError};
-use proximate_driver::{ConnectionString, Context, DeviceBackend, Driver, Error, ScanType};
+use proximate_driver::{ConnectionString, Context, DeviceHandle, Driver, Error, ScanType};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -70,7 +70,7 @@ impl Driver for Pn532SpiDriver {
         &self,
         _context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn DeviceBackend>, Error> {
+    ) -> Result<Box<dyn DeviceHandle>, Error> {
         let descriptor = decode_path_speed_descriptor(connstring, DRIVER_NAME, DEFAULT_SPEED)?;
         let transport = SpiTransport::open(&descriptor.path, descriptor.speed)?;
         let device = Pn53xDevice::probe_with_profile(

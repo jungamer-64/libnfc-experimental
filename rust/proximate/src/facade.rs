@@ -615,7 +615,7 @@ mod tests {
             &self,
             _context: &rt::Context,
             connstring: &rt::ConnectionString,
-        ) -> Result<Box<dyn rt::DeviceBackend>, rt::Error> {
+        ) -> Result<Box<dyn rt::DeviceHandle>, rt::Error> {
             Ok(Box::new(FakeDevice::new(connstring.as_str(), self.caps)))
         }
     }

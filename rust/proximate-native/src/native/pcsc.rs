@@ -1,5 +1,5 @@
 use proximate_driver::{
-    BaudRate, ConnectionString, Context, DeviceBackend, DeviceCaps, DeviceMeta, Driver, Error,
+    BaudRate, ConnectionString, Context, DeviceCaps, DeviceHandle, DeviceMeta, Driver, Error,
     InfoBackend, InitiatorBackend, Mode, Modulation, ModulationType, Pn53xBackend, Property,
     PropertyBackend, ScanType, Target, TargetBackend, TargetInfo, decode_connstring,
     device_error_message,
@@ -185,7 +185,7 @@ impl Driver for PcscDriver {
         &self,
         _context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn DeviceBackend>, Error> {
+    ) -> Result<Box<dyn DeviceHandle>, Error> {
         let (reader_name, resolved_connstring) = resolve_reader(
             self.backend.as_ref(),
             connstring,

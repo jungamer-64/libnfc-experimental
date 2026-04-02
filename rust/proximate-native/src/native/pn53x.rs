@@ -1643,8 +1643,208 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xBackend for Pn53xDevice<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proximate_driver::{ChipDebugOps, InitiatorOps, TargetOps};
     use std::collections::VecDeque;
+
+    fn cascade_iso14443a_uid(uid: &[u8]) -> Vec<u8> {
+        match uid.len() {
+            4 => uid.to_vec(),
+            7 => {
+                let mut cascaded = Vec::with_capacity(8);
+                cascaded.extend_from_slice(&[0x88, uid[0], uid[1], uid[2]]);
+                cascaded.extend_from_slice(&uid[3..]);
+                cascaded
+            }
+            10 => {
+                let mut cascaded = Vec::with_capacity(12);
+                cascaded.extend_from_slice(&[0x88, uid[0], uid[1], uid[2]]);
+                cascaded.extend_from_slice(&[0x88, uid[3], uid[4], uid[5]]);
+                cascaded.extend_from_slice(&uid[6..]);
+                cascaded
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn default_initiator_payload(modulation: Modulation) -> &'static [u8] {
+        match modulation.modulation_type {
+            ModulationType::Iso14443B => &[0x00],
+            ModulationType::Iso14443Bi => &[0x01, 0x0b, 0x3f, 0x80],
+            ModulationType::Felica => &[0x00, 0xff, 0xff, 0x01, 0x00],
+            _ => &[],
+        }
+    }
+
+    trait TestPn53xOps:
+        DeviceMeta + PropertyBackend + InitiatorBackend + TargetBackend + Pn53xBackend
+    {
+        fn pn53x_read_register(&mut self, register: u16) -> Result<u8, Error> {
+            self.pn53x_read_register_driver(register)
+        }
+
+        fn pn53x_write_register(
+            &mut self,
+            register: u16,
+            symbol_mask: u8,
+            value: u8,
+        ) -> Result<(), Error> {
+            self.pn53x_write_register_driver(register, symbol_mask, value)
+        }
+
+        fn pn53x_transceive(
+            &mut self,
+            tx: &[u8],
+            rx: &mut [u8],
+            timeout: i32,
+        ) -> Result<usize, Error> {
+            self.pn53x_transceive_driver(tx, rx, timeout)
+        }
+
+        fn pn532_sam_configuration(&mut self, mode: u8, timeout: i32) -> Result<i32, Error> {
+            self.pn532_sam_configuration_driver(mode, timeout)
+        }
+
+        fn initiator_init(&mut self) -> Result<i32, Error> {
+            for (property, value) in [
+                (Property::ActivateField, false),
+                (Property::ActivateField, true),
+                (Property::InfiniteSelect, true),
+                (Property::AutoIso14443_4, true),
+                (Property::ForceIso14443A, true),
+                (Property::ForceSpeed106, true),
+                (Property::AcceptInvalidFrames, false),
+                (Property::AcceptMultipleFrames, false),
+            ] {
+                self.set_property_bool(property, value)?;
+            }
+            self.initiator_init_driver()
+        }
+
+        fn abort_command(&mut self) -> Result<(), Error> {
+            self.abort_command_driver()
+        }
+
+        fn select_passive_target(
+            &mut self,
+            modulation: Modulation,
+            init_data: Option<&[u8]>,
+        ) -> Result<Option<Target>, Error> {
+            let payload = if init_data.is_some_and(|value| !value.is_empty()) {
+                if modulation.modulation_type == ModulationType::Iso14443A {
+                    cascade_iso14443a_uid(init_data.expect("checked above"))
+                } else {
+                    init_data.expect("checked above").to_vec()
+                }
+            } else {
+                default_initiator_payload(modulation).to_vec()
+            };
+            self.select_passive_target_driver(modulation, &payload)
+        }
+
+        fn select_dep_target(
+            &mut self,
+            mode: DepMode,
+            baud_rate: BaudRate,
+            initiator: Option<&DepInfo>,
+            timeout: i32,
+        ) -> Result<Option<Target>, Error> {
+            self.select_dep_target_driver(mode, baud_rate, initiator, timeout)
+        }
+
+        fn deselect_target(&mut self) -> Result<(), Error> {
+            self.deselect_target_driver()
+        }
+
+        fn target_is_present(&mut self, target: Option<&Target>) -> Result<bool, Error> {
+            self.target_is_present_driver(target)
+        }
+
+        fn transceive_bytes(
+            &mut self,
+            tx: &[u8],
+            rx: &mut [u8],
+            timeout: i32,
+        ) -> Result<usize, Error> {
+            self.transceive_bytes_driver(tx, rx, timeout)
+        }
+
+        fn transceive_bytes_timed(
+            &mut self,
+            tx: &[u8],
+            rx: &mut [u8],
+        ) -> Result<(usize, u32), Error> {
+            self.transceive_bytes_timed_driver(tx, rx)
+        }
+
+        fn target_init(
+            &mut self,
+            target: &mut Target,
+            rx: &mut [u8],
+            timeout: i32,
+        ) -> Result<usize, Error> {
+            for (property, value) in [
+                (Property::AcceptInvalidFrames, false),
+                (Property::AcceptMultipleFrames, false),
+                (Property::HandleCrc, true),
+                (Property::HandleParity, true),
+                (Property::AutoIso14443_4, true),
+                (Property::EasyFraming, true),
+                (Property::ActivateCrypto1, false),
+                (Property::ActivateField, false),
+            ] {
+                self.set_property_bool(property, value)?;
+            }
+            self.target_init_driver(target, rx, timeout)
+        }
+
+        fn target_send_bytes(&mut self, tx: &[u8], timeout: i32) -> Result<usize, Error> {
+            self.target_send_bytes_driver(tx, timeout)
+        }
+
+        fn target_receive_bytes(&mut self, rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
+            self.target_receive_bytes_driver(rx, timeout)
+        }
+
+        fn transceive_bits(
+            &mut self,
+            tx: &[u8],
+            tx_bits_len: usize,
+            tx_parity: Option<&[u8]>,
+            rx: &mut [u8],
+            rx_parity: Option<&mut [u8]>,
+        ) -> Result<usize, Error> {
+            self.transceive_bits_driver(tx, tx_bits_len, tx_parity, rx, rx_parity)
+        }
+
+        fn target_receive_bits(
+            &mut self,
+            rx: &mut [u8],
+            rx_parity: Option<&mut [u8]>,
+        ) -> Result<usize, Error> {
+            self.target_receive_bits_driver(rx, rx_parity)
+        }
+
+        fn transceive_bits_timed(
+            &mut self,
+            tx: &[u8],
+            tx_bits_len: usize,
+            tx_parity: Option<&[u8]>,
+            rx: &mut [u8],
+            rx_parity: Option<&mut [u8]>,
+        ) -> Result<(usize, u32), Error> {
+            self.transceive_bits_timed_driver(tx, tx_bits_len, tx_parity, rx, rx_parity)
+        }
+
+        fn target_send_bits(
+            &mut self,
+            tx: &[u8],
+            tx_bits_len: usize,
+            tx_parity: Option<&[u8]>,
+        ) -> Result<usize, Error> {
+            self.target_send_bits_driver(tx, tx_bits_len, tx_parity)
+        }
+    }
+
+    impl<T> TestPn53xOps for Pn53xDevice<T> where T: Pn53xTransport + Send + 'static {}
 
     #[derive(Default)]
     struct FakeTransport {

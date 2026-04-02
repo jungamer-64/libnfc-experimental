@@ -7,11 +7,11 @@ unsafe fn rust_device_state<'a>(device: *mut nfc_device) -> Option<&'a mut RustD
     unsafe { (device.driver_data as *mut RustDeviceState).as_mut() }
 }
 
-pub(crate) fn borrowed_device(raw: *mut nfc_device) -> Box<dyn rt::DeviceBackend> {
+pub(crate) fn borrowed_device(raw: *mut nfc_device) -> rt::Device {
     if is_rust_shim_device(raw) {
-        return Box::new(RustBorrowedDevice::new(raw));
+        return rt::Device::from_handle(Box::new(RustBorrowedDevice::new(raw)));
     }
-    Box::new(ExternalDevice::borrowed(raw))
+    rt::Device::from_handle(Box::new(ExternalDevice::borrowed(raw)))
 }
 
 struct RustBorrowedDevice {
@@ -42,7 +42,7 @@ impl RustBorrowedDevice {
 
     fn with_handle<R>(
         &mut self,
-        f: impl FnOnce(&mut dyn rt::DeviceBackend) -> Result<R, rt::Error>,
+        f: impl FnOnce(&mut dyn rt::DeviceHandle) -> Result<R, rt::Error>,
     ) -> Result<R, rt::Error> {
         let Some(state) = (unsafe { rust_device_state(self.raw) }) else {
             return Err(rt::Error::DriverNotFound("rust shim".to_string()));
@@ -106,6 +106,11 @@ impl rt::DeviceMeta for RustBorrowedDevice {
         unsafe { rust_device_state(self.raw) }
             .map(|state| state.handle.strerror())
             .unwrap_or_else(|| rt::device_error_message(self.last_error()).to_string())
+    }
+
+    fn missing_capability(&mut self, operation: &'static str) -> rt::Error {
+        set_device_last_error(self.raw, NFC_EDEVNOTSUPP);
+        missing_capability(operation)
     }
 }
 

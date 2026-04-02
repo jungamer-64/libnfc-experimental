@@ -8,6 +8,11 @@ use std::sync::{Mutex, OnceLock};
 
 use super::*;
 use crate::context::{ContextConfigBuilder, ContextConfigSource, ContextScalarOverrides};
+use crate::device::{
+    POLL_DEP_PERIOD_MS, apply_bool_property_sequence, cascade_iso14443a_uid,
+    default_initiator_payload, modulation_requires_single_attempt, restore_property_bool,
+    validate_modulation,
+};
 use crate::diagnostics::{self, ContextDiagnosticCategory};
 
 struct FakeDevice {
@@ -191,7 +196,7 @@ impl Driver for FakeDriver {
         &self,
         _context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn DeviceBackend>, Error> {
+    ) -> Result<Box<dyn DeviceHandle>, Error> {
         match &self.open_result {
             Ok(opened_name) => Ok(Box::new(FakeDevice {
                 name: opened_name.clone(),
@@ -202,6 +207,179 @@ impl Driver for FakeDriver {
         }
     }
 }
+
+fn missing_capability_for_test(operation: &'static str) -> Error {
+    Error::MissingCapability(operation)
+}
+
+fn ensure_device_caps_for_test(
+    caps: DeviceCaps,
+    required: DeviceCaps,
+    operation: &'static str,
+) -> Result<(), Error> {
+    if caps.contains(required) {
+        Ok(())
+    } else {
+        Err(missing_capability_for_test(operation))
+    }
+}
+
+trait TestDeviceOps: DeviceMeta + PropertyBackend + InitiatorBackend + TargetBackend {
+    fn initiator_init(&mut self) -> Result<i32, Error> {
+        ensure_device_caps_for_test(
+            self.caps(),
+            DeviceCaps::SET_PROPERTY_BOOL | DeviceCaps::INITIATOR_INIT,
+            "initiator_init",
+        )?;
+        apply_bool_property_sequence(
+            self,
+            &[
+                (Property::ActivateField, false),
+                (Property::ActivateField, true),
+                (Property::InfiniteSelect, true),
+                (Property::AutoIso14443_4, true),
+                (Property::ForceIso14443A, true),
+                (Property::ForceSpeed106, true),
+                (Property::AcceptInvalidFrames, false),
+                (Property::AcceptMultipleFrames, false),
+            ],
+        )?;
+        self.initiator_init_driver()
+    }
+
+    fn select_passive_target(
+        &mut self,
+        modulation: Modulation,
+        init_data: Option<&[u8]>,
+    ) -> Result<Option<Target>, Error> {
+        ensure_device_caps_for_test(
+            self.caps(),
+            DeviceCaps::SUPPORTED_MODULATIONS
+                | DeviceCaps::SUPPORTED_BAUD_RATES
+                | DeviceCaps::SELECT_PASSIVE_TARGET,
+            "initiator_select_passive_target",
+        )?;
+        validate_modulation(self, Mode::Initiator, modulation)?;
+
+        let payload = if init_data.is_some_and(|value| !value.is_empty()) {
+            if modulation.modulation_type == ModulationType::Iso14443A {
+                cascade_iso14443a_uid(init_data.expect("checked above"))
+            } else {
+                init_data.expect("checked above").to_vec()
+            }
+        } else {
+            default_initiator_payload(modulation).to_vec()
+        };
+
+        self.select_passive_target_driver(modulation, &payload)
+    }
+
+    fn list_passive_targets(
+        &mut self,
+        modulation: Modulation,
+        max_targets: usize,
+    ) -> Result<Vec<Target>, Error> {
+        if max_targets == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut required = DeviceCaps::SUPPORTED_MODULATIONS
+            | DeviceCaps::SUPPORTED_BAUD_RATES
+            | DeviceCaps::SELECT_PASSIVE_TARGET
+            | DeviceCaps::SET_PROPERTY_BOOL;
+        if max_targets > 1 && !modulation_requires_single_attempt(modulation) {
+            required |= DeviceCaps::DESELECT_TARGET;
+        }
+        ensure_device_caps_for_test(self.caps(), required, "list_passive_targets")?;
+
+        let previous = self.property_bool_state(Property::InfiniteSelect);
+        self.set_property_bool(Property::InfiniteSelect, false)?;
+
+        let result = (|| {
+            let mut targets = Vec::new();
+            while let Some(target) = self.select_passive_target(modulation, None)? {
+                if targets.contains(&target) {
+                    break;
+                }
+
+                targets.push(target);
+                if targets.len() >= max_targets || modulation_requires_single_attempt(modulation) {
+                    break;
+                }
+
+                self.deselect_target_driver()?;
+            }
+            Ok(targets)
+        })();
+
+        restore_property_bool(self, Property::InfiniteSelect, previous, false)?;
+        result
+    }
+
+    fn poll_dep_target(
+        &mut self,
+        mode: DepMode,
+        baud_rate: BaudRate,
+        initiator: Option<&DepInfo>,
+        timeout: i32,
+    ) -> Result<Option<Target>, Error> {
+        ensure_device_caps_for_test(
+            self.caps(),
+            DeviceCaps::SET_PROPERTY_BOOL | DeviceCaps::SELECT_DEP_TARGET,
+            "poll_dep_target",
+        )?;
+        let previous = self.property_bool_state(Property::InfiniteSelect);
+        self.set_property_bool(Property::InfiniteSelect, true)?;
+
+        let result = (|| {
+            let mut remaining = timeout;
+            while remaining > 0 {
+                match self.select_dep_target_driver(mode, baud_rate, initiator, POLL_DEP_PERIOD_MS)
+                {
+                    Ok(Some(target)) => return Ok(Some(target)),
+                    Ok(None) => remaining -= POLL_DEP_PERIOD_MS,
+                    Err(error) if error.device_code() == Some(-6) => {
+                        remaining -= POLL_DEP_PERIOD_MS;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            Ok(None)
+        })();
+
+        restore_property_bool(self, Property::InfiniteSelect, previous, true)?;
+        result
+    }
+
+    fn target_init(
+        &mut self,
+        target: &mut Target,
+        rx: &mut [u8],
+        timeout: i32,
+    ) -> Result<usize, Error> {
+        ensure_device_caps_for_test(
+            self.caps(),
+            DeviceCaps::SET_PROPERTY_BOOL | DeviceCaps::TARGET_INIT,
+            "target_init",
+        )?;
+        apply_bool_property_sequence(
+            self,
+            &[
+                (Property::AcceptInvalidFrames, false),
+                (Property::AcceptMultipleFrames, false),
+                (Property::HandleCrc, true),
+                (Property::HandleParity, true),
+                (Property::AutoIso14443_4, true),
+                (Property::EasyFraming, true),
+                (Property::ActivateCrypto1, false),
+                (Property::ActivateField, false),
+            ],
+        )?;
+        self.target_init_driver(target, rx, timeout)
+    }
+}
+
+impl<T> TestDeviceOps for T where T: DeviceMeta + PropertyBackend + InitiatorBackend + TargetBackend {}
 
 fn modulation(modulation_type: ModulationType, baud_rate: BaudRate) -> Modulation {
     Modulation {
@@ -434,7 +612,7 @@ fn driver_registry_prefers_user_defined_name_override() {
 fn device_caps_propagate_through_wrappers() {
     let device = FakeDevice::new("alpha:001");
     let caps = device.caps;
-    let handle = Box::new(device) as Box<dyn DeviceBackend>;
+    let handle = Box::new(device) as Box<dyn DeviceHandle>;
     let device = Device::new(handle, Some("named".into()));
     assert_eq!(device.caps(), caps);
 }
@@ -690,7 +868,7 @@ fn open_without_connstring_uses_first_listed_device() {
             &self,
             _context: &Context,
             connstring: &ConnectionString,
-        ) -> Result<Box<dyn DeviceBackend>, Error> {
+        ) -> Result<Box<dyn DeviceHandle>, Error> {
             Ok(Box::new(FakeDevice {
                 name: self.opened_name.to_string(),
                 connstring: connstring.clone(),

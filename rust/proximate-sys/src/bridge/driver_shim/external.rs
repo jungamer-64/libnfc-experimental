@@ -86,7 +86,7 @@ impl rt::Driver for ExternalDriver {
         &self,
         context: &rt::Context,
         connstring: &rt::ConnectionString,
-    ) -> Result<Box<dyn rt::DeviceBackend>, rt::Error> {
+    ) -> Result<Box<dyn rt::DeviceHandle>, rt::Error> {
         if !self.caps.contains(rt::DriverCaps::OPEN) {
             return Err(missing_capability("open"));
         }
@@ -243,6 +243,11 @@ impl rt::DeviceMeta for ExternalDevice {
         } else {
             c_string_ptr_to_string(value, bounded_strlen(value, 256))
         }
+    }
+
+    fn missing_capability(&mut self, operation: &'static str) -> rt::Error {
+        self.set_last_error_raw(NFC_EDEVNOTSUPP);
+        missing_capability(operation)
     }
 }
 

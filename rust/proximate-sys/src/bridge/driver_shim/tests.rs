@@ -6,7 +6,7 @@ use crate::initiator::{
     nfc_device_get_supported_baud_rate, nfc_device_get_supported_baud_rate_target_mode,
     nfc_device_get_supported_modulation,
 };
-use proximate_driver::{DeviceBackend, DeviceMeta, Driver};
+use proximate_driver::{DeviceHandle, DeviceMeta, Driver};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::{ptr, slice};
@@ -278,7 +278,7 @@ fn make_rust_shim_device(handle: FakeRustHandle) -> *mut nfc_device {
     assert!(!raw.is_null());
     let caps = handle.caps();
     let state = Box::new(RustDeviceState {
-        handle: Box::new(handle) as Box<dyn DeviceBackend>,
+        handle: Box::new(handle) as Box<dyn DeviceHandle>,
         strerror: CString::new("shim").unwrap(),
         supported_modulations: Vec::new(),
         supported_baud_rates: Vec::new(),

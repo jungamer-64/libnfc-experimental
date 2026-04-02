@@ -6,7 +6,7 @@ use super::pn53x::{
 };
 use crate::usb::{UsbDeviceInfo, UsbError, UsbHandle, list_devices, strerror};
 use proximate_driver::{
-    ConnectionString, Context, DeviceBackend, Driver, Error, Property, ScanType,
+    ConnectionString, Context, DeviceHandle, Driver, Error, Property, ScanType,
 };
 use std::collections::VecDeque;
 #[cfg(test)]
@@ -64,7 +64,7 @@ impl Driver for Acr122UsbDriver {
         &self,
         _context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn DeviceBackend>, Error> {
+    ) -> Result<Box<dyn DeviceHandle>, Error> {
         let selector = decode_usb_selector_for(connstring, DRIVER_NAME)?;
         let info = select_usb_device(selector)?;
         let display_name = usb_display_name(&info);

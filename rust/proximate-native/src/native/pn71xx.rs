@@ -3,7 +3,7 @@ use crate::nci::TagInfo;
 #[cfg(all(feature = "nci_helper", not(test)))]
 use crate::nci::{self as platform_nci, Backend as _};
 use proximate_driver::{
-    BaudRate, ConnectionString, Context, DeviceBackend, DeviceCaps, DeviceMeta, Driver, Error,
+    BaudRate, ConnectionString, Context, DeviceCaps, DeviceHandle, DeviceMeta, Driver, Error,
     InfoBackend, InitiatorBackend, Mode, Modulation, ModulationType, Pn53xBackend, Property,
     PropertyBackend, ScanType, Target, TargetBackend, TargetInfo,
 };
@@ -485,7 +485,7 @@ impl Driver for Pn71xxDriver {
         &self,
         _context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn DeviceBackend>, Error> {
+    ) -> Result<Box<dyn DeviceHandle>, Error> {
         normalize_inactive_runtime();
 
         if runtime().lock().unwrap().active_device.is_some() {
@@ -720,8 +720,67 @@ fn emit_tag_departure_for_tests() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proximate_driver::InitiatorOps;
     use std::sync::{Mutex, OnceLock};
+
+    trait TestDeviceOps {
+        fn select_passive_target(
+            &mut self,
+            modulation: Modulation,
+            init_data: Option<&[u8]>,
+        ) -> Result<Option<Target>, Error>;
+
+        fn poll_target(
+            &mut self,
+            modulations: &[Modulation],
+            poll_nr: u8,
+            period: u8,
+        ) -> Result<Option<Target>, Error>;
+
+        fn transceive_bytes(
+            &mut self,
+            tx: &[u8],
+            rx: &mut [u8],
+            timeout: i32,
+        ) -> Result<usize, Error>;
+
+        fn target_is_present(&mut self, target: Option<&Target>) -> Result<bool, Error>;
+    }
+
+    impl TestDeviceOps for proximate_driver::Device {
+        fn select_passive_target(
+            &mut self,
+            modulation: Modulation,
+            init_data: Option<&[u8]>,
+        ) -> Result<Option<Target>, Error> {
+            let mut initiator = self.initiator()?;
+            initiator.select_passive_target(modulation, init_data)
+        }
+
+        fn poll_target(
+            &mut self,
+            modulations: &[Modulation],
+            poll_nr: u8,
+            period: u8,
+        ) -> Result<Option<Target>, Error> {
+            let mut initiator = self.initiator()?;
+            initiator.poll_target(modulations, poll_nr, period)
+        }
+
+        fn transceive_bytes(
+            &mut self,
+            tx: &[u8],
+            rx: &mut [u8],
+            timeout: i32,
+        ) -> Result<usize, Error> {
+            let mut initiator = self.initiator()?;
+            initiator.transceive_bytes(tx, rx, timeout)
+        }
+
+        fn target_is_present(&mut self, target: Option<&Target>) -> Result<bool, Error> {
+            let mut initiator = self.initiator()?;
+            initiator.target_is_present(target)
+        }
+    }
 
     fn test_guard() -> &'static Mutex<()> {
         static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
@@ -741,9 +800,9 @@ mod tests {
         tag
     }
 
-    fn open_device(connstring: &ConnectionString) -> Box<dyn DeviceBackend> {
+    fn open_device(connstring: &ConnectionString) -> proximate_driver::Device {
         let driver = Pn71xxDriver::new();
-        driver.open(&Context::new(), connstring).unwrap()
+        proximate_driver::Device::from_handle(driver.open(&Context::new(), connstring).unwrap())
     }
 
     #[test]
