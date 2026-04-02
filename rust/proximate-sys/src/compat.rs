@@ -12,9 +12,8 @@ use crate::ffi_strings::{baud_rate_label_cstr, modulation_label_cstr, version_cs
 use crate::ffi_support::{as_ref, bounded_strlen, copy_bytes_with_truncation};
 use crate::ffi_types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_felica_info, nfc_iso14443a_info,
-    nfc_iso14443b2ct_info, nfc_iso14443b2sr_info, nfc_iso14443b_info,
-    nfc_iso14443biclass_info, nfc_iso14443bi_info, nfc_jewel_info, nfc_modulation_type,
-    nfc_target,
+    nfc_iso14443b_info, nfc_iso14443b2ct_info, nfc_iso14443b2sr_info, nfc_iso14443bi_info,
+    nfc_iso14443biclass_info, nfc_jewel_info, nfc_modulation_type, nfc_target,
 };
 use crate::lifecycle::nfc_device;
 use crate::{
@@ -52,36 +51,158 @@ struct CardSak {
 }
 
 const CARD_ATQAS: &[CardAtqa] = &[
-    CardAtqa { atqa: 0x0044, mask: 0xffff, type_name: "MIFARE Ultralight", saklist: &[0, -1] },
-    CardAtqa { atqa: 0x0044, mask: 0xffff, type_name: "MIFARE Ultralight C", saklist: &[0, -1] },
-    CardAtqa { atqa: 0x0004, mask: 0xff0f, type_name: "MIFARE Mini 0.3K", saklist: &[1, -1] },
-    CardAtqa { atqa: 0x0004, mask: 0xff0f, type_name: "MIFARE Classic 1K", saklist: &[2, -1] },
-    CardAtqa { atqa: 0x0002, mask: 0xff0f, type_name: "MIFARE Classic 4K", saklist: &[3, -1] },
-    CardAtqa { atqa: 0x0004, mask: 0xffff, type_name: "MIFARE Plus (4 Byte UID or 4 Byte RID)", saklist: &[4, 5, 6, 7, 8, 9, -1] },
-    CardAtqa { atqa: 0x0002, mask: 0xffff, type_name: "MIFARE Plus (4 Byte UID or 4 Byte RID)", saklist: &[4, 5, 6, 7, 8, 9, -1] },
-    CardAtqa { atqa: 0x0044, mask: 0xffff, type_name: "MIFARE Plus (7 Byte UID)", saklist: &[4, 5, 6, 7, 8, 9, -1] },
-    CardAtqa { atqa: 0x0042, mask: 0xffff, type_name: "MIFARE Plus (7 Byte UID)", saklist: &[4, 5, 6, 7, 8, 9, -1] },
-    CardAtqa { atqa: 0x0344, mask: 0xffff, type_name: "MIFARE DESFire", saklist: &[10, 11, -1] },
-    CardAtqa { atqa: 0x0044, mask: 0xffff, type_name: "P3SR008", saklist: &[-1] },
-    CardAtqa { atqa: 0x0004, mask: 0xf0ff, type_name: "SmartMX with MIFARE 1K emulation", saklist: &[12, -1] },
-    CardAtqa { atqa: 0x0002, mask: 0xf0ff, type_name: "SmartMX with MIFARE 4K emulation", saklist: &[12, -1] },
-    CardAtqa { atqa: 0x0048, mask: 0xf0ff, type_name: "SmartMX with 7 Byte UID", saklist: &[12, -1] },
+    CardAtqa {
+        atqa: 0x0044,
+        mask: 0xffff,
+        type_name: "MIFARE Ultralight",
+        saklist: &[0, -1],
+    },
+    CardAtqa {
+        atqa: 0x0044,
+        mask: 0xffff,
+        type_name: "MIFARE Ultralight C",
+        saklist: &[0, -1],
+    },
+    CardAtqa {
+        atqa: 0x0004,
+        mask: 0xff0f,
+        type_name: "MIFARE Mini 0.3K",
+        saklist: &[1, -1],
+    },
+    CardAtqa {
+        atqa: 0x0004,
+        mask: 0xff0f,
+        type_name: "MIFARE Classic 1K",
+        saklist: &[2, -1],
+    },
+    CardAtqa {
+        atqa: 0x0002,
+        mask: 0xff0f,
+        type_name: "MIFARE Classic 4K",
+        saklist: &[3, -1],
+    },
+    CardAtqa {
+        atqa: 0x0004,
+        mask: 0xffff,
+        type_name: "MIFARE Plus (4 Byte UID or 4 Byte RID)",
+        saklist: &[4, 5, 6, 7, 8, 9, -1],
+    },
+    CardAtqa {
+        atqa: 0x0002,
+        mask: 0xffff,
+        type_name: "MIFARE Plus (4 Byte UID or 4 Byte RID)",
+        saklist: &[4, 5, 6, 7, 8, 9, -1],
+    },
+    CardAtqa {
+        atqa: 0x0044,
+        mask: 0xffff,
+        type_name: "MIFARE Plus (7 Byte UID)",
+        saklist: &[4, 5, 6, 7, 8, 9, -1],
+    },
+    CardAtqa {
+        atqa: 0x0042,
+        mask: 0xffff,
+        type_name: "MIFARE Plus (7 Byte UID)",
+        saklist: &[4, 5, 6, 7, 8, 9, -1],
+    },
+    CardAtqa {
+        atqa: 0x0344,
+        mask: 0xffff,
+        type_name: "MIFARE DESFire",
+        saklist: &[10, 11, -1],
+    },
+    CardAtqa {
+        atqa: 0x0044,
+        mask: 0xffff,
+        type_name: "P3SR008",
+        saklist: &[-1],
+    },
+    CardAtqa {
+        atqa: 0x0004,
+        mask: 0xf0ff,
+        type_name: "SmartMX with MIFARE 1K emulation",
+        saklist: &[12, -1],
+    },
+    CardAtqa {
+        atqa: 0x0002,
+        mask: 0xf0ff,
+        type_name: "SmartMX with MIFARE 4K emulation",
+        saklist: &[12, -1],
+    },
+    CardAtqa {
+        atqa: 0x0048,
+        mask: 0xf0ff,
+        type_name: "SmartMX with 7 Byte UID",
+        saklist: &[12, -1],
+    },
 ];
 
 const CARD_SAKS: &[CardSak] = &[
-    CardSak { sak: 0x00, mask: 0xff, type_name: "" },
-    CardSak { sak: 0x09, mask: 0xff, type_name: "" },
-    CardSak { sak: 0x08, mask: 0xff, type_name: "" },
-    CardSak { sak: 0x18, mask: 0xff, type_name: "" },
-    CardSak { sak: 0x08, mask: 0xff, type_name: " 2K, Security level 1" },
-    CardSak { sak: 0x18, mask: 0xff, type_name: " 4K, Security level 1" },
-    CardSak { sak: 0x10, mask: 0xff, type_name: " 2K, Security level 2" },
-    CardSak { sak: 0x11, mask: 0xff, type_name: " 4K, Security level 2" },
-    CardSak { sak: 0x20, mask: 0xff, type_name: " 2K, Security level 3" },
-    CardSak { sak: 0x20, mask: 0xff, type_name: " 4K, Security level 3" },
-    CardSak { sak: 0x20, mask: 0xff, type_name: " 4K" },
-    CardSak { sak: 0x20, mask: 0xff, type_name: " EV1 2K/4K/8K" },
-    CardSak { sak: 0x00, mask: 0x00, type_name: "" },
+    CardSak {
+        sak: 0x00,
+        mask: 0xff,
+        type_name: "",
+    },
+    CardSak {
+        sak: 0x09,
+        mask: 0xff,
+        type_name: "",
+    },
+    CardSak {
+        sak: 0x08,
+        mask: 0xff,
+        type_name: "",
+    },
+    CardSak {
+        sak: 0x18,
+        mask: 0xff,
+        type_name: "",
+    },
+    CardSak {
+        sak: 0x08,
+        mask: 0xff,
+        type_name: " 2K, Security level 1",
+    },
+    CardSak {
+        sak: 0x18,
+        mask: 0xff,
+        type_name: " 4K, Security level 1",
+    },
+    CardSak {
+        sak: 0x10,
+        mask: 0xff,
+        type_name: " 2K, Security level 2",
+    },
+    CardSak {
+        sak: 0x11,
+        mask: 0xff,
+        type_name: " 4K, Security level 2",
+    },
+    CardSak {
+        sak: 0x20,
+        mask: 0xff,
+        type_name: " 2K, Security level 3",
+    },
+    CardSak {
+        sak: 0x20,
+        mask: 0xff,
+        type_name: " 4K, Security level 3",
+    },
+    CardSak {
+        sak: 0x20,
+        mask: 0xff,
+        type_name: " 4K",
+    },
+    CardSak {
+        sak: 0x20,
+        mask: 0xff,
+        type_name: " EV1 2K/4K/8K",
+    },
+    CardSak {
+        sak: 0x00,
+        mask: 0x00,
+        type_name: "",
+    },
 ];
 
 macro_rules! read_unaligned_field {
@@ -135,7 +256,9 @@ fn locate_historical_bytes_offset(ats: &[u8]) -> Option<usize> {
 }
 
 fn write_rendered(rendered: &mut String, args: fmt::Arguments<'_>) {
-    rendered.write_fmt(args).expect("rendering to a String should not fail");
+    rendered
+        .write_fmt(args)
+        .expect("rendering to a String should not fail");
 }
 
 fn write_hex(rendered: &mut String, bytes: &[u8]) {
@@ -157,11 +280,7 @@ fn baud_rate_label_str(value: nfc_baud_rate) -> &'static str {
         .expect("static baud-rate label should be utf-8")
 }
 
-fn write_nfc_iso14443a_info(
-    rendered: &mut String,
-    info: nfc_iso14443a_info,
-    verbose: bool,
-) {
+fn write_nfc_iso14443a_info(rendered: &mut String, info: nfc_iso14443a_info, verbose: bool) {
     let atqa = read_unaligned_field!(info.abtAtqa);
     let bt_sak = read_unaligned_field!(info.btSak);
     let uid = read_unaligned_field!(info.abtUid);
@@ -191,7 +310,11 @@ fn write_nfc_iso14443a_info(
         rendered,
         format_args!(
             "       UID (NFCID{}): ",
-            if uid.first().copied() == Some(0x08) { '3' } else { '1' }
+            if uid.first().copied() == Some(0x08) {
+                '3'
+            } else {
+                '1'
+            }
         ),
     );
     write_hex(rendered, &uid[..uid_len]);
@@ -521,11 +644,7 @@ fn write_nfc_barcode_info(rendered: &mut String, info: crate::ffi_types::nfc_bar
     rendered.push('\n');
 }
 
-fn write_nfc_iso14443b_info(
-    rendered: &mut String,
-    info: nfc_iso14443b_info,
-    verbose: bool,
-) {
+fn write_nfc_iso14443b_info(rendered: &mut String, info: nfc_iso14443b_info, verbose: bool) {
     let pupi = read_unaligned_field!(info.abtPupi);
     let application_data = read_unaligned_field!(info.abtApplicationData);
     let protocol_info = read_unaligned_field!(info.abtProtocolInfo);
@@ -597,11 +716,7 @@ fn write_nfc_iso14443b_info(
     }
 }
 
-fn write_nfc_iso14443bi_info(
-    rendered: &mut String,
-    info: nfc_iso14443bi_info,
-    verbose: bool,
-) {
+fn write_nfc_iso14443bi_info(rendered: &mut String, info: nfc_iso14443bi_info, verbose: bool) {
     let div = read_unaligned_field!(info.abtDIV);
     let ver_log = read_unaligned_field!(info.btVerLog);
     let config = read_unaligned_field!(info.btConfig);
@@ -640,9 +755,18 @@ fn write_nfc_iso14443b2ct_info(rendered: &mut String, info: nfc_iso14443b2ct_inf
     let uid_decimal =
         ((uid[3] as u32) << 24) + ((uid[2] as u32) << 16) + ((uid[1] as u32) << 8) + uid[0] as u32;
     write_simple_uid(rendered, "                UID: ", &uid);
-    write_rendered(rendered, format_args!("      UID (decimal): {uid_decimal:010}\n"));
-    write_rendered(rendered, format_args!("       Product Code: {prod_code:02X}\n"));
-    write_rendered(rendered, format_args!("           Fab Code: {fab_code:02X}\n"));
+    write_rendered(
+        rendered,
+        format_args!("      UID (decimal): {uid_decimal:010}\n"),
+    );
+    write_rendered(
+        rendered,
+        format_args!("       Product Code: {prod_code:02X}\n"),
+    );
+    write_rendered(
+        rendered,
+        format_args!("           Fab Code: {fab_code:02X}\n"),
+    );
 }
 
 fn write_nfc_dep_info(rendered: &mut String, info: nfc_dep_info) {
@@ -698,7 +822,11 @@ fn render_nfc_target(target: *const nfc_target, verbose: bool) -> String {
 
     match modulation_type {
         nfc_modulation_type::NMT_ISO14443A => {
-            write_nfc_iso14443a_info(&mut rendered, read_unaligned_field!(target_ref.nti.nai), verbose);
+            write_nfc_iso14443a_info(
+                &mut rendered,
+                read_unaligned_field!(target_ref.nti.nai),
+                verbose,
+            );
         }
         nfc_modulation_type::NMT_JEWEL => {
             write_nfc_jewel_info(&mut rendered, read_unaligned_field!(target_ref.nti.nji));
@@ -710,18 +838,34 @@ fn render_nfc_target(target: *const nfc_target, verbose: bool) -> String {
             write_nfc_felica_info(&mut rendered, read_unaligned_field!(target_ref.nti.nfi));
         }
         nfc_modulation_type::NMT_ISO14443B => {
-            write_nfc_iso14443b_info(&mut rendered, read_unaligned_field!(target_ref.nti.nbi), verbose);
+            write_nfc_iso14443b_info(
+                &mut rendered,
+                read_unaligned_field!(target_ref.nti.nbi),
+                verbose,
+            );
         }
         nfc_modulation_type::NMT_ISO14443BI => {
-            write_nfc_iso14443bi_info(&mut rendered, read_unaligned_field!(target_ref.nti.nii), verbose);
+            write_nfc_iso14443bi_info(
+                &mut rendered,
+                read_unaligned_field!(target_ref.nti.nii),
+                verbose,
+            );
         }
         nfc_modulation_type::NMT_ISO14443B2SR => {
             let info: nfc_iso14443b2sr_info = read_unaligned_field!(target_ref.nti.nsi);
-            write_simple_uid(&mut rendered, "                UID: ", &read_unaligned_field!(info.abtUID));
+            write_simple_uid(
+                &mut rendered,
+                "                UID: ",
+                &read_unaligned_field!(info.abtUID),
+            );
         }
         nfc_modulation_type::NMT_ISO14443BICLASS => {
             let info: nfc_iso14443biclass_info = read_unaligned_field!(target_ref.nti.nhi);
-            write_simple_uid(&mut rendered, "                UID: ", &read_unaligned_field!(info.abtUID));
+            write_simple_uid(
+                &mut rendered,
+                "                UID: ",
+                &read_unaligned_field!(info.abtUID),
+            );
         }
         nfc_modulation_type::NMT_ISO14443B2CT => {
             write_nfc_iso14443b2ct_info(&mut rendered, read_unaligned_field!(target_ref.nti.nci));
@@ -792,7 +936,11 @@ pub unsafe fn str_nfc_target(
 
         *rendered = 0;
         let rendered_text = render_nfc_target(target, verbose);
-        copy_bytes_with_truncation(rendered, TARGET_RENDER_BUFFER_SIZE, rendered_text.as_bytes());
+        copy_bytes_with_truncation(
+            rendered,
+            TARGET_RENDER_BUFFER_SIZE,
+            rendered_text.as_bytes(),
+        );
         bounded_strlen(rendered, TARGET_RENDER_BUFFER_SIZE) as c_int
     })
 }

@@ -122,25 +122,25 @@ mod tests {
         let expected: Vec<&str> = {
             #[allow(unused_mut)]
             let mut expected = Vec::new();
-        #[cfg(all(feature = "usb_helper", libnfc_driver_pn53x_usb))]
+            #[cfg(all(feature = "usb_helper", libnfc_driver_pn53x_usb))]
             expected.push("pn53x_usb");
-        #[cfg(all(feature = "pcsc_helper", libnfc_driver_pcsc))]
+            #[cfg(all(feature = "pcsc_helper", libnfc_driver_pcsc))]
             expected.push("pcsc");
-        #[cfg(all(feature = "pcsc_helper", libnfc_driver_acr122_pcsc))]
+            #[cfg(all(feature = "pcsc_helper", libnfc_driver_acr122_pcsc))]
             expected.push("acr122_pcsc");
-        #[cfg(all(feature = "usb_helper", libnfc_driver_acr122_usb))]
+            #[cfg(all(feature = "usb_helper", libnfc_driver_acr122_usb))]
             expected.push("acr122_usb");
-        #[cfg(all(target_os = "linux", libnfc_driver_acr122s))]
+            #[cfg(all(target_os = "linux", libnfc_driver_acr122s))]
             expected.push("acr122s");
-        #[cfg(all(target_os = "linux", libnfc_driver_pn532_uart))]
+            #[cfg(all(target_os = "linux", libnfc_driver_pn532_uart))]
             expected.push("pn532_uart");
-        #[cfg(all(target_os = "linux", libnfc_driver_pn532_spi))]
+            #[cfg(all(target_os = "linux", libnfc_driver_pn532_spi))]
             expected.push("pn532_spi");
-        #[cfg(all(target_os = "linux", libnfc_driver_pn532_i2c))]
+            #[cfg(all(target_os = "linux", libnfc_driver_pn532_i2c))]
             expected.push("pn532_i2c");
-        #[cfg(all(target_os = "linux", libnfc_driver_arygon))]
+            #[cfg(all(target_os = "linux", libnfc_driver_arygon))]
             expected.push("arygon");
-        #[cfg(all(feature = "nci_helper", libnfc_driver_pn71xx))]
+            #[cfg(all(feature = "nci_helper", libnfc_driver_pn71xx))]
             expected.push("pn71xx");
             expected
         };

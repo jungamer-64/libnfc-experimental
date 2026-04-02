@@ -835,8 +835,7 @@ RECURSIVE              = NO
 # Note that relative paths are relative to the directory from which doxygen is
 # run.
 
-EXCLUDE                = @top_srcdir@/libnfc/iso7816.h \
-                         @top_srcdir@/libnfc/log-printf.c \
+EXCLUDE                = @top_srcdir@/libnfc/log-printf.c \
                          @top_srcdir@/libnfc/log.h
 
 # The EXCLUDE_SYMLINKS tag can be used to select whether or not files or
