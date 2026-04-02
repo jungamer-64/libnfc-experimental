@@ -170,9 +170,10 @@ fn usb_display_name(info: &UsbDeviceInfo, supported: SupportedUsbDevice) -> Stri
 }
 
 fn supported_device(info: &UsbDeviceInfo) -> Option<SupportedUsbDevice> {
-    SUPPORTED_DEVICES.iter().copied().find(|device| {
-        device.vendor_id == info.vendor_id && device.product_id == info.product_id
-    })
+    SUPPORTED_DEVICES
+        .iter()
+        .copied()
+        .find(|device| device.vendor_id == info.vendor_id && device.product_id == info.product_id)
 }
 
 fn usb_open_error(error: UsbError) -> Error {
@@ -259,9 +260,8 @@ fn resolve_endpoints(
         });
     }
 
-    let endpoints = bulk_endpoints(device).ok_or_else(|| {
-        Error::DriverOpenFailed("failed to discover bulk USB endpoints".into())
-    })?;
+    let endpoints = bulk_endpoints(device)
+        .ok_or_else(|| Error::DriverOpenFailed("failed to discover bulk USB endpoints".into()))?;
     Ok(EndpointSelection {
         interface_number: endpoints.interface_number,
         alternate_setting: endpoints.alternate_setting as u8,
@@ -291,4 +291,34 @@ fn map_usb_error(operation: &'static str, error: UsbError) -> Error {
         | UsbError::Other => NFC_EIO,
     };
     device_error(operation, code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn usb_driver_metadata_is_stable() {
+        let driver = Pn53xUsbDriver::new();
+        assert_eq!(driver.name(), DRIVER_NAME);
+        assert_eq!(driver.scan_type(), ScanType::NotIntrusive);
+    }
+
+    #[test]
+    fn usb_error_mapping_preserves_timeout_and_io_classes() {
+        assert!(matches!(
+            map_usb_error("usb_receive", UsbError::Timeout),
+            Error::DeviceOperationFailed {
+                operation: "usb_receive",
+                code: NFC_ETIMEOUT
+            }
+        ));
+        assert!(matches!(
+            map_usb_error("usb_send", UsbError::Pipe),
+            Error::DeviceOperationFailed {
+                operation: "usb_send",
+                code: NFC_EIO
+            }
+        ));
+    }
 }

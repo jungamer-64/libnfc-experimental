@@ -2,9 +2,9 @@ use crate::rust_api::{
     BaudRate, ConnectionString, Context, Driver, Error, Mode, Modulation, ModulationType,
     OpenedDevice, Property, ScanType, Target, TargetInfo,
 };
+use proximate_platform::nci::TagInfo;
 #[cfg(all(feature = "nci_helper", not(test)))]
 use proximate_platform::nci::{self as platform_nci, Backend as _};
-use proximate_platform::nci::TagInfo;
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
@@ -43,15 +43,26 @@ const SUPPORTED_MODULATIONS: &[ModulationType] = &[
     ModulationType::Dep,
 ];
 
-const ISO14443A_SUPPORTED_BAUD_RATES: &[BaudRate] =
-    &[BaudRate::Br847, BaudRate::Br424, BaudRate::Br212, BaudRate::Br106];
+const ISO14443A_SUPPORTED_BAUD_RATES: &[BaudRate] = &[
+    BaudRate::Br847,
+    BaudRate::Br424,
+    BaudRate::Br212,
+    BaudRate::Br106,
+];
 const FELICA_SUPPORTED_BAUD_RATES: &[BaudRate] = &[BaudRate::Br424, BaudRate::Br212];
-const DEP_SUPPORTED_BAUD_RATES: &[BaudRate] =
-    &[BaudRate::Br424, BaudRate::Br212, BaudRate::Br106];
-const JEWEL_SUPPORTED_BAUD_RATES: &[BaudRate] =
-    &[BaudRate::Br847, BaudRate::Br424, BaudRate::Br212, BaudRate::Br106];
-const ISO14443B_SUPPORTED_BAUD_RATES: &[BaudRate] =
-    &[BaudRate::Br847, BaudRate::Br424, BaudRate::Br212, BaudRate::Br106];
+const DEP_SUPPORTED_BAUD_RATES: &[BaudRate] = &[BaudRate::Br424, BaudRate::Br212, BaudRate::Br106];
+const JEWEL_SUPPORTED_BAUD_RATES: &[BaudRate] = &[
+    BaudRate::Br847,
+    BaudRate::Br424,
+    BaudRate::Br212,
+    BaudRate::Br106,
+];
+const ISO14443B_SUPPORTED_BAUD_RATES: &[BaudRate] = &[
+    BaudRate::Br847,
+    BaudRate::Br424,
+    BaudRate::Br212,
+    BaudRate::Br106,
+];
 
 fn device_error(operation: &'static str, code: i32) -> Error {
     Error::DeviceOperationFailed { operation, code }

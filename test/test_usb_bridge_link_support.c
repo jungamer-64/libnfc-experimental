@@ -54,17 +54,6 @@ iso14443_cascade_uid(const uint8_t *abtUID, const size_t szUID,
     *pszCascadedUID = 0;
 }
 
-const struct nfc_driver acr122_pcsc_driver = {0};
-const struct nfc_driver acr122_usb_driver = {0};
-const struct nfc_driver acr122s_driver = {0};
-const struct nfc_driver arygon_driver = {0};
-const struct nfc_driver pcsc_driver = {0};
-const struct nfc_driver pn53x_usb_driver = {0};
-const struct nfc_driver pn532_i2c_driver = {0};
-const struct nfc_driver pn532_spi_driver = {0};
-const struct nfc_driver pn532_uart_driver = {0};
-const struct nfc_driver pn71xx_driver = {0};
-
 const uint8_t pn53x_ack_frame[PN53x_ACK_FRAME__LEN] = {0x00, 0x00, 0xff,
                                                        0x00, 0xff, 0x00};
 const uint8_t pn53x_nack_frame[PN53x_ACK_FRAME__LEN] = {0x00, 0x00, 0xff,

@@ -3,7 +3,7 @@ use super::pn53x::{
     Pn53xDevice, Pn53xProfile, Pn53xTransport, command_from_host_frame, is_ack_frame,
 };
 use crate::rust_api::{ConnectionString, Context, Driver, Error, OpenedDevice, ScanType};
-use proximate_platform::spi::{SpiHandle, SpiIoError, SpiOpenError};
+use proximate_platform::spi::{SpiHandle, SpiOpenError};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -236,4 +236,47 @@ fn expected_frame_len(frame: &[u8]) -> Result<Option<usize>, Error> {
 
 fn device_error(operation: &'static str, code: i32) -> Error {
     Error::DeviceOperationFailed { operation, code }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::pn53x::build_response_frame;
+    use super::*;
+    use crate::rust_api::Context;
+
+    #[test]
+    fn find_subslice_locates_ack_sequence_inside_status_prefix() {
+        let frame = [0xaa, 0xbb, 0x00, 0x00, 0xff, 0x00, 0xff, 0x00, 0xcc];
+        assert_eq!(find_subslice(&frame, &ACK_FRAME), Some(2));
+    }
+
+    #[test]
+    fn expected_frame_len_recognizes_ack_and_response() {
+        assert_eq!(
+            expected_frame_len(&ACK_FRAME).unwrap(),
+            Some(ACK_FRAME.len())
+        );
+
+        let frame = build_response_frame(0x02, &[0x32, 0x01, 0x06, 0x07]).unwrap();
+        assert_eq!(expected_frame_len(&frame).unwrap(), Some(frame.len()));
+    }
+
+    #[test]
+    fn spi_driver_metadata_and_open_error_are_stable() {
+        let driver = Pn532SpiDriver::new();
+        assert_eq!(driver.name(), DRIVER_NAME);
+        assert_eq!(driver.scan_type(), ScanType::Intrusive);
+        assert!(
+            list_candidate_paths()
+                .iter()
+                .all(|path| path.starts_with("/dev/"))
+        );
+
+        let connstring = ConnectionString::new("pn532_spi:/definitely/missing:1000000").unwrap();
+        let error = match driver.open(&Context::new(), &connstring) {
+            Ok(_) => panic!("expected missing SPI path to fail"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, Error::DriverOpenFailed(_)));
+    }
 }

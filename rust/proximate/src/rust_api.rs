@@ -28,9 +28,9 @@ pub use device::{Device, Logger, OpenedDevice};
 pub use driver::{Driver, DriverRegistry};
 #[doc(hidden)]
 pub use driver::{ListDevicesOutcome, RegisteredDriverSet};
-pub use metadata::version;
 #[doc(hidden)]
 pub use metadata::device_error_message;
+pub use metadata::version;
 pub use types::{
     BaudRate, DepInfo, DepMode, Error, Mode, Modulation, ModulationType, Property, ScanType,
     Target, TargetInfo,

@@ -935,22 +935,10 @@ mod tests_backend {
         );
     }
 
-    pub(crate) fn queue_rx(name: &str, bytes: &[u8]) {
-        let mut guard = state().lock().unwrap();
-        let entry = guard.ports.entry(name.to_string()).or_default();
-        entry.rx.extend(bytes.iter().copied());
-    }
-
     pub(crate) fn queue_stale_rx(name: &str, bytes: &[u8]) {
         let mut guard = state().lock().unwrap();
         let entry = guard.ports.entry(name.to_string()).or_default();
         entry.stale_rx.extend(bytes.iter().copied());
-    }
-
-    pub(crate) fn take_tx(name: &str) -> Vec<Vec<u8>> {
-        let mut guard = state().lock().unwrap();
-        let entry = guard.ports.entry(name.to_string()).or_default();
-        std::mem::take(&mut entry.tx)
     }
 
     pub(crate) fn snapshot(name: &str) -> Option<FakeSerialPort> {
@@ -1087,8 +1075,8 @@ mod tests_backend {
 
 #[cfg(test)]
 pub(crate) use tests_backend::{
-    add_port as test_add_port, queue_rx as test_queue_rx, queue_stale_rx as test_queue_stale_rx,
-    reset as test_reset, snapshot as test_snapshot, take_tx as test_take_tx,
+    add_port as test_add_port, queue_stale_rx as test_queue_stale_rx, reset as test_reset,
+    snapshot as test_snapshot,
 };
 #[cfg(test)]
 pub use tests_backend::{

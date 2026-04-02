@@ -230,3 +230,32 @@ impl I2cTransport {
 fn device_error(operation: &'static str, code: i32) -> Error {
     Error::DeviceOperationFailed { operation, code }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rust_api::Context;
+
+    #[test]
+    fn candidate_port_filter_uses_expected_linux_prefix() {
+        assert!(
+            list_candidate_paths()
+                .iter()
+                .all(|path| path.starts_with("/dev/i2c-"))
+        );
+    }
+
+    #[test]
+    fn i2c_driver_metadata_and_open_error_are_stable() {
+        let driver = Pn532I2cDriver::new();
+        assert_eq!(driver.name(), DRIVER_NAME);
+        assert_eq!(driver.scan_type(), ScanType::Intrusive);
+
+        let connstring = ConnectionString::new("pn532_i2c:/definitely/missing").unwrap();
+        let error = match driver.open(&Context::new(), &connstring) {
+            Ok(_) => panic!("expected missing I2C path to fail"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, Error::DriverOpenFailed(_)));
+    }
+}

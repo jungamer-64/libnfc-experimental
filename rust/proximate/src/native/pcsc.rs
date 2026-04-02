@@ -223,12 +223,11 @@ impl PcscCard for SystemPcscCard {
         preferred_protocols: PcscProtocols,
         disposition: PcscDisposition,
     ) -> Result<(), i32> {
-        self.inner
-            .reconnect(
-                map_share_mode(share_mode),
-                map_protocols(preferred_protocols),
-                map_disposition(disposition),
-            )
+        self.inner.reconnect(
+            map_share_mode(share_mode),
+            map_protocols(preferred_protocols),
+            map_disposition(disposition),
+        )
     }
 
     fn status2_owned(&self) -> Result<PcscCardStatus, i32> {

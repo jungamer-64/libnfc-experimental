@@ -407,7 +407,12 @@ fn env_user_defined_device(key: &str, name: &[u8]) -> Option<UserDefinedDevice> 
 }
 
 fn env_var_bytes(key: &str) -> Option<Vec<u8>> {
-    Some(env::var_os(key)?.to_string_lossy().into_owned().into_bytes())
+    Some(
+        env::var_os(key)?
+            .to_string_lossy()
+            .into_owned()
+            .into_bytes(),
+    )
 }
 
 fn load_config_from_root(

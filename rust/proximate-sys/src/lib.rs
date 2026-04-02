@@ -9,9 +9,6 @@ mod compat;
 #[cfg(any(feature = "lifecycle", cbindgen))]
 /// cbindgen:ignore
 mod core;
-#[cfg(any(feature = "orchestration", cbindgen))]
-/// cbindgen:ignore
-mod drivers;
 /// cbindgen:ignore
 mod ffi_strings;
 /// cbindgen:ignore

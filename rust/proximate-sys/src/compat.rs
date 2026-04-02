@@ -5,8 +5,8 @@
 // Public C-ABI compatibility helpers that remain part of libnfc's
 // installed surface even after the core implementation moved to Rust.
 
-use crate::ffi_support::{as_ref, bounded_strlen};
 use crate::ffi_strings::{baud_rate_label_cstr, modulation_label_cstr, version_cstr};
+use crate::ffi_support::{as_ref, bounded_strlen};
 use crate::ffi_types::{nfc_baud_rate, nfc_modulation_type, nfc_target};
 use crate::lifecycle::nfc_device;
 use crate::runtime_bridge::{baud_rate_from_c, modulation_type_from_c};
