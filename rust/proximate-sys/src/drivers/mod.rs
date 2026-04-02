@@ -19,5 +19,3 @@ pub(crate) mod pn532_uart;
 pub(crate) mod pn53x_native;
 #[cfg(any(test, all(libnfc_driver_pn53x_usb, not(target_os = "linux"))))]
 pub(crate) mod pn53x_usb;
-#[cfg(any(test, libnfc_driver_pn71xx))]
-pub(crate) mod pn71xx;

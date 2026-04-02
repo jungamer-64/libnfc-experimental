@@ -47,6 +47,13 @@ fn emit_enabled_driver_cfgs() {
     }
 }
 
+fn enabled_driver(name: &str) -> bool {
+    env::var("PROXIMATE_ENABLED_DRIVERS")
+        .ok()
+        .map(|value| value.split(',').any(|driver| driver.trim() == name))
+        .unwrap_or(false)
+}
+
 fn workspace_root() -> Option<PathBuf> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").ok()?);
     manifest_dir.parent()?.parent().map(Path::to_path_buf)
@@ -148,6 +155,10 @@ fn main() {
     println!("cargo:rerun-if-env-changed=PROXIMATE_CONFDIR");
     if let Ok(confdir) = env::var("PROXIMATE_CONFDIR") {
         println!("cargo:rustc-env=PROXIMATE_CONFDIR={}", confdir);
+    }
+
+    if env::var_os("CARGO_FEATURE_NCI_HELPER").is_some() && enabled_driver("pn71xx") {
+        println!("cargo:rustc-link-lib=nfc_nci");
     }
 
     emit_enabled_driver_cfgs();

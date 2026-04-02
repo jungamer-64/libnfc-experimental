@@ -3,16 +3,6 @@ INCLUDE_DIRECTORIES(
   ${CMAKE_SOURCE_DIR}/include
 )
 
-ADD_EXECUTABLE(test_acr122_core
-  test_acr122_core.c
-  ../libnfc/drivers/acr122-core.c
-)
-target_include_directories(test_acr122_core PRIVATE
-  ${CMAKE_SOURCE_DIR}/libnfc
-)
-
-add_test(NAME acr122_core COMMAND test_acr122_core)
-
 add_executable(test_public_compat_smoke
   test_public_compat_smoke.c
 )

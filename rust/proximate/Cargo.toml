@@ -19,6 +19,7 @@ lifecycle = []
 orchestration = ["lifecycle"]
 usb_helper = ["dep:nusb"]
 pcsc_helper = ["dep:pcsc"]
+nci_helper = ["orchestration"]
 ffi_internal_native = []
 # Feature used by the nightly ASan job to compile sanitizer-only tests cleanly.
 asan_tests = []

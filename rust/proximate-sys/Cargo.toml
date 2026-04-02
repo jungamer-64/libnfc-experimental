@@ -25,6 +25,7 @@ orchestration = [
 ]
 usb_helper = ["dep:nusb", "proximate/usb_helper", "proximate/ffi_internal_native"]
 pcsc_helper = ["proximate/pcsc_helper"]
+nci_helper = ["proximate/nci_helper"]
 c_ffi = ["secure", "lifecycle", "orchestration"]
 nfc_secure_debug = []
 asan_tests = []

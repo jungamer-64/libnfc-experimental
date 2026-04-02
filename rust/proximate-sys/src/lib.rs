@@ -58,8 +58,6 @@ pub use usbbus::{
     usb_interface_descriptor,
 };
 
-#[cfg(any(test, libnfc_driver_pn71xx))]
-pub(crate) use c_api_impl::log_debug;
 pub(crate) use c_api_impl::{
     MALLOC_LABEL, emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr,
     ffi_catch_unwind_void, log_error, log_message, release_allocated_ptr, reset_last_error,
