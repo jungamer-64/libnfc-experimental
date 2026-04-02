@@ -58,7 +58,6 @@
 
 #include <unistd.h>
 
-#include "libnfc_rs_private.h"
 #include "nfc-utils.h"
 
 #define MAX_FRAME_LEN 264

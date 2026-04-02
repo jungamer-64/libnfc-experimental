@@ -2,14 +2,18 @@ use libc::c_char;
 use std::ffi::CStr;
 #[cfg(not(test))]
 use std::io::{self, Write};
+#[cfg(not(test))]
 use std::sync::atomic::{AtomicU32, Ordering};
 
 const DEFAULT_LOG_LEVEL: u32 = if cfg!(libnfc_debug) { 3 } else { 1 };
 
+#[cfg(not(test))]
 static CURRENT_LOG_LEVEL: AtomicU32 = AtomicU32::new(DEFAULT_LOG_LEVEL);
 
 #[cfg(test)]
 thread_local! {
+    static CURRENT_LOG_LEVEL: std::cell::Cell<u32> =
+        const { std::cell::Cell::new(DEFAULT_LOG_LEVEL) };
     static TEST_RENDERED_LOGS: std::cell::RefCell<Vec<Vec<u8>>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }
@@ -21,15 +25,25 @@ pub(crate) fn default_log_level() -> u32 {
 
 #[inline]
 pub(crate) fn log_init(log_level: u32) {
+    #[cfg(not(test))]
     CURRENT_LOG_LEVEL.store(log_level, Ordering::Relaxed);
+    #[cfg(test)]
+    CURRENT_LOG_LEVEL.with(|cell| cell.set(log_level));
 }
 
 #[inline]
 pub(crate) fn log_exit() {}
 
 #[inline]
+#[cfg(not(test))]
 fn current_log_level() -> u32 {
     CURRENT_LOG_LEVEL.load(Ordering::Relaxed)
+}
+
+#[inline]
+#[cfg(test)]
+fn current_log_level() -> u32 {
+    CURRENT_LOG_LEVEL.with(|cell| cell.get())
 }
 
 #[inline]

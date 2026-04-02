@@ -31,7 +31,7 @@
 #include "config.h"
 #endif // HAVE_CONFIG_H
 
-#include "libnfc_rs_private.h"
+#include <nfc/nfc.h>
 
 static inline size_t
 log_bounded_strlen(const char *str, size_t maxlen)
@@ -53,6 +53,10 @@ log_bounded_strlen(const char *str, size_t maxlen)
 extern "C"
 {
 #endif
+
+  void nfc_rs_log_message(uint8_t group, const char *category, uint8_t priority, const char *message);
+  void nfc_rs_context_log_init(const nfc_context *context);
+  void nfc_rs_context_log_exit(void);
 
 #define NFC_LOG_PRIORITY_NONE 0
 #define NFC_LOG_PRIORITY_ERROR 1

@@ -48,148 +48,39 @@ if not config_path.exists():
 generated.parent.mkdir(parents=True, exist_ok=True)
 
 
-def postprocess_private_header(path: Path) -> None:
+def postprocess_public_header(path: Path) -> None:
     text = path.read_text()
-    public_type_block = (
-        "#pragma pack(push, 1)\n\n"
-        "typedef struct nfc_barcode_info {\n"
-        "  size_t szDataLen;\n"
-        "  uint8_t abtData[32];\n"
-        "} nfc_barcode_info;\n\n"
-        "typedef struct nfc_dep_info {\n"
-        "  uint8_t abtNFCID3[10];\n"
-        "  uint8_t btDID;\n"
-        "  uint8_t btBS;\n"
-        "  uint8_t btBR;\n"
-        "  uint8_t btTO;\n"
-        "  uint8_t btPP;\n"
-        "  uint8_t abtGB[48];\n"
-        "  size_t szGB;\n"
-        "  nfc_dep_mode ndm;\n"
-        "} nfc_dep_info;\n\n"
-        "typedef struct nfc_felica_info {\n"
-        "  size_t szLen;\n"
-        "  uint8_t btResCode;\n"
-        "  uint8_t abtId[8];\n"
-        "  uint8_t abtPad[8];\n"
-        "  uint8_t abtSysCode[2];\n"
-        "} nfc_felica_info;\n\n"
-        "typedef struct nfc_iso14443a_info {\n"
-        "  uint8_t abtAtqa[2];\n"
-        "  uint8_t btSak;\n"
-        "  size_t szUidLen;\n"
-        "  uint8_t abtUid[10];\n"
-        "  size_t szAtsLen;\n"
-        "  uint8_t abtAts[254];\n"
-        "} nfc_iso14443a_info;\n\n"
-        "typedef struct nfc_iso14443b2ct_info {\n"
-        "  uint8_t abtUID[4];\n"
-        "  uint8_t btProdCode;\n"
-        "  uint8_t btFabCode;\n"
-        "} nfc_iso14443b2ct_info;\n\n"
-        "typedef struct nfc_iso14443b2sr_info {\n"
-        "  uint8_t abtUID[8];\n"
-        "} nfc_iso14443b2sr_info;\n\n"
-        "typedef struct nfc_iso14443b_info {\n"
-        "  uint8_t abtPupi[4];\n"
-        "  uint8_t abtApplicationData[4];\n"
-        "  uint8_t abtProtocolInfo[3];\n"
-        "  uint8_t ui8CardIdentifier;\n"
-        "} nfc_iso14443b_info;\n\n"
-        "typedef struct nfc_iso14443bi_info {\n"
-        "  uint8_t abtDIV[4];\n"
-        "  uint8_t btVerLog;\n"
-        "  uint8_t btConfig;\n"
-        "  size_t szAtrLen;\n"
-        "  uint8_t abtAtr[33];\n"
-        "} nfc_iso14443bi_info;\n\n"
-        "typedef struct nfc_iso14443biclass_info {\n"
-        "  uint8_t abtUID[8];\n"
-        "} nfc_iso14443biclass_info;\n\n"
-        "typedef struct nfc_jewel_info {\n"
-        "  uint8_t btSensRes[2];\n"
-        "  uint8_t btId[4];\n"
-        "} nfc_jewel_info;\n\n"
-        "typedef struct nfc_modulation {\n"
-        "  nfc_modulation_type nmt;\n"
-        "  nfc_baud_rate nbr;\n"
-        "} nfc_modulation;\n\n"
-        "typedef union nfc_target_info {\n"
-        "  nfc_iso14443a_info nai;\n"
-        "  nfc_felica_info nfi;\n"
-        "  nfc_iso14443b_info nbi;\n"
-        "  nfc_iso14443bi_info nii;\n"
-        "  nfc_iso14443b2sr_info nsi;\n"
-        "  nfc_iso14443b2ct_info nci;\n"
-        "  nfc_jewel_info nji;\n"
-        "  nfc_dep_info ndi;\n"
-        "  nfc_barcode_info nti;\n"
-        "  nfc_iso14443biclass_info nhi;\n"
-        "} nfc_target_info;\n\n"
-        "typedef struct nfc_target {\n"
-        "  nfc_target_info nti;\n"
-        "  nfc_modulation nm;\n"
-        "} nfc_target;\n\n"
-        "#pragma pack(pop)\n"
-    )
-    public_forward_decl_block = (
-        "typedef struct nfc_barcode_info nfc_barcode_info;\n\n"
-        "typedef struct nfc_dep_info nfc_dep_info;\n\n"
-        "typedef struct nfc_felica_info nfc_felica_info;\n\n"
-        "typedef struct nfc_iso14443a_info nfc_iso14443a_info;\n\n"
-        "typedef struct nfc_iso14443b2ct_info nfc_iso14443b2ct_info;\n\n"
-        "typedef struct nfc_iso14443b2sr_info nfc_iso14443b2sr_info;\n\n"
-        "typedef struct nfc_iso14443b_info nfc_iso14443b_info;\n\n"
-        "typedef struct nfc_iso14443bi_info nfc_iso14443bi_info;\n\n"
-        "typedef struct nfc_iso14443biclass_info nfc_iso14443biclass_info;\n\n"
-        "typedef struct nfc_jewel_info nfc_jewel_info;\n\n"
-        "typedef struct nfc_modulation nfc_modulation;\n\n"
-        "typedef struct nfc_target nfc_target;\n\n"
-        "typedef struct nfc_target_info nfc_target_info;\n"
-    )
-    state_block = (
-        "typedef struct nfc_emulation_state_machine {\n"
-        "  nfc_emulation_io_fn io;\n"
-        "  void *data;\n"
-        "} nfc_emulation_state_machine;\n\n"
-        "typedef struct nfc_emulator {\n"
-        "  struct nfc_target *target;\n"
-        "  struct nfc_emulation_state_machine *state_machine;\n"
-        "  void *user_data;\n"
-        "} nfc_emulator;\n"
-    )
-    fn_match = re.search(
-        r"typedef int \(\*nfc_emulation_io_fn\)\(struct nfc_emulator \*emulator,\n"
-        r"                                   const uint8_t \*data_in,\n"
-        r"                                   size_t data_in_len,\n"
-        r"                                   uint8_t \*data_out,\n"
-        r"                                   size_t data_out_len\);\n",
+    text = text.replace("#if defined(RUST_TEST)\n", "")
+    text = text.replace("#endif\n", "")
+    text = re.sub(
+        r"typedef struct nfc_user_defined_device \{\n.*?\n\} nfc_user_defined_device;\n\n",
+        "",
         text,
+        flags=re.DOTALL,
     )
-
-    if fn_match is None:
-        if public_forward_decl_block in text:
-            text = text.replace(public_forward_decl_block, public_type_block + "\n", 1)
-        path.write_text(text)
-        return
-
-    fn_block = fn_match.group(0)
-    state_index = text.find(state_block)
-    fn_index = text.find(fn_block)
-    if public_forward_decl_block in text:
-        text = text.replace(public_forward_decl_block, public_type_block + "\n", 1)
-        state_index = text.find(state_block)
-        fn_index = text.find(fn_block)
-    if state_index == -1 or fn_index == -1 or fn_index < state_index:
-        if "struct nfc_emulator;\n\n" not in text:
-            text = text.replace(fn_block, "struct nfc_emulator;\n\n" + fn_block, 1)
-        path.write_text(text)
-        return
-
-    text = text.replace(fn_block, "", 1)
-    text = text.replace(state_block, fn_block + "\n" + state_block, 1)
-    if "struct nfc_emulator;\n\n" not in text:
-        text = text.replace(fn_block + "\n", "struct nfc_emulator;\n\n" + fn_block + "\n", 1)
+    text = re.sub(
+        r"typedef struct nfc_context \{\n.*?\n\} nfc_context;\n\n",
+        "",
+        text,
+        flags=re.DOTALL,
+    )
+    text = re.sub(
+        r"typedef struct nfc_device \{\n.*?\n\} nfc_device;\n\n",
+        "",
+        text,
+        flags=re.DOTALL,
+    )
+    text = text.replace("struct nfc_context *nfc_context_alloc_defaults(void);\n\n", "")
+    text = text.replace(
+        "struct nfc_device *nfc_device_new(const struct nfc_context *context, const char *connstring);\n\n",
+        "",
+    )
+    if "typedef struct nfc_context nfc_context;" not in text:
+        text = text.replace(
+            "typedef struct nfc_driver nfc_driver;\n",
+            "typedef struct nfc_driver nfc_driver;\n\ntypedef struct nfc_context nfc_context;\n\ntypedef struct nfc_device nfc_device;\n",
+            1,
+        )
     path.write_text(text)
 
 cmd = [
@@ -250,8 +141,7 @@ if not proc.returncode == 0:
     print(stderr, file=sys.stderr)
     sys.exit(proc.returncode)
 
-if config_path.name == "cbindgen.private.toml":
-    postprocess_private_header(generated)
+postprocess_public_header(generated)
 
 print(f"Header generated to {generated}")
 sys.exit(0)

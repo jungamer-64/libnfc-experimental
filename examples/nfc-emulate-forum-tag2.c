@@ -76,7 +76,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "libnfc_rs_private.h"
+#include <nfc/nfc-emulation.h>
 #include "utils/nfc-utils.h"
 
 static nfc_device *pnd;

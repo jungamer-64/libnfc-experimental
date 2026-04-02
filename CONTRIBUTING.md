@@ -24,14 +24,15 @@ ctest --test-dir build-static --output-on-failure
 
 ### Memory safety
 
-When you touch in-tree buffer handling, prefer the internal helpers from
-`libnfc_rs_private.h` instead of calling raw `memcpy` / `memset` directly.
+When you touch in-tree buffer handling, prefer the local bounded-copy helpers
+already in use in `utils/nfc-utils.h` or an equivalent explicit size check
+instead of introducing unchecked `memcpy` / `memset` calls.
 
 ### Error handling
 
-Prefer the shared Rust-backed helpers exposed through
-`libnfc_rs_private.h` and the existing logging/error infrastructure instead of
-introducing ad-hoc `perror()` or integer-only error paths.
+Prefer the existing logging/error infrastructure in `libnfc/log.h` and the
+current public libnfc error paths instead of introducing ad-hoc `perror()` or
+integer-only error handling.
 
 ### Cross-platform behavior
 

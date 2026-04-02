@@ -60,7 +60,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "libnfc_rs_private.h"
 #include "nfc-utils.h"
 
 #if defined(WIN32) /* mingw compiler */

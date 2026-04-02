@@ -39,7 +39,6 @@
  */
 #include <string.h>
 
-#include "libnfc_rs_private.h"
 #include "mifare.h"
 #include "nfc-utils.h"
 

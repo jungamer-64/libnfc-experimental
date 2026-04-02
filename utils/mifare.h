@@ -46,6 +46,7 @@
 #  include <stdbool.h>
 #  include <stddef.h>
 #  include <stdint.h>
+#  include <nfc/nfc.h>
 
 // Compiler directive, set struct alignment to 1 uint8_t for compatibility
 #  pragma pack(1)

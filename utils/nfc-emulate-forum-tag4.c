@@ -70,8 +70,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "libnfc_rs_private.h"
-
+#include <nfc/nfc-emulation.h>
 #include "nfc-utils.h"
 
 static nfc_device *pnd;

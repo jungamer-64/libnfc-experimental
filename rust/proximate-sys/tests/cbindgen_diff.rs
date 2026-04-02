@@ -11,15 +11,6 @@ fn tracked_cbindgen_header_is_up_to_date() {
     );
 }
 
-#[test]
-fn tracked_private_cbindgen_header_is_up_to_date() {
-    assert_header_matches(
-        "cbindgen.private.toml",
-        "include/libnfc_rs_private.h",
-        "proximate_sys.private.generated.h",
-    );
-}
-
 fn assert_header_matches(config_rel: &str, tracked_rel: &str, generated_name: &str) {
     if Command::new("cbindgen").arg("--version").output().is_err() {
         eprintln!("cbindgen not found in PATH; skipping header diff test");

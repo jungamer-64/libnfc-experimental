@@ -444,6 +444,7 @@ unsafe fn nfc_context_new_impl() -> *mut nfc_context {
     context
 }
 
+#[cfg(test)]
 pub unsafe fn nfc_context_alloc_defaults() -> *mut nfc_context {
     ffi_catch_unwind_ptr("nfc_context_alloc_defaults", || unsafe {
         nfc_context_alloc_defaults_impl()
@@ -536,7 +537,6 @@ pub unsafe extern "C" fn nfc_rs_context_log_init(context: *const nfc_context) {
 }
 
 #[cfg(not(test))]
-#[cfg(any(feature = "c_ffi", cbindgen))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_rs_context_log_init(context: *const nfc_context) {
     let log_level = unsafe { as_ref(context) }
@@ -558,7 +558,6 @@ pub unsafe extern "C" fn nfc_rs_context_log_exit() {
 }
 
 #[cfg(not(test))]
-#[cfg(any(feature = "c_ffi", cbindgen))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_rs_context_log_exit() {
     logger::log_exit();

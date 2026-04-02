@@ -23,7 +23,7 @@ mod private_ffi;
 #[cfg(any(feature = "lifecycle", feature = "orchestration", cbindgen))]
 /// cbindgen:ignore
 mod runtime_bridge;
-#[cfg(any(feature = "c_ffi", cbindgen))]
+#[cfg(any(feature = "c_ffi", cbindgen, test))]
 pub use c_api_impl::{
     LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING,
     NFC_COMMON_ERROR, NFC_COMMON_INVALID, NFC_COMMON_SUCCESS,
@@ -33,14 +33,14 @@ pub(crate) use c_api_impl::{
     ffi_catch_unwind_void, log_error, log_message, release_allocated_ptr, reset_last_error,
     set_last_error_message,
 };
-#[cfg(any(feature = "c_ffi", cbindgen))]
+#[cfg(any(feature = "c_ffi", cbindgen, test))]
 pub use ffi_types::{
     nfc_barcode_info, nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_felica_info,
     nfc_iso14443a_info, nfc_iso14443b_info, nfc_iso14443b2ct_info, nfc_iso14443b2sr_info,
     nfc_iso14443bi_info, nfc_iso14443biclass_info, nfc_jewel_info, nfc_mode, nfc_modulation,
     nfc_modulation_type, nfc_property, nfc_target, nfc_target_info,
 };
-#[cfg(any(feature = "c_ffi", cbindgen))]
+#[cfg(any(feature = "c_ffi", cbindgen, test))]
 pub use lifecycle::{
     DEVICE_NAME_LENGTH, MAX_USER_DEFINED_DEVICES, NFC_DRIVER_NAME_MAX, nfc_context, nfc_device,
     nfc_driver, nfc_user_defined_device, scan_type_enum,
@@ -77,9 +77,7 @@ mod proximate {
         nfc_target_receive_bytes, nfc_target_send_bits, nfc_target_send_bytes,
     };
     #[cfg(any(feature = "lifecycle", cbindgen))]
-    pub use crate::lifecycle::{
-        nfc_connstring, nfc_context_alloc_defaults, nfc_context_free, nfc_device_new,
-    };
+    pub use crate::lifecycle::nfc_connstring;
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
@@ -91,27 +89,6 @@ pub unsafe extern "C" fn nfc_rs_log_message(
     message: *const libc::c_char,
 ) {
     unsafe { c_api_impl::nfc_rs_log_message(group, category, priority, message) }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_context_alloc_defaults() -> *mut nfc_context {
-    unsafe { proximate::nfc_context_alloc_defaults() }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_device_new(
-    context: *const nfc_context,
-    connstring: *const libc::c_char,
-) -> *mut nfc_device {
-    unsafe { proximate::nfc_device_new(context, connstring) }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_context_free(context: *mut nfc_context) {
-    unsafe { proximate::nfc_context_free(context) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
@@ -499,7 +476,7 @@ pub unsafe extern "C" fn iso14443a_locate_historical_bytes(
     unsafe { crate::compat::iso14443a_locate_historical_bytes(ats, ats_len, tk_len) }
 }
 
-#[cfg(any(feature = "c_ffi", cbindgen))]
+#[cfg(any(feature = "c_ffi", cbindgen, test))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pn53x_transceive(
     device: *mut nfc_device,
@@ -529,7 +506,7 @@ pub unsafe extern "C" fn pn53x_transceive(
     })
 }
 
-#[cfg(any(feature = "c_ffi", cbindgen))]
+#[cfg(any(feature = "c_ffi", cbindgen, test))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pn53x_read_register(
     device: *mut nfc_device,
@@ -553,7 +530,7 @@ pub unsafe extern "C" fn pn53x_read_register(
     })
 }
 
-#[cfg(any(feature = "c_ffi", cbindgen))]
+#[cfg(any(feature = "c_ffi", cbindgen, test))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pn53x_write_register(
     device: *mut nfc_device,
@@ -575,7 +552,7 @@ pub unsafe extern "C" fn pn53x_write_register(
     })
 }
 
-#[cfg(any(feature = "c_ffi", cbindgen))]
+#[cfg(any(feature = "c_ffi", cbindgen, test))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pn532_SAMConfiguration(
     device: *mut nfc_device,

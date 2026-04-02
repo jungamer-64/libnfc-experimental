@@ -40,7 +40,6 @@
  */
 #include <string.h>
 
-#include "libnfc_rs_private.h"
 #include "jewel.h"
 
 /**

@@ -15,9 +15,12 @@
 typedef SSIZE_T ssize_t;
 #else
 #include <sys/types.h>
-#endif
 
 typedef struct nfc_driver nfc_driver;
+
+typedef struct nfc_context nfc_context;
+
+typedef struct nfc_device nfc_device;
 
 
 #ifndef LIBNFC_RS_H
@@ -31,12 +34,6 @@ typedef struct nfc_driver nfc_driver;
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-
-#define DEVICE_NAME_LENGTH 256
-
-#define MAX_USER_DEFINED_DEVICES 4
-
-#define NFC_DRIVER_NAME_MAX 64
 
 typedef enum nfc_baud_rate {
   NBR_UNDEFINED = 0,
@@ -62,41 +59,7 @@ typedef enum nfc_modulation_type {
 
 typedef struct nfc_target nfc_target;
 
-typedef struct nfc_user_defined_device {
-  char name[DEVICE_NAME_LENGTH];
-  char connstring[NFC_BUFSIZE_CONNSTRING];
-  bool optional;
-} nfc_user_defined_device;
-
-typedef struct nfc_context {
-  bool allow_autoscan;
-  bool allow_intrusive_scan;
-  uint32_t log_level;
-  struct nfc_user_defined_device user_defined_devices[MAX_USER_DEFINED_DEVICES];
-  unsigned int user_defined_device_count;
-} nfc_context;
-
-typedef struct nfc_device {
-  const struct nfc_context *context;
-  const nfc_driver *driver;
-  void *driver_data;
-  void *chip_data;
-  char name[DEVICE_NAME_LENGTH];
-  char connstring[NFC_BUFSIZE_CONNSTRING];
-  bool bCrc;
-  bool bPar;
-  bool bEasyFraming;
-  bool bInfiniteSelect;
-  bool bAutoIso14443_4;
-  uint8_t btSupportByte;
-  int last_error;
-} nfc_device;
-
-struct nfc_context *nfc_context_alloc_defaults(void);
-
-struct nfc_device *nfc_device_new(const struct nfc_context *context, const char *connstring);
-
-void nfc_close(struct nfc_device *device);
+void nfc_close(nfc_device *device);
 
 void nfc_free(void *ptr);
 
@@ -108,7 +71,7 @@ const char *str_nfc_modulation_type(enum nfc_modulation_type value);
 
 int str_nfc_target(char **buf, const struct nfc_target *target, bool verbose);
 
-int nfc_emulate_target(struct nfc_device *device, void *emulator, int timeout);
+int nfc_emulate_target(nfc_device *device, void *emulator, int timeout);
 
 void iso14443a_crc(uint8_t *data, size_t len, uint8_t *crc);
 
@@ -120,21 +83,21 @@ void iso14443b_crc_append(uint8_t *data, size_t len);
 
 uint8_t *iso14443a_locate_historical_bytes(uint8_t *ats, size_t ats_len, size_t *tk_len);
 
-int pn53x_transceive(struct nfc_device *device,
+int pn53x_transceive(nfc_device *device,
                      const uint8_t *tx,
                      size_t tx_len,
                      uint8_t *rx,
                      size_t rx_len,
                      int timeout);
 
-int pn53x_read_register(struct nfc_device *device, uint16_t register_, uint8_t *value);
+int pn53x_read_register(nfc_device *device, uint16_t register_, uint8_t *value);
 
-int pn53x_write_register(struct nfc_device *device,
+int pn53x_write_register(nfc_device *device,
                          uint16_t register_,
                          uint8_t symbol_mask,
                          uint8_t value);
 
-int pn532_SAMConfiguration(struct nfc_device *device, int mode, int timeout);
+int pn532_SAMConfiguration(nfc_device *device, int mode, int timeout);
 
 #endif  /* LIBNFC_RS_H */
 

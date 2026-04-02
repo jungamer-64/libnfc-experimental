@@ -48,7 +48,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "libnfc_rs_private.h"
+#include "libnfc/pn53x_extras.h"
 #include "utils/nfc-utils.h"
 
 #define MAX_DEVICE_COUNT 16

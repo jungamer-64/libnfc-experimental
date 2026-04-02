@@ -50,7 +50,6 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "libnfc_rs_private.h"
 #include "utils/nfc-utils.h"
 
 #define SAK_FLAG_ATS_SUPPORTED 0x20

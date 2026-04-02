@@ -54,8 +54,6 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "libnfc_rs_private.h"
-
 #include "nfc-utils.h"
 #include "mifare.h"
 

@@ -6,6 +6,9 @@ if(PROXIMATE_C_FFI)
   include_directories("${RUST_GENERATED_INCLUDE_DIR}")
 endif()
 
+# C-side tests are limited to public installed API smoke coverage.
+# Private bridge and repo-local header coverage lives in Rust tests.
+
 add_executable(test_public_compat_smoke
   test_public_compat_smoke.c
 )
@@ -23,44 +26,6 @@ if(PROXIMATE_C_FFI)
 endif()
 target_link_libraries(ffi-sanity nfc)
 add_test(NAME ffi_sanity COMMAND ffi-sanity)
-
-add_executable(test_core_registry
-  test_rust_core_registry.c
-)
-if(PROXIMATE_C_FFI)
-  add_dependencies(test_core_registry proximate_sys_headers)
-endif()
-target_link_libraries(test_core_registry nfc)
-add_test(NAME core_registry COMMAND test_core_registry)
-
-add_executable(test_core_initiator
-  test_rust_core_initiator.c
-)
-if(PROXIMATE_C_FFI)
-  add_dependencies(test_core_initiator proximate_sys_headers)
-endif()
-target_link_libraries(test_core_initiator nfc)
-add_test(NAME core_initiator COMMAND test_core_initiator)
-
-add_executable(test_core_device_io
-  test_rust_core_device_io.c
-)
-if(PROXIMATE_C_FFI)
-  add_dependencies(test_core_device_io proximate_sys_headers)
-endif()
-target_link_libraries(test_core_device_io nfc)
-add_test(NAME core_device_io COMMAND test_core_device_io)
-
-if(PROXIMATE_C_FFI)
-  add_executable(test_log_bridge
-    test_log_bridge.c
-    ${CMAKE_SOURCE_DIR}/libnfc/log.c
-  )
-  add_dependencies(test_log_bridge proximate_sys_build proximate_sys_headers)
-  target_compile_definitions(test_log_bridge PRIVATE LOG)
-  target_link_libraries(test_log_bridge PRIVATE "${RUST_LIB_PATH}")
-  add_test(NAME log_bridge COMMAND test_log_bridge)
-endif()
 
 find_package(LIBNFC_NCI QUIET)
 set(PN71XX_SMOKE_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/pn71xx-smoke")

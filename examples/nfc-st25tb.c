@@ -63,7 +63,6 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include "libnfc_rs_private.h"
 #include "utils/nfc-utils.h"
 
 #if defined(WIN32) /* mingw compiler */

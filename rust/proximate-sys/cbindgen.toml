@@ -33,8 +33,6 @@ exclude = ["criterion", "libc"]
 
 [export]
 include = [
-    "nfc_context_alloc_defaults",
-    "nfc_device_new",
     "nfc_close",
     "nfc_free",
     "nfc_version",
@@ -51,8 +49,14 @@ exclude = [
     "MALLOC_LABEL",
     "c_free",
     "nfc_driver",
+    "nfc_context",
+    "nfc_device",
+    "nfc_user_defined_device",
+    "scan_type_enum",
     "nfc_set_last_error",
     "nfc_context_new",
+    "nfc_context_alloc_defaults",
+    "nfc_device_new",
     "nfc_device_free",
     "nfc_rs_free",
     "nfc_rs_context_conf_load",
@@ -60,6 +64,9 @@ exclude = [
     "nfc_rs_context_log_exit",
     "nfc_rs_log_message",
     "nfc_context_free",
+    "DEVICE_NAME_LENGTH",
+    "MAX_USER_DEFINED_DEVICES",
+    "NFC_DRIVER_NAME_MAX",
     "nfc_register_driver",
     "nfc_open",
     "nfc_list_devices",

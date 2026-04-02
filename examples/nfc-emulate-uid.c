@@ -56,8 +56,6 @@
 #include <string.h>
 #include <signal.h>
 
-#include "libnfc_rs_private.h"
-
 #include "utils/nfc-utils.h"
 
 #define MAX_FRAME_LEN 264

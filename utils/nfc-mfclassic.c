@@ -60,7 +60,6 @@
 #include <unistd.h>
 #endif
 
-#include "libnfc_rs_private.h"
 #include "mifare.h"
 #include "nfc-utils.h"
 

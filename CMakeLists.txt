@@ -145,7 +145,6 @@ if(PROXIMATE_C_FFI)
     "${CMAKE_SOURCE_DIR}/rust/proximate-sys/Cargo.toml"
     "${CMAKE_SOURCE_DIR}/rust/proximate-sys/build.rs"
     "${CMAKE_SOURCE_DIR}/rust/proximate-sys/cbindgen.toml"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/cbindgen.private.toml"
     "${CMAKE_SOURCE_DIR}/rust/proximate-sys/tools/generate_cbindgen_header.py"
     "${CMAKE_SOURCE_DIR}/rust/proximate-sys/tools/update_cbindgen_defines.py")
 
@@ -197,9 +196,7 @@ if(PROXIMATE_C_FFI)
 
   set(RUST_GENERATED_INCLUDE_DIR "${RUST_TARGET_DIR}/include")
   set(RUST_HEADER "${RUST_GENERATED_INCLUDE_DIR}/libnfc_rs.h")
-  set(RUST_PRIVATE_HEADER "${RUST_GENERATED_INCLUDE_DIR}/libnfc_rs_private.h")
   set(RUST_TRACKED_HEADER "${CMAKE_SOURCE_DIR}/rust/proximate-sys/include/libnfc_rs.h")
-  set(RUST_TRACKED_PRIVATE_HEADER "${CMAKE_SOURCE_DIR}/rust/proximate-sys/include/libnfc_rs_private.h")
   if(RUST_CBINDGEN_FEATURES)
     set(RUST_CBINDGEN_FEATURE_FLAGS --features "${RUST_CBINDGEN_FEATURES}")
   else()
@@ -219,23 +216,11 @@ if(PROXIMATE_C_FFI)
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/proximate-sys"
         COMMENT "Generating tracked-compatible C header for the Rust core bridge (libnfc_rs.h)"
         VERBATIM)
-      add_custom_command(
-        OUTPUT "${RUST_PRIVATE_HEADER}"
-        COMMAND
-          ${PYTHON3_EXECUTABLE}
-          "${CMAKE_SOURCE_DIR}/rust/proximate-sys/tools/generate_cbindgen_header.py"
-          --config "${CMAKE_SOURCE_DIR}/rust/proximate-sys/cbindgen.private.toml"
-          ${RUST_CBINDGEN_FEATURE_FLAGS}
-          --output "${RUST_PRIVATE_HEADER}"
-        DEPENDS ${LIBNFC_RUST_SOURCES}
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/proximate-sys"
-        COMMENT "Generating tracked-compatible repo-local private C header (libnfc_rs_private.h)"
-        VERBATIM)
     else()
       message(FATAL_ERROR
         "python3 is required alongside cbindgen to generate the Rust bridge headers")
     endif()
-  elseif(EXISTS "${RUST_TRACKED_HEADER}" AND EXISTS "${RUST_TRACKED_PRIVATE_HEADER}")
+  elseif(EXISTS "${RUST_TRACKED_HEADER}")
     add_custom_command(
       OUTPUT "${RUST_HEADER}"
       COMMAND
@@ -246,23 +231,13 @@ if(PROXIMATE_C_FFI)
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/proximate-sys"
       COMMENT "Copying tracked C header snapshot for the Rust core bridge (libnfc_rs.h)"
       VERBATIM)
-    add_custom_command(
-      OUTPUT "${RUST_PRIVATE_HEADER}"
-      COMMAND
-        ${CMAKE_COMMAND} -E copy_if_different
-        "${RUST_TRACKED_PRIVATE_HEADER}"
-        "${RUST_PRIVATE_HEADER}"
-      DEPENDS "${RUST_TRACKED_PRIVATE_HEADER}"
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/proximate-sys"
-      COMMENT "Copying tracked repo-local private C header snapshot (libnfc_rs_private.h)"
-      VERBATIM)
   else()
     message(FATAL_ERROR
-      "cbindgen is required (or both rust/proximate-sys/include/libnfc_rs.h and "
-      "rust/proximate-sys/include/libnfc_rs_private.h must exist) to provide the Rust bridge headers")
+      "cbindgen is required (or rust/proximate-sys/include/libnfc_rs.h must exist) "
+      "to provide the Rust bridge headers")
   endif()
 
-  add_custom_target(proximate_sys_headers DEPENDS "${RUST_HEADER}" "${RUST_PRIVATE_HEADER}")
+  add_custom_target(proximate_sys_headers DEPENDS "${RUST_HEADER}")
   add_dependencies(proximate_sys_build proximate_sys_headers)
 else()
   add_custom_target(proximate_sys_build)
