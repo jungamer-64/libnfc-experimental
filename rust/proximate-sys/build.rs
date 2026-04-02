@@ -6,11 +6,13 @@ use std::process::Command;
 fn env_flag_enabled(name: &str, default_enabled: bool) -> bool {
     println!("cargo:rerun-if-env-changed={name}");
 
-    env::var(name).map_or(default_enabled, |value| match value.to_ascii_lowercase().as_str() {
+    env::var(name).map_or(default_enabled, |value| {
+        match value.to_ascii_lowercase().as_str() {
             "1" | "true" | "yes" | "on" => true,
             "0" | "false" | "no" | "off" => false,
             _ => default_enabled,
-        })
+        }
+    })
 }
 
 fn emit_enabled_driver_cfgs() {
