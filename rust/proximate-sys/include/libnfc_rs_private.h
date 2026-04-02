@@ -39,8 +39,6 @@ typedef SSIZE_T ssize_t;
 #include <sys/types.h>
 #endif
 
-typedef struct usb_dev_handle usb_dev_handle;
-
 void nfc_rs_log_message(unsigned char group, const char *category, unsigned char priority, const char *message);
 
 
@@ -229,45 +227,6 @@ typedef struct nfc_target {
 
 #pragma pack(pop)
 
-
-typedef struct usb_endpoint_descriptor {
-  uint8_t address;
-  uint8_t attributes;
-  uint16_t max_packet_size;
-} usb_endpoint_descriptor;
-
-typedef struct usb_interface_descriptor {
-  uint8_t number;
-  uint8_t alternate_setting;
-  size_t endpoint_count;
-  struct usb_endpoint_descriptor *endpoints;
-} usb_interface_descriptor;
-
-typedef struct usb_device {
-  void *native_device;
-  uint16_t vendor_id;
-  uint16_t product_id;
-  uint8_t manufacturer_string_index;
-  uint8_t product_string_index;
-  uint8_t bus_number;
-  uint8_t device_address;
-  uint8_t configuration_value;
-  size_t interface_count;
-  struct usb_interface_descriptor *interfaces;
-} usb_device;
-
-typedef struct usb_device_list {
-  struct usb_device *devices;
-  size_t count;
-} usb_device_list;
-
-typedef struct usb_bulk_endpoints {
-  uint8_t interface_number;
-  int alternate_setting;
-  uint8_t endpoint_in;
-  uint8_t endpoint_out;
-  uint16_t max_packet_size;
-} usb_bulk_endpoints;
 
 typedef struct nfc_user_defined_device {
   char name[DEVICE_NAME_LENGTH];
@@ -463,132 +422,11 @@ typedef struct nfc_emulator {
 } nfc_emulator;
 
 
-int nfc_parse_connstring(const char *connstring,
-                         const char *prefix,
-                         const char *param_name,
-                         char *param_value,
-                         size_t param_value_size);
-
-int nfc_build_connstring(char *dest,
-                         size_t dest_size,
-                         const char *driver_name,
-                         const char *param_name,
-                         const char *param_value);
-
 void nfc_set_last_error(const char *message);
 
 void nfc_rs_log_message(uint8_t group, const char *category, uint8_t priority, const char *message);
 
 void nfc_rs_free(void *ptr);
-
-int usb_prepare(void);
-
-int usb_get_device_list(struct usb_device_list *list);
-
-void usb_free_device_list(struct usb_device_list *list);
-
-int usb_get_bus_device_strings(const struct usb_device *device,
-                               char *bus_buffer,
-                               size_t bus_buffer_size,
-                               char *device_buffer,
-                               size_t device_buffer_size);
-
-bool usb_device_get_bulk_endpoints(const struct usb_device *device,
-                                   struct usb_bulk_endpoints *endpoints);
-
-int usb_open(const struct usb_device *device, struct usb_dev_handle **handle);
-
-int usb_close(struct usb_dev_handle *handle);
-
-int usb_set_configuration(struct usb_dev_handle *handle, int configuration_value);
-
-int usb_claim_interface(struct usb_dev_handle *handle, int interface_number);
-
-int usb_release_interface(struct usb_dev_handle *handle, int interface_number);
-
-int usb_set_altinterface(struct usb_dev_handle *handle,
-                         int interface_number,
-                         int alternate_setting);
-
-int usb_reset(struct usb_dev_handle *handle);
-
-int usb_bulk_read(struct usb_dev_handle *handle,
-                  uint8_t endpoint,
-                  uint8_t *data,
-                  size_t size,
-                  int timeout);
-
-int usb_bulk_write(struct usb_dev_handle *handle,
-                   uint8_t endpoint,
-                   const uint8_t *data,
-                   size_t size,
-                   int timeout);
-
-int usb_get_string_simple(struct usb_dev_handle *handle,
-                          int string_index,
-                          char *buffer,
-                          size_t buffer_size);
-
-const char *usb_strerror(int result);
-
-bool usb_error_is_timeout(int result);
-
-bool usb_error_is_access(int result);
-
-void *uart_open(const char *port_name);
-
-void uart_close(void *port);
-
-void uart_flush_input(void *port, bool wait);
-
-void uart_set_speed(void *port, uint32_t speed);
-
-uint32_t uart_get_speed(void *port);
-
-int uart_receive(void *port, uint8_t *rx, size_t rx_len, void *abort_p, int timeout);
-
-int uart_send(void *port, const uint8_t *tx, size_t tx_len, int timeout);
-
-char **uart_list_ports(void);
-
-void *spi_open(const char *port_name);
-
-void spi_close(void *port);
-
-void spi_set_speed(void *port, uint32_t speed);
-
-void spi_set_mode(void *port, uint32_t mode);
-
-uint32_t spi_get_speed(void *port);
-
-int spi_receive(void *port, uint8_t *rx, size_t rx_len, bool lsb_first);
-
-int spi_send(void *port, const uint8_t *tx, size_t tx_len, bool lsb_first);
-
-int spi_send_receive(void *port,
-                     const uint8_t *tx,
-                     size_t tx_len,
-                     uint8_t *rx,
-                     size_t rx_len,
-                     bool lsb_first);
-
-char **spi_list_ports(void);
-
-void *i2c_open(const char *bus_name, uint32_t address);
-
-void i2c_close(void *device);
-
-ssize_t i2c_read(void *device, uint8_t *rx, size_t rx_len);
-
-int i2c_write(void *device, const uint8_t *tx, size_t tx_len);
-
-char **i2c_list_ports(void);
-
-int connstring_decode(const char *connstring,
-                      const char *driver_name,
-                      const char *bus_name,
-                      char **pparam1,
-                      char **pparam2);
 
 struct nfc_context *nfc_context_alloc_defaults(void);
 

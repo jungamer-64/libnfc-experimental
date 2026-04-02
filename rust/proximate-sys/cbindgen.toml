@@ -30,7 +30,6 @@ typedef SSIZE_T ssize_t;
 #include <sys/types.h>
 #endif
 
-typedef struct usb_dev_handle usb_dev_handle;
 typedef struct nfc_driver nfc_driver;
 """
 trailer = "/* End of generated header */\n"
@@ -41,9 +40,6 @@ exclude = ["criterion", "libc"]
 
 [export]
 include = [
-    "nfc_parse_connstring",
-    "nfc_build_connstring",
-    "connstring_decode",
     "nfc_get_last_error",
     "nfc_clear_last_error",
     "nfc_set_last_error",

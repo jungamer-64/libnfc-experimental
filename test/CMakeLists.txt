@@ -107,19 +107,5 @@ else()
   set_tests_properties(pn71xx_requires_libnfc_nci PROPERTIES WILL_FAIL TRUE)
 endif()
 
-if(USB_REQUIRED)
-  add_executable(test_usbbus_helpers
-    test_usbbus_helpers.c
-    test_usb_bridge_link_support.c
-  )
-  if(PROXIMATE_C_FFI)
-    add_dependencies(test_usbbus_helpers proximate_sys_build proximate_sys_headers)
-    target_compile_definitions(test_usbbus_helpers PRIVATE PROXIMATE_C_FFI=1)
-    target_link_libraries(test_usbbus_helpers PRIVATE "${RUST_LIB_PATH}")
-  endif()
-  target_link_libraries(test_usbbus_helpers PRIVATE nfc)
-  add_test(NAME usbbus_helpers COMMAND test_usbbus_helpers)
-endif()
-
 add_test(NAME no_retired_private_headers
   COMMAND bash "${CMAKE_SOURCE_DIR}/scripts/check-no-retired-private-header-includes.sh")

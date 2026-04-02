@@ -45,8 +45,6 @@ typedef SSIZE_T ssize_t;
 #include <sys/types.h>
 #endif
 
-typedef struct usb_dev_handle usb_dev_handle;
-
 void nfc_rs_log_message(unsigned char group, const char *category, unsigned char priority, const char *message);
 """
 trailer = "/* End of generated private header */\n"

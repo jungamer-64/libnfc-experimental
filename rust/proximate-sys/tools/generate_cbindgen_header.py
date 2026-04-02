@@ -48,18 +48,6 @@ if not config_path.exists():
 generated.parent.mkdir(parents=True, exist_ok=True)
 
 
-def postprocess_generated_header(path: Path) -> None:
-    text = path.read_text()
-    text = text.replace(
-        "typedef struct usb_dev_handle {\n"
-        "  uint8_t _private[0];\n"
-        "} usb_dev_handle;\n",
-        "typedef struct usb_dev_handle usb_dev_handle;\n",
-        1,
-    )
-    path.write_text(text)
-
-
 def postprocess_private_header(path: Path) -> None:
     text = path.read_text()
     public_type_block = (
@@ -293,7 +281,6 @@ if not proc.returncode == 0:
     print(stderr, file=sys.stderr)
     sys.exit(proc.returncode)
 
-postprocess_generated_header(generated)
 if config_path.name == "cbindgen.private.toml":
     postprocess_private_header(generated)
 

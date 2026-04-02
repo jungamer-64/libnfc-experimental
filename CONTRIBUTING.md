@@ -63,8 +63,9 @@ In this experimental branch, Rust is the only supported core implementation. The
 are deprecated no-ops kept for one compatibility cycle.
 
 The builtin `pn71xx`, `pn53x_usb`, `pn532_uart`, `pn532_spi`, and `pn532_i2c`
-drivers are Rust-owned in this branch, and the internal USB/UART/SPI/I2C helper
-layers are also provided through the Rust-backed C ABI shim.
+drivers are Rust-owned in this branch. They now use `proximate` /
+`proximate-platform` directly rather than going through the retired
+`proximate-sys` USB/UART/SPI/I2C helper ABI.
 
 If you change exported CMake/package behavior, verify all of the following:
 
