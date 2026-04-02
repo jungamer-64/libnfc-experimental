@@ -1,5 +1,118 @@
 use super::*;
 
+fn mode_from_c(mode: nfc_mode) -> rt::Mode {
+    match mode {
+        nfc_mode::N_INITIATOR => rt::Mode::Initiator,
+        nfc_mode::N_TARGET => rt::Mode::Target,
+    }
+}
+
+unsafe fn get_supported_modulation_direct_impl(
+    device: *mut nfc_device,
+    mode: nfc_mode,
+    supported: *mut *const nfc_modulation_type,
+) -> c_int {
+    if supported.is_null() {
+        unsafe { set_device_last_error(device, NFC_EINVARG) };
+        return NFC_EINVARG;
+    }
+
+    let mut adapter = borrowed_device(device);
+    match adapter.supported_modulations(mode_from_c(mode)) {
+        Ok(values) => {
+            let Some(state) = (unsafe { rust_device_state_mut(device) }) else {
+                unsafe { set_device_last_error(device, NFC_EINVARG) };
+                return NFC_EINVARG;
+            };
+            state.supported_modulations.clear();
+            state
+                .supported_modulations
+                .extend(values.into_iter().map(modulation_type_to_c));
+            state
+                .supported_modulations
+                .push(nfc_modulation_type::NMT_UNDEFINED);
+            unsafe {
+                *supported = state.supported_modulations.as_ptr();
+            }
+            unsafe { set_device_last_error(device, 0) };
+            state.supported_modulations.len().saturating_sub(1) as c_int
+        }
+        Err(error) => runtime_result_status(device, &error, true),
+    }
+}
+
+unsafe fn get_supported_baud_rate_direct_impl(
+    device: *mut nfc_device,
+    mode: nfc_mode,
+    modulation_type: nfc_modulation_type,
+    supported: *mut *const nfc_baud_rate,
+) -> c_int {
+    if supported.is_null() {
+        unsafe { set_device_last_error(device, NFC_EINVARG) };
+        return NFC_EINVARG;
+    }
+
+    let mut adapter = borrowed_device(device);
+    match adapter.supported_baud_rates(mode_from_c(mode), modulation_type_from_c(modulation_type)) {
+        Ok(values) => {
+            let Some(state) = (unsafe { rust_device_state_mut(device) }) else {
+                unsafe { set_device_last_error(device, NFC_EINVARG) };
+                return NFC_EINVARG;
+            };
+            state.supported_baud_rates.clear();
+            state
+                .supported_baud_rates
+                .extend(values.into_iter().map(baud_rate_to_c));
+            state
+                .supported_baud_rates
+                .push(nfc_baud_rate::NBR_UNDEFINED);
+            unsafe {
+                *supported = state.supported_baud_rates.as_ptr();
+            }
+            unsafe { set_device_last_error(device, 0) };
+            state.supported_baud_rates.len().saturating_sub(1) as c_int
+        }
+        Err(error) => runtime_result_status(device, &error, true),
+    }
+}
+
+unsafe fn get_information_about_direct_impl(
+    device: *mut nfc_device,
+    buf: *mut *mut c_char,
+) -> c_int {
+    if buf.is_null() {
+        unsafe { set_device_last_error(device, NFC_EINVARG) };
+        return NFC_EINVARG;
+    }
+
+    let mut adapter = borrowed_device(device);
+    match adapter.information_about() {
+        Ok(value) => {
+            let rendered = match CString::new(value) {
+                Ok(value) => value,
+                Err(_) => {
+                    unsafe { set_device_last_error(device, NFC_ESOFT) };
+                    return NFC_ESOFT;
+                }
+            };
+            let bytes = rendered.as_bytes_with_nul();
+            let allocation = unsafe { libc::malloc(bytes.len()) as *mut c_char };
+            if allocation.is_null() {
+                unsafe { set_device_last_error(device, NFC_ESOFT) };
+                return NFC_ESOFT;
+            }
+
+            unsafe {
+                ptr::copy_nonoverlapping(bytes.as_ptr().cast::<c_char>(), allocation, bytes.len());
+                *buf = allocation;
+            }
+            unsafe { set_device_last_error(device, 0) };
+            rendered.as_bytes().len() as c_int
+        }
+        Err(error) => runtime_result_status(device, &error, true),
+    }
+}
+
 pub unsafe fn nfc_device_get_name(device: *mut nfc_device) -> *const c_char {
     ffi_catch_unwind_ptr("nfc_device_get_name", || unsafe {
         as_ref(device)
@@ -24,7 +137,13 @@ pub unsafe fn nfc_device_get_supported_modulation(
     ffi_catch_unwind_int(
         "nfc_device_get_supported_modulation",
         NFC_ESOFT,
-        || unsafe { get_supported_modulation_impl(device, mode, supported) },
+        || unsafe {
+            if is_rust_shim_device(device) {
+                get_supported_modulation_direct_impl(device, mode, supported)
+            } else {
+                get_supported_modulation_impl(device, mode, supported)
+            }
+        },
     )
 }
 
@@ -34,7 +153,16 @@ pub unsafe fn nfc_device_get_supported_baud_rate(
     supported: *mut *const nfc_baud_rate,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_device_get_supported_baud_rate", NFC_ESOFT, || unsafe {
-        get_supported_baud_rate_impl(device, nfc_mode::N_INITIATOR, modulation_type, supported)
+        if is_rust_shim_device(device) {
+            get_supported_baud_rate_direct_impl(
+                device,
+                nfc_mode::N_INITIATOR,
+                modulation_type,
+                supported,
+            )
+        } else {
+            get_supported_baud_rate_impl(device, nfc_mode::N_INITIATOR, modulation_type, supported)
+        }
     })
 }
 
@@ -47,7 +175,16 @@ pub unsafe fn nfc_device_get_supported_baud_rate_target_mode(
         "nfc_device_get_supported_baud_rate_target_mode",
         NFC_ESOFT,
         || unsafe {
-            get_supported_baud_rate_impl(device, nfc_mode::N_TARGET, modulation_type, supported)
+            if is_rust_shim_device(device) {
+                get_supported_baud_rate_direct_impl(
+                    device,
+                    nfc_mode::N_TARGET,
+                    modulation_type,
+                    supported,
+                )
+            } else {
+                get_supported_baud_rate_impl(device, nfc_mode::N_TARGET, modulation_type, supported)
+            }
         },
     )
 }
@@ -57,7 +194,11 @@ pub unsafe fn nfc_device_get_information_about(
     buf: *mut *mut c_char,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_device_get_information_about", NFC_ESOFT, || unsafe {
-        get_information_about_impl(device, buf)
+        if is_rust_shim_device(device) {
+            get_information_about_direct_impl(device, buf)
+        } else {
+            get_information_about_impl(device, buf)
+        }
     })
 }
 

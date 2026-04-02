@@ -127,14 +127,39 @@ pub unsafe fn nfc_initiator_poll_target(
     target: *mut nfc_target,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_poll_target", NFC_ESOFT, || unsafe {
-        call_initiator_poll_target_impl(
-            device,
-            modulations,
-            modulations_len,
-            poll_nr,
-            period,
-            target,
-        )
+        if !is_rust_shim_device(device) {
+            return call_initiator_poll_target_impl(
+                device,
+                modulations,
+                modulations_len,
+                poll_nr,
+                period,
+                target,
+            );
+        }
+
+        let modulations = if modulations_len == 0 {
+            &[]
+        } else if modulations.is_null() {
+            set_device_last_error(device, NFC_EINVARG);
+            return NFC_EINVARG;
+        } else {
+            slice::from_raw_parts(modulations, modulations_len)
+        };
+        let runtime_modulations: Vec<_> =
+            modulations.iter().copied().map(modulation_from_c).collect();
+
+        let mut adapter = borrowed_device(device);
+        match adapter.poll_target(&runtime_modulations, poll_nr, period) {
+            Ok(Some(runtime_target)) => {
+                if !target.is_null() {
+                    write_target_to_c(&runtime_target, target);
+                }
+                1
+            }
+            Ok(None) => 0,
+            Err(error) => runtime_result_status(device, &error, true),
+        }
     })
 }
 
@@ -147,11 +172,35 @@ pub unsafe fn nfc_initiator_select_dep_target(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_select_dep_target", NFC_ESOFT, || unsafe {
-        dispatch_driver_call(device, |driver| {
-            driver
-                .initiator_select_dep_target
-                .map(|callback| callback(device, ndm, nbr, initiator, target, timeout))
-        })
+        if !is_rust_shim_device(device) {
+            return dispatch_driver_call(device, |driver| {
+                driver
+                    .initiator_select_dep_target
+                    .map(|callback| callback(device, ndm, nbr, initiator, target, timeout))
+            });
+        }
+
+        let initiator_info = if initiator.is_null() {
+            None
+        } else {
+            Some(dep_info_from_c(ptr::read_unaligned(initiator)))
+        };
+        let mut adapter = borrowed_device(device);
+        match adapter.select_dep_target(
+            dep_mode_from_c(ndm),
+            baud_rate_from_c(nbr),
+            initiator_info.as_ref(),
+            timeout,
+        ) {
+            Ok(Some(runtime_target)) => {
+                if !target.is_null() {
+                    write_target_to_c(&runtime_target, target);
+                }
+                1
+            }
+            Ok(None) => 0,
+            Err(error) => runtime_result_status(device, &error, true),
+        }
     })
 }
 
@@ -478,10 +527,28 @@ pub unsafe fn nfc_target_receive_bits(
 
 pub unsafe fn nfc_abort_command(device: *mut nfc_device) -> c_int {
     ffi_catch_unwind_int("nfc_abort_command", NFC_ESOFT, || unsafe {
-        call_abort_command_impl(device)
+        if !is_rust_shim_device(device) {
+            return call_abort_command_impl(device);
+        }
+
+        let mut adapter = borrowed_device(device);
+        match adapter.abort_command() {
+            Ok(()) => 0,
+            Err(error) => runtime_result_status(device, &error, true),
+        }
     })
 }
 
 pub unsafe fn nfc_idle(device: *mut nfc_device) -> c_int {
-    ffi_catch_unwind_int("nfc_idle", NFC_ESOFT, || unsafe { call_idle_impl(device) })
+    ffi_catch_unwind_int("nfc_idle", NFC_ESOFT, || unsafe {
+        if !is_rust_shim_device(device) {
+            return call_idle_impl(device);
+        }
+
+        let mut adapter = borrowed_device(device);
+        match adapter.idle() {
+            Ok(()) => 0,
+            Err(error) => runtime_result_status(device, &error, true),
+        }
+    })
 }

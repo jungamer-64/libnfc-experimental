@@ -3,7 +3,7 @@ use crate::ffi_types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_modulation, nfc_modulation_type, nfc_property,
     nfc_target, nfc_target_info,
 };
-use crate::lifecycle::{MAX_USER_DEFINED_DEVICES, nfc_context};
+use crate::lifecycle::{MAX_USER_DEFINED_DEVICES, nfc_context, runtime_context_from_c};
 use proximate_driver as rt;
 use std::ptr;
 
@@ -11,6 +11,8 @@ pub(crate) fn context_from_c(context: *const nfc_context) -> rt::Context {
     let Some(context_ref) = (unsafe { as_ref(context) }) else {
         return rt::Context::default();
     };
+
+    let mut runtime = unsafe { runtime_context_from_c(context) }.unwrap_or_default();
 
     let mut user_defined_devices = Vec::new();
     let count = (context_ref.user_defined_device_count as usize).min(MAX_USER_DEFINED_DEVICES);
@@ -29,12 +31,13 @@ pub(crate) fn context_from_c(context: *const nfc_context) -> rt::Context {
         });
     }
 
-    rt::Context::with_config(rt::ContextConfig {
+    runtime.config = rt::ContextConfig {
         allow_autoscan: context_ref.allow_autoscan,
         allow_intrusive_scan: context_ref.allow_intrusive_scan,
         log_level: context_ref.log_level,
         user_defined_devices,
-    })
+    };
+    runtime
 }
 
 pub(crate) fn target_from_c(target: *const nfc_target) -> rt::Target {

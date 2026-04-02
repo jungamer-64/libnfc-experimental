@@ -69,21 +69,17 @@ For security information, see [SECURITY.md](SECURITY.md).
 
 ## Internal Rust/C ABI
 
-This experimental tree tracks the repo-local generated header
-`rust/proximate-sys/include/libnfc_rs.h` for ABI snapshot checks.
+This experimental tree now treats the orig-compatible installed headers under
+`include/nfc/` as the only supported C ABI surface.
 
-They are not installed as part of the orig-compatible public headers.
-External consumers should continue to treat `<nfc/nfc.h>` as the supported
-include surface. The temporary `nfc_safe_*` / `nfc_secure_*` helper ABI has
-been retired from this branch; maintained examples and utilities use local C
-helpers where they need bounded copies or argument checks, plus small
-repo-local headers such as `libnfc/pn53x_extras.h` where they need branch-only
-PN53x declarations.
+`proximate-sys` remains an internal implementation detail for that public ABI.
+It is not accompanied by a tracked repo-local Rust/C snapshot header anymore,
+and branch-only PN53x helper entrypoints are no longer part of the maintained
+surface.
 
 **Documentation**:
 
 * **Security Notes**: [SECURITY.md](SECURITY.md)
-* **Tracked Rust/C ABI Snapshot**: `rust/proximate-sys/include/libnfc_rs.h`
 
 **Standards Support**: C89/C99/C11/C23
 

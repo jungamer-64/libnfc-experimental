@@ -231,6 +231,7 @@ pub struct nfc_context {
     pub log_level: u32,
     pub user_defined_devices: [nfc_user_defined_device; MAX_USER_DEFINED_DEVICES],
     pub user_defined_device_count: c_uint,
+    pub runtime_data: *mut c_void,
 }
 
 #[allow(non_camel_case_types)]
@@ -275,7 +276,9 @@ unsafe fn nfc_context_alloc_defaults_impl() -> *mut nfc_context {
     if context.is_null() {
         return ptr::null_mut();
     }
-    write_context_to_c(&rt::Context::default(), context);
+    let runtime = rt::Context::default();
+    write_context_to_c(&runtime, context);
+    unsafe { set_runtime_context(context, runtime) };
 
     reset_last_error();
     context
@@ -408,7 +411,35 @@ fn log_context_state(context: &nfc_context) {
     }
 }
 
+unsafe fn set_runtime_context(context: *mut nfc_context, runtime: rt::Context) {
+    let Some(context_ref) = (unsafe { as_mut(context) }) else {
+        return;
+    };
+
+    if !context_ref.runtime_data.is_null() {
+        unsafe { drop(Box::from_raw(context_ref.runtime_data as *mut rt::Context)) };
+    }
+
+    context_ref.runtime_data = Box::into_raw(Box::new(runtime)).cast();
+}
+
+pub(crate) unsafe fn runtime_context_from_c(context: *const nfc_context) -> Option<rt::Context> {
+    let context_ref = unsafe { as_ref(context) }?;
+    let runtime = context_ref.runtime_data as *const rt::Context;
+    if runtime.is_null() {
+        None
+    } else {
+        Some(unsafe { (*runtime).clone() })
+    }
+}
+
 unsafe fn free_context_allocation(context: *mut nfc_context) {
+    if let Some(context_ref) = unsafe { as_mut(context) } {
+        if !context_ref.runtime_data.is_null() {
+            unsafe { drop(Box::from_raw(context_ref.runtime_data as *mut rt::Context)) };
+            context_ref.runtime_data = ptr::null_mut();
+        }
+    }
     unsafe { release_allocated_ptr(context as *mut c_void) };
 }
 
@@ -432,6 +463,7 @@ unsafe fn nfc_context_new_impl() -> *mut nfc_context {
     }
 
     write_context_to_c(&loaded.context, context);
+    unsafe { set_runtime_context(context, loaded.context.clone()) };
 
     unsafe {
         bridge_context_log_init(context);

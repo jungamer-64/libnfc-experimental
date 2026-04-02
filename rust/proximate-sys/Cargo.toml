@@ -31,8 +31,3 @@ nfc_secure_debug = []
 asan_tests = []
 test_no_catch = []
 test_helpers = []
-
-[[test]]
-name = "cbindgen_diff"
-path = "tests/cbindgen_diff.rs"
-required-features = ["c_ffi"]

@@ -2,9 +2,6 @@ INCLUDE_DIRECTORIES(
   ${CMAKE_SOURCE_DIR}
   ${CMAKE_SOURCE_DIR}/include
 )
-if(PROXIMATE_C_FFI)
-  include_directories("${RUST_GENERATED_INCLUDE_DIR}")
-endif()
 
 # C-side tests are limited to public installed API smoke coverage.
 # Private bridge and repo-local header coverage lives in Rust tests.
@@ -12,18 +9,12 @@ endif()
 add_executable(test_public_compat_smoke
   test_public_compat_smoke.c
 )
-if(PROXIMATE_C_FFI)
-  add_dependencies(test_public_compat_smoke proximate_sys_headers)
-endif()
 target_link_libraries(test_public_compat_smoke nfc)
 add_test(NAME public_compat_smoke COMMAND test_public_compat_smoke)
 
 add_executable(ffi-sanity
   ../examples/ffi-sanity/ffi-sanity.c
 )
-if(PROXIMATE_C_FFI)
-  add_dependencies(ffi-sanity proximate_sys_headers)
-endif()
 target_link_libraries(ffi-sanity nfc)
 add_test(NAME ffi_sanity COMMAND ffi-sanity)
 

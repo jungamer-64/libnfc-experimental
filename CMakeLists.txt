@@ -66,12 +66,6 @@ if(NOT PROXIMATE_C_FFI)
     "Only the Rust-backed build is supported.")
 endif()
 
-set(RUST_CBINDGEN_FEATURES "" CACHE STRING "Features to pass to cbindgen when generating the Rust FFI header (comma-separated)")
-option(RUST_CBINDGEN_DEBUG_HEADER "Generate Rust FFI header including debug helpers (nfc_secure_debug)" OFF)
-if(RUST_CBINDGEN_DEBUG_HEADER)
-  set(RUST_CBINDGEN_FEATURES "nfc_secure_debug")
-endif()
-
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/modules")
 
 if(WIN32)
@@ -131,9 +125,6 @@ if(PROXIMATE_C_FFI)
     message(FATAL_ERROR "cargo executable is required to build the Rust core-backed C ABI layer")
   endif()
 
-  find_program(CBINDGEN_EXECUTABLE cbindgen)
-  find_program(PYTHON3_EXECUTABLE python3)
-
   set(RUST_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-target")
   file(GLOB_RECURSE LIBNFC_RUST_SOURCES
     "${CMAKE_SOURCE_DIR}/rust/proximate-driver/src/*.rs"
@@ -151,10 +142,7 @@ if(PROXIMATE_C_FFI)
     "${CMAKE_SOURCE_DIR}/rust/proximate-sys/Cargo.toml"
     "${CMAKE_SOURCE_DIR}/rust/proximate-sys/build.rs"
     "${CMAKE_SOURCE_DIR}/rust/proximate-types/Cargo.toml"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-types/build.rs"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/cbindgen.toml"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/tools/generate_cbindgen_header.py"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/tools/update_cbindgen_defines.py")
+    "${CMAKE_SOURCE_DIR}/rust/proximate-types/build.rs")
 
   set(RUST_CRATE_NAME proximate_sys)
   set(RUST_LIB_FILENAME "${CMAKE_STATIC_LIBRARY_PREFIX}${RUST_CRATE_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
@@ -201,52 +189,6 @@ if(PROXIMATE_C_FFI)
     VERBATIM)
 
   add_custom_target(proximate_sys_build ALL DEPENDS "${RUST_LIB_PATH}")
-
-  set(RUST_GENERATED_INCLUDE_DIR "${RUST_TARGET_DIR}/include")
-  set(RUST_HEADER "${RUST_GENERATED_INCLUDE_DIR}/libnfc_rs.h")
-  set(RUST_TRACKED_HEADER "${CMAKE_SOURCE_DIR}/rust/proximate-sys/include/libnfc_rs.h")
-  if(RUST_CBINDGEN_FEATURES)
-    set(RUST_CBINDGEN_FEATURE_FLAGS --features "${RUST_CBINDGEN_FEATURES}")
-  else()
-    set(RUST_CBINDGEN_FEATURE_FLAGS)
-  endif()
-
-  if(CBINDGEN_EXECUTABLE)
-    if(PYTHON3_EXECUTABLE AND EXISTS "${CMAKE_SOURCE_DIR}/rust/proximate-sys/tools/generate_cbindgen_header.py")
-      add_custom_command(
-        OUTPUT "${RUST_HEADER}"
-        COMMAND
-          ${PYTHON3_EXECUTABLE}
-          "${CMAKE_SOURCE_DIR}/rust/proximate-sys/tools/generate_cbindgen_header.py"
-          ${RUST_CBINDGEN_FEATURE_FLAGS}
-          --output "${RUST_HEADER}"
-        DEPENDS ${LIBNFC_RUST_SOURCES}
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/proximate-sys"
-        COMMENT "Generating tracked-compatible C header for the Rust core bridge (libnfc_rs.h)"
-        VERBATIM)
-    else()
-      message(FATAL_ERROR
-        "python3 is required alongside cbindgen to generate the Rust bridge headers")
-    endif()
-  elseif(EXISTS "${RUST_TRACKED_HEADER}")
-    add_custom_command(
-      OUTPUT "${RUST_HEADER}"
-      COMMAND
-        ${CMAKE_COMMAND} -E copy_if_different
-        "${RUST_TRACKED_HEADER}"
-        "${RUST_HEADER}"
-      DEPENDS "${RUST_TRACKED_HEADER}"
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/rust/proximate-sys"
-      COMMENT "Copying tracked C header snapshot for the Rust core bridge (libnfc_rs.h)"
-      VERBATIM)
-  else()
-    message(FATAL_ERROR
-      "cbindgen is required (or rust/proximate-sys/include/libnfc_rs.h must exist) "
-      "to provide the Rust bridge headers")
-  endif()
-
-  add_custom_target(proximate_sys_headers DEPENDS "${RUST_HEADER}")
-  add_dependencies(proximate_sys_build proximate_sys_headers)
 else()
   add_custom_target(proximate_sys_build)
 endif()
@@ -263,9 +205,6 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/config.h.in" "${CMAKE_CURRENT_
 
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/include")
-if(PROXIMATE_C_FFI)
-  include_directories("${RUST_GENERATED_INCLUDE_DIR}")
-endif()
 add_compile_definitions(HAVE_CONFIG_H)
 
 if(LIBNFC_LOG)

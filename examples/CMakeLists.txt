@@ -9,9 +9,6 @@ set(EXAMPLE_SOURCES
   nfc-poll
   nfc-relay
   nfc-st25tb
-  pn53x-diagnose
-  pn53x-sam
-  pn53x-tamashell
 )
 
 foreach(source ${EXAMPLE_SOURCES})
@@ -35,10 +32,6 @@ foreach(source ${EXAMPLE_SOURCES})
   endif()
 
   add_executable("${source}" ${TARGETS})
-  if(PROXIMATE_C_FFI)
-    add_dependencies("${source}" proximate_sys_headers)
-    target_include_directories("${source}" PRIVATE "${RUST_GENERATED_INCLUDE_DIR}")
-  endif()
   target_link_libraries("${source}" PRIVATE nfc nfcutils)
   install(TARGETS "${source}" RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT examples)
 endforeach()

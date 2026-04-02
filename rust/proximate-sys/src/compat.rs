@@ -5,7 +5,9 @@
 // Public C-ABI compatibility helpers that remain part of libnfc's
 // installed surface even after the core implementation moved to Rust.
 
-use crate::bridge::{baud_rate_from_c, modulation_type_from_c};
+use crate::bridge::{
+    baud_rate_from_c, free_rust_device, is_rust_shim_device, modulation_type_from_c,
+};
 use crate::ffi_strings::{baud_rate_label_cstr, modulation_label_cstr, version_cstr};
 use crate::ffi_support::{as_ref, bounded_strlen};
 use crate::ffi_types::{nfc_baud_rate, nfc_modulation_type, nfc_target};
@@ -120,6 +122,11 @@ unsafe fn render_nfc_target(
 
 pub unsafe fn nfc_close(device: *mut nfc_device) {
     ffi_catch_unwind_void("nfc_close", || unsafe {
+        if is_rust_shim_device(device) {
+            free_rust_device(device);
+            return;
+        }
+
         let Some(device_ref) = as_ref(device) else {
             return;
         };

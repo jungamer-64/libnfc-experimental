@@ -5,8 +5,9 @@
 // Ported from libnfc/nfc.c.
 
 use crate::bridge::{
-    baud_rate_from_c, borrowed_device, dep_info_from_c, dep_mode_from_c, error_to_status,
-    is_rust_shim_device, modulation_from_c, property_from_c, target_from_c, write_target_to_c,
+    baud_rate_from_c, baud_rate_to_c, borrowed_device, dep_info_from_c, dep_mode_from_c,
+    error_to_status, is_rust_shim_device, modulation_from_c, modulation_type_from_c,
+    modulation_type_to_c, property_from_c, rust_device_state_mut, target_from_c, write_target_to_c,
 };
 use crate::c_api_impl::{LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG};
 use crate::ffi_strings::device_error_message_cstr;

@@ -45,7 +45,7 @@ shared code paths.
 Recommended local checks:
 
 ```bash
-bash scripts/check-cbindgen.sh
+cargo test -p proximate-sys --no-default-features --features c_ffi
 bash scripts/check_callerfree_usage.sh
 cargo test --manifest-path rust/Cargo.toml -p proximate -- --nocapture
 ```

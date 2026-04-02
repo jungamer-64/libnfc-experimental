@@ -1,12 +1,10 @@
-proximate-sys: tracked Rust/C ABI surface for libnfc
+proximate-sys: internal Rust implementation of libnfc's public C ABI
 
 This crate exposes the Rust-backed libnfc entrypoints that are used by this
-repository's C build. The tracked headers under
-`rust/proximate-sys/include/libnfc_rs.h` are ABI snapshots for repository
-checks and are not installed as part of the orig-compatible public header
-surface.
+repository's C build. The supported C ABI is defined by the orig-compatible
+installed headers under `include/nfc/`.
 
 The temporary `nfc_safe_*` / `nfc_secure_*` helper ABI that existed only in
 this experimental tree has been retired. In-tree examples and utilities now
-use local C helpers or small repo-local headers where they need bounded copies,
-string-length checks, or PN53x-only declarations.
+use local C helpers where they need bounded copies or argument checks, while
+branch-only PN53x entrypoints have been removed from the maintained surface.
