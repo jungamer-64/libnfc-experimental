@@ -26,7 +26,6 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 
 set(LIBRARY_SOURCES
   nfc-internal.c
-  nfc-common.cpp
   ${DRIVERS_SOURCES}
   ${CHIPS_SOURCES}
   ${WINDOWS_SOURCES})

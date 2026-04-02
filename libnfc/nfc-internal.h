@@ -34,6 +34,7 @@
 
 #include <stdbool.h>
 #include <err.h>
+#include <string.h>
 #if !defined(_MSC_VER)
 #include <sys/time.h>
 #endif
@@ -238,11 +239,72 @@ extern "C"
   nfc_device *nfc_device_new(const nfc_context *context, const nfc_connstring connstring);
   void nfc_device_free(nfc_device *dev);
 
-  void string_as_boolean(const char *s, bool *value);
+  static inline void
+  string_as_boolean(const char *s, bool *value)
+  {
+    if (s == NULL || value == NULL)
+    {
+      return;
+    }
+
+    if (!(*value))
+    {
+      if ((strcmp(s, "yes") == 0) ||
+          (strcmp(s, "true") == 0) ||
+          (strcmp(s, "1") == 0))
+      {
+        *value = true;
+      }
+      return;
+    }
+
+    if ((strcmp(s, "no") == 0) ||
+        (strcmp(s, "false") == 0) ||
+        (strcmp(s, "0") == 0))
+    {
+      *value = false;
+    }
+  }
 
   void iso14443_cascade_uid(const uint8_t abtUID[], const size_t szUID, uint8_t *pbtCascadedUID, size_t *pszCascadedUID);
 
-  void prepare_initiator_data(const nfc_modulation nm, uint8_t **ppbtInitiatorData, size_t *pszInitiatorData);
+  static inline void
+  prepare_initiator_data(const nfc_modulation nm, uint8_t **ppbtInitiatorData, size_t *pszInitiatorData)
+  {
+    if (ppbtInitiatorData == NULL || pszInitiatorData == NULL)
+    {
+      return;
+    }
+
+    switch (nm.nmt)
+    {
+    case NMT_ISO14443B:
+      // Application Family Identifier (AFI) must equals 0x00 in order to wakeup all ISO14443-B PICCs (see ISO/IEC 14443-3)
+      *ppbtInitiatorData = (uint8_t *)"\x00";
+      *pszInitiatorData = 1;
+      break;
+    case NMT_ISO14443BI:
+      // APGEN
+      *ppbtInitiatorData = (uint8_t *)"\x01\x0b\x3f\x80";
+      *pszInitiatorData = 4;
+      break;
+    case NMT_FELICA:
+      // polling payload must be present (see ISO/IEC 18092 11.2.2.5)
+      *ppbtInitiatorData = (uint8_t *)"\x00\xff\xff\x01\x00";
+      *pszInitiatorData = 5;
+      break;
+    case NMT_ISO14443A:
+    case NMT_ISO14443B2CT:
+    case NMT_ISO14443B2SR:
+    case NMT_ISO14443BICLASS:
+    case NMT_JEWEL:
+    case NMT_BARCODE:
+    case NMT_DEP:
+      *ppbtInitiatorData = NULL;
+      *pszInitiatorData = 0;
+      break;
+    }
+  }
 
   int connstring_decode(const nfc_connstring connstring, const char *driver_name, const char *bus_name, char **pparam1, char **pparam2);
 

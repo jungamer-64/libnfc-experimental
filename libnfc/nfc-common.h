@@ -357,12 +357,45 @@ extern "C"
    * @param chip_data_allocated Whether chip data was allocated
    * @return Always returns 0 for use in scan functions
    */
+  static inline void
+  nfc_release_chip_data(nfc_device *pnd)
+  {
+    if (pnd == NULL || pnd->chip_data == NULL)
+    {
+      return;
+    }
+
+    free(pnd->chip_data);
+    pnd->chip_data = NULL;
+  }
+
   NFC_NODISCARD
-  int nfc_device_init_failed(nfc_device *pnd,
-                             nfc_port_handle_t port,
-                             nfc_port_close_fn close_fn,
-                             void **ports,
-                             bool chip_data_allocated);
+  static inline int
+  nfc_device_init_failed(nfc_device *pnd,
+                         nfc_port_handle_t port,
+                         nfc_port_close_fn close_fn,
+                         void **ports,
+                         bool chip_data_allocated)
+  {
+    if (port != NULL && close_fn != NULL)
+    {
+      close_fn(port);
+    }
+
+    if (pnd != NULL && chip_data_allocated)
+    {
+      nfc_release_chip_data(pnd);
+    }
+
+    if (pnd != NULL)
+    {
+      nfc_device_free(pnd);
+    }
+
+    nfc_free_array(ports);
+
+    return 0;
+  }
 
   /**
    * @brief Structured device initialization cleanup
@@ -394,9 +427,24 @@ extern "C"
    * @param driver_data Driver-specific data (freed if pnd is NULL)
    * @param chip_data_allocated Whether chip data needs freeing
    */
-  void nfc_device_open_failed(nfc_device *pnd,
-                              void *driver_data,
-                              bool chip_data_allocated);
+  static inline void
+  nfc_device_open_failed(nfc_device *pnd,
+                         void *driver_data,
+                         bool chip_data_allocated)
+  {
+    if (pnd == NULL)
+    {
+      free(driver_data);
+      return;
+    }
+
+    if (chip_data_allocated)
+    {
+      nfc_release_chip_data(pnd);
+    }
+
+    nfc_device_free(pnd);
+  }
 
   /* ============================================================================
    * CONNECTION STRING HELPERS

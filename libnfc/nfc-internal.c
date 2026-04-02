@@ -38,35 +38,6 @@
 #include "config.h"
 #endif
 
-#include <string.h>
-
-void string_as_boolean(const char *s, bool *value)
-{
-  if (s)
-  {
-    if (!(*value))
-    {
-      if ((strcmp(s, "yes") == 0) ||
-          (strcmp(s, "true") == 0) ||
-          (strcmp(s, "1") == 0))
-      {
-        *value = true;
-        return;
-      }
-    }
-    else
-    {
-      if ((strcmp(s, "no") == 0) ||
-          (strcmp(s, "false") == 0) ||
-          (strcmp(s, "0") == 0))
-      {
-        *value = false;
-        return;
-      }
-    }
-  }
-}
-
 void
 nfc_rs_context_log_init(const nfc_context *context)
 {
@@ -83,36 +54,4 @@ void
 nfc_rs_log_message(uint8_t group, const char *category, uint8_t priority, const char *message)
 {
   log_put_message(group, category, priority, message);
-}
-
-void prepare_initiator_data(const nfc_modulation nm, uint8_t **ppbtInitiatorData, size_t *pszInitiatorData)
-{
-  switch (nm.nmt)
-  {
-  case NMT_ISO14443B:
-    // Application Family Identifier (AFI) must equals 0x00 in order to wakeup all ISO14443-B PICCs (see ISO/IEC 14443-3)
-    *ppbtInitiatorData = (uint8_t *)"\x00";
-    *pszInitiatorData = 1;
-    break;
-  case NMT_ISO14443BI:
-    // APGEN
-    *ppbtInitiatorData = (uint8_t *)"\x01\x0b\x3f\x80";
-    *pszInitiatorData = 4;
-    break;
-  case NMT_FELICA:
-    // polling payload must be present (see ISO/IEC 18092 11.2.2.5)
-    *ppbtInitiatorData = (uint8_t *)"\x00\xff\xff\x01\x00";
-    *pszInitiatorData = 5;
-    break;
-  case NMT_ISO14443A:
-  case NMT_ISO14443B2CT:
-  case NMT_ISO14443B2SR:
-  case NMT_ISO14443BICLASS:
-  case NMT_JEWEL:
-  case NMT_BARCODE:
-  case NMT_DEP:
-    *ppbtInitiatorData = NULL;
-    *pszInitiatorData = 0;
-    break;
-  }
 }
