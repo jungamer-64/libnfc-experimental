@@ -17,7 +17,7 @@
 use crate::logger;
 use libc::{c_char, c_int, c_void};
 use std::cell::RefCell;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::panic;
 use std::ptr;
 
@@ -199,26 +199,6 @@ pub(crate) fn nfc_clear_last_error() {
     ffi_catch_unwind_void("nfc_clear_last_error", reset_last_error);
 }
 
-pub unsafe fn nfc_set_last_error(message: *const c_char) {
-    ffi_catch_unwind_void("nfc_set_last_error", || {
-        if message.is_null() {
-            reset_last_error();
-            return;
-        }
-
-        let c_message = unsafe { CStr::from_ptr(message) };
-        let owned = String::from_utf8_lossy(c_message.to_bytes()).into_owned();
-        set_last_error_message(owned);
-    });
-}
-
-/// Free memory allocated by Rust FFI helpers
-pub unsafe fn nfc_rs_free(ptr: *mut c_void) {
-    ffi_catch_unwind_void("nfc_rs_free", || unsafe {
-        release_allocated_ptr(ptr);
-    });
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,7 +211,9 @@ mod tests {
             assert!(nfc_get_last_error().is_null());
 
             let msg = CString::new("roundtrip-error").unwrap();
-            nfc_set_last_error(msg.as_ptr());
+            let c_message = CStr::from_ptr(msg.as_ptr());
+            let owned = String::from_utf8_lossy(c_message.to_bytes()).into_owned();
+            set_last_error_message(owned);
 
             let ptr = nfc_get_last_error();
             assert!(!ptr.is_null());

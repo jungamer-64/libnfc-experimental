@@ -90,8 +90,6 @@ include = [
     "nfc_emulation_io_fn",
     "nfc_emulator",
     "nfc_emulation_state_machine",
-    "pn53x_io_send_fn",
-    "pn53x_io_receive_fn",
     "pn532_sam_mode",
     "nfc_rs_context_log_init",
     "nfc_rs_context_log_exit",
@@ -103,6 +101,10 @@ exclude = [
     "LOG_CATEGORY",
     "MALLOC_LABEL",
     "c_free",
+    "nfc_set_last_error",
+    "nfc_rs_free",
+    "nfc_context_new",
+    "nfc_device_free",
 ]
 
 [defines]

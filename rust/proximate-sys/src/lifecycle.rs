@@ -463,6 +463,7 @@ pub unsafe fn nfc_device_new(
     })
 }
 
+#[cfg(test)]
 pub unsafe fn nfc_device_free(device: *mut nfc_device) {
     ffi_catch_unwind_void("nfc_device_free", || unsafe {
         if device.is_null() {
@@ -818,7 +819,7 @@ mod tests {
         let logs = crate::test_get_logs();
         assert!(
             logs.iter()
-                .any(|entry| entry.contains("key: [allow_autoscan], value: [false]")),
+                .any(|entry| entry.contains("allow_autoscan is set to false")),
             "captured logs: {:?}",
             logs
         );

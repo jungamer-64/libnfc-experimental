@@ -54,7 +54,6 @@ pub(crate) use logger::{
 #[cfg(any(feature = "c_ffi", cbindgen))]
 /// cbindgen:ignore
 mod proximate {
-    pub use crate::c_api_impl::{nfc_rs_free, nfc_set_last_error};
     #[cfg(any(feature = "lifecycle", cbindgen))]
     pub use crate::compat::{
         nfc_close, nfc_free, nfc_version, str_nfc_baud_rate, str_nfc_modulation_type,
@@ -79,15 +78,8 @@ mod proximate {
     };
     #[cfg(any(feature = "lifecycle", cbindgen))]
     pub use crate::lifecycle::{
-        nfc_connstring, nfc_context_alloc_defaults, nfc_context_free, nfc_context_new,
-        nfc_device_free, nfc_device_new,
+        nfc_connstring, nfc_context_alloc_defaults, nfc_context_free, nfc_device_new,
     };
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_set_last_error(message: *const libc::c_char) {
-    unsafe { proximate::nfc_set_last_error(message) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
@@ -103,20 +95,8 @@ pub unsafe extern "C" fn nfc_rs_log_message(
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_rs_free(ptr: *mut libc::c_void) {
-    unsafe { proximate::nfc_rs_free(ptr) }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_context_alloc_defaults() -> *mut nfc_context {
     unsafe { proximate::nfc_context_alloc_defaults() }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_context_new() -> *mut nfc_context {
-    unsafe { proximate::nfc_context_new() }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
@@ -126,12 +106,6 @@ pub unsafe extern "C" fn nfc_device_new(
     connstring: *const libc::c_char,
 ) -> *mut nfc_device {
     unsafe { proximate::nfc_device_new(context, connstring) }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_device_free(device: *mut nfc_device) {
-    unsafe { proximate::nfc_device_free(device) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]

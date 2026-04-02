@@ -92,15 +92,9 @@ typedef struct nfc_device {
   int last_error;
 } nfc_device;
 
-void nfc_set_last_error(const char *message);
-
-void nfc_rs_free(void *ptr);
-
 struct nfc_context *nfc_context_alloc_defaults(void);
 
 struct nfc_device *nfc_device_new(const struct nfc_context *context, const char *connstring);
-
-void nfc_device_free(struct nfc_device *device);
 
 void nfc_close(struct nfc_device *device);
 

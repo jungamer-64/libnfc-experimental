@@ -33,18 +33,14 @@ exclude = ["criterion", "libc"]
 
 [export]
 include = [
-    "nfc_set_last_error",
     "nfc_context_alloc_defaults",
     "nfc_device_new",
-    "nfc_device_free",
     "nfc_close",
     "nfc_free",
     "nfc_version",
     "str_nfc_baud_rate",
     "str_nfc_modulation_type",
     "str_nfc_target",
-
-    "nfc_rs_free",
 ]
 
 # Explicitly exclude debug-only helpers from the stable header output.
@@ -55,7 +51,10 @@ exclude = [
     "MALLOC_LABEL",
     "c_free",
     "nfc_driver",
+    "nfc_set_last_error",
     "nfc_context_new",
+    "nfc_device_free",
+    "nfc_rs_free",
     "nfc_rs_context_conf_load",
     "nfc_rs_context_log_init",
     "nfc_rs_context_log_exit",
