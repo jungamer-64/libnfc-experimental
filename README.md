@@ -107,7 +107,8 @@ Rust core baseline in this branch:
 
 * Rust is the only supported core path for lifecycle, orchestration, and public control-plane entrypoints
 * Builtin driver ownership is now split: `pn71xx`, `pn53x_usb`, `pn532_uart`, `pn532_spi`, and `pn532_i2c` are Rust-owned, while the remaining chip-specific drivers stay in C for now
-* The Rust-owned builtin drivers now talk to `proximate` / `proximate-platform` directly; the temporary `proximate-sys` USB/UART/SPI/I2C helper ABI has been retired, while the shared PN53x chip layer is still provided by the existing C implementation
+* The Rust workspace is now layered as `proximate-types` / `proximate-driver` / `proximate-native` / `proximate` / `proximate-sys`
+* The Rust-owned builtin drivers now live in `proximate-native`, the public Rust facade lives in `proximate`, and the C ABI remains in `proximate-sys`; the shared PN53x chip layer is still provided by the existing C implementation
 
 Recommended validation build:
 

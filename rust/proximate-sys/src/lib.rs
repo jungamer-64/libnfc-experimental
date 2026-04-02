@@ -1,3 +1,6 @@
+#[cfg(any(feature = "lifecycle", feature = "orchestration", cbindgen))]
+/// cbindgen:ignore
+mod bridge;
 /// cbindgen:ignore
 mod c_api_impl;
 #[cfg(any(feature = "lifecycle", cbindgen))]
@@ -20,9 +23,6 @@ mod lifecycle;
 mod logger;
 #[cfg(cbindgen)]
 mod private_ffi;
-#[cfg(any(feature = "lifecycle", feature = "orchestration", cbindgen))]
-/// cbindgen:ignore
-mod runtime_bridge;
 #[cfg(any(feature = "c_ffi", cbindgen, test))]
 pub use c_api_impl::{
     LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING,
@@ -488,7 +488,7 @@ pub unsafe extern "C" fn pn53x_transceive(
 ) -> libc::c_int {
     ffi_catch_unwind_int("pn53x_transceive", -80, || unsafe {
         if device.is_null() || tx.is_null() || tx_len == 0 || (rx.is_null() && rx_len != 0) {
-            crate::runtime_bridge::set_device_last_error(device, -2);
+            crate::bridge::set_device_last_error(device, -2);
             return -2;
         }
 
@@ -498,10 +498,10 @@ pub unsafe extern "C" fn pn53x_transceive(
         } else {
             std::slice::from_raw_parts_mut(rx, rx_len)
         };
-        let mut borrowed = crate::runtime_bridge::borrowed_device(device);
+        let mut borrowed = crate::bridge::borrowed_device(device);
         match borrowed.pn53x_transceive(tx, rx, timeout) {
             Ok(count) => count as libc::c_int,
-            Err(error) => crate::runtime_bridge::error_to_status(&error),
+            Err(error) => crate::bridge::error_to_status(&error),
         }
     })
 }
@@ -515,17 +515,17 @@ pub unsafe extern "C" fn pn53x_read_register(
 ) -> libc::c_int {
     ffi_catch_unwind_int("pn53x_read_register", -80, || unsafe {
         if device.is_null() || value.is_null() {
-            crate::runtime_bridge::set_device_last_error(device, -2);
+            crate::bridge::set_device_last_error(device, -2);
             return -2;
         }
 
-        let mut borrowed = crate::runtime_bridge::borrowed_device(device);
+        let mut borrowed = crate::bridge::borrowed_device(device);
         match borrowed.pn53x_read_register(register) {
             Ok(read_value) => {
                 *value = read_value;
                 0
             }
-            Err(error) => crate::runtime_bridge::error_to_status(&error),
+            Err(error) => crate::bridge::error_to_status(&error),
         }
     })
 }
@@ -540,14 +540,14 @@ pub unsafe extern "C" fn pn53x_write_register(
 ) -> libc::c_int {
     ffi_catch_unwind_int("pn53x_write_register", -80, || {
         if device.is_null() {
-            crate::runtime_bridge::set_device_last_error(device, -2);
+            crate::bridge::set_device_last_error(device, -2);
             return -2;
         }
 
-        let mut borrowed = crate::runtime_bridge::borrowed_device(device);
+        let mut borrowed = crate::bridge::borrowed_device(device);
         match borrowed.pn53x_write_register(register, symbol_mask, value) {
             Ok(()) => 0,
-            Err(error) => crate::runtime_bridge::error_to_status(&error),
+            Err(error) => crate::bridge::error_to_status(&error),
         }
     })
 }
@@ -561,14 +561,14 @@ pub unsafe extern "C" fn pn532_SAMConfiguration(
 ) -> libc::c_int {
     ffi_catch_unwind_int("pn532_SAMConfiguration", -80, || {
         if device.is_null() {
-            crate::runtime_bridge::set_device_last_error(device, -2);
+            crate::bridge::set_device_last_error(device, -2);
             return -2;
         }
 
-        let mut borrowed = crate::runtime_bridge::borrowed_device(device);
+        let mut borrowed = crate::bridge::borrowed_device(device);
         match borrowed.pn532_sam_configuration(mode as u8, timeout) {
             Ok(status) => status,
-            Err(error) => crate::runtime_bridge::error_to_status(&error),
+            Err(error) => crate::bridge::error_to_status(&error),
         }
     })
 }

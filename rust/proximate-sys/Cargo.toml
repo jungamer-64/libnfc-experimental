@@ -10,22 +10,22 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 libc = "0.2"
-proximate = { path = "../proximate", default-features = false }
-proximate-platform = { path = "../proximate-platform", default-features = false }
+proximate-driver = { path = "../proximate-driver", default-features = false }
+proximate-native = { path = "../proximate-native", default-features = false }
 
 [features]
 default = ["secure", "lifecycle", "orchestration", "usb_helper"]
 secure = []
-lifecycle = ["proximate/lifecycle"]
+lifecycle = ["proximate-driver/lifecycle"]
 orchestration = [
     "lifecycle",
-    "proximate/orchestration",
-    "proximate/usb_helper",
-    "proximate-platform/orchestration",
+    "proximate-driver/orchestration",
+    "proximate-driver/usb_helper",
+    "proximate-native/orchestration",
 ]
-usb_helper = ["proximate/usb_helper", "proximate-platform/usb_helper"]
-pcsc_helper = ["proximate/pcsc_helper"]
-nci_helper = ["proximate/nci_helper", "proximate-platform/nci_helper"]
+usb_helper = ["proximate-driver/usb_helper", "proximate-native/usb_helper"]
+pcsc_helper = ["proximate-driver/pcsc_helper", "proximate-native/pcsc_helper"]
+nci_helper = ["proximate-driver/nci_helper", "proximate-native/nci_helper"]
 c_ffi = ["secure", "lifecycle", "orchestration"]
 nfc_secure_debug = []
 asan_tests = []

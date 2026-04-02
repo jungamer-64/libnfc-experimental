@@ -1,0 +1,9 @@
+[package]
+name = "proximate-types"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+
+[dependencies]
+bitflags = "2.9.4"
+thiserror = "2.0.17"

@@ -13,6 +13,7 @@
 // Copyright (C) 2020      Adam Laurie
 // See AUTHORS file for a more comprehensive list of contributors.
 
+use crate::bridge::write_context_to_c;
 use crate::c_api_impl::{LOG_PRIORITY_DEBUG, LOG_PRIORITY_NONE, NFC_BUFSIZE_CONNSTRING};
 use crate::ffi_support::{as_mut, as_ref, bounded_strlen, fixed_c_buffer_to_string};
 use crate::ffi_types::{
@@ -20,13 +21,12 @@ use crate::ffi_types::{
     nfc_property, nfc_target,
 };
 use crate::logger;
-use crate::runtime_bridge::write_context_to_c;
 use crate::{
     emit_log_message, ffi_catch_unwind_ptr, ffi_catch_unwind_void, log_error, log_message,
     release_allocated_ptr, reset_last_error, set_last_error_message,
 };
 use libc::{c_char, c_int, c_uint, c_void};
-use proximate::rust_api as rt;
+use proximate_driver as rt;
 use std::ffi::CString;
 use std::mem::size_of;
 use std::ptr;
@@ -275,7 +275,7 @@ unsafe fn nfc_context_alloc_defaults_impl() -> *mut nfc_context {
     if context.is_null() {
         return ptr::null_mut();
     }
-    write_context_to_c(&proximate::Context::default(), context);
+    write_context_to_c(&rt::Context::default(), context);
 
     reset_last_error();
     context
@@ -413,7 +413,7 @@ unsafe fn free_context_allocation(context: *mut nfc_context) {
 }
 
 unsafe fn nfc_context_new_impl() -> *mut nfc_context {
-    let loaded = match proximate::Context::load_with_diagnostics() {
+    let loaded = match rt::Context::load_with_diagnostics() {
         Ok(outcome) => outcome,
         Err(failure) => {
             emit_context_load_diagnostics(&failure.diagnostics);
@@ -566,7 +566,7 @@ pub unsafe extern "C" fn nfc_rs_context_log_exit() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proximate::rust_api::set_test_conf_root;
+    use proximate_driver::set_test_conf_root;
     use std::ffi::{CStr, CString, OsString};
     use std::fs;
     use std::path::PathBuf;

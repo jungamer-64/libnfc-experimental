@@ -1,3 +1,9 @@
 [workspace]
-members = ["proximate", "proximate-platform", "proximate-sys"]
+members = [
+    "proximate",
+    "proximate-driver",
+    "proximate-native",
+    "proximate-sys",
+    "proximate-types",
+]
 resolver = "3"

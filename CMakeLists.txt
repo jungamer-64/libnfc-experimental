@@ -136,14 +136,22 @@ if(PROXIMATE_C_FFI)
 
   set(RUST_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-target")
   file(GLOB_RECURSE LIBNFC_RUST_SOURCES
+    "${CMAKE_SOURCE_DIR}/rust/proximate-driver/src/*.rs"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-native/src/*.rs"
     "${CMAKE_SOURCE_DIR}/rust/proximate/src/*.rs"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/src/*.rs")
+    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/src/*.rs"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-types/src/*.rs")
   list(APPEND LIBNFC_RUST_SOURCES
     "${CMAKE_SOURCE_DIR}/rust/Cargo.toml"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-driver/Cargo.toml"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-driver/build.rs"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-native/Cargo.toml"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-native/build.rs"
     "${CMAKE_SOURCE_DIR}/rust/proximate/Cargo.toml"
-    "${CMAKE_SOURCE_DIR}/rust/proximate/build.rs"
     "${CMAKE_SOURCE_DIR}/rust/proximate-sys/Cargo.toml"
     "${CMAKE_SOURCE_DIR}/rust/proximate-sys/build.rs"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-types/Cargo.toml"
+    "${CMAKE_SOURCE_DIR}/rust/proximate-types/build.rs"
     "${CMAKE_SOURCE_DIR}/rust/proximate-sys/cbindgen.toml"
     "${CMAKE_SOURCE_DIR}/rust/proximate-sys/tools/generate_cbindgen_header.py"
     "${CMAKE_SOURCE_DIR}/rust/proximate-sys/tools/update_cbindgen_defines.py")

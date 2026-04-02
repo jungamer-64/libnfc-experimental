@@ -1,0 +1,18 @@
+[package]
+name = "proximate-native"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+
+[dependencies]
+proximate-driver = { path = "../proximate-driver", default-features = false }
+nusb = { version = "0.2", optional = true }
+pcsc = { version = "2.9.0", optional = true }
+rustix = { version = "1.1", default-features = false, features = ["std", "fs", "event", "termios", "time"] }
+
+[features]
+default = ["usb_helper"]
+orchestration = []
+usb_helper = ["dep:nusb", "proximate-driver/usb_helper"]
+pcsc_helper = ["dep:pcsc", "proximate-driver/pcsc_helper"]
+nci_helper = ["orchestration", "proximate-driver/nci_helper"]

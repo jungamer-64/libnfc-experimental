@@ -1,4 +1,4 @@
-use proximate::rust_api as rt;
+use proximate_driver as rt;
 use std::ffi::{CStr, CString};
 use std::sync::OnceLock;
 

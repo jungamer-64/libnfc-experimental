@@ -1,17 +1,10 @@
-// SPDX-License-Identifier: LGPL-3.0-or-later
-//
-// Free/Libre Near Field Communication (NFC) library
-//
-// Pure Rust API surface for libnfc experiments.
+mod facade;
 
-mod native;
-pub mod rust_api;
-
-pub(crate) const NFC_BUFSIZE_CONNSTRING: usize = 1024;
-
-pub use rust_api::{
-    BaudRate, ConnectionString, Context, ContextConfig, DecodedConnectionString, DepInfo, DepMode,
-    Device, DeviceCaps, Driver, DriverCaps, DriverRegistry, Error, Logger, Mode, Modulation,
-    ModulationType, OpenedDevice, Property, ScanType, Target, TargetInfo, UserDefinedDevice,
-    build_connstring, decode_connstring, parse_connstring, version,
+pub use facade::{
+    Config, ConfiguredDevice, Context, ContextBuilder, DeviceDescriptor, DeviceHandle,
+    DeviceSelector, InitiatorSession, Pn53xControl, TargetSession,
+};
+pub use proximate_types::{
+    BaudRate, DepInfo, DepMode, DeviceCaps, DriverCaps, Error, Modulation, ModulationType,
+    Property, ScanType, Target, TargetInfo, version,
 };
