@@ -21,9 +21,10 @@ orchestration = [
     "lifecycle",
     "dep:nusb",
     "proximate/orchestration",
-    "proximate/ffi_internal_native",
+    "proximate/native_helpers",
+    "proximate/usb_helper",
 ]
-usb_helper = ["dep:nusb", "proximate/usb_helper", "proximate/ffi_internal_native"]
+usb_helper = ["dep:nusb", "proximate/usb_helper", "proximate/native_helpers"]
 pcsc_helper = ["proximate/pcsc_helper"]
 nci_helper = ["proximate/nci_helper"]
 c_ffi = ["secure", "lifecycle", "orchestration"]

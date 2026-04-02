@@ -8,6 +8,7 @@ use crate::c_api_impl::{LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG};
 use crate::ffi_support::{
     as_mut, as_ref, bounded_strlen, c_string_ptr_to_string, copy_bytes_to_c_buffer,
 };
+use crate::ffi_strings::device_error_message_cstr;
 use crate::ffi_types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_mode, nfc_modulation, nfc_modulation_type,
     nfc_property, nfc_target,
@@ -80,7 +81,7 @@ fn log_general_debug(message: &str) {
 }
 
 fn error_message_ptr(code: c_int) -> *const c_char {
-    rt::device_error_message_cstr(code).as_ptr()
+    device_error_message_cstr(code).as_ptr()
 }
 
 unsafe fn device_last_error(device: *const nfc_device) -> c_int {

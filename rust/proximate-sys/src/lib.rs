@@ -13,6 +13,8 @@ mod core;
 /// cbindgen:ignore
 mod drivers;
 /// cbindgen:ignore
+mod ffi_strings;
+/// cbindgen:ignore
 mod ffi_support;
 #[cfg(any(feature = "lifecycle", cbindgen))]
 mod ffi_types;

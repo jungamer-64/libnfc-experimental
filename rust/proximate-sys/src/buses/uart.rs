@@ -47,7 +47,7 @@ mod linux_impl {
     use crate::buses::{
         allocate_c_string_array, c_path_to_string, claimed_serial_port, invalid_serial_port,
     };
-    use ::proximate::ffi_internal_native::uart::{
+    use ::proximate::native_helpers::uart::{
         UartHandle, UartIoError, UartOpenError, list_ports as list_internal_ports,
     };
 

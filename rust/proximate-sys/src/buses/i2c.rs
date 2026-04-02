@@ -20,7 +20,7 @@ pub type i2c_device = *mut c_void;
 #[cfg(all(not(test), target_os = "linux"))]
 mod linux_impl {
     use super::*;
-    use ::proximate::ffi_internal_native::i2c::{
+    use ::proximate::native_helpers::i2c::{
         I2cHandle, I2cIoError, I2cOpenError, list_ports as list_internal_ports,
     };
 

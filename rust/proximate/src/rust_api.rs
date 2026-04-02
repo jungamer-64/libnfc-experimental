@@ -30,7 +30,7 @@ pub use driver::{Driver, DriverRegistry};
 pub use driver::{ListDevicesOutcome, RegisteredDriverSet};
 pub use metadata::version;
 #[doc(hidden)]
-pub use metadata::{device_error_message, device_error_message_cstr, version_cstr};
+pub use metadata::device_error_message;
 pub use types::{
     BaudRate, DepInfo, DepMode, Error, Mode, Modulation, ModulationType, Property, ScanType,
     Target, TargetInfo,

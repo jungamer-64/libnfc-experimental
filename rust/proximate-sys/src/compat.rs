@@ -6,6 +6,7 @@
 // installed surface even after the core implementation moved to Rust.
 
 use crate::ffi_support::{as_ref, bounded_strlen};
+use crate::ffi_strings::version_cstr;
 use crate::ffi_types::{nfc_baud_rate, nfc_modulation_type, nfc_target};
 use crate::lifecycle::nfc_device;
 use crate::runtime_bridge::{baud_rate_from_c, modulation_type_from_c};
@@ -13,7 +14,6 @@ use crate::{
     ffi_catch_unwind_int, ffi_catch_unwind_ptr, ffi_catch_unwind_void, release_allocated_ptr,
 };
 use libc::{c_char, c_int, c_void, size_t};
-use proximate::rust_api as rt;
 
 #[cfg(test)]
 use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
@@ -139,7 +139,7 @@ pub unsafe fn nfc_free(ptr: *mut c_void) {
 }
 
 pub unsafe fn nfc_version() -> *const c_char {
-    ffi_catch_unwind_ptr("nfc_version", || rt::version_cstr().as_ptr().cast_mut()) as *const c_char
+    ffi_catch_unwind_ptr("nfc_version", || version_cstr().as_ptr().cast_mut()) as *const c_char
 }
 
 pub unsafe fn str_nfc_baud_rate(value: nfc_baud_rate) -> *const c_char {
