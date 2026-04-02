@@ -3,8 +3,9 @@ use crate::nci::TagInfo;
 #[cfg(all(feature = "nci_helper", not(test)))]
 use crate::nci::{self as platform_nci, Backend as _};
 use proximate_driver::{
-    BaudRate, ConnectionString, Context, DeviceCaps, Driver, Error, Mode, Modulation,
-    ModulationType, OpenedDevice, Property, ScanType, Target, TargetInfo,
+    BaudRate, ConnectionString, Context, DeviceBackend, DeviceCaps, DeviceMeta, Driver, Error,
+    InfoBackend, InitiatorBackend, Mode, Modulation, ModulationType, Pn53xBackend, Property,
+    PropertyBackend, ScanType, Target, TargetBackend, TargetInfo,
 };
 use std::sync::{Mutex, OnceLock};
 use std::thread;
@@ -484,7 +485,7 @@ impl Driver for Pn71xxDriver {
         &self,
         _context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn OpenedDevice>, Error> {
+    ) -> Result<Box<dyn DeviceBackend>, Error> {
         normalize_inactive_runtime();
 
         if runtime().lock().unwrap().active_device.is_some() {
@@ -547,7 +548,7 @@ impl Drop for Pn71xxDevice {
     }
 }
 
-impl OpenedDevice for Pn71xxDevice {
+impl DeviceMeta for Pn71xxDevice {
     fn name(&self) -> &str {
         PN71XX_DEVICE_NAME
     }
@@ -576,11 +577,15 @@ impl OpenedDevice for Pn71xxDevice {
     fn last_error(&self) -> i32 {
         self.last_error
     }
+}
 
+impl InfoBackend for Pn71xxDevice {
     fn information_about(&mut self) -> Result<String, Error> {
         self.succeed(PN71XX_INFO.to_string())
     }
+}
 
+impl PropertyBackend for Pn71xxDevice {
     fn set_property_bool(&mut self, _property: Property, _enable: bool) -> Result<(), Error> {
         self.succeed(())
     }
@@ -611,7 +616,9 @@ impl OpenedDevice for Pn71xxDevice {
         };
         self.succeed(values.to_vec())
     }
+}
 
+impl InitiatorBackend for Pn71xxDevice {
     fn initiator_init_driver(&mut self) -> Result<i32, Error> {
         self.succeed(0)
     }
@@ -684,6 +691,10 @@ impl OpenedDevice for Pn71xxDevice {
     }
 }
 
+impl TargetBackend for Pn71xxDevice {}
+
+impl Pn53xBackend for Pn71xxDevice {}
+
 #[cfg(test)]
 fn reset_test_world() {
     clear_runtime_state();
@@ -709,6 +720,7 @@ fn emit_tag_departure_for_tests() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proximate_driver::InitiatorOps;
     use std::sync::{Mutex, OnceLock};
 
     fn test_guard() -> &'static Mutex<()> {
@@ -729,7 +741,7 @@ mod tests {
         tag
     }
 
-    fn open_device(connstring: &ConnectionString) -> Box<dyn OpenedDevice> {
+    fn open_device(connstring: &ConnectionString) -> Box<dyn DeviceBackend> {
         let driver = Pn71xxDriver::new();
         driver.open(&Context::new(), connstring).unwrap()
     }

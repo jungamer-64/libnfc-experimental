@@ -7,7 +7,7 @@ unsafe fn rust_device_state<'a>(device: *mut nfc_device) -> Option<&'a mut RustD
     unsafe { (device.driver_data as *mut RustDeviceState).as_mut() }
 }
 
-pub(crate) fn borrowed_device(raw: *mut nfc_device) -> Box<dyn rt::OpenedDevice> {
+pub(crate) fn borrowed_device(raw: *mut nfc_device) -> Box<dyn rt::DeviceBackend> {
     if is_rust_shim_device(raw) {
         return Box::new(RustBorrowedDevice::new(raw));
     }
@@ -42,7 +42,7 @@ impl RustBorrowedDevice {
 
     fn with_handle<R>(
         &mut self,
-        f: impl FnOnce(&mut dyn rt::OpenedDevice) -> Result<R, rt::Error>,
+        f: impl FnOnce(&mut dyn rt::DeviceBackend) -> Result<R, rt::Error>,
     ) -> Result<R, rt::Error> {
         let Some(state) = (unsafe { rust_device_state(self.raw) }) else {
             return Err(rt::Error::DriverNotFound("rust shim".to_string()));
@@ -58,7 +58,7 @@ impl RustBorrowedDevice {
         operation: &'static str,
         result: Result<T, rt::Error>,
     ) -> Result<T, rt::Error> {
-        if !rt::OpenedDevice::caps(self).contains(required) {
+        if !rt::DeviceMeta::caps(self).contains(required) {
             set_device_last_error(self.raw, NFC_EDEVNOTSUPP);
             return Err(missing_capability(operation));
         }
@@ -81,7 +81,7 @@ impl RustBorrowedDevice {
     }
 }
 
-impl rt::OpenedDevice for RustBorrowedDevice {
+impl rt::DeviceMeta for RustBorrowedDevice {
     fn name(&self) -> &str {
         &self.name
     }
@@ -107,12 +107,16 @@ impl rt::OpenedDevice for RustBorrowedDevice {
             .map(|state| state.handle.strerror())
             .unwrap_or_else(|| rt::device_error_message(self.last_error()).to_string())
     }
+}
 
+impl rt::InfoBackend for RustBorrowedDevice {
     fn information_about(&mut self) -> Result<String, rt::Error> {
         let result = self.with_handle(|handle| handle.information_about());
         self.normalize(rt::DeviceCaps::INFO, "device_get_information_about", result)
     }
+}
 
+impl rt::PropertyBackend for RustBorrowedDevice {
     fn set_property_bool(&mut self, property: rt::Property, enable: bool) -> Result<(), rt::Error> {
         let result = self.with_handle(|handle| handle.set_property_bool(property, enable));
         self.normalize(
@@ -167,7 +171,9 @@ impl rt::OpenedDevice for RustBorrowedDevice {
             _ => return None,
         })
     }
+}
 
+impl rt::InitiatorBackend for RustBorrowedDevice {
     fn initiator_init_driver(&mut self) -> Result<i32, rt::Error> {
         let result = self.with_handle(|handle| handle.initiator_init_driver());
         self.normalize(rt::DeviceCaps::INITIATOR_INIT, "initiator_init", result)
@@ -240,16 +246,6 @@ impl rt::OpenedDevice for RustBorrowedDevice {
         )
     }
 
-    fn target_init_driver(
-        &mut self,
-        target: &mut rt::Target,
-        rx: &mut [u8],
-        timeout: i32,
-    ) -> Result<usize, rt::Error> {
-        let result = self.with_handle(|handle| handle.target_init_driver(target, rx, timeout));
-        self.normalize(rt::DeviceCaps::TARGET_INIT, "target_init", result)
-    }
-
     fn transceive_bytes_driver(
         &mut self,
         tx: &[u8],
@@ -313,6 +309,33 @@ impl rt::OpenedDevice for RustBorrowedDevice {
         )
     }
 
+    fn abort_command_driver(&mut self) -> Result<(), rt::Error> {
+        let result = self.with_handle(|handle| handle.abort_command_driver());
+        self.normalize(rt::DeviceCaps::ABORT_COMMAND, "abort_command", result)
+    }
+
+    fn idle_driver(&mut self) -> Result<(), rt::Error> {
+        let result = self.with_handle(|handle| handle.idle_driver());
+        self.normalize(rt::DeviceCaps::IDLE, "idle", result)
+    }
+
+    fn powerdown_driver(&mut self) -> Result<(), rt::Error> {
+        let result = self.with_handle(|handle| handle.powerdown_driver());
+        self.normalize(rt::DeviceCaps::POWERDOWN, "powerdown", result)
+    }
+}
+
+impl rt::TargetBackend for RustBorrowedDevice {
+    fn target_init_driver(
+        &mut self,
+        target: &mut rt::Target,
+        rx: &mut [u8],
+        timeout: i32,
+    ) -> Result<usize, rt::Error> {
+        let result = self.with_handle(|handle| handle.target_init_driver(target, rx, timeout));
+        self.normalize(rt::DeviceCaps::TARGET_INIT, "target_init", result)
+    }
+
     fn target_send_bytes_driver(&mut self, tx: &[u8], timeout: i32) -> Result<usize, rt::Error> {
         let result = self.with_handle(|handle| handle.target_send_bytes_driver(tx, timeout));
         self.normalize(
@@ -358,22 +381,9 @@ impl rt::OpenedDevice for RustBorrowedDevice {
             result,
         )
     }
+}
 
-    fn abort_command_driver(&mut self) -> Result<(), rt::Error> {
-        let result = self.with_handle(|handle| handle.abort_command_driver());
-        self.normalize(rt::DeviceCaps::ABORT_COMMAND, "abort_command", result)
-    }
-
-    fn idle_driver(&mut self) -> Result<(), rt::Error> {
-        let result = self.with_handle(|handle| handle.idle_driver());
-        self.normalize(rt::DeviceCaps::IDLE, "idle", result)
-    }
-
-    fn powerdown_driver(&mut self) -> Result<(), rt::Error> {
-        let result = self.with_handle(|handle| handle.powerdown_driver());
-        self.normalize(rt::DeviceCaps::POWERDOWN, "powerdown", result)
-    }
-
+impl rt::Pn53xBackend for RustBorrowedDevice {
     fn pn53x_transceive_driver(
         &mut self,
         tx: &[u8],

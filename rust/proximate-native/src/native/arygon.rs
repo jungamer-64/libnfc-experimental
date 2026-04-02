@@ -1,7 +1,7 @@
 use super::connstring::{build_path_speed_connstring, decode_path_speed_descriptor};
 use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport, is_ack_frame};
 use super::uart::{UartPort, list_candidate_paths};
-use proximate_driver::{ConnectionString, Context, Driver, Error, OpenedDevice, ScanType};
+use proximate_driver::{ConnectionString, Context, DeviceBackend, Driver, Error, ScanType};
 use std::borrow::Cow;
 
 const DRIVER_NAME: &str = "arygon";
@@ -70,7 +70,7 @@ impl Driver for ArygonDriver {
         &self,
         _context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn OpenedDevice>, Error> {
+    ) -> Result<Box<dyn DeviceBackend>, Error> {
         let descriptor = decode_path_speed_descriptor(connstring, DRIVER_NAME, DEFAULT_SPEED)?;
 
         #[cfg(target_os = "linux")]

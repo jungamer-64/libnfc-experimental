@@ -86,7 +86,7 @@ impl rt::Driver for ExternalDriver {
         &self,
         context: &rt::Context,
         connstring: &rt::ConnectionString,
-    ) -> Result<Box<dyn rt::OpenedDevice>, rt::Error> {
+    ) -> Result<Box<dyn rt::DeviceBackend>, rt::Error> {
         if !self.caps.contains(rt::DriverCaps::OPEN) {
             return Err(missing_capability("open"));
         }
@@ -211,7 +211,7 @@ impl Drop for ExternalDevice {
     }
 }
 
-impl rt::OpenedDevice for ExternalDevice {
+impl rt::DeviceMeta for ExternalDevice {
     fn name(&self) -> &str {
         &self.name
     }
@@ -244,7 +244,9 @@ impl rt::OpenedDevice for ExternalDevice {
             c_string_ptr_to_string(value, bounded_strlen(value, 256))
         }
     }
+}
 
+impl rt::InfoBackend for ExternalDevice {
     fn information_about(&mut self) -> Result<String, rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
@@ -268,7 +270,9 @@ impl rt::OpenedDevice for ExternalDevice {
         })();
         self.normalize(rt::DeviceCaps::INFO, "device_get_information_about", result)
     }
+}
 
+impl rt::PropertyBackend for ExternalDevice {
     fn set_property_bool(&mut self, property: rt::Property, enable: bool) -> Result<(), rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
@@ -398,7 +402,9 @@ impl rt::OpenedDevice for ExternalDevice {
             _ => return None,
         })
     }
+}
 
+impl rt::InitiatorBackend for ExternalDevice {
     fn initiator_init_driver(&mut self) -> Result<i32, rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
@@ -603,35 +609,6 @@ impl rt::OpenedDevice for ExternalDevice {
         )
     }
 
-    fn target_init_driver(
-        &mut self,
-        target: &mut rt::Target,
-        rx: &mut [u8],
-        timeout: i32,
-    ) -> Result<usize, rt::Error> {
-        let result = (|| {
-            let Some(driver) = self.driver_ref() else {
-                return Err(rt::Error::UnsupportedOperation("target_init"));
-            };
-            let Some(callback) = driver.target_init else {
-                return Err(rt::Error::UnsupportedOperation("target_init"));
-            };
-            let mut raw_target = target_to_c(target);
-            let count = Self::status_to_result("target_init", unsafe {
-                callback(
-                    self.raw,
-                    ptr::addr_of_mut!(raw_target),
-                    bytes_mut_ptr(rx),
-                    rx.len(),
-                    timeout,
-                )
-            })?;
-            *target = target_from_c(ptr::addr_of!(raw_target));
-            Ok(count as usize)
-        })();
-        self.normalize(rt::DeviceCaps::TARGET_INIT, "target_init", result)
-    }
-
     fn transceive_bytes_driver(
         &mut self,
         tx: &[u8],
@@ -778,6 +755,79 @@ impl rt::OpenedDevice for ExternalDevice {
         )
     }
 
+    fn abort_command_driver(&mut self) -> Result<(), rt::Error> {
+        let result = (|| {
+            let Some(driver) = self.driver_ref() else {
+                return Err(rt::Error::UnsupportedOperation("abort_command"));
+            };
+            let Some(callback) = driver.abort_command else {
+                return Err(rt::Error::UnsupportedOperation("abort_command"));
+            };
+            Self::status_to_result("abort_command", unsafe { callback(self.raw) })?;
+            Ok(())
+        })();
+        self.normalize(rt::DeviceCaps::ABORT_COMMAND, "abort_command", result)
+    }
+
+    fn idle_driver(&mut self) -> Result<(), rt::Error> {
+        let result = (|| {
+            let Some(driver) = self.driver_ref() else {
+                return Err(rt::Error::UnsupportedOperation("idle"));
+            };
+            let Some(callback) = driver.idle else {
+                return Err(rt::Error::UnsupportedOperation("idle"));
+            };
+            Self::status_to_result("idle", unsafe { callback(self.raw) })?;
+            Ok(())
+        })();
+        self.normalize(rt::DeviceCaps::IDLE, "idle", result)
+    }
+
+    fn powerdown_driver(&mut self) -> Result<(), rt::Error> {
+        let result = (|| {
+            let Some(driver) = self.driver_ref() else {
+                return Err(rt::Error::UnsupportedOperation("powerdown"));
+            };
+            let Some(callback) = driver.powerdown else {
+                return Err(rt::Error::UnsupportedOperation("powerdown"));
+            };
+            Self::status_to_result("powerdown", unsafe { callback(self.raw) })?;
+            Ok(())
+        })();
+        self.normalize(rt::DeviceCaps::POWERDOWN, "powerdown", result)
+    }
+}
+
+impl rt::TargetBackend for ExternalDevice {
+    fn target_init_driver(
+        &mut self,
+        target: &mut rt::Target,
+        rx: &mut [u8],
+        timeout: i32,
+    ) -> Result<usize, rt::Error> {
+        let result = (|| {
+            let Some(driver) = self.driver_ref() else {
+                return Err(rt::Error::UnsupportedOperation("target_init"));
+            };
+            let Some(callback) = driver.target_init else {
+                return Err(rt::Error::UnsupportedOperation("target_init"));
+            };
+            let mut raw_target = target_to_c(target);
+            let count = Self::status_to_result("target_init", unsafe {
+                callback(
+                    self.raw,
+                    ptr::addr_of_mut!(raw_target),
+                    bytes_mut_ptr(rx),
+                    rx.len(),
+                    timeout,
+                )
+            })?;
+            *target = target_from_c(ptr::addr_of!(raw_target));
+            Ok(count as usize)
+        })();
+        self.normalize(rt::DeviceCaps::TARGET_INIT, "target_init", result)
+    }
+
     fn target_send_bytes_driver(&mut self, tx: &[u8], timeout: i32) -> Result<usize, rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
@@ -876,46 +926,6 @@ impl rt::OpenedDevice for ExternalDevice {
             result,
         )
     }
-
-    fn abort_command_driver(&mut self) -> Result<(), rt::Error> {
-        let result = (|| {
-            let Some(driver) = self.driver_ref() else {
-                return Err(rt::Error::UnsupportedOperation("abort_command"));
-            };
-            let Some(callback) = driver.abort_command else {
-                return Err(rt::Error::UnsupportedOperation("abort_command"));
-            };
-            Self::status_to_result("abort_command", unsafe { callback(self.raw) })?;
-            Ok(())
-        })();
-        self.normalize(rt::DeviceCaps::ABORT_COMMAND, "abort_command", result)
-    }
-
-    fn idle_driver(&mut self) -> Result<(), rt::Error> {
-        let result = (|| {
-            let Some(driver) = self.driver_ref() else {
-                return Err(rt::Error::UnsupportedOperation("idle"));
-            };
-            let Some(callback) = driver.idle else {
-                return Err(rt::Error::UnsupportedOperation("idle"));
-            };
-            Self::status_to_result("idle", unsafe { callback(self.raw) })?;
-            Ok(())
-        })();
-        self.normalize(rt::DeviceCaps::IDLE, "idle", result)
-    }
-
-    fn powerdown_driver(&mut self) -> Result<(), rt::Error> {
-        let result = (|| {
-            let Some(driver) = self.driver_ref() else {
-                return Err(rt::Error::UnsupportedOperation("powerdown"));
-            };
-            let Some(callback) = driver.powerdown else {
-                return Err(rt::Error::UnsupportedOperation("powerdown"));
-            };
-            Self::status_to_result("powerdown", unsafe { callback(self.raw) })?;
-            Ok(())
-        })();
-        self.normalize(rt::DeviceCaps::POWERDOWN, "powerdown", result)
-    }
 }
+
+impl rt::Pn53xBackend for ExternalDevice {}

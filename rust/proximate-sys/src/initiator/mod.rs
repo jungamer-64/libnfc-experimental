@@ -22,6 +22,7 @@ use crate::lifecycle::nfc_device;
 use crate::{emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr, ffi_catch_unwind_void};
 use libc::{c_char, c_int, c_void, size_t};
 use proximate_driver as rt;
+use proximate_driver::{InitiatorOps, TargetOps};
 use std::ffi::CString;
 #[cfg(test)]
 use std::mem::size_of;

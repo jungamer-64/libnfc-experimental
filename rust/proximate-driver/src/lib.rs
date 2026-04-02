@@ -15,10 +15,10 @@ pub use context::{
     ContextDiagnostic, ContextDiagnosticCategory, ContextDiagnosticPriority, ContextLoadFailure,
     ContextLoadOutcome, ContextSources, set_test_conf_root,
 };
-#[doc(hidden)]
-pub use device::NamedOpenedDevice;
 pub use device::{
-    ChipDebugOps, Device, InitiatorOps, Logger, OpenedDevice, PropertyOps, TargetOps,
+    ChipDebugOps, Device, DeviceBackend, DeviceMeta, InfoBackend, InitiatorBackend,
+    InitiatorDevice, InitiatorOps, Logger, OpenedDevice, Pn53xBackend, Pn53xDevice,
+    PropertyBackend, PropertyOps, TargetBackend, TargetDevice, TargetOps,
 };
 pub use driver::{Driver, DriverRegistry};
 

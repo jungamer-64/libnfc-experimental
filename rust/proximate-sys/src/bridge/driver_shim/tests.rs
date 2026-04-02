@@ -6,7 +6,7 @@ use crate::initiator::{
     nfc_device_get_supported_baud_rate, nfc_device_get_supported_baud_rate_target_mode,
     nfc_device_get_supported_modulation,
 };
-use proximate_driver::{Driver, OpenedDevice};
+use proximate_driver::{DeviceBackend, DeviceMeta, Driver};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::{ptr, slice};
@@ -220,7 +220,7 @@ struct FakeRustHandle {
     info_result: Result<String, rt::Error>,
 }
 
-impl rt::OpenedDevice for FakeRustHandle {
+impl rt::DeviceMeta for FakeRustHandle {
     fn name(&self) -> &str {
         &self.name
     }
@@ -232,11 +232,15 @@ impl rt::OpenedDevice for FakeRustHandle {
     fn caps(&self) -> rt::DeviceCaps {
         self.caps
     }
+}
 
+impl rt::InfoBackend for FakeRustHandle {
     fn information_about(&mut self) -> Result<String, rt::Error> {
         self.info_result.clone()
     }
+}
 
+impl rt::PropertyBackend for FakeRustHandle {
     fn set_property_bool(&mut self, property: rt::Property, enable: bool) -> Result<(), rt::Error> {
         self.property_calls.lock().unwrap().push((property, enable));
         Ok(())
@@ -262,13 +266,19 @@ impl rt::OpenedDevice for FakeRustHandle {
     }
 }
 
+impl rt::InitiatorBackend for FakeRustHandle {}
+
+impl rt::TargetBackend for FakeRustHandle {}
+
+impl rt::Pn53xBackend for FakeRustHandle {}
+
 fn make_rust_shim_device(handle: FakeRustHandle) -> *mut nfc_device {
     let conn = CString::new(handle.connstring.as_str()).unwrap();
     let raw = unsafe { nfc_device_new(ptr::null(), conn.as_ptr()) };
     assert!(!raw.is_null());
     let caps = handle.caps();
     let state = Box::new(RustDeviceState {
-        handle: Box::new(handle),
+        handle: Box::new(handle) as Box<dyn DeviceBackend>,
         strerror: CString::new("shim").unwrap(),
         supported_modulations: Vec::new(),
         supported_baud_rates: Vec::new(),

@@ -107,7 +107,7 @@ pub(super) fn sync_bool_property(device: *mut nfc_device, property: rt::Property
     }
 }
 
-pub(super) fn sync_property_mirrors(device: *mut nfc_device, handle: &dyn rt::OpenedDevice) {
+pub(super) fn sync_property_mirrors(device: *mut nfc_device, handle: &dyn rt::DeviceBackend) {
     for property in [
         rt::Property::HandleCrc,
         rt::Property::HandleParity,

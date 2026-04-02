@@ -2,8 +2,40 @@ use std::path::Path;
 
 use proximate_driver as rt;
 
-pub type DeviceSelector = proximate_types::ConnectionString;
 pub type ConfiguredDevice = rt::UserDefinedDevice;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeviceSelector(rt::ConnectionString);
+
+impl DeviceSelector {
+    pub fn new(value: impl Into<String>) -> Result<Self, rt::Error> {
+        Ok(Self(rt::ConnectionString::new(value)?))
+    }
+
+    pub fn as_connection_string(&self) -> &rt::ConnectionString {
+        &self.0
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    pub fn into_inner(self) -> rt::ConnectionString {
+        self.0
+    }
+}
+
+impl From<rt::ConnectionString> for DeviceSelector {
+    fn from(value: rt::ConnectionString) -> Self {
+        Self(value)
+    }
+}
+
+impl From<DeviceSelector> for rt::ConnectionString {
+    fn from(value: DeviceSelector) -> Self {
+        value.0
+    }
+}
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Config(rt::ContextConfig);
@@ -13,12 +45,20 @@ impl Config {
         Self::default()
     }
 
-    pub fn load() -> Self {
-        Self(rt::Context::load().config)
+    pub fn try_load() -> Result<Self, rt::ContextLoadFailure> {
+        rt::Context::try_load().map(|context| Self(context.config))
     }
 
-    pub fn load_from_dir(path: &Path) -> Self {
-        Self(rt::Context::load_from_dir(path).config)
+    pub fn load_or_default() -> Self {
+        Self(rt::Context::load_or_default().config)
+    }
+
+    pub fn try_load_from_dir(path: &Path) -> Result<Self, rt::ContextLoadFailure> {
+        rt::Context::try_load_from_dir(path).map(|context| Self(context.config))
+    }
+
+    pub fn load_from_dir_or_default(path: &Path) -> Self {
+        Self(rt::Context::load_from_dir_or_default(path).config)
     }
 
     pub fn allow_autoscan(&self) -> bool {
@@ -37,20 +77,32 @@ impl Config {
         &self.0.user_defined_devices
     }
 
-    pub fn user_defined_devices_mut(&mut self) -> &mut Vec<ConfiguredDevice> {
-        &mut self.0.user_defined_devices
-    }
-
-    pub fn set_allow_autoscan(&mut self, value: bool) {
+    pub fn with_allow_autoscan(mut self, value: bool) -> Self {
         self.0.allow_autoscan = value;
+        self
     }
 
-    pub fn set_allow_intrusive_scan(&mut self, value: bool) {
+    pub fn with_allow_intrusive_scan(mut self, value: bool) -> Self {
         self.0.allow_intrusive_scan = value;
+        self
     }
 
-    pub fn set_log_level(&mut self, value: u32) {
+    pub fn with_log_level(mut self, value: u32) -> Self {
         self.0.log_level = value;
+        self
+    }
+
+    pub fn with_user_device(mut self, device: ConfiguredDevice) -> Self {
+        self.0.user_defined_devices.push(device);
+        self
+    }
+
+    pub fn push_user_device(&mut self, device: ConfiguredDevice) {
+        self.0.user_defined_devices.push(device);
+    }
+
+    pub fn clear_user_devices(&mut self) {
+        self.0.user_defined_devices.clear();
     }
 
     pub fn into_inner(self) -> rt::ContextConfig {
@@ -65,9 +117,10 @@ impl From<rt::ContextConfig> for Config {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DeviceDescriptor {
-    pub name: Option<String>,
+pub struct DeviceInfo {
+    pub display_name: String,
     pub selector: DeviceSelector,
+    pub caps_hint: Option<rt::DeviceCaps>,
 }
 
 pub struct ContextBuilder {
@@ -95,7 +148,12 @@ impl ContextBuilder {
         self
     }
 
-    pub fn register_driver(mut self, driver: Box<dyn rt::Driver>) -> Self {
+    pub fn register_driver(mut self, driver: impl rt::Driver + 'static) -> Self {
+        self.registry.register_driver(Box::new(driver));
+        self
+    }
+
+    pub fn register_boxed_driver(mut self, driver: Box<dyn rt::Driver>) -> Self {
         self.registry.register_driver(driver);
         self
     }
@@ -128,13 +186,25 @@ impl Context {
         ContextBuilder::new()
     }
 
-    pub fn load() -> Self {
-        Self::builder().with_config(Config::load()).build()
+    pub fn try_load() -> Result<Self, rt::ContextLoadFailure> {
+        Ok(Self::builder().with_config(Config::try_load()?).build())
     }
 
-    pub fn load_from_dir(path: &Path) -> Self {
+    pub fn load_or_default() -> Self {
         Self::builder()
-            .with_config(Config::load_from_dir(path))
+            .with_config(Config::load_or_default())
+            .build()
+    }
+
+    pub fn try_load_from_dir(path: &Path) -> Result<Self, rt::ContextLoadFailure> {
+        Ok(Self::builder()
+            .with_config(Config::try_load_from_dir(path)?)
+            .build())
+    }
+
+    pub fn load_from_dir_or_default(path: &Path) -> Self {
+        Self::builder()
+            .with_config(Config::load_from_dir_or_default(path))
             .build()
     }
 
@@ -142,31 +212,34 @@ impl Context {
         Config(self.runtime.config.clone())
     }
 
-    pub fn scan(&self) -> Result<Vec<DeviceDescriptor>, proximate_types::Error> {
+    pub fn scan(&self) -> Result<Vec<DeviceInfo>, rt::Error> {
         let devices = self.registry.list_devices(&self.runtime)?;
         Ok(devices
             .into_iter()
-            .map(|selector| DeviceDescriptor {
-                name: configured_name(
+            .map(|selector| {
+                let display_name = configured_name(
                     self.runtime.config.user_defined_devices.as_slice(),
                     &selector,
                 )
-                .map(str::to_owned),
-                selector,
+                .map(str::to_owned)
+                .unwrap_or_else(|| selector.as_str().to_owned());
+                DeviceInfo {
+                    display_name,
+                    selector: selector.into(),
+                    caps_hint: None,
+                }
             })
             .collect())
     }
 
-    pub fn open(&self, selector: &DeviceSelector) -> Result<DeviceHandle, proximate_types::Error> {
+    pub fn open(&self, selector: &DeviceSelector) -> Result<Device, rt::Error> {
         self.registry
-            .open(&self.runtime, Some(selector))
-            .map(DeviceHandle::new)
+            .open(&self.runtime, Some(selector.as_connection_string()))
+            .map(Device::new)
     }
 
-    pub fn open_default(&self) -> Result<DeviceHandle, proximate_types::Error> {
-        self.registry
-            .open(&self.runtime, None)
-            .map(DeviceHandle::new)
+    pub fn open_default(&self) -> Result<Device, rt::Error> {
+        self.registry.open(&self.runtime, None).map(Device::new)
     }
 }
 
@@ -178,7 +251,7 @@ impl Default for Context {
 
 fn configured_name<'a>(
     devices: &'a [ConfiguredDevice],
-    selector: &DeviceSelector,
+    selector: &rt::ConnectionString,
 ) -> Option<&'a str> {
     devices
         .iter()
@@ -186,11 +259,11 @@ fn configured_name<'a>(
         .map(|device| device.name.as_str())
 }
 
-pub struct DeviceHandle {
+pub struct Device {
     inner: rt::Device,
 }
 
-impl DeviceHandle {
+impl Device {
     fn new(inner: rt::Device) -> Self {
         Self { inner }
     }
@@ -199,11 +272,11 @@ impl DeviceHandle {
         self.inner.name()
     }
 
-    pub fn selector(&self) -> &DeviceSelector {
-        self.inner.connstring()
+    pub fn selector(&self) -> DeviceSelector {
+        self.inner.connstring().clone().into()
     }
 
-    pub fn caps(&self) -> proximate_types::DeviceCaps {
+    pub fn caps(&self) -> rt::DeviceCaps {
         self.inner.caps()
     }
 
@@ -215,114 +288,107 @@ impl DeviceHandle {
         self.inner.strerror()
     }
 
-    pub fn information_about(&mut self) -> Result<String, proximate_types::Error> {
+    pub fn information_about(&mut self) -> Result<String, rt::Error> {
         self.inner.information_about()
     }
 
     pub fn set_property_bool(
         &mut self,
-        property: proximate_types::Property,
+        property: rt::Property,
         enable: bool,
-    ) -> Result<(), proximate_types::Error> {
+    ) -> Result<(), rt::Error> {
         self.inner.set_property_bool(property, enable)
     }
 
     pub fn set_property_int(
         &mut self,
-        property: proximate_types::Property,
+        property: rt::Property,
         value: i32,
-    ) -> Result<(), proximate_types::Error> {
+    ) -> Result<(), rt::Error> {
         self.inner.set_property_int(property, value)
     }
 
-    pub fn initiator(&mut self) -> InitiatorSession<'_> {
-        InitiatorSession {
-            device: &mut self.inner,
-        }
+    pub fn initiator(&mut self) -> Result<InitiatorDevice<'_>, rt::Error> {
+        self.inner
+            .initiator()
+            .map(|inner| InitiatorDevice { inner })
     }
 
-    pub fn target(&mut self) -> TargetSession<'_> {
-        TargetSession {
-            device: &mut self.inner,
-        }
+    pub fn target(&mut self) -> Result<TargetDevice<'_>, rt::Error> {
+        self.inner.target().map(|inner| TargetDevice { inner })
     }
 
-    pub fn pn53x(&mut self) -> Pn53xControl<'_> {
-        Pn53xControl {
-            device: &mut self.inner,
-        }
+    pub fn pn53x(&mut self) -> Result<Pn53xDevice<'_>, rt::Error> {
+        self.inner.pn53x().map(|inner| Pn53xDevice { inner })
     }
 }
 
-pub struct InitiatorSession<'a> {
-    device: &'a mut rt::Device,
+pub struct InitiatorDevice<'a> {
+    inner: rt::InitiatorDevice<'a>,
 }
 
-impl<'a> InitiatorSession<'a> {
-    pub fn init(&mut self) -> Result<i32, proximate_types::Error> {
-        self.device.initiator_init()
+impl<'a> InitiatorDevice<'a> {
+    pub fn init(&mut self) -> Result<i32, rt::Error> {
+        self.inner.init()
     }
 
-    pub fn init_secure_element(&mut self) -> Result<i32, proximate_types::Error> {
-        self.device.initiator_init_secure_element()
+    pub fn init_secure_element(&mut self) -> Result<i32, rt::Error> {
+        self.inner.init_secure_element()
     }
 
     pub fn select_passive_target(
         &mut self,
-        modulation: proximate_types::Modulation,
+        modulation: rt::Modulation,
         init_data: Option<&[u8]>,
-    ) -> Result<Option<proximate_types::Target>, proximate_types::Error> {
-        self.device.select_passive_target(modulation, init_data)
+    ) -> Result<Option<rt::Target>, rt::Error> {
+        self.inner.select_passive_target(modulation, init_data)
     }
 
     pub fn list_passive_targets(
         &mut self,
-        modulation: proximate_types::Modulation,
+        modulation: rt::Modulation,
         max_targets: usize,
-    ) -> Result<Vec<proximate_types::Target>, proximate_types::Error> {
-        self.device.list_passive_targets(modulation, max_targets)
+    ) -> Result<Vec<rt::Target>, rt::Error> {
+        self.inner.list_passive_targets(modulation, max_targets)
     }
 
     pub fn poll_target(
         &mut self,
-        modulations: &[proximate_types::Modulation],
+        modulations: &[rt::Modulation],
         poll_nr: u8,
         period: u8,
-    ) -> Result<Option<proximate_types::Target>, proximate_types::Error> {
-        self.device.poll_target(modulations, poll_nr, period)
+    ) -> Result<Option<rt::Target>, rt::Error> {
+        self.inner.poll_target(modulations, poll_nr, period)
     }
 
     pub fn select_dep_target(
         &mut self,
-        mode: proximate_types::DepMode,
-        baud_rate: proximate_types::BaudRate,
-        initiator: Option<&proximate_types::DepInfo>,
+        mode: rt::DepMode,
+        baud_rate: rt::BaudRate,
+        initiator: Option<&rt::DepInfo>,
         timeout: i32,
-    ) -> Result<Option<proximate_types::Target>, proximate_types::Error> {
-        self.device
+    ) -> Result<Option<rt::Target>, rt::Error> {
+        self.inner
             .select_dep_target(mode, baud_rate, initiator, timeout)
     }
 
     pub fn poll_dep_target(
         &mut self,
-        mode: proximate_types::DepMode,
-        baud_rate: proximate_types::BaudRate,
-        initiator: Option<&proximate_types::DepInfo>,
+        mode: rt::DepMode,
+        baud_rate: rt::BaudRate,
+        initiator: Option<&rt::DepInfo>,
         timeout: i32,
-    ) -> Result<Option<proximate_types::Target>, proximate_types::Error> {
-        self.device
+    ) -> Result<Option<rt::Target>, rt::Error> {
+        self.inner
             .poll_dep_target(mode, baud_rate, initiator, timeout)
     }
 
-    pub fn deselect_target(&mut self) -> Result<(), proximate_types::Error> {
-        self.device.deselect_target()
+    pub fn deselect_target(&mut self) -> Result<(), rt::Error> {
+        self.inner.deselect_target()
     }
 
-    pub fn target_is_present(
-        &mut self,
-        target: Option<&proximate_types::Target>,
-    ) -> Result<bool, proximate_types::Error> {
-        self.device.target_is_present(target)
+    pub fn target_is_present(&mut self, target: Option<&rt::Target>) -> Result<bool, rt::Error> {
+        self.inner.target_is_present(target)
     }
 
     pub fn transceive_bytes(
@@ -330,8 +396,8 @@ impl<'a> InitiatorSession<'a> {
         tx: &[u8],
         rx: &mut [u8],
         timeout: i32,
-    ) -> Result<usize, proximate_types::Error> {
-        self.device.transceive_bytes(tx, rx, timeout)
+    ) -> Result<usize, rt::Error> {
+        self.inner.transceive_bytes(tx, rx, timeout)
     }
 
     pub fn transceive_bits(
@@ -341,8 +407,8 @@ impl<'a> InitiatorSession<'a> {
         tx_parity: Option<&[u8]>,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
-    ) -> Result<usize, proximate_types::Error> {
-        self.device
+    ) -> Result<usize, rt::Error> {
+        self.inner
             .transceive_bits(tx, tx_bits_len, tx_parity, rx, rx_parity)
     }
 
@@ -350,8 +416,8 @@ impl<'a> InitiatorSession<'a> {
         &mut self,
         tx: &[u8],
         rx: &mut [u8],
-    ) -> Result<(usize, u32), proximate_types::Error> {
-        self.device.transceive_bytes_timed(tx, rx)
+    ) -> Result<(usize, u32), rt::Error> {
+        self.inner.transceive_bytes_timed(tx, rx)
     }
 
     pub fn transceive_bits_timed(
@@ -361,36 +427,44 @@ impl<'a> InitiatorSession<'a> {
         tx_parity: Option<&[u8]>,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
-    ) -> Result<(usize, u32), proximate_types::Error> {
-        self.device
+    ) -> Result<(usize, u32), rt::Error> {
+        self.inner
             .transceive_bits_timed(tx, tx_bits_len, tx_parity, rx, rx_parity)
     }
+
+    pub fn abort_command(&mut self) -> Result<(), rt::Error> {
+        self.inner.abort_command()
+    }
+
+    pub fn idle(&mut self) -> Result<(), rt::Error> {
+        self.inner.idle()
+    }
+
+    pub fn powerdown(&mut self) -> Result<(), rt::Error> {
+        self.inner.powerdown()
+    }
 }
 
-pub struct TargetSession<'a> {
-    device: &'a mut rt::Device,
+pub struct TargetDevice<'a> {
+    inner: rt::TargetDevice<'a>,
 }
 
-impl<'a> TargetSession<'a> {
+impl<'a> TargetDevice<'a> {
     pub fn init(
         &mut self,
-        target: &mut proximate_types::Target,
+        target: &mut rt::Target,
         rx: &mut [u8],
         timeout: i32,
-    ) -> Result<usize, proximate_types::Error> {
-        self.device.target_init(target, rx, timeout)
+    ) -> Result<usize, rt::Error> {
+        self.inner.init(target, rx, timeout)
     }
 
-    pub fn send_bytes(&mut self, tx: &[u8], timeout: i32) -> Result<usize, proximate_types::Error> {
-        self.device.target_send_bytes(tx, timeout)
+    pub fn send_bytes(&mut self, tx: &[u8], timeout: i32) -> Result<usize, rt::Error> {
+        self.inner.send_bytes(tx, timeout)
     }
 
-    pub fn receive_bytes(
-        &mut self,
-        rx: &mut [u8],
-        timeout: i32,
-    ) -> Result<usize, proximate_types::Error> {
-        self.device.target_receive_bytes(rx, timeout)
+    pub fn receive_bytes(&mut self, rx: &mut [u8], timeout: i32) -> Result<usize, rt::Error> {
+        self.inner.receive_bytes(rx, timeout)
     }
 
     pub fn send_bits(
@@ -398,39 +472,35 @@ impl<'a> TargetSession<'a> {
         tx: &[u8],
         tx_bits_len: usize,
         tx_parity: Option<&[u8]>,
-    ) -> Result<usize, proximate_types::Error> {
-        self.device.target_send_bits(tx, tx_bits_len, tx_parity)
+    ) -> Result<usize, rt::Error> {
+        self.inner.send_bits(tx, tx_bits_len, tx_parity)
     }
 
     pub fn receive_bits(
         &mut self,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
-    ) -> Result<usize, proximate_types::Error> {
-        self.device.target_receive_bits(rx, rx_parity)
+    ) -> Result<usize, rt::Error> {
+        self.inner.receive_bits(rx, rx_parity)
     }
 }
 
-pub struct Pn53xControl<'a> {
-    device: &'a mut rt::Device,
+pub struct Pn53xDevice<'a> {
+    inner: rt::Pn53xDevice<'a>,
 }
 
-impl<'a> Pn53xControl<'a> {
+impl<'a> Pn53xDevice<'a> {
     pub fn transceive(
         &mut self,
         tx: &[u8],
         rx: &mut [u8],
         timeout: i32,
-    ) -> Result<usize, proximate_types::Error> {
-        self.device
-            .handle_mut()
-            .pn53x_transceive_driver(tx, rx, timeout)
+    ) -> Result<usize, rt::Error> {
+        self.inner.transceive(tx, rx, timeout)
     }
 
-    pub fn read_register(&mut self, register: u16) -> Result<u8, proximate_types::Error> {
-        self.device
-            .handle_mut()
-            .pn53x_read_register_driver(register)
+    pub fn read_register(&mut self, register: u16) -> Result<u8, rt::Error> {
+        self.inner.read_register(register)
     }
 
     pub fn write_register(
@@ -438,223 +508,171 @@ impl<'a> Pn53xControl<'a> {
         register: u16,
         symbol_mask: u8,
         value: u8,
-    ) -> Result<(), proximate_types::Error> {
-        self.device
-            .handle_mut()
-            .pn53x_write_register_driver(register, symbol_mask, value)
+    ) -> Result<(), rt::Error> {
+        self.inner.write_register(register, symbol_mask, value)
     }
 
-    pub fn sam_configuration(
-        &mut self,
-        mode: u8,
-        timeout: i32,
-    ) -> Result<i32, proximate_types::Error> {
-        self.device
-            .handle_mut()
-            .pn532_sam_configuration_driver(mode, timeout)
+    pub fn sam_configuration(&mut self, mode: u8, timeout: i32) -> Result<i32, rt::Error> {
+        self.inner.sam_configuration(mode, timeout)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     struct FakeDevice {
         name: String,
-        connstring: DeviceSelector,
-        caps: proximate_types::DeviceCaps,
+        connstring: rt::ConnectionString,
+        caps: rt::DeviceCaps,
     }
 
     impl FakeDevice {
-        fn new(connstring: &str, caps: proximate_types::DeviceCaps) -> Self {
+        fn new(connstring: &str, caps: rt::DeviceCaps) -> Self {
             Self {
                 name: "fake".into(),
-                connstring: DeviceSelector::new(connstring).unwrap(),
+                connstring: rt::ConnectionString::new(connstring).unwrap(),
                 caps,
             }
         }
     }
 
-    impl rt::OpenedDevice for FakeDevice {
+    impl rt::DeviceMeta for FakeDevice {
         fn name(&self) -> &str {
             &self.name
         }
 
-        fn connstring(&self) -> &DeviceSelector {
+        fn connstring(&self) -> &rt::ConnectionString {
             &self.connstring
         }
 
-        fn caps(&self) -> proximate_types::DeviceCaps {
+        fn caps(&self) -> rt::DeviceCaps {
             self.caps
         }
+    }
 
+    impl rt::InfoBackend for FakeDevice {}
+
+    impl rt::PropertyBackend for FakeDevice {
         fn set_property_bool(
             &mut self,
-            _property: proximate_types::Property,
+            _property: rt::Property,
             _enable: bool,
-        ) -> Result<(), proximate_types::Error> {
+        ) -> Result<(), rt::Error> {
             Ok(())
         }
 
         fn set_property_int(
             &mut self,
-            _property: proximate_types::Property,
+            _property: rt::Property,
             _value: i32,
-        ) -> Result<(), proximate_types::Error> {
+        ) -> Result<(), rt::Error> {
             Ok(())
         }
 
         fn supported_modulations(
             &mut self,
-            _mode: proximate_types::Mode,
-        ) -> Result<Vec<proximate_types::ModulationType>, proximate_types::Error> {
-            Ok(vec![proximate_types::ModulationType::Iso14443A])
+            _mode: rt::Mode,
+        ) -> Result<Vec<rt::ModulationType>, rt::Error> {
+            Ok(vec![rt::ModulationType::Iso14443A])
         }
 
         fn supported_baud_rates(
             &mut self,
-            _mode: proximate_types::Mode,
-            _modulation_type: proximate_types::ModulationType,
-        ) -> Result<Vec<proximate_types::BaudRate>, proximate_types::Error> {
-            Ok(vec![proximate_types::BaudRate::Br106])
+            _mode: rt::Mode,
+            _modulation_type: rt::ModulationType,
+        ) -> Result<Vec<rt::BaudRate>, rt::Error> {
+            Ok(vec![rt::BaudRate::Br106])
         }
     }
 
+    impl rt::InitiatorBackend for FakeDevice {}
+
+    impl rt::TargetBackend for FakeDevice {}
+
+    impl rt::Pn53xBackend for FakeDevice {}
+
     struct FakeDriver {
-        name: String,
-        scan_results: Vec<DeviceSelector>,
-        caps: proximate_types::DeviceCaps,
+        caps: rt::DeviceCaps,
     }
 
     impl rt::Driver for FakeDriver {
         fn name(&self) -> &str {
-            &self.name
+            "fake"
         }
 
-        fn scan_type(&self) -> proximate_types::ScanType {
-            proximate_types::ScanType::NotIntrusive
+        fn scan_type(&self) -> rt::ScanType {
+            rt::ScanType::NotIntrusive
         }
 
-        fn scan(
-            &self,
-            _context: &rt::Context,
-        ) -> Result<Vec<DeviceSelector>, proximate_types::Error> {
-            Ok(self.scan_results.clone())
+        fn scan(&self, _context: &rt::Context) -> Result<Vec<rt::ConnectionString>, rt::Error> {
+            Ok(vec![rt::ConnectionString::new("fake:001").unwrap()])
         }
 
         fn open(
             &self,
             _context: &rt::Context,
-            connstring: &DeviceSelector,
-        ) -> Result<Box<dyn rt::OpenedDevice>, proximate_types::Error> {
+            connstring: &rt::ConnectionString,
+        ) -> Result<Box<dyn rt::DeviceBackend>, rt::Error> {
             Ok(Box::new(FakeDevice::new(connstring.as_str(), self.caps)))
         }
     }
 
-    fn temp_config_root() -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        std::env::temp_dir().join(format!("proximate-facade-{nonce}-{}", std::process::id()))
-    }
-
     #[test]
-    fn config_load_from_dir_surfaces_user_defined_devices() {
-        let root = temp_config_root();
-        fs::create_dir_all(root.join("devices.d")).unwrap();
-        fs::write(
-            root.join("libnfc.conf"),
-            "device.name = \"config device\"\ndevice.connstring = pn532_spi:/dev/spidev0.0\n",
-        )
-        .unwrap();
-        fs::write(
-            root.join("devices.d/extra.conf"),
-            "name = \"extra device\"\nconnstring = pn532_i2c:/dev/i2c-1\n",
-        )
-        .unwrap();
-
-        let config = Config::load_from_dir(&root);
-        assert_eq!(config.user_defined_devices().len(), 2);
-        assert_eq!(config.user_defined_devices()[0].name, "config device");
-        assert_eq!(
-            config.user_defined_devices()[1].connstring.as_str(),
-            "pn532_i2c:/dev/i2c-1"
-        );
-
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn context_scan_returns_named_descriptors() {
-        let mut config = Config::default();
-        config.set_allow_autoscan(false);
-        config.user_defined_devices_mut().push(ConfiguredDevice {
-            name: "named device".into(),
-            connstring: DeviceSelector::new("pn532_uart:/dev/ttyUSB0").unwrap(),
+    fn config_builder_updates_user_devices() {
+        let mut config = Config::new().with_allow_autoscan(false).with_log_level(4);
+        config.push_user_device(ConfiguredDevice {
+            name: "named".into(),
+            connstring: rt::ConnectionString::new("fake:001").unwrap(),
             optional: false,
         });
 
-        let context = Context::builder()
-            .with_config(config)
-            .without_builtin_drivers()
-            .build();
+        assert!(!config.allow_autoscan());
+        assert_eq!(config.log_level(), 4);
+        assert_eq!(config.user_defined_devices().len(), 1);
 
-        let devices = context.scan().unwrap();
-        assert_eq!(devices.len(), 1);
-        assert_eq!(devices[0].name.as_deref(), Some("named device"));
-        assert_eq!(devices[0].selector.as_str(), "pn532_uart:/dev/ttyUSB0");
+        config.clear_user_devices();
+        assert!(config.user_defined_devices().is_empty());
     }
 
     #[test]
-    fn open_default_uses_registered_driver_and_preserves_selector() {
-        let mut config = Config::default();
-        config.set_allow_autoscan(false);
-        config.user_defined_devices_mut().push(ConfiguredDevice {
-            name: "default device".into(),
-            connstring: DeviceSelector::new("fake:device").unwrap(),
-            optional: false,
-        });
-
+    fn context_scan_returns_device_info() {
         let context = Context::builder()
-            .with_config(config)
             .without_builtin_drivers()
-            .register_driver(Box::new(FakeDriver {
-                name: "fake".into(),
-                scan_results: Vec::new(),
-                caps: proximate_types::DeviceCaps::SET_PROPERTY_BOOL,
-            }))
+            .register_driver(FakeDriver {
+                caps: rt::DeviceCaps::SET_PROPERTY_BOOL,
+            })
             .build();
 
-        let handle = context.open_default().unwrap();
-        assert_eq!(handle.selector().as_str(), "fake:device");
-        assert_eq!(handle.name(), "default device");
+        let scanned = context.scan().unwrap();
+        assert_eq!(scanned.len(), 1);
+        assert_eq!(scanned[0].display_name, "fake:001");
+        assert_eq!(scanned[0].selector.as_str(), "fake:001");
+        assert_eq!(scanned[0].caps_hint, None);
     }
 
     #[test]
-    fn typed_sessions_surface_capability_failures() {
+    fn device_views_fail_when_capability_is_missing() {
         let context = Context::builder()
             .without_builtin_drivers()
-            .register_driver(Box::new(FakeDriver {
-                name: "fake".into(),
-                scan_results: vec![DeviceSelector::new("fake:device").unwrap()],
-                caps: proximate_types::DeviceCaps::SET_PROPERTY_BOOL,
-            }))
+            .register_driver(FakeDriver {
+                caps: rt::DeviceCaps::SET_PROPERTY_BOOL,
+            })
             .build();
+        let selector = DeviceSelector::new("fake:001").unwrap();
+        let mut device = context.open(&selector).unwrap();
 
-        let mut handle = context
-            .open(&DeviceSelector::new("fake:device").unwrap())
-            .unwrap();
-        let error = handle
-            .initiator()
-            .transceive_bytes(&[0x01], &mut [0u8; 8], 25)
-            .unwrap_err();
         assert!(matches!(
-            error,
-            proximate_types::Error::MissingCapability(_)
+            device.initiator(),
+            Err(rt::Error::MissingCapability(_))
+        ));
+        assert!(matches!(
+            device.target(),
+            Err(rt::Error::MissingCapability(_))
+        ));
+        assert!(matches!(
+            device.pn53x(),
+            Err(rt::Error::MissingCapability(_))
         ));
     }
 }

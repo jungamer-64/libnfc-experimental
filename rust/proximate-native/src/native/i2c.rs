@@ -1,6 +1,6 @@
 use super::connstring::{build_path_connstring, decode_path_descriptor};
 use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport};
-use proximate_driver::{ConnectionString, Context, Driver, Error, OpenedDevice, ScanType};
+use proximate_driver::{ConnectionString, Context, DeviceBackend, Driver, Error, ScanType};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -73,7 +73,7 @@ impl Driver for Pn532I2cDriver {
         &self,
         _context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn OpenedDevice>, Error> {
+    ) -> Result<Box<dyn DeviceBackend>, Error> {
         let descriptor = decode_path_descriptor(connstring, DRIVER_NAME)?;
 
         #[cfg(target_os = "linux")]

@@ -9,7 +9,7 @@ use super::pn53x::{
 };
 #[cfg(any(target_os = "linux", windows))]
 use crate::pcsc::ctl_code as platform_pcsc_ctl_code;
-use proximate_driver::{ConnectionString, Context, Driver, Error, OpenedDevice, ScanType};
+use proximate_driver::{ConnectionString, Context, DeviceBackend, Driver, Error, ScanType};
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -76,7 +76,7 @@ impl Driver for Acr122PcscDriver {
         &self,
         _context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn OpenedDevice>, Error> {
+    ) -> Result<Box<dyn DeviceBackend>, Error> {
         let (reader_name, resolved_connstring) = resolve_reader(
             self.backend.as_ref(),
             connstring,

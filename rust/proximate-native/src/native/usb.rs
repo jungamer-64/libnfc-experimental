@@ -1,7 +1,7 @@
 use super::connstring::{UsbSelector, build_usb_connstring, decode_usb_selector};
 use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport, Pn53xUsbModel};
 use crate::usb::{UsbDeviceInfo, UsbError, UsbHandle, bulk_endpoints, list_devices, strerror};
-use proximate_driver::{ConnectionString, Context, Driver, Error, OpenedDevice, ScanType};
+use proximate_driver::{ConnectionString, Context, DeviceBackend, Driver, Error, ScanType};
 
 const DRIVER_NAME: &str = "pn53x_usb";
 const PROBE_TIMEOUT_MS: i32 = 250;
@@ -114,7 +114,7 @@ impl Driver for Pn53xUsbDriver {
         &self,
         _context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn OpenedDevice>, Error> {
+    ) -> Result<Box<dyn DeviceBackend>, Error> {
         let selector = decode_usb_selector(connstring)?;
         let (info, supported) = select_usb_device(selector)?;
         let display_name = usb_display_name(&info, supported);

@@ -1,21 +1,29 @@
-use super::acr122;
-#[cfg(feature = "pcsc_helper")]
-use crate::pcsc as platform_pcsc;
 use proximate_driver::{
-    BaudRate, ConnectionString, Context, DeviceCaps, Driver, Error, Mode, Modulation,
-    ModulationType, OpenedDevice, Property, ScanType, Target, TargetInfo, decode_connstring,
+    BaudRate, ConnectionString, Context, DeviceBackend, DeviceCaps, DeviceMeta, Driver, Error,
+    InfoBackend, InitiatorBackend, Mode, Modulation, ModulationType, Pn53xBackend, Property,
+    PropertyBackend, ScanType, Target, TargetBackend, TargetInfo, decode_connstring,
     device_error_message,
 };
-#[cfg(test)]
-use std::collections::HashMap;
-#[cfg(test)]
-use std::collections::VecDeque;
 use std::fmt;
 use std::sync::Arc;
-#[cfg(test)]
-use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
+
+mod apdu;
+mod backend;
+#[cfg(test)]
+mod fake;
+mod reader;
+
+use self::apdu::{
+    attr_to_string, command_response_data, icc_type_matches, is_feitian_reader,
+    iso14443a_atr_valid, iso14443a_uid_length_valid, iso14443b_atr_valid,
+    iso14443b_uid_length_valid,
+};
+use self::backend::{SystemPcscBackend, stringify_pcsc_error};
+#[cfg(test)]
+use self::fake::{FakeCardState, FakePcscBackend, FakePcscCard};
+use self::reader::{ReaderFilter, resolve_reader, scan_matching_readers};
 
 const NFC_SUCCESS: i32 = 0;
 const NFC_EIO: i32 = -1;
@@ -41,25 +49,6 @@ fn device_error(operation: &'static str, code: i32) -> Error {
 
 fn invalid_connection(message: impl Into<String>) -> Error {
     Error::InvalidConnectionString(message.into())
-}
-
-fn pcsc_error_message(code: i32) -> Option<&'static str> {
-    #[cfg(feature = "pcsc_helper")]
-    {
-        platform_pcsc::error_message(code)
-    }
-
-    #[cfg(not(feature = "pcsc_helper"))]
-    {
-        let _ = code;
-        None
-    }
-}
-
-fn stringify_pcsc_error(code: i32) -> String {
-    pcsc_error_message(code)
-        .map(str::to_string)
-        .unwrap_or_else(|| format!("Unknown error: 0x{:08X}", code as u32))
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -154,270 +143,6 @@ pub(super) trait PcscBackend: Send + Sync {
     ) -> Result<Box<dyn PcscCard>, i32>;
 }
 
-#[cfg(feature = "pcsc_helper")]
-fn map_share_mode(value: PcscShareMode) -> platform_pcsc::ShareMode {
-    match value {
-        PcscShareMode::Exclusive => platform_pcsc::ShareMode::Exclusive,
-        PcscShareMode::Shared => platform_pcsc::ShareMode::Shared,
-        PcscShareMode::Direct => platform_pcsc::ShareMode::Direct,
-    }
-}
-
-#[cfg(feature = "pcsc_helper")]
-fn map_protocols(value: PcscProtocols) -> platform_pcsc::Protocols {
-    let mut protocols = platform_pcsc::Protocols::UNDEFINED;
-    if value.contains(PcscProtocol::T0) {
-        protocols = platform_pcsc::Protocols(protocols.0 | platform_pcsc::Protocols::T0.0);
-    }
-    if value.contains(PcscProtocol::T1) {
-        protocols = platform_pcsc::Protocols(protocols.0 | platform_pcsc::Protocols::T1.0);
-    }
-    if value.contains(PcscProtocol::Raw) {
-        protocols = platform_pcsc::Protocols(protocols.0 | platform_pcsc::Protocols::RAW.0);
-    }
-    protocols
-}
-
-#[cfg(feature = "pcsc_helper")]
-fn map_disposition(value: PcscDisposition) -> platform_pcsc::Disposition {
-    match value {
-        PcscDisposition::LeaveCard => platform_pcsc::Disposition::LeaveCard,
-        PcscDisposition::ResetCard => platform_pcsc::Disposition::ResetCard,
-        PcscDisposition::UnpowerCard => platform_pcsc::Disposition::UnpowerCard,
-        PcscDisposition::EjectCard => platform_pcsc::Disposition::EjectCard,
-    }
-}
-
-#[cfg(feature = "pcsc_helper")]
-fn map_protocol(value: platform_pcsc::Protocol) -> PcscProtocol {
-    match value {
-        platform_pcsc::Protocol::T0 => PcscProtocol::T0,
-        platform_pcsc::Protocol::T1 => PcscProtocol::T1,
-        platform_pcsc::Protocol::Raw => PcscProtocol::Raw,
-    }
-}
-
-#[cfg(feature = "pcsc_helper")]
-fn map_attribute(value: PcscAttribute) -> platform_pcsc::Attribute {
-    match value {
-        PcscAttribute::VendorName => platform_pcsc::Attribute::VendorName,
-        PcscAttribute::VendorIfdType => platform_pcsc::Attribute::VendorIfdType,
-        PcscAttribute::VendorIfdVersion => platform_pcsc::Attribute::VendorIfdVersion,
-        PcscAttribute::VendorIfdSerialNo => platform_pcsc::Attribute::VendorIfdSerialNo,
-        PcscAttribute::IccTypePerAtr => platform_pcsc::Attribute::IccTypePerAtr,
-    }
-}
-
-#[cfg(feature = "pcsc_helper")]
-pub(super) struct SystemPcscBackend;
-
-#[cfg(feature = "pcsc_helper")]
-struct SystemPcscCard {
-    inner: Box<dyn platform_pcsc::Card>,
-}
-
-#[cfg(feature = "pcsc_helper")]
-impl PcscCard for SystemPcscCard {
-    fn reconnect(
-        &mut self,
-        share_mode: PcscShareMode,
-        preferred_protocols: PcscProtocols,
-        disposition: PcscDisposition,
-    ) -> Result<(), i32> {
-        self.inner.reconnect(
-            map_share_mode(share_mode),
-            map_protocols(preferred_protocols),
-            map_disposition(disposition),
-        )
-    }
-
-    fn status2_owned(&self) -> Result<PcscCardStatus, i32> {
-        self.inner.status2_owned().map(|status| PcscCardStatus {
-            present: status.present,
-            atr: status.atr,
-            protocol: status.protocol.map(map_protocol),
-        })
-    }
-
-    fn get_attribute_owned(&self, attribute: PcscAttribute) -> Result<Vec<u8>, i32> {
-        self.inner.get_attribute_owned(map_attribute(attribute))
-    }
-
-    fn transmit(&self, send_buffer: &[u8], receive_capacity: usize) -> Result<Vec<u8>, i32> {
-        self.inner.transmit(send_buffer, receive_capacity)
-    }
-
-    fn control(
-        &self,
-        control_code: u64,
-        send_buffer: &[u8],
-        receive_capacity: usize,
-    ) -> Result<Vec<u8>, i32> {
-        self.inner
-            .control(control_code, send_buffer, receive_capacity)
-    }
-}
-
-#[cfg(feature = "pcsc_helper")]
-impl PcscBackend for SystemPcscBackend {
-    fn list_readers_owned(&self) -> Result<Vec<String>, i32> {
-        platform_pcsc::Backend::list_readers_owned(&platform_pcsc::SystemBackend)
-    }
-
-    fn connect(
-        &self,
-        reader: &str,
-        share_mode: PcscShareMode,
-        preferred_protocols: PcscProtocols,
-    ) -> Result<Box<dyn PcscCard>, i32> {
-        let card = platform_pcsc::Backend::connect(
-            &platform_pcsc::SystemBackend,
-            reader,
-            map_share_mode(share_mode),
-            map_protocols(preferred_protocols),
-        )?;
-        Ok(Box::new(SystemPcscCard { inner: card }))
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ReaderFilter {
-    Generic,
-    Acr122,
-}
-
-fn reader_matches(filter: ReaderFilter, reader: &str) -> bool {
-    match filter {
-        ReaderFilter::Generic => !acr122::is_pcsc_reader_name(reader),
-        ReaderFilter::Acr122 => acr122::is_pcsc_reader_name(reader),
-    }
-}
-
-pub(super) fn scan_matching_readers(
-    backend: &dyn PcscBackend,
-    driver_name: &str,
-    filter: ReaderFilter,
-) -> Result<Vec<ConnectionString>, Error> {
-    let readers = match backend.list_readers_owned() {
-        Ok(readers) => readers,
-        Err(_) => return Ok(Vec::new()),
-    };
-    readers
-        .into_iter()
-        .filter(|reader| reader_matches(filter, reader))
-        .map(|reader| ConnectionString::new(format!("{driver_name}:{reader}")))
-        .collect()
-}
-
-fn parse_reader_index(value: &str) -> Option<usize> {
-    if value.is_empty() || value.len() > 4 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    value.parse::<usize>().ok()
-}
-
-pub(super) fn resolve_reader(
-    backend: &dyn PcscBackend,
-    connstring: &ConnectionString,
-    driver_name: &str,
-    filter: ReaderFilter,
-) -> Result<(String, ConnectionString), Error> {
-    let decoded = decode_connstring(connstring, driver_name, "pcsc")?;
-    if decoded.match_depth < 1 {
-        return Err(invalid_connection(format!(
-            "{driver_name} connection string does not match"
-        )));
-    }
-
-    if decoded.match_depth == 1 {
-        let devices = scan_matching_readers(backend, driver_name, filter)?;
-        let Some(resolved) = devices.into_iter().next() else {
-            return Err(device_error("pcsc_scan", NFC_ENOTSUCHDEV));
-        };
-        let resolved_decoded = decode_connstring(&resolved, driver_name, "pcsc")?;
-        let reader = resolved_decoded
-            .param1
-            .ok_or_else(|| invalid_connection("resolved reader name is missing"))?;
-        return Ok((reader, resolved));
-    }
-
-    let requested = decoded
-        .param1
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| invalid_connection("reader name is missing"))?;
-    if let Some(index) = parse_reader_index(&requested) {
-        let devices = scan_matching_readers(backend, driver_name, filter)?;
-        let Some(resolved) = devices.into_iter().nth(index) else {
-            return Err(device_error("pcsc_scan", NFC_ENOTSUCHDEV));
-        };
-        let resolved_decoded = decode_connstring(&resolved, driver_name, "pcsc")?;
-        let reader = resolved_decoded
-            .param1
-            .ok_or_else(|| invalid_connection("resolved reader name is missing"))?;
-        return Ok((reader, resolved));
-    }
-
-    if !reader_matches(filter, &requested) {
-        return Err(device_error("pcsc_open", NFC_ENOTSUCHDEV));
-    }
-
-    Ok((
-        requested.clone(),
-        ConnectionString::new(format!("{driver_name}:{requested}"))?,
-    ))
-}
-
-fn attr_to_string(value: &[u8]) -> Option<String> {
-    let end = value
-        .iter()
-        .position(|byte| *byte == 0)
-        .unwrap_or(value.len());
-    if end == 0 {
-        None
-    } else {
-        Some(String::from_utf8_lossy(&value[..end]).into_owned())
-    }
-}
-
-fn is_feitian_reader(name: &str) -> bool {
-    let lowercase = name.to_ascii_lowercase();
-    lowercase.contains("feitian")
-}
-
-fn command_response_data<'a>(
-    response: &'a [u8],
-    operation: &'static str,
-) -> Result<&'a [u8], Error> {
-    if response.len() < 2 {
-        return Err(device_error(operation, NFC_EDEVNOTSUPP));
-    }
-    Ok(&response[..response.len() - 2])
-}
-
-fn icc_type_matches(icc_type: u8, expected_type: u8) -> bool {
-    icc_type == ICC_TYPE_UNKNOWN || icc_type == expected_type
-}
-
-fn iso14443a_uid_length_valid(uid_length: usize) -> bool {
-    matches!(uid_length, 0 | 4 | 7 | 10)
-}
-
-fn iso14443a_atr_valid(atr: &[u8]) -> bool {
-    atr.len() >= 5
-        && atr[0] == 0x3B
-        && atr[1] == (0x80 | (atr.len() as u8 - 5))
-        && atr[2] == 0x80
-        && atr[3] == 0x01
-}
-
-fn iso14443b_uid_length_valid(uid_length: usize) -> bool {
-    matches!(uid_length, 0 | 8)
-}
-
-fn iso14443b_atr_valid(atr: &[u8]) -> bool {
-    atr.len() == 13 && atr[0] == 0x3B && atr[1] == (0x80 | 0x08) && atr[2] == 0x80 && atr[3] == 0x01
-}
-
 pub(super) struct PcscDriver {
     driver_name: &'static str,
     filter: ReaderFilter,
@@ -460,7 +185,7 @@ impl Driver for PcscDriver {
         &self,
         _context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn OpenedDevice>, Error> {
+    ) -> Result<Box<dyn DeviceBackend>, Error> {
         let (reader_name, resolved_connstring) = resolve_reader(
             self.backend.as_ref(),
             connstring,
@@ -851,7 +576,7 @@ impl PcscDevice {
     }
 }
 
-impl OpenedDevice for PcscDevice {
+impl DeviceMeta for PcscDevice {
     fn name(&self) -> &str {
         &self.name
     }
@@ -881,7 +606,9 @@ impl OpenedDevice for PcscDevice {
             .map(stringify_pcsc_error)
             .unwrap_or_else(|| device_error_message(self.last_error).to_string())
     }
+}
 
+impl InfoBackend for PcscDevice {
     fn information_about(&mut self) -> Result<String, Error> {
         let model = self
             .attribute(PcscAttribute::VendorName)
@@ -914,7 +641,9 @@ impl OpenedDevice for PcscDevice {
         message.push('\n');
         self.succeed(message)
     }
+}
 
+impl PropertyBackend for PcscDevice {
     fn set_property_bool(&mut self, property: Property, enable: bool) -> Result<(), Error> {
         let is_feitian = is_feitian_reader(&self.name);
         match property {
@@ -978,7 +707,9 @@ impl OpenedDevice for PcscDevice {
         }
         self.succeed(PCSC_SUPPORTED_BAUD_RATES.to_vec())
     }
+}
 
+impl InitiatorBackend for PcscDevice {
     fn initiator_init_driver(&mut self) -> Result<i32, Error> {
         self.succeed(0)
     }
@@ -1066,127 +797,9 @@ impl OpenedDevice for PcscDevice {
     }
 }
 
-#[cfg(test)]
-#[derive(Default)]
-pub(super) struct FakeCardState {
-    pub(super) status_responses: VecDeque<Result<PcscCardStatus, i32>>,
-    pub(super) attributes: HashMap<PcscAttribute, Result<Vec<u8>, i32>>,
-    pub(super) transmit_responses: VecDeque<Result<Vec<u8>, i32>>,
-    pub(super) control_responses: VecDeque<Result<Vec<u8>, i32>>,
-    pub(super) reconnect_calls: Vec<(PcscShareMode, PcscProtocols, PcscDisposition)>,
-}
+impl TargetBackend for PcscDevice {}
 
-#[cfg(test)]
-#[derive(Clone)]
-pub(super) struct FakePcscCard {
-    state: Arc<Mutex<FakeCardState>>,
-}
-
-#[cfg(test)]
-impl FakePcscCard {
-    pub(super) fn new(state: FakeCardState) -> Self {
-        Self {
-            state: Arc::new(Mutex::new(state)),
-        }
-    }
-}
-
-#[cfg(test)]
-impl PcscCard for FakePcscCard {
-    fn reconnect(
-        &mut self,
-        share_mode: PcscShareMode,
-        preferred_protocols: PcscProtocols,
-        disposition: PcscDisposition,
-    ) -> Result<(), i32> {
-        self.state.lock().unwrap().reconnect_calls.push((
-            share_mode,
-            preferred_protocols,
-            disposition,
-        ));
-        Ok(())
-    }
-
-    fn status2_owned(&self) -> Result<PcscCardStatus, i32> {
-        self.state
-            .lock()
-            .unwrap()
-            .status_responses
-            .pop_front()
-            .unwrap_or(Ok(PcscCardStatus {
-                present: true,
-                atr: Vec::new(),
-                protocol: Some(PcscProtocol::T0),
-            }))
-    }
-
-    fn get_attribute_owned(&self, attribute: PcscAttribute) -> Result<Vec<u8>, i32> {
-        self.state
-            .lock()
-            .unwrap()
-            .attributes
-            .get(&attribute)
-            .cloned()
-            .unwrap_or(Ok(Vec::new()))
-    }
-
-    fn transmit(&self, _send_buffer: &[u8], _receive_capacity: usize) -> Result<Vec<u8>, i32> {
-        self.state
-            .lock()
-            .unwrap()
-            .transmit_responses
-            .pop_front()
-            .unwrap_or(Ok(Vec::new()))
-    }
-
-    fn control(
-        &self,
-        _control_code: u64,
-        _send_buffer: &[u8],
-        _receive_capacity: usize,
-    ) -> Result<Vec<u8>, i32> {
-        self.state
-            .lock()
-            .unwrap()
-            .control_responses
-            .pop_front()
-            .unwrap_or(Ok(Vec::new()))
-    }
-}
-
-#[cfg(test)]
-#[derive(Default)]
-pub(super) struct FakePcscBackend {
-    readers: Vec<String>,
-    cards: HashMap<String, Arc<Mutex<FakeCardState>>>,
-}
-
-#[cfg(test)]
-impl FakePcscBackend {
-    pub(super) fn with_reader(mut self, reader: &str, state: FakeCardState) -> Self {
-        self.readers.push(reader.to_string());
-        self.cards
-            .insert(reader.to_string(), Arc::new(Mutex::new(state)));
-        self
-    }
-}
-
-#[cfg(test)]
-impl PcscBackend for FakePcscBackend {
-    fn list_readers_owned(&self) -> Result<Vec<String>, i32> {
-        Ok(self.readers.clone())
-    }
-
-    fn connect(
-        &self,
-        reader: &str,
-        _share_mode: PcscShareMode,
-        _preferred_protocols: PcscProtocols,
-    ) -> Result<Box<dyn PcscCard>, i32> {
-        let state = self.cards.get(reader).cloned().ok_or(NFC_ENOTSUCHDEV)?;
-        Ok(Box::new(FakePcscCard { state }))
-    }
-}
+impl Pn53xBackend for PcscDevice {}
 
 #[cfg(test)]
 mod tests {

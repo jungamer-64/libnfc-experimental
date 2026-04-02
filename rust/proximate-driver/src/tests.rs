@@ -67,7 +67,7 @@ impl FakeDevice {
     }
 }
 
-impl OpenedDevice for FakeDevice {
+impl DeviceMeta for FakeDevice {
     fn name(&self) -> &str {
         &self.name
     }
@@ -79,7 +79,11 @@ impl OpenedDevice for FakeDevice {
     fn caps(&self) -> DeviceCaps {
         self.caps
     }
+}
 
+impl InfoBackend for FakeDevice {}
+
+impl PropertyBackend for FakeDevice {
     fn set_property_bool(&mut self, property: Property, enable: bool) -> Result<(), Error> {
         self.property_calls.push((property, enable));
         match self
@@ -115,7 +119,9 @@ impl OpenedDevice for FakeDevice {
             .find(|entry| entry.0 == property)
             .map(|entry| entry.1)
     }
+}
 
+impl InitiatorBackend for FakeDevice {
     fn initiator_init_driver(&mut self) -> Result<i32, Error> {
         Ok(0)
     }
@@ -143,7 +149,9 @@ impl OpenedDevice for FakeDevice {
     ) -> Result<Option<Target>, Error> {
         self.dep_results.pop_front().unwrap_or(Ok(None))
     }
+}
 
+impl TargetBackend for FakeDevice {
     fn target_init_driver(
         &mut self,
         _target: &mut Target,
@@ -154,6 +162,8 @@ impl OpenedDevice for FakeDevice {
         Ok(0)
     }
 }
+
+impl Pn53xBackend for FakeDevice {}
 
 struct FakeDriver {
     name: String,
@@ -179,7 +189,7 @@ impl Driver for FakeDriver {
         &self,
         _context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn OpenedDevice>, Error> {
+    ) -> Result<Box<dyn DeviceBackend>, Error> {
         match &self.open_result {
             Ok(opened_name) => Ok(Box::new(FakeDevice {
                 name: opened_name.clone(),
@@ -418,11 +428,8 @@ fn driver_registry_prefers_user_defined_name_override() {
 fn device_caps_propagate_through_wrappers() {
     let device = FakeDevice::new("alpha:001");
     let caps = device.caps;
-    let handle = Box::new(device) as Box<dyn OpenedDevice>;
-    let named = crate::NamedOpenedDevice::new("named".into(), handle);
-    assert_eq!(named.caps(), caps);
-
-    let device = Device::new(Box::new(named));
+    let handle = Box::new(device) as Box<dyn DeviceBackend>;
+    let device = Device::new(handle, Some("named".into()));
     assert_eq!(device.caps(), caps);
 }
 
@@ -677,7 +684,7 @@ fn open_without_connstring_uses_first_listed_device() {
             &self,
             _context: &Context,
             connstring: &ConnectionString,
-        ) -> Result<Box<dyn OpenedDevice>, Error> {
+        ) -> Result<Box<dyn DeviceBackend>, Error> {
             Ok(Box::new(FakeDevice {
                 name: self.opened_name.to_string(),
                 connstring: connstring.clone(),

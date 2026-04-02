@@ -1,6 +1,5 @@
-use super::device::NamedOpenedDevice;
 use crate::{
-    ConnectionString, Context, ContextConfig, Device, DriverCaps, Error, OpenedDevice, ScanType,
+    ConnectionString, Context, ContextConfig, Device, DeviceBackend, DriverCaps, Error, ScanType,
 };
 
 pub trait Driver: Send + Sync {
@@ -18,7 +17,7 @@ pub trait Driver: Send + Sync {
         &self,
         context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn OpenedDevice>, Error>;
+    ) -> Result<Box<dyn DeviceBackend>, Error>;
 }
 
 #[doc(hidden)]
@@ -147,14 +146,7 @@ impl DriverRegistry {
             }
 
             match driver.open(context, &requested) {
-                Ok(handle) => {
-                    let handle = if let Some(name) = override_name.clone() {
-                        Box::new(NamedOpenedDevice::new(name, handle)) as Box<dyn OpenedDevice>
-                    } else {
-                        handle
-                    };
-                    return Ok(Device::new(handle));
-                }
+                Ok(handle) => return Ok(Device::new(handle, override_name.clone())),
                 Err(error) if request_is_usb => {
                     last_error = Some(error);
                 }

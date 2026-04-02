@@ -18,8 +18,14 @@ const CONFIG_MAX_DEVICES_MESSAGE: &str = "Configuration exceeded maximum user-de
 const DEFAULT_NON_WINDOWS_CONFDIR: &str = "/usr/local/etc/nfc";
 const DEFAULT_WINDOWS_CONFDIR: &str = "./config";
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ConfRoot {
+    Disabled,
+    Override(PathBuf),
+}
+
 thread_local! {
-    static TEST_CONF_ROOT: std::cell::RefCell<Option<Option<PathBuf>>> =
+    static TEST_CONF_ROOT: std::cell::RefCell<Option<ConfRoot>> =
         const { std::cell::RefCell::new(None) };
 }
 
@@ -210,16 +216,28 @@ impl Context {
         Self { config }
     }
 
+    pub fn try_load() -> Result<Self, ContextLoadFailure> {
+        Self::load_with_diagnostics().map(|outcome| outcome.context)
+    }
+
     pub fn load() -> Self {
-        Self::load_with_diagnostics()
-            .map(|outcome| outcome.context)
-            .unwrap_or_default()
+        Self::load_or_default()
+    }
+
+    pub fn load_or_default() -> Self {
+        Self::try_load().unwrap_or_default()
+    }
+
+    pub fn try_load_from_dir(path: &Path) -> Result<Self, ContextLoadFailure> {
+        Self::load_from_dir_with_diagnostics(path).map(|outcome| outcome.context)
     }
 
     pub fn load_from_dir(path: &Path) -> Self {
-        Self::load_from_dir_with_diagnostics(path)
-            .map(|outcome| outcome.context)
-            .unwrap_or_default()
+        Self::load_from_dir_or_default(path)
+    }
+
+    pub fn load_from_dir_or_default(path: &Path) -> Self {
+        Self::try_load_from_dir(path).unwrap_or_default()
     }
 
     #[doc(hidden)]
@@ -378,18 +396,20 @@ fn compiled_conf_root() -> PathBuf {
 }
 
 fn configured_conf_root() -> Option<PathBuf> {
-    TEST_CONF_ROOT.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| Some(compiled_conf_root()))
+    TEST_CONF_ROOT.with(|cell| match cell.borrow().clone() {
+        None => Some(compiled_conf_root()),
+        Some(ConfRoot::Disabled) => None,
+        Some(ConfRoot::Override(path)) => Some(path),
     })
 }
 
 #[doc(hidden)]
 pub fn set_test_conf_root(root: Option<PathBuf>) {
     TEST_CONF_ROOT.with(|cell| {
-        *cell.borrow_mut() = Some(root);
+        *cell.borrow_mut() = Some(match root {
+            Some(path) => ConfRoot::Override(path),
+            None => ConfRoot::Disabled,
+        });
     });
 }
 

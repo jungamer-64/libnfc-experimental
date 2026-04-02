@@ -6,7 +6,7 @@ use super::pn53x::{
 };
 use super::uart::{UartPort, list_candidate_paths};
 use proximate_driver::{
-    ConnectionString, Context, Driver, Error, OpenedDevice, Property, ScanType,
+    ConnectionString, Context, DeviceBackend, Driver, Error, Property, PropertyBackend, ScanType,
 };
 use std::collections::VecDeque;
 #[cfg(test)]
@@ -84,7 +84,7 @@ impl Driver for Acr122sDriver {
         &self,
         _context: &Context,
         connstring: &ConnectionString,
-    ) -> Result<Box<dyn OpenedDevice>, Error> {
+    ) -> Result<Box<dyn DeviceBackend>, Error> {
         let descriptor = decode_path_speed_descriptor(connstring, DRIVER_NAME, DEFAULT_SPEED)?;
 
         #[cfg(target_os = "linux")]
