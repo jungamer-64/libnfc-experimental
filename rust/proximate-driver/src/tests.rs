@@ -719,6 +719,42 @@ fn open_without_connstring_uses_first_listed_device() {
 }
 
 #[test]
+fn list_devices_outcome_uses_effective_driver_priority_order() {
+    let mut registry = DriverRegistry::new();
+    registry.register_driver(Box::new(FakeDriver {
+        name: "alpha".into(),
+        scan_type: ScanType::NotIntrusive,
+        scan_results: vec![ConnectionString::new("alpha:001").unwrap()],
+        open_result: Ok("alpha-device".into()),
+    }));
+    registry.register_driver(Box::new(FakeDriver {
+        name: "beta".into(),
+        scan_type: ScanType::NotIntrusive,
+        scan_results: vec![
+            ConnectionString::new("beta:001").unwrap(),
+            ConnectionString::new("beta:002").unwrap(),
+        ],
+        open_result: Ok("beta-device".into()),
+    }));
+
+    let context = Context::with_config(ContextConfig {
+        allow_autoscan: true,
+        allow_intrusive_scan: false,
+        log_level: 1,
+        user_defined_devices: Vec::new(),
+    });
+
+    assert_eq!(
+        registry.list_devices(&context).unwrap(),
+        vec![
+            ConnectionString::new("beta:001").unwrap(),
+            ConnectionString::new("beta:002").unwrap(),
+            ConnectionString::new("alpha:001").unwrap(),
+        ]
+    );
+}
+
+#[test]
 fn load_from_dir_loads_config_files_and_devices_d_entries() {
     let _env_guard = env_lock().lock().unwrap();
     let mut env = ScopedEnv::new();

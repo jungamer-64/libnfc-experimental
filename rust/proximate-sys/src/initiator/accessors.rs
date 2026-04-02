@@ -35,7 +35,7 @@ unsafe fn get_supported_modulation_direct_impl(
                 *supported = state.supported_modulations.as_ptr();
             }
             unsafe { set_device_last_error(device, 0) };
-            state.supported_modulations.len().saturating_sub(1) as c_int
+            0
         }
         Err(error) => runtime_result_status(device, &error, true),
     }
@@ -70,7 +70,7 @@ unsafe fn get_supported_baud_rate_direct_impl(
                 *supported = state.supported_baud_rates.as_ptr();
             }
             unsafe { set_device_last_error(device, 0) };
-            state.supported_baud_rates.len().saturating_sub(1) as c_int
+            0
         }
         Err(error) => runtime_result_status(device, &error, true),
     }

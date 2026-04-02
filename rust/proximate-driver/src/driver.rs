@@ -47,6 +47,11 @@ impl DriverRegistry {
     }
 
     #[doc(hidden)]
+    pub fn registered_driver_names(&self) -> Vec<&str> {
+        self.drivers.iter().map(|driver| driver.name()).collect()
+    }
+
+    #[doc(hidden)]
     pub fn list_devices_outcome(&self, context: &Context) -> Result<ListDevicesOutcome, Error> {
         let mut devices = Vec::new();
 

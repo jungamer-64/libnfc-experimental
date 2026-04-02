@@ -1,9 +1,15 @@
 use super::external::ExternalDriver;
 use super::rust_owned::RustDeviceState;
 use super::*;
+use crate::ffi_types::nfc_mode;
+use crate::initiator::{
+    nfc_device_get_supported_baud_rate, nfc_device_get_supported_baud_rate_target_mode,
+    nfc_device_get_supported_modulation,
+};
 use proximate_driver::{Driver, OpenedDevice};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
+use std::{ptr, slice};
 
 #[derive(Default)]
 struct RawScanState {
@@ -366,6 +372,75 @@ fn borrowed_rust_device_normalizes_missing_caps_and_clears_last_error_on_success
         property_calls.lock().unwrap().clone(),
         vec![(rt::Property::ActivateField, true)]
     );
+
+    unsafe {
+        let driver = (*raw).driver as *mut nfc_driver;
+        let close = (*driver).close.unwrap();
+        close(raw);
+    }
+}
+
+#[test]
+fn rust_shim_capability_accessors_return_success_and_terminated_arrays() {
+    let raw = make_rust_shim_device(FakeRustHandle {
+        name: "rust-shim".into(),
+        connstring: rt::ConnectionString::new("alpha:001").unwrap(),
+        caps: rt::DeviceCaps::SUPPORTED_MODULATIONS | rt::DeviceCaps::SUPPORTED_BAUD_RATES,
+        property_calls: Arc::new(Mutex::new(Vec::new())),
+        info_result: Ok("shim".into()),
+    });
+
+    let mut supported_modulations = ptr::null();
+    let mut supported_baud_rates = ptr::null();
+
+    assert_eq!(
+        unsafe {
+            nfc_device_get_supported_modulation(
+                raw,
+                nfc_mode::N_INITIATOR,
+                ptr::addr_of_mut!(supported_modulations),
+            )
+        },
+        0
+    );
+    assert_eq!(
+        unsafe { slice::from_raw_parts(supported_modulations, 2) },
+        [
+            nfc_modulation_type::NMT_ISO14443A,
+            nfc_modulation_type::NMT_UNDEFINED,
+        ]
+    );
+
+    assert_eq!(
+        unsafe {
+            nfc_device_get_supported_baud_rate(
+                raw,
+                nfc_modulation_type::NMT_ISO14443A,
+                ptr::addr_of_mut!(supported_baud_rates),
+            )
+        },
+        0
+    );
+    assert_eq!(
+        unsafe { slice::from_raw_parts(supported_baud_rates, 2) },
+        [nfc_baud_rate::NBR_106, nfc_baud_rate::NBR_UNDEFINED]
+    );
+
+    assert_eq!(
+        unsafe {
+            nfc_device_get_supported_baud_rate_target_mode(
+                raw,
+                nfc_modulation_type::NMT_ISO14443A,
+                ptr::addr_of_mut!(supported_baud_rates),
+            )
+        },
+        0
+    );
+    assert_eq!(
+        unsafe { slice::from_raw_parts(supported_baud_rates, 2) },
+        [nfc_baud_rate::NBR_106, nfc_baud_rate::NBR_UNDEFINED]
+    );
+    assert_eq!(unsafe { (*raw).last_error }, 0);
 
     unsafe {
         let driver = (*raw).driver as *mut nfc_driver;
