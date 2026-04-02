@@ -3,6 +3,12 @@ name = "proximate-native"
 version = "0.1.0"
 edition = "2024"
 build = "build.rs"
+description = "Builtin drivers and native transport adapters for the experimental libnfc Rust core."
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 proximate-driver = { path = "../proximate-driver", default-features = false }

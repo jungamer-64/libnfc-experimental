@@ -10,7 +10,6 @@ pub(super) unsafe fn nfc_init_impl(context: *mut *mut nfc_context) {
         *context = nfc_context_new();
         if (*context).is_null() {
             libc::perror(MALLOC_LABEL);
-            return;
         }
     }
 }

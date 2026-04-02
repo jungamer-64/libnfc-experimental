@@ -103,7 +103,7 @@ impl Driver for Pn532UartDriver {
                 port,
                 PROBE_TIMEOUT_MS,
             )?;
-            return Ok(Box::new(device));
+            Ok(Box::new(device))
         }
 
         #[cfg(not(target_os = "linux"))]
@@ -292,18 +292,18 @@ impl UartPort {
         timeout_ms: i32,
     ) -> Result<usize, Error> {
         loop {
-            if let Some(frame_len) = expected_frame_len(&self.read_buffer)? {
-                if self.read_buffer.len() >= frame_len {
-                    if frame_len > buffer.len() {
-                        return Err(Error::BufferTooSmall {
-                            needed: frame_len,
-                            available: buffer.len(),
-                        });
-                    }
-                    buffer[..frame_len].copy_from_slice(&self.read_buffer[..frame_len]);
-                    self.read_buffer.drain(..frame_len);
-                    return Ok(frame_len);
+            if let Some(frame_len) = expected_frame_len(&self.read_buffer)?
+                && self.read_buffer.len() >= frame_len
+            {
+                if frame_len > buffer.len() {
+                    return Err(Error::BufferTooSmall {
+                        needed: frame_len,
+                        available: buffer.len(),
+                    });
                 }
+                buffer[..frame_len].copy_from_slice(&self.read_buffer[..frame_len]);
+                self.read_buffer.drain(..frame_len);
+                return Ok(frame_len);
             }
 
             self.fill_read_buffer(timeout_ms)?;

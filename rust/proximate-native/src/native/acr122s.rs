@@ -111,7 +111,7 @@ impl Driver for Acr122sDriver {
                 PROBE_TIMEOUT_MS,
             )?;
             device.set_property_int(Property::TimeoutCommand, CONTROL_TIMEOUT_MS)?;
-            return Ok(Box::new(device));
+            Ok(Box::new(device))
         }
 
         #[cfg(not(target_os = "linux"))]

@@ -3,6 +3,12 @@ name = "proximate-sys"
 version = "0.1.0"
 edition = "2024"
 build = "build.rs"
+description = "Internal Rust implementation of libnfc's public C ABI."
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories = ["external-ffi-bindings", "hardware-support"]
 
 [lib]
 name = "proximate_sys"

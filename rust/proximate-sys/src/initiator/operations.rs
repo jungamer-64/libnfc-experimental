@@ -70,7 +70,7 @@ pub unsafe fn nfc_initiator_select_passive_target(
         NFC_ESOFT,
         || unsafe {
             let payload = match input_bytes(device, init_data, init_data_len) {
-                Ok(bytes) if bytes.is_empty() => None,
+                Ok([]) => None,
                 Ok(bytes) => Some(bytes),
                 Err(status) => return status,
             };
@@ -106,7 +106,7 @@ pub unsafe fn nfc_initiator_list_passive_targets(
         }
 
         let mut adapter = borrowed_device(device);
-        match adapter.list_passive_targets(modulation_from_c(nm), targets_len as usize) {
+        match adapter.list_passive_targets(modulation_from_c(nm), targets_len) {
             Ok(runtime_targets) => {
                 for (index, runtime_target) in runtime_targets.iter().enumerate() {
                     write_target_to_c(runtime_target, targets.add(index));
@@ -394,6 +394,10 @@ pub unsafe fn nfc_initiator_transceive_bytes_timed(
     )
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Mirrors the libnfc C ABI entrypoint shape."
+)]
 pub unsafe fn nfc_initiator_transceive_bits_timed(
     device: *mut nfc_device,
     tx: *const u8,

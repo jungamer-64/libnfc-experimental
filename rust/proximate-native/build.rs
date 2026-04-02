@@ -4,16 +4,15 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn env_flag_enabled(name: &str, default_enabled: bool) -> bool {
-    println!("cargo:rerun-if-env-changed={}", name);
+    println!("cargo:rerun-if-env-changed={name}");
 
-    match env::var(name) {
-        Ok(value) => match value.to_ascii_lowercase().as_str() {
+    env::var(name).map_or(default_enabled, |value| {
+        match value.to_ascii_lowercase().as_str() {
             "1" | "true" | "yes" | "on" => true,
             "0" | "false" | "no" | "off" => false,
             _ => default_enabled,
-        },
-        Err(_) => default_enabled,
-    }
+        }
+    })
 }
 
 fn emit_enabled_driver_cfgs() {
@@ -43,15 +42,14 @@ fn emit_enabled_driver_cfgs() {
             _ => continue,
         };
 
-        println!("cargo:rustc-cfg={}", cfg_name);
+        println!("cargo:rustc-cfg={cfg_name}");
     }
 }
 
 fn enabled_driver(name: &str) -> bool {
     env::var("PROXIMATE_ENABLED_DRIVERS")
         .ok()
-        .map(|value| value.split(',').any(|driver| driver.trim() == name))
-        .unwrap_or(false)
+        .is_some_and(|value| value.split(',').any(|driver| driver.trim() == name))
 }
 
 fn workspace_root() -> Option<PathBuf> {
@@ -133,7 +131,7 @@ fn main() {
         "libnfc_driver_pn532_i2c",
         "libnfc_driver_pn71xx",
     ] {
-        println!("cargo:rustc-check-cfg=cfg({})", cfg_name);
+        println!("cargo:rustc-check-cfg=cfg({cfg_name})");
     }
 
     if env_flag_enabled("PROXIMATE_WITH_ENVVARS", true) {
@@ -154,7 +152,7 @@ fn main() {
 
     println!("cargo:rerun-if-env-changed=PROXIMATE_CONFDIR");
     if let Ok(confdir) = env::var("PROXIMATE_CONFDIR") {
-        println!("cargo:rustc-env=PROXIMATE_CONFDIR={}", confdir);
+        println!("cargo:rustc-env=PROXIMATE_CONFDIR={confdir}");
     }
 
     if env::var_os("CARGO_FEATURE_NCI_HELPER").is_some() && enabled_driver("pn71xx") {

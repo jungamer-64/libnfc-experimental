@@ -19,6 +19,7 @@ use libc::{c_char, c_int, c_void};
 use std::cell::RefCell;
 use std::ffi::CString;
 use std::panic;
+#[cfg(not(feature = "test_no_catch"))]
 use std::ptr;
 
 thread_local! {
@@ -95,6 +96,7 @@ pub(crate) unsafe fn release_allocated_ptr(ptr: *mut c_void) {
     }
 }
 
+#[cfg(not(feature = "test_no_catch"))]
 fn record_panic(context: &str) {
     let message = format!("panic in {}", context);
     log_error(&message);
@@ -190,7 +192,7 @@ where
 pub(crate) fn nfc_get_last_error() -> *const c_char {
     LAST_ERROR.with(|cell| match cell.borrow().as_ref() {
         Some(message) => message.as_ptr(),
-        None => ptr::null(),
+        None => std::ptr::null(),
     })
 }
 
@@ -226,34 +228,44 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "test_no_catch", should_panic(expected = "boom"))]
     fn ffi_catch_unwind_maps_panic_to_error() {
         // Ensure the panic boundary converts a panic into the
         // appropriate external error code instead of letting the
         // panic unwind across the FFI boundary.
-        let rc = ffi_catch_unwind_int("test_panic", NFC_COMMON_ERROR, || panic!("boom"));
-        assert_eq!(rc, NFC_COMMON_ERROR);
+        let _rc = ffi_catch_unwind_int("test_panic", NFC_COMMON_ERROR, || panic!("boom"));
+        #[cfg(not(feature = "test_no_catch"))]
+        assert_eq!(_rc, NFC_COMMON_ERROR);
     }
 
     #[test]
+    #[cfg_attr(feature = "test_no_catch", should_panic(expected = "boom"))]
     fn ffi_catch_unwind_ptr_maps_panic_to_null() {
         reset_last_error();
-        let ptr = ffi_catch_unwind_ptr::<c_char, _>("test_ptr_panic", || panic!("boom"));
-        assert!(ptr.is_null());
+        let _ptr = ffi_catch_unwind_ptr::<c_char, _>("test_ptr_panic", || panic!("boom"));
+        #[cfg(not(feature = "test_no_catch"))]
+        {
+            assert!(_ptr.is_null());
 
-        let err = nfc_get_last_error();
-        assert!(!err.is_null());
-        let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
-        assert!(recovered.contains("panic in test_ptr_panic"));
+            let err = nfc_get_last_error();
+            assert!(!err.is_null());
+            let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
+            assert!(recovered.contains("panic in test_ptr_panic"));
+        }
     }
 
     #[test]
+    #[cfg_attr(feature = "test_no_catch", should_panic(expected = "boom"))]
     fn ffi_catch_unwind_void_maps_panic_to_last_error() {
         reset_last_error();
         ffi_catch_unwind_void("test_void_panic", || panic!("boom"));
 
-        let err = nfc_get_last_error();
-        assert!(!err.is_null());
-        let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
-        assert!(recovered.contains("panic in test_void_panic"));
+        #[cfg(not(feature = "test_no_catch"))]
+        {
+            let err = nfc_get_last_error();
+            assert!(!err.is_null());
+            let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
+            assert!(recovered.contains("panic in test_void_panic"));
+        }
     }
 }

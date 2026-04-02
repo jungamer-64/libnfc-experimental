@@ -184,11 +184,13 @@ fn build_connstring_bytes(driver_name: &[u8], param_name: &[u8], param_value: &[
     result
 }
 
+type DecodedConnstringSegments<'a> = (i32, Option<&'a [u8]>, Option<&'a [u8]>);
+
 fn decode_connstring_segments<'a>(
     connstring: &'a [u8],
     driver_name: &[u8],
     bus_name: &[u8],
-) -> Option<(i32, Option<&'a [u8]>, Option<&'a [u8]>)> {
+) -> Option<DecodedConnstringSegments<'a>> {
     let (first_segment, remainder) = split_at_first(connstring, b':');
     if first_segment != driver_name && first_segment != bus_name {
         return None;
@@ -218,6 +220,6 @@ pub fn decode_connstring_segments_bytes<'a>(
     connstring: &'a [u8],
     driver_name: &[u8],
     bus_name: &[u8],
-) -> Option<(i32, Option<&'a [u8]>, Option<&'a [u8]>)> {
+) -> Option<DecodedConnstringSegments<'a>> {
     decode_connstring_segments(connstring, driver_name, bus_name)
 }

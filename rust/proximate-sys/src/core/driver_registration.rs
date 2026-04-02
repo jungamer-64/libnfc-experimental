@@ -97,7 +97,6 @@ pub(crate) unsafe fn bridge_close_device(device: *mut nfc_device) {
     #[cfg(test)]
     unsafe {
         nfc_close(device);
-        return;
     }
 
     #[cfg(not(test))]

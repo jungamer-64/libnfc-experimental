@@ -100,6 +100,17 @@ const PN53X_EXTENDED_FRAME_DATA_MAX_LEN: usize = 264;
 const PN53X_EXTENDED_FRAME_OVERHEAD: usize = 11;
 const PN532_BUFFER_LEN: usize = PN53X_EXTENDED_FRAME_DATA_MAX_LEN + PN53X_EXTENDED_FRAME_OVERHEAD;
 
+struct BitTransceiveRequest<'tx, 'rx, 'parity> {
+    operation: &'static str,
+    command: u8,
+    tx: &'tx [u8],
+    tx_bits_len: usize,
+    tx_parity: Option<&'parity [u8]>,
+    rx: &'rx mut [u8],
+    rx_parity: Option<&'parity mut [u8]>,
+    timeout_ms: i32,
+}
+
 fn status_error(operation: &'static str, code: i32) -> Error {
     Error::DeviceOperationFailed { operation, code }
 }
@@ -468,21 +479,21 @@ impl Pn53xCore {
         transport.wake_up()?;
         self.power_mode = Pn53xPowerMode::Normal;
 
-        if previous_mode == Pn53xPowerMode::LowVbat {
-            if let Some(mode) = profile.sam_mode_on_low_vbat {
-                let payload = match mode {
-                    Pn532SamMode::Normal => [mode as u8, 0x00],
-                    Pn532SamMode::WiredCard => [mode as u8, 0x00],
-                    Pn532SamMode::VirtualCard => [mode as u8, 0x00],
-                    Pn532SamMode::DualCard => [mode as u8, 0x00],
-                };
-                let _ = self.exchange_prepared_command(
-                    transport,
-                    PN532_SAM_CONFIGURATION,
-                    &payload,
-                    timeout_ms,
-                )?;
-            }
+        if previous_mode == Pn53xPowerMode::LowVbat
+            && let Some(mode) = profile.sam_mode_on_low_vbat
+        {
+            let payload = match mode {
+                Pn532SamMode::Normal => [mode as u8, 0x00],
+                Pn532SamMode::WiredCard => [mode as u8, 0x00],
+                Pn532SamMode::VirtualCard => [mode as u8, 0x00],
+                Pn532SamMode::DualCard => [mode as u8, 0x00],
+            };
+            let _ = self.exchange_prepared_command(
+                transport,
+                PN532_SAM_CONFIGURATION,
+                &payload,
+                timeout_ms,
+            )?;
         }
 
         Ok(())
@@ -992,15 +1003,18 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
 
     fn transceive_bits_shared(
         &mut self,
-        operation: &'static str,
-        command: u8,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
-        rx: &mut [u8],
-        rx_parity: Option<&mut [u8]>,
-        timeout_ms: i32,
+        request: BitTransceiveRequest<'_, '_, '_>,
     ) -> Result<usize, Error> {
+        let BitTransceiveRequest {
+            operation,
+            command,
+            tx,
+            tx_bits_len,
+            tx_parity,
+            rx,
+            rx_parity,
+            timeout_ms,
+        } = request;
         let (payload, payload_bits_len) = if self.core.properties.handle_parity {
             if tx_parity.is_some() || rx_parity.is_some() {
                 return self.remember(Err(Error::UnsupportedOperation(operation)));
@@ -1155,7 +1169,7 @@ fn split_status_response(command: u8, response: &[u8]) -> Result<(u8, Vec<u8>), 
 }
 
 fn bits_to_bytes_len(bits_len: usize) -> usize {
-    (bits_len / 8) + usize::from(bits_len % 8 != 0)
+    bits_len.div_ceil(8)
 }
 
 fn raw_frame_bits_len(bytes_len: usize, last_bits: u8) -> usize {
@@ -1282,7 +1296,7 @@ fn pn53x_unwrap_frame(
 }
 
 fn even_parity_bit(byte: u8) -> u8 {
-    u8::from(byte.count_ones() % 2 == 0)
+    u8::from(byte.count_ones().is_multiple_of(2))
 }
 
 fn iso14443a_crc_append(data: &[u8]) -> [u8; 2] {
@@ -2086,16 +2100,16 @@ impl<T: Pn53xTransport + Send + 'static> OpenedDevice for Pn53xDevice<T> {
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<usize, Error> {
-        self.transceive_bits_shared(
-            "transceive_bits",
-            PN53X_IN_COMMUNICATE_THRU,
+        self.transceive_bits_shared(BitTransceiveRequest {
+            operation: "transceive_bits",
+            command: PN53X_IN_COMMUNICATE_THRU,
             tx,
             tx_bits_len,
             tx_parity,
             rx,
             rx_parity,
-            self.core.timeout_communication_ms,
-        )
+            timeout_ms: self.core.timeout_communication_ms,
+        })
     }
 
     fn transceive_bytes_timed_driver(
@@ -2187,16 +2201,16 @@ impl<T: Pn53xTransport + Send + 'static> OpenedDevice for Pn53xDevice<T> {
         tx_parity: Option<&[u8]>,
     ) -> Result<usize, Error> {
         let mut sink = [];
-        let _ = self.transceive_bits_shared(
-            "target_send_bits",
-            PN53X_TG_RESPONSE_TO_INITIATOR,
+        let _ = self.transceive_bits_shared(BitTransceiveRequest {
+            operation: "target_send_bits",
+            command: PN53X_TG_RESPONSE_TO_INITIATOR,
             tx,
             tx_bits_len,
             tx_parity,
-            &mut sink,
-            None,
-            self.core.timeout_communication_ms,
-        )?;
+            rx: &mut sink,
+            rx_parity: None,
+            timeout_ms: self.core.timeout_communication_ms,
+        })?;
         self.last_error = 0;
         Ok(tx_bits_len)
     }
@@ -2206,16 +2220,16 @@ impl<T: Pn53xTransport + Send + 'static> OpenedDevice for Pn53xDevice<T> {
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<usize, Error> {
-        self.transceive_bits_shared(
-            "target_receive_bits",
-            PN53X_TG_GET_INITIATOR_COMMAND,
-            &[],
-            0,
-            None,
+        self.transceive_bits_shared(BitTransceiveRequest {
+            operation: "target_receive_bits",
+            command: PN53X_TG_GET_INITIATOR_COMMAND,
+            tx: &[],
+            tx_bits_len: 0,
+            tx_parity: None,
             rx,
             rx_parity,
-            self.core.timeout_communication_ms,
-        )
+            timeout_ms: self.core.timeout_communication_ms,
+        })
     }
 
     fn abort_command_driver(&mut self) -> Result<(), Error> {

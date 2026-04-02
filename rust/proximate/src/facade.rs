@@ -5,7 +5,7 @@ use proximate_driver as rt;
 pub type DeviceSelector = proximate_types::ConnectionString;
 pub type ConfiguredDevice = rt::UserDefinedDevice;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Config(rt::ContextConfig);
 
 impl Config {
@@ -55,12 +55,6 @@ impl Config {
 
     pub fn into_inner(self) -> rt::ContextConfig {
         self.0
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self(rt::ContextConfig::default())
     }
 }
 

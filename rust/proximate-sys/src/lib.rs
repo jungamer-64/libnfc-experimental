@@ -81,6 +81,8 @@ mod proximate {
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_rs_log_message(
     group: u8,
@@ -92,12 +94,16 @@ pub unsafe extern "C" fn nfc_rs_log_message(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_register_driver(driver: *const nfc_driver) -> libc::c_int {
     unsafe { proximate::nfc_register_driver(driver) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_open(
     context: *mut nfc_context,
@@ -107,6 +113,8 @@ pub unsafe extern "C" fn nfc_open(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_list_devices(
     context: *mut nfc_context,
@@ -117,42 +125,56 @@ pub unsafe extern "C" fn nfc_list_devices(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_init(context: *mut *mut nfc_context) {
     unsafe { proximate::nfc_init(context) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_exit(context: *mut nfc_context) {
     unsafe { proximate::nfc_exit(context) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_close(device: *mut nfc_device) {
     unsafe { proximate::nfc_close(device) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_free(ptr: *mut libc::c_void) {
     unsafe { proximate::nfc_free(ptr) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_version() -> *const libc::c_char {
     unsafe { proximate::nfc_version() }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn str_nfc_baud_rate(value: nfc_baud_rate) -> *const libc::c_char {
     unsafe { proximate::str_nfc_baud_rate(value) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn str_nfc_modulation_type(
     value: nfc_modulation_type,
@@ -161,6 +183,8 @@ pub unsafe extern "C" fn str_nfc_modulation_type(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn str_nfc_target(
     buf: *mut *mut libc::c_char,
@@ -171,6 +195,8 @@ pub unsafe extern "C" fn str_nfc_target(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_device_set_property_int(
     device: *mut nfc_device,
@@ -181,6 +207,8 @@ pub unsafe extern "C" fn nfc_device_set_property_int(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_device_set_property_bool(
     device: *mut nfc_device,
@@ -191,18 +219,24 @@ pub unsafe extern "C" fn nfc_device_set_property_bool(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_initiator_init(device: *mut nfc_device) -> libc::c_int {
     unsafe { proximate::nfc_initiator_init(device) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_initiator_init_secure_element(device: *mut nfc_device) -> libc::c_int {
     unsafe { proximate::nfc_initiator_init_secure_element(device) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_initiator_select_passive_target(
     device: *mut nfc_device,
@@ -217,6 +251,8 @@ pub unsafe extern "C" fn nfc_initiator_select_passive_target(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_initiator_list_passive_targets(
     device: *mut nfc_device,
@@ -228,6 +264,8 @@ pub unsafe extern "C" fn nfc_initiator_list_passive_targets(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_initiator_poll_target(
     device: *mut nfc_device,
@@ -250,6 +288,8 @@ pub unsafe extern "C" fn nfc_initiator_poll_target(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_initiator_select_dep_target(
     device: *mut nfc_device,
@@ -267,6 +307,8 @@ pub unsafe extern "C" fn nfc_initiator_select_dep_target(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_initiator_poll_dep_target(
     device: *mut nfc_device,
@@ -284,12 +326,16 @@ pub unsafe extern "C" fn nfc_initiator_poll_dep_target(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_initiator_deselect_target(device: *mut nfc_device) -> libc::c_int {
     unsafe { proximate::nfc_initiator_deselect_target(device) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_initiator_target_is_present(
     device: *mut nfc_device,
@@ -299,6 +345,8 @@ pub unsafe extern "C" fn nfc_initiator_target_is_present(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_target_init(
     device: *mut nfc_device,
@@ -311,6 +359,8 @@ pub unsafe extern "C" fn nfc_target_init(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_initiator_transceive_bytes(
     device: *mut nfc_device,
@@ -324,6 +374,8 @@ pub unsafe extern "C" fn nfc_initiator_transceive_bytes(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_initiator_transceive_bits(
     device: *mut nfc_device,
@@ -348,6 +400,8 @@ pub unsafe extern "C" fn nfc_initiator_transceive_bits(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_initiator_transceive_bytes_timed(
     device: *mut nfc_device,
@@ -363,6 +417,8 @@ pub unsafe extern "C" fn nfc_initiator_transceive_bytes_timed(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_initiator_transceive_bits_timed(
     device: *mut nfc_device,
@@ -389,6 +445,8 @@ pub unsafe extern "C" fn nfc_initiator_transceive_bits_timed(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_target_send_bytes(
     device: *mut nfc_device,
@@ -400,6 +458,8 @@ pub unsafe extern "C" fn nfc_target_send_bytes(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_target_receive_bytes(
     device: *mut nfc_device,
@@ -411,6 +471,8 @@ pub unsafe extern "C" fn nfc_target_receive_bytes(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_target_send_bits(
     device: *mut nfc_device,
@@ -422,6 +484,8 @@ pub unsafe extern "C" fn nfc_target_send_bits(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_target_receive_bits(
     device: *mut nfc_device,
@@ -433,6 +497,8 @@ pub unsafe extern "C" fn nfc_target_receive_bits(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_emulate_target(
     device: *mut nfc_device,
@@ -443,30 +509,40 @@ pub unsafe extern "C" fn nfc_emulate_target(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn iso14443a_crc(data: *mut u8, len: libc::size_t, crc: *mut u8) {
     unsafe { crate::compat::iso14443a_crc(data, len, crc) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn iso14443a_crc_append(data: *mut u8, len: libc::size_t) {
     unsafe { crate::compat::iso14443a_crc_append(data, len) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn iso14443b_crc(data: *mut u8, len: libc::size_t, crc: *mut u8) {
     unsafe { crate::compat::iso14443b_crc(data, len, crc) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn iso14443b_crc_append(data: *mut u8, len: libc::size_t) {
     unsafe { crate::compat::iso14443b_crc_append(data, len) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn iso14443a_locate_historical_bytes(
     ats: *mut u8,
@@ -477,30 +553,40 @@ pub unsafe extern "C" fn iso14443a_locate_historical_bytes(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_abort_command(device: *mut nfc_device) -> libc::c_int {
     unsafe { proximate::nfc_abort_command(device) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_idle(device: *mut nfc_device) -> libc::c_int {
     unsafe { proximate::nfc_idle(device) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_device_get_name(device: *mut nfc_device) -> *const libc::c_char {
     unsafe { proximate::nfc_device_get_name(device) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_device_get_connstring(device: *mut nfc_device) -> *const libc::c_char {
     unsafe { proximate::nfc_device_get_connstring(device) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_device_get_supported_modulation(
     device: *mut nfc_device,
@@ -511,6 +597,8 @@ pub unsafe extern "C" fn nfc_device_get_supported_modulation(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_device_get_supported_baud_rate(
     device: *mut nfc_device,
@@ -521,6 +609,8 @@ pub unsafe extern "C" fn nfc_device_get_supported_baud_rate(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_device_get_supported_baud_rate_target_mode(
     device: *mut nfc_device,
@@ -537,6 +627,8 @@ pub unsafe extern "C" fn nfc_device_get_supported_baud_rate_target_mode(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_device_get_information_about(
     device: *mut nfc_device,
@@ -546,18 +638,24 @@ pub unsafe extern "C" fn nfc_device_get_information_about(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_device_get_last_error(device: *const nfc_device) -> libc::c_int {
     unsafe { proximate::nfc_device_get_last_error(device) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_strerror(device: *const nfc_device) -> *const libc::c_char {
     unsafe { proximate::nfc_strerror(device) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_strerror_r(
     device: *const nfc_device,
@@ -568,6 +666,8 @@ pub unsafe extern "C" fn nfc_strerror_r(
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
+/// # Safety
+/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_perror(device: *const nfc_device, message: *const libc::c_char) {
     unsafe { proximate::nfc_perror(device, message) }

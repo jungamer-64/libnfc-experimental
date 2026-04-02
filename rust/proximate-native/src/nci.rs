@@ -1,3 +1,4 @@
+#[cfg(not(test))]
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -26,15 +27,18 @@ pub trait Backend: Send + Sync {
     fn current_tag_snapshot(&self) -> Option<TagInfo>;
 }
 
+#[cfg(not(test))]
 fn current_tag_state() -> &'static Mutex<Option<TagInfo>> {
     static CURRENT_TAG: OnceLock<Mutex<Option<TagInfo>>> = OnceLock::new();
     CURRENT_TAG.get_or_init(|| Mutex::new(None))
 }
 
+#[cfg(not(test))]
 fn clear_current_tag() {
     *current_tag_state().lock().unwrap() = None;
 }
 
+#[cfg(not(test))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[repr(C)]
 struct RawTagInfo {
@@ -45,6 +49,7 @@ struct RawTagInfo {
     protocol: core::ffi::c_uchar,
 }
 
+#[cfg(not(test))]
 impl From<RawTagInfo> for TagInfo {
     fn from(value: RawTagInfo) -> Self {
         Self {
@@ -57,12 +62,14 @@ impl From<RawTagInfo> for TagInfo {
     }
 }
 
+#[cfg(not(test))]
 #[repr(C)]
 struct TagCallbacks {
     on_tag_arrival: Option<unsafe extern "C" fn(*mut RawTagInfo)>,
     on_tag_departure: Option<unsafe extern "C" fn()>,
 }
 
+#[cfg(not(test))]
 unsafe extern "C" fn on_tag_arrival(tag: *mut RawTagInfo) {
     if tag.is_null() {
         return;
@@ -71,10 +78,12 @@ unsafe extern "C" fn on_tag_arrival(tag: *mut RawTagInfo) {
     *current_tag_state().lock().unwrap() = Some(tag.into());
 }
 
+#[cfg(not(test))]
 unsafe extern "C" fn on_tag_departure() {
     clear_current_tag();
 }
 
+#[cfg(not(test))]
 static TAG_CALLBACKS: TagCallbacks = TagCallbacks {
     on_tag_arrival: Some(on_tag_arrival),
     on_tag_departure: Some(on_tag_departure),

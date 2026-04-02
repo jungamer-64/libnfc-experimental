@@ -294,29 +294,26 @@ fn load_context_internal(
     let mut diagnostics = Vec::new();
     let mut parsed = ParsedContextConfig::with_defaults();
 
-    if apply_env {
-        if let Some(default_device_bytes) = env_var_bytes("LIBNFC_DEFAULT_DEVICE") {
-            if default_device_bytes.len() >= NFC_BUFSIZE_CONNSTRING {
-                let message =
-                    "Failed to copy LIBNFC_DEFAULT_DEVICE environment variable".to_string();
-                let diagnostic = ContextDiagnostic::general_error(message.clone());
-                return Err(ContextLoadFailure {
-                    diagnostics: vec![diagnostic],
-                    last_error: Some(message),
-                });
-            }
+    if apply_env && let Some(default_device_bytes) = env_var_bytes("LIBNFC_DEFAULT_DEVICE") {
+        if default_device_bytes.len() >= NFC_BUFSIZE_CONNSTRING {
+            let message = "Failed to copy LIBNFC_DEFAULT_DEVICE environment variable".to_string();
+            let diagnostic = ContextDiagnostic::general_error(message.clone());
+            return Err(ContextLoadFailure {
+                diagnostics: vec![diagnostic],
+                last_error: Some(message),
+            });
+        }
 
-            let default_device = String::from_utf8_lossy(&default_device_bytes).into_owned();
-            if ConnectionString::new(default_device).is_ok() {
-                parsed.user_defined_devices.push(RawUserDefinedDevice {
-                    name: truncate_bytes(
-                        USER_DEFINED_DEFAULT_DEVICE_NAME.as_bytes(),
-                        DEVICE_NAME_LENGTH,
-                    ),
-                    connstring: truncate_bytes(&default_device_bytes, NFC_BUFSIZE_CONNSTRING),
-                    optional: false,
-                });
-            }
+        let default_device = String::from_utf8_lossy(&default_device_bytes).into_owned();
+        if ConnectionString::new(default_device).is_ok() {
+            parsed.user_defined_devices.push(RawUserDefinedDevice {
+                name: truncate_bytes(
+                    USER_DEFINED_DEFAULT_DEVICE_NAME.as_bytes(),
+                    DEVICE_NAME_LENGTH,
+                ),
+                connstring: truncate_bytes(&default_device_bytes, NFC_BUFSIZE_CONNSTRING),
+                optional: false,
+            });
         }
     }
 

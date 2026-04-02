@@ -92,7 +92,7 @@ impl Driver for ArygonDriver {
                 transport,
                 PROBE_TIMEOUT_MS,
             )?;
-            return Ok(Box::new(device));
+            Ok(Box::new(device))
         }
 
         #[cfg(not(target_os = "linux"))]

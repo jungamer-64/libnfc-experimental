@@ -434,11 +434,11 @@ pub(crate) unsafe fn runtime_context_from_c(context: *const nfc_context) -> Opti
 }
 
 unsafe fn free_context_allocation(context: *mut nfc_context) {
-    if let Some(context_ref) = unsafe { as_mut(context) } {
-        if !context_ref.runtime_data.is_null() {
-            unsafe { drop(Box::from_raw(context_ref.runtime_data as *mut rt::Context)) };
-            context_ref.runtime_data = ptr::null_mut();
-        }
+    if let Some(context_ref) = unsafe { as_mut(context) }
+        && !context_ref.runtime_data.is_null()
+    {
+        unsafe { drop(Box::from_raw(context_ref.runtime_data as *mut rt::Context)) };
+        context_ref.runtime_data = ptr::null_mut();
     }
     unsafe { release_allocated_ptr(context as *mut c_void) };
 }
@@ -1073,25 +1073,33 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "test_no_catch", should_panic(expected = "boom"))]
     fn lifecycle_pointer_panic_is_normalized_to_null() {
         reset_last_error();
-        let ptr = ffi_catch_unwind_ptr::<nfc_context, _>("lifecycle_ptr_panic", || panic!("boom"));
-        assert!(ptr.is_null());
+        let _ptr = ffi_catch_unwind_ptr::<nfc_context, _>("lifecycle_ptr_panic", || panic!("boom"));
+        #[cfg(not(feature = "test_no_catch"))]
+        {
+            assert!(_ptr.is_null());
 
-        let err = crate::c_api_impl::nfc_get_last_error();
-        assert!(!err.is_null());
-        let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
-        assert!(recovered.contains("panic in lifecycle_ptr_panic"));
+            let err = crate::c_api_impl::nfc_get_last_error();
+            assert!(!err.is_null());
+            let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
+            assert!(recovered.contains("panic in lifecycle_ptr_panic"));
+        }
     }
 
     #[test]
+    #[cfg_attr(feature = "test_no_catch", should_panic(expected = "boom"))]
     fn lifecycle_void_panic_is_normalized_to_noop() {
         reset_last_error();
         ffi_catch_unwind_void("lifecycle_void_panic", || panic!("boom"));
 
-        let err = crate::c_api_impl::nfc_get_last_error();
-        assert!(!err.is_null());
-        let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
-        assert!(recovered.contains("panic in lifecycle_void_panic"));
+        #[cfg(not(feature = "test_no_catch"))]
+        {
+            let err = crate::c_api_impl::nfc_get_last_error();
+            assert!(!err.is_null());
+            let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
+            assert!(recovered.contains("panic in lifecycle_void_panic"));
+        }
     }
 }
