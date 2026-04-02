@@ -121,8 +121,8 @@ use self::target_decode::{
     decode_activation_mode, decode_target_data, default_initiator_payload, is_iso14443_4_target,
     nm_to_pm, parse_dep_target,
 };
-use self::transport::{BitTransceiveRequest, pn53x_translate_status, status_code, status_error};
 pub(crate) use self::transport::Pn53xTransport;
+use self::transport::{BitTransceiveRequest, pn53x_translate_status, status_code, status_error};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Pn53xType {

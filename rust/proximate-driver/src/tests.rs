@@ -7,6 +7,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use super::*;
+use crate::context::{ContextConfigBuilder, ContextConfigSource, ContextScalarOverrides};
+use crate::diagnostics::{self, ContextDiagnosticCategory};
 
 struct FakeDevice {
     name: String,
@@ -322,40 +324,44 @@ fn context_sources_apply_precedence_and_cap() {
     let conf_connstring = ConnectionString::new("pn53x_usb:conf").unwrap();
     let default_connstring = ConnectionString::new("pn53x_usb:default").unwrap();
     let env_connstring = ConnectionString::new("pn53x_usb:selected").unwrap();
-    let context = Context::from_sources(ContextSources {
-        config_file: Some(ContextConfig {
-            allow_autoscan: false,
-            allow_intrusive_scan: true,
-            log_level: 7,
-            user_defined_devices: vec![
-                UserDefinedDevice {
-                    name: "conf".into(),
-                    connstring: conf_connstring,
-                    optional: false,
-                },
-                UserDefinedDevice {
-                    name: "extra".into(),
-                    connstring: ConnectionString::new("pn53x_usb:extra").unwrap(),
-                    optional: false,
-                },
-            ],
-        }),
-        default_device: Some(UserDefinedDevice {
-            name: "default".into(),
-            connstring: default_connstring,
-            optional: false,
-        }),
-        selected_device: Some(UserDefinedDevice {
-            name: "selected".into(),
-            connstring: env_connstring.clone(),
-            optional: false,
-        }),
+    let mut builder = ContextConfigBuilder::new();
+    builder.apply_default_device(Some(UserDefinedDevice {
+        name: "default".into(),
+        connstring: default_connstring,
+        optional: false,
+    }));
+    builder.apply_source(ContextConfigSource {
+        allow_autoscan: Some(false),
+        allow_intrusive_scan: Some(true),
+        log_level: Some(7),
+        user_defined_devices: vec![
+            UserDefinedDevice {
+                name: "conf".into(),
+                connstring: conf_connstring,
+                optional: false,
+            },
+            UserDefinedDevice {
+                name: "extra".into(),
+                connstring: ConnectionString::new("pn53x_usb:extra").unwrap(),
+                optional: false,
+            },
+        ],
+    });
+    builder.apply_selected_device(Some(UserDefinedDevice {
+        name: "selected".into(),
+        connstring: env_connstring.clone(),
+        optional: false,
+    }));
+    builder.apply_scalar_overrides(ContextScalarOverrides {
         allow_autoscan: Some(true),
         allow_intrusive_scan: Some(false),
         log_level: Some(42),
-        max_user_defined_devices: Some(1),
     });
+    let mut diagnostics = Vec::new();
+    builder.cap_user_defined_devices(1, &mut diagnostics);
+    let context = Context::with_config(builder.build());
 
+    assert!(diagnostics.is_empty());
     assert!(context.config.allow_autoscan);
     assert!(!context.config.allow_intrusive_scan);
     assert_eq!(context.config.log_level, 42);
@@ -788,7 +794,7 @@ fn load_from_dir_loads_config_files_and_devices_d_entries() {
         ),
     );
 
-    let outcome = Context::load_from_dir_with_diagnostics(confdir.path()).unwrap();
+    let outcome = diagnostics::load_context_from_dir_with_diagnostics(confdir.path()).unwrap();
     let context = outcome.context;
 
     assert!(!context.config.allow_autoscan);
@@ -811,6 +817,66 @@ fn load_from_dir_loads_config_files_and_devices_d_entries() {
         entry
             .message
             .contains("key: [allow_autoscan], value: [false]")
+    }));
+}
+
+#[test]
+fn load_from_dir_applies_devices_d_in_lexicographic_order() {
+    let _env_guard = env_lock().lock().unwrap();
+    let mut env = ScopedEnv::new();
+    clear_env(&mut env);
+
+    let confdir = TempConfigDir::new();
+    confdir.write_file(
+        "devices.d/20-second.conf",
+        "name = second\nconnstring = pn53x_usb:2\n",
+    );
+    confdir.write_file(
+        "devices.d/10-first.conf",
+        "name = first\nconnstring = pn53x_usb:1\n",
+    );
+
+    let outcome = diagnostics::load_context_from_dir_with_diagnostics(confdir.path()).unwrap();
+    let devices = outcome.context.config.user_defined_devices;
+    assert_eq!(devices.len(), 2);
+    assert_eq!(devices[0].name, "first");
+    assert_eq!(devices[0].connstring.as_str(), "pn53x_usb:1");
+    assert_eq!(devices[1].name, "second");
+    assert_eq!(devices[1].connstring.as_str(), "pn53x_usb:2");
+}
+
+#[test]
+fn load_from_dir_ignores_invalid_connection_strings() {
+    let _env_guard = env_lock().lock().unwrap();
+    let mut env = ScopedEnv::new();
+    clear_env(&mut env);
+
+    let confdir = TempConfigDir::new();
+    confdir.write_file(
+        "libnfc.conf",
+        concat!(
+            "device.name = valid\n",
+            "device.connstring = pn532_uart:/dev/ttyUSB0\n",
+            "device.name = invalid\n",
+            "device.connstring = \"\"\n"
+        ),
+    );
+    confdir.write_file("devices.d/bad.conf", "name = bad\nconnstring = \"\"\n");
+
+    let outcome = diagnostics::load_context_from_dir_with_diagnostics(confdir.path()).unwrap();
+    let devices = outcome.context.config.user_defined_devices;
+    assert_eq!(devices.len(), 1);
+    assert_eq!(devices[0].name, "valid");
+    assert_eq!(devices[0].connstring.as_str(), "pn532_uart:/dev/ttyUSB0");
+    assert!(outcome.diagnostics.iter().any(|entry| {
+        entry
+            .message
+            .contains("Ignoring invalid connection string in config line: device.connstring = ")
+    }));
+    assert!(outcome.diagnostics.iter().any(|entry| {
+        entry
+            .message
+            .contains("Ignoring invalid connection string in config line: device.connstring = ")
     }));
 }
 
@@ -839,7 +905,7 @@ fn load_from_dir_logs_parse_errors_and_caps_device_count() {
         ),
     );
 
-    let outcome = Context::load_from_dir_with_diagnostics(confdir.path()).unwrap();
+    let outcome = diagnostics::load_context_from_dir_with_diagnostics(confdir.path()).unwrap();
     assert_eq!(outcome.context.config.user_defined_devices.len(), 4);
     assert!(outcome.diagnostics.iter().any(|entry| {
         entry
@@ -934,10 +1000,10 @@ fn load_with_diagnostics_rejects_oversized_default_device_env() {
         &"x".repeat(crate::NFC_BUFSIZE_CONNSTRING),
     );
 
-    let failure = Context::load_with_diagnostics().unwrap_err();
+    let failure = diagnostics::load_context_with_diagnostics().unwrap_err();
     assert_eq!(
-        failure.last_error.as_deref(),
-        Some("Failed to copy LIBNFC_DEFAULT_DEVICE environment variable")
+        failure.error.message(),
+        "Failed to copy LIBNFC_DEFAULT_DEVICE environment variable"
     );
     assert_eq!(failure.diagnostics.len(), 1);
     assert_eq!(

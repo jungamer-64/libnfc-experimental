@@ -329,23 +329,23 @@ fn log_config_diagnostic(priority: u8, message: &str) {
     }
 }
 
-fn emit_context_load_diagnostics(diagnostics: &[rt::ContextDiagnostic]) {
+fn emit_context_load_diagnostics(diagnostics: &[rt::diagnostics::ContextDiagnostic]) {
     for diagnostic in diagnostics {
         match diagnostic.category {
-            rt::ContextDiagnosticCategory::General => match diagnostic.priority {
-                rt::ContextDiagnosticPriority::Error => log_error(&diagnostic.message),
-                rt::ContextDiagnosticPriority::Info => {
+            rt::diagnostics::ContextDiagnosticCategory::General => match diagnostic.priority {
+                rt::diagnostics::ContextDiagnosticPriority::Error => log_error(&diagnostic.message),
+                rt::diagnostics::ContextDiagnosticPriority::Info => {
                     log_message(LOG_PRIORITY_INFO, &diagnostic.message)
                 }
-                rt::ContextDiagnosticPriority::Debug => {
+                rt::diagnostics::ContextDiagnosticPriority::Debug => {
                     log_message(LOG_PRIORITY_DEBUG, &diagnostic.message)
                 }
             },
-            rt::ContextDiagnosticCategory::Config => {
+            rt::diagnostics::ContextDiagnosticCategory::Config => {
                 let priority = match diagnostic.priority {
-                    rt::ContextDiagnosticPriority::Error => LOG_PRIORITY_ERROR,
-                    rt::ContextDiagnosticPriority::Info => LOG_PRIORITY_INFO,
-                    rt::ContextDiagnosticPriority::Debug => LOG_PRIORITY_DEBUG,
+                    rt::diagnostics::ContextDiagnosticPriority::Error => LOG_PRIORITY_ERROR,
+                    rt::diagnostics::ContextDiagnosticPriority::Info => LOG_PRIORITY_INFO,
+                    rt::diagnostics::ContextDiagnosticPriority::Debug => LOG_PRIORITY_DEBUG,
                 };
                 log_config_diagnostic(priority, &diagnostic.message);
             }
@@ -444,13 +444,11 @@ unsafe fn free_context_allocation(context: *mut nfc_context) {
 }
 
 unsafe fn nfc_context_new_impl() -> *mut nfc_context {
-    let loaded = match rt::Context::load_with_diagnostics() {
+    let loaded = match rt::diagnostics::load_context_with_diagnostics() {
         Ok(outcome) => outcome,
         Err(failure) => {
             emit_context_load_diagnostics(&failure.diagnostics);
-            if let Some(message) = failure.last_error {
-                set_last_error_message(message);
-            }
+            set_last_error_message(failure.error.message().to_string());
             return ptr::null_mut();
         }
     };

@@ -45,7 +45,7 @@ impl Config {
         Self::default()
     }
 
-    pub fn try_load() -> Result<Self, rt::ContextLoadFailure> {
+    pub fn try_load() -> Result<Self, rt::ContextLoadError> {
         rt::Context::try_load().map(|context| Self(context.config))
     }
 
@@ -53,7 +53,7 @@ impl Config {
         Self(rt::Context::load_or_default().config)
     }
 
-    pub fn try_load_from_dir(path: &Path) -> Result<Self, rt::ContextLoadFailure> {
+    pub fn try_load_from_dir(path: &Path) -> Result<Self, rt::ContextLoadError> {
         rt::Context::try_load_from_dir(path).map(|context| Self(context.config))
     }
 
@@ -186,7 +186,7 @@ impl Context {
         ContextBuilder::new()
     }
 
-    pub fn try_load() -> Result<Self, rt::ContextLoadFailure> {
+    pub fn try_load() -> Result<Self, rt::ContextLoadError> {
         Ok(Self::builder().with_config(Config::try_load()?).build())
     }
 
@@ -196,7 +196,7 @@ impl Context {
             .build()
     }
 
-    pub fn try_load_from_dir(path: &Path) -> Result<Self, rt::ContextLoadFailure> {
+    pub fn try_load_from_dir(path: &Path) -> Result<Self, rt::ContextLoadError> {
         Ok(Self::builder()
             .with_config(Config::try_load_from_dir(path)?)
             .build())
@@ -520,6 +520,8 @@ impl<'a> Pn53xDevice<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+    use std::sync::{Mutex, OnceLock};
 
     struct FakeDevice {
         name: String,
@@ -618,6 +620,61 @@ mod tests {
         }
     }
 
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct ScopedEnv {
+        saved: Vec<(String, Option<OsString>)>,
+    }
+
+    impl ScopedEnv {
+        fn new() -> Self {
+            Self { saved: Vec::new() }
+        }
+
+        fn save(&mut self, key: &str) {
+            if self.saved.iter().any(|(saved_key, _)| saved_key == key) {
+                return;
+            }
+            self.saved.push((key.to_string(), std::env::var_os(key)));
+        }
+
+        fn set(&mut self, key: &str, value: &str) {
+            self.save(key);
+            unsafe { std::env::set_var(key, value) };
+        }
+
+        fn remove(&mut self, key: &str) {
+            self.save(key);
+            unsafe { std::env::remove_var(key) };
+        }
+    }
+
+    impl Drop for ScopedEnv {
+        fn drop(&mut self) {
+            for (key, value) in self.saved.drain(..).rev() {
+                match value {
+                    Some(value) => unsafe { std::env::set_var(&key, value) },
+                    None => unsafe { std::env::remove_var(&key) },
+                }
+            }
+        }
+    }
+
+    fn clear_env(env: &mut ScopedEnv) {
+        for key in [
+            "LIBNFC_DEFAULT_DEVICE",
+            "LIBNFC_DEVICE",
+            "LIBNFC_AUTO_SCAN",
+            "LIBNFC_INTRUSIVE_SCAN",
+            "LIBNFC_LOG_LEVEL",
+        ] {
+            env.remove(key);
+        }
+    }
+
     #[test]
     fn config_builder_updates_user_devices() {
         let mut config = Config::new().with_allow_autoscan(false).with_log_level(4);
@@ -674,5 +731,37 @@ mod tests {
             device.pn53x(),
             Err(rt::Error::MissingCapability(_))
         ));
+    }
+
+    #[test]
+    fn try_load_surfaces_context_load_error() {
+        let _env_guard = env_lock().lock().unwrap();
+        let mut env = ScopedEnv::new();
+        clear_env(&mut env);
+        env.set(
+            "LIBNFC_DEFAULT_DEVICE",
+            &"x".repeat(rt::NFC_BUFSIZE_CONNSTRING),
+        );
+
+        let error = Config::try_load().unwrap_err();
+        assert_eq!(
+            error.message(),
+            "Failed to copy LIBNFC_DEFAULT_DEVICE environment variable"
+        );
+    }
+
+    #[test]
+    fn load_or_default_swallows_context_load_error() {
+        let _env_guard = env_lock().lock().unwrap();
+        let mut env = ScopedEnv::new();
+        clear_env(&mut env);
+        env.set(
+            "LIBNFC_DEFAULT_DEVICE",
+            &"x".repeat(rt::NFC_BUFSIZE_CONNSTRING),
+        );
+
+        let config = Config::load_or_default();
+        assert!(config.allow_autoscan());
+        assert!(!config.allow_intrusive_scan());
     }
 }

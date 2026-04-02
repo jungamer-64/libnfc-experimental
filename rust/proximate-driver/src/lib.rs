@@ -9,12 +9,17 @@ pub use proximate_types::{
     device_error_message, extract_param_value_bytes, parse_connstring, version,
 };
 
-pub use context::{Context, ContextConfig, UserDefinedDevice};
+pub use context::{Context, ContextConfig, ContextLoadError, UserDefinedDevice};
 #[doc(hidden)]
-pub use context::{
-    ContextDiagnostic, ContextDiagnosticCategory, ContextDiagnosticPriority, ContextLoadFailure,
-    ContextLoadOutcome, ContextSources, set_test_conf_root,
-};
+pub mod diagnostics {
+    pub use crate::context::{
+        ContextDiagnostic, ContextDiagnosticCategory, ContextDiagnosticPriority,
+        ContextLoadFailure, ContextLoadOutcome, load_context_from_dir_with_diagnostics,
+        load_context_with_diagnostics,
+    };
+}
+#[doc(hidden)]
+pub use context::set_test_conf_root;
 pub use device::{
     ChipDebugOps, Device, DeviceBackend, DeviceMeta, InfoBackend, InitiatorBackend,
     InitiatorDevice, InitiatorOps, Logger, OpenedDevice, Pn53xBackend, Pn53xDevice,
