@@ -428,7 +428,14 @@ dependencies = [
 name = "proximate"
 version = "0.1.0"
 dependencies = [
- "linux-raw-sys",
+ "proximate-platform",
+ "rustix",
+]
+
+[[package]]
+name = "proximate-platform"
+version = "0.1.0"
+dependencies = [
  "nusb",
  "pcsc",
  "rustix",
@@ -440,8 +447,8 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "libc",
- "nusb",
  "proximate",
+ "proximate-platform",
 ]
 
 [[package]]

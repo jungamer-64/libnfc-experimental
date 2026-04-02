@@ -2,7 +2,9 @@ use crate::rust_api::{
     BaudRate, ConnectionString, Context, Driver, Error, Mode, Modulation, ModulationType,
     OpenedDevice, Property, ScanType, Target, TargetInfo,
 };
-use core::ffi::{c_uchar, c_uint};
+#[cfg(all(feature = "nci_helper", not(test)))]
+use proximate_platform::nci::{self as platform_nci, Backend as _};
+use proximate_platform::nci::TagInfo;
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
@@ -55,16 +57,6 @@ fn device_error(operation: &'static str, code: i32) -> Error {
     Error::DeviceOperationFailed { operation, code }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-#[repr(C)]
-struct TagInfo {
-    technology: c_uint,
-    handle: c_uint,
-    uid: [u8; 32],
-    uid_length: c_uint,
-    protocol: c_uchar,
-}
-
 #[derive(Clone, Debug, Default)]
 struct Pn71xxRuntime {
     initialized: bool,
@@ -72,22 +64,7 @@ struct Pn71xxRuntime {
     discovery_enabled: bool,
     active_device: Option<u64>,
     next_device_id: u64,
-    current_tag: Option<TagInfo>,
 }
-
-#[cfg_attr(test, allow(dead_code))]
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
-struct TagCallbacks {
-    on_tag_arrival: Option<unsafe extern "C" fn(*mut TagInfo)>,
-    on_tag_departure: Option<unsafe extern "C" fn()>,
-}
-
-#[cfg_attr(test, allow(dead_code))]
-static PN71XX_TAG_CALLBACKS: TagCallbacks = TagCallbacks {
-    on_tag_arrival: Some(on_tag_arrival),
-    on_tag_departure: Some(on_tag_departure),
-};
 
 trait NciBackend: Send + Sync {
     fn initialize(&self) -> i32;
@@ -103,29 +80,7 @@ trait NciBackend: Send + Sync {
     );
     fn disable_discovery(&self);
     fn transceive(&self, handle: u32, tx: &[u8], rx: &mut [u8], timeout: i32) -> i32;
-}
-
-#[cfg(all(feature = "nci_helper", not(test)))]
-unsafe extern "C" {
-    fn nfcManager_doInitialize() -> c_int;
-    fn nfcManager_doDeinitialize();
-    fn nfcManager_registerTagCallback(callback: *mut TagCallbacks);
-    fn nfcManager_deregisterTagCallback();
-    fn nfcManager_enableDiscovery(
-        technologies_mask: c_int,
-        reader_mode: c_int,
-        enable_host_routing: c_int,
-        restart: c_int,
-    );
-    fn nfcManager_disableDiscovery();
-    fn nfcTag_transceive(
-        handle: c_uint,
-        tx_buffer: *mut c_uchar,
-        tx_len: c_int,
-        rx_buffer: *mut c_uchar,
-        rx_len: c_int,
-        timeout: c_int,
-    ) -> c_int;
+    fn current_tag_snapshot(&self) -> Option<TagInfo>;
 }
 
 #[cfg(all(feature = "nci_helper", not(test)))]
@@ -134,21 +89,19 @@ struct SystemNciBackend;
 #[cfg(all(feature = "nci_helper", not(test)))]
 impl NciBackend for SystemNciBackend {
     fn initialize(&self) -> i32 {
-        unsafe { nfcManager_doInitialize() }
+        platform_nci::SystemBackend.initialize()
     }
 
     fn deinitialize(&self) {
-        unsafe { nfcManager_doDeinitialize() };
+        platform_nci::SystemBackend.deinitialize();
     }
 
     fn register_callbacks(&self) {
-        unsafe {
-            nfcManager_registerTagCallback(std::ptr::addr_of!(PN71XX_TAG_CALLBACKS).cast_mut());
-        }
+        platform_nci::SystemBackend.register_callbacks();
     }
 
     fn deregister_callbacks(&self) {
-        unsafe { nfcManager_deregisterTagCallback() };
+        platform_nci::SystemBackend.deregister_callbacks();
     }
 
     fn enable_discovery(
@@ -158,31 +111,24 @@ impl NciBackend for SystemNciBackend {
         enable_host_routing: i32,
         restart: i32,
     ) {
-        unsafe {
-            nfcManager_enableDiscovery(
-                technologies_mask,
-                reader_mode,
-                enable_host_routing,
-                restart,
-            )
-        };
+        platform_nci::SystemBackend.enable_discovery(
+            technologies_mask,
+            reader_mode,
+            enable_host_routing,
+            restart,
+        );
     }
 
     fn disable_discovery(&self) {
-        unsafe { nfcManager_disableDiscovery() };
+        platform_nci::SystemBackend.disable_discovery();
     }
 
     fn transceive(&self, handle: u32, tx: &[u8], rx: &mut [u8], timeout: i32) -> i32 {
-        unsafe {
-            nfcTag_transceive(
-                handle,
-                tx.as_ptr().cast_mut(),
-                tx.len() as c_int,
-                rx.as_mut_ptr(),
-                rx.len() as c_int,
-                timeout,
-            )
-        }
+        platform_nci::SystemBackend.transceive(handle, tx, rx, timeout)
+    }
+
+    fn current_tag_snapshot(&self) -> Option<TagInfo> {
+        platform_nci::SystemBackend.current_tag_snapshot()
     }
 }
 
@@ -202,6 +148,7 @@ struct BackendTestState {
     last_transceive_handle: Option<u32>,
     last_transceive_tx: Vec<u8>,
     last_transceive_timeout: Option<i32>,
+    current_tag: Option<TagInfo>,
 }
 
 #[cfg(test)]
@@ -219,15 +166,21 @@ impl NciBackend for FakeNciBackend {
     }
 
     fn deinitialize(&self) {
-        self.state.lock().unwrap().deinitialize_calls += 1;
+        let mut state = self.state.lock().unwrap();
+        state.deinitialize_calls += 1;
+        state.current_tag = None;
     }
 
     fn register_callbacks(&self) {
-        self.state.lock().unwrap().register_calls += 1;
+        let mut state = self.state.lock().unwrap();
+        state.register_calls += 1;
+        state.current_tag = None;
     }
 
     fn deregister_callbacks(&self) {
-        self.state.lock().unwrap().deregister_calls += 1;
+        let mut state = self.state.lock().unwrap();
+        state.deregister_calls += 1;
+        state.current_tag = None;
     }
 
     fn enable_discovery(
@@ -263,6 +216,10 @@ impl NciBackend for FakeNciBackend {
             .min(state.transceive_result as usize);
         rx[..copy_len].copy_from_slice(&state.transceive_response[..copy_len]);
         state.transceive_result
+    }
+
+    fn current_tag_snapshot(&self) -> Option<TagInfo> {
+        self.state.lock().unwrap().current_tag
     }
 }
 
@@ -329,7 +286,7 @@ fn technology_matches(tag: &TagInfo, modulation: ModulationType) -> bool {
 }
 
 fn current_tag_snapshot() -> Option<TagInfo> {
-    runtime().lock().unwrap().current_tag
+    backend().current_tag_snapshot()
 }
 
 fn build_target(tag: &TagInfo, nm: Modulation) -> Option<Target> {
@@ -442,21 +399,6 @@ fn build_target(tag: &TagInfo, nm: Modulation) -> Option<Target> {
 
     Some(target)
 }
-
-#[cfg_attr(test, allow(dead_code))]
-unsafe extern "C" fn on_tag_arrival(tag: *mut TagInfo) {
-    if tag.is_null() {
-        return;
-    }
-    let tag = unsafe { tag.read() };
-    runtime().lock().unwrap().current_tag = Some(tag);
-}
-
-#[cfg_attr(test, allow(dead_code))]
-unsafe extern "C" fn on_tag_departure() {
-    runtime().lock().unwrap().current_tag = None;
-}
-
 fn close_active_device(device_id: u64) {
     let snapshot = runtime().lock().unwrap().clone();
     if snapshot.active_device != Some(device_id) {
@@ -474,7 +416,6 @@ fn close_active_device(device_id: u64) {
         let mut state = runtime().lock().unwrap();
         state.discovery_enabled = false;
         state.callbacks_registered = false;
-        state.current_tag = None;
         state.active_device = None;
     }
 
@@ -549,7 +490,6 @@ impl Driver for Pn71xxDriver {
             state.callbacks_registered = true;
             state.discovery_enabled = true;
             state.active_device = Some(device_id);
-            state.current_tag = None;
             device_id
         };
 
@@ -715,7 +655,7 @@ fn reset_test_world() {
 fn emit_tag_arrival_for_tests(tag: TagInfo) {
     let callbacks_registered = runtime().lock().unwrap().callbacks_registered;
     if callbacks_registered {
-        runtime().lock().unwrap().current_tag = Some(tag);
+        backend().state.lock().unwrap().current_tag = Some(tag);
     }
 }
 
@@ -723,7 +663,7 @@ fn emit_tag_arrival_for_tests(tag: TagInfo) {
 fn emit_tag_departure_for_tests() {
     let callbacks_registered = runtime().lock().unwrap().callbacks_registered;
     if callbacks_registered {
-        runtime().lock().unwrap().current_tag = None;
+        backend().state.lock().unwrap().current_tag = None;
     }
 }
 
@@ -825,12 +765,12 @@ mod tests {
         assert!(!runtime.callbacks_registered);
         assert!(!runtime.discovery_enabled);
         assert!(runtime.active_device.is_none());
-        assert!(runtime.current_tag.is_none());
 
         let backend = backend().state.lock().unwrap().clone();
         assert_eq!(backend.disable_calls, 1);
         assert_eq!(backend.deregister_calls, 1);
         assert_eq!(backend.deinitialize_calls, 1);
+        assert!(backend.current_tag.is_none());
     }
 
     #[test]
@@ -842,10 +782,10 @@ mod tests {
         let device = open_device(&connstring);
 
         emit_tag_arrival_for_tests(make_tag(TARGET_TYPE_ISO14443_3A, &[0x44], 0));
-        assert!(runtime().lock().unwrap().current_tag.is_some());
+        assert!(current_tag_snapshot().is_some());
 
         emit_tag_departure_for_tests();
-        assert!(runtime().lock().unwrap().current_tag.is_none());
+        assert!(current_tag_snapshot().is_none());
 
         drop(device);
     }

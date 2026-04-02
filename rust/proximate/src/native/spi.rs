@@ -3,12 +3,7 @@ use super::pn53x::{
     Pn53xDevice, Pn53xProfile, Pn53xTransport, command_from_host_frame, is_ack_frame,
 };
 use crate::rust_api::{ConnectionString, Context, Driver, Error, OpenedDevice, ScanType};
-use rustix::fd::OwnedFd;
-use rustix::fs::{Mode, OFlags, open};
-use rustix::ioctl::{self, Direction, Ioctl, IoctlOutput, Opcode, Setter, opcode};
-use std::ffi::c_void;
-use std::fs;
-use std::mem::size_of_val;
+use proximate_platform::spi::{SpiHandle, SpiIoError, SpiOpenError};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -28,9 +23,6 @@ const DATAWRITE: u8 = 0x01;
 const STATREAD: u8 = 0x02;
 const ACK_FRAME: [u8; 6] = [0x00, 0x00, 0xff, 0x00, 0xff, 0x00];
 const STATUS_POLL_INTERVAL_MS: u64 = 10;
-
-const SPI_IOC_WR_MODE: Opcode = opcode::write::<u8>(b'k', 1);
-const SPI_IOC_WR_MAX_SPEED_HZ: Opcode = opcode::write::<u32>(b'k', 4);
 
 pub(crate) struct Pn532SpiDriver;
 
@@ -93,169 +85,40 @@ impl Driver for Pn532SpiDriver {
 }
 
 fn list_candidate_paths() -> Vec<String> {
-    let mut ports = Vec::new();
-    let Ok(entries) = fs::read_dir("/dev") else {
-        return ports;
-    };
-
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name.starts_with("spidev")
-            && name
-                .bytes()
-                .last()
-                .is_some_and(|byte| byte.is_ascii_digit())
-        {
-            ports.push(format!("/dev/{name}"));
-        }
-    }
-
-    ports.sort();
-    ports
-}
-
-#[repr(C)]
-struct SpiTransfer {
-    tx_buf: u64,
-    rx_buf: u64,
-    len: u32,
-    speed_hz: u32,
-    delay_usecs: u16,
-    bits_per_word: u8,
-    cs_change: u8,
-    tx_nbits: u8,
-    rx_nbits: u8,
-    word_delay_usecs: u8,
-    pad: u8,
-}
-
-struct SpiMessage<'a> {
-    transfers: &'a mut [SpiTransfer],
-}
-
-unsafe impl Ioctl for SpiMessage<'_> {
-    type Output = IoctlOutput;
-    const IS_MUTATING: bool = true;
-
-    fn opcode(&self) -> Opcode {
-        opcode::from_components(Direction::ReadWrite, b'k', 0, size_of_val(self.transfers))
-    }
-
-    fn as_ptr(&mut self) -> *mut c_void {
-        self.transfers.as_mut_ptr().cast::<c_void>()
-    }
-
-    unsafe fn output_from_ptr(
-        out: IoctlOutput,
-        _extract_output: *mut c_void,
-    ) -> rustix::io::Result<Self::Output> {
-        Ok(out)
-    }
+    proximate_platform::spi::list_ports()
 }
 
 pub struct SpiTransport {
-    fd: OwnedFd,
+    handle: SpiHandle,
     abort_requested: Arc<AtomicBool>,
 }
 
 impl SpiTransport {
     pub fn open(path: &str, speed: u32) -> Result<Self, Error> {
-        let fd = open(
-            path,
-            OFlags::RDWR | OFlags::NONBLOCK | OFlags::NOCTTY,
-            Mode::empty(),
-        )
-        .map_err(|error| {
-            Error::DriverOpenFailed(format!("failed to open {path}: {}", error.raw_os_error()))
-        })?;
-
-        unsafe { ioctl::ioctl(&fd, Setter::<SPI_IOC_WR_MODE, u8>::new(SPI_MODE_0)) }
+        let mut handle = match SpiHandle::open(path) {
+            Ok(handle) => handle,
+            Err(SpiOpenError::InvalidPort) => {
+                return Err(Error::DriverOpenFailed(format!("failed to open {path}")));
+            }
+        };
+        handle
+            .set_mode(u32::from(SPI_MODE_0))
             .map_err(|_| Error::DriverOpenFailed(format!("failed to set SPI mode on {path}")))?;
-        unsafe { ioctl::ioctl(&fd, Setter::<SPI_IOC_WR_MAX_SPEED_HZ, u32>::new(speed)) }
+        handle
+            .set_speed(speed)
             .map_err(|_| Error::DriverOpenFailed(format!("failed to set SPI speed on {path}")))?;
 
         Ok(Self {
-            fd,
+            handle,
             abort_requested: Arc::new(AtomicBool::new(false)),
         })
     }
 
-    fn transfer(
-        &self,
-        tx: Option<&[u8]>,
-        rx: Option<&mut [u8]>,
-        lsb_first: bool,
-    ) -> Result<(), Error> {
-        let mut tx_storage = tx.unwrap_or_default().to_vec();
-        if lsb_first {
-            for byte in &mut tx_storage {
-                *byte = bit_reverse(*byte);
-            }
-        }
-
-        let mut transfers = Vec::with_capacity(2);
-        if !tx_storage.is_empty() {
-            transfers.push(SpiTransfer {
-                tx_buf: tx_storage.as_ptr() as u64,
-                rx_buf: 0,
-                len: tx_storage.len() as u32,
-                speed_hz: 0,
-                delay_usecs: 0,
-                bits_per_word: 0,
-                cs_change: 0,
-                tx_nbits: 0,
-                rx_nbits: 0,
-                word_delay_usecs: 0,
-                pad: 0,
-            });
-        }
-        if let Some(rx_buf) = rx.as_ref() {
-            transfers.push(SpiTransfer {
-                tx_buf: 0,
-                rx_buf: rx_buf.as_ptr() as usize as u64,
-                len: rx_buf.len() as u32,
-                speed_hz: 0,
-                delay_usecs: 0,
-                bits_per_word: 0,
-                cs_change: 0,
-                tx_nbits: 0,
-                rx_nbits: 0,
-                word_delay_usecs: 0,
-                pad: 0,
-            });
-        }
-
-        if transfers.is_empty() {
-            return Ok(());
-        }
-
-        let result = unsafe {
-            ioctl::ioctl(
-                &self.fd,
-                SpiMessage {
-                    transfers: &mut transfers,
-                },
-            )
-        }
-        .map_err(|_| device_error("spi_transfer", NFC_EIO))?;
-        let expected = tx_storage.len() + rx.as_ref().map_or(0, |buf| buf.len());
-        if result < 0 || result as usize != expected {
-            return Err(device_error("spi_transfer", NFC_EIO));
-        }
-
-        if lsb_first && let Some(rx_buf) = rx {
-            for byte in rx_buf {
-                *byte = bit_reverse(*byte);
-            }
-        }
-
-        Ok(())
-    }
-
     fn read_status(&self) -> Result<u8, Error> {
         let mut status = [0u8; 1];
-        self.transfer(Some(&[STATREAD]), Some(&mut status), true)?;
+        self.handle
+            .send_receive(&[STATREAD], &mut status, true)
+            .map_err(|_| device_error("spi_transfer", NFC_EIO))?;
         Ok(status[0])
     }
 
@@ -286,7 +149,9 @@ impl Pn53xTransport for SpiTransport {
         let mut tx = Vec::with_capacity(payload.len() + 1);
         tx.push(DATAWRITE);
         tx.extend_from_slice(payload);
-        self.transfer(Some(&tx), None, true)
+        self.handle
+            .send(&tx, true)
+            .map_err(|_| device_error("spi_transfer", NFC_EIO))
     }
 
     fn receive(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
@@ -294,7 +159,9 @@ impl Pn53xTransport for SpiTransport {
 
         let read_len = buffer.len().saturating_add(4).min(buffer.len().max(16));
         let mut scratch = vec![0u8; read_len];
-        self.transfer(Some(&[DATAREAD]), Some(&mut scratch), true)?;
+        self.handle
+            .send_receive(&[DATAREAD], &mut scratch, true)
+            .map_err(|_| device_error("spi_transfer", NFC_EIO))?;
 
         if let Some(position) = find_subslice(&scratch, &ACK_FRAME) {
             buffer[..ACK_FRAME.len()]
@@ -324,17 +191,12 @@ impl Pn53xTransport for SpiTransport {
 
     fn wake_up(&mut self) -> Result<(), Error> {
         let mut byte = [0u8; 1];
-        self.transfer(None, Some(&mut byte), true)?;
+        self.handle
+            .receive(&mut byte, true)
+            .map_err(|_| device_error("spi_transfer", NFC_EIO))?;
         thread::sleep(Duration::from_millis(1));
         Ok(())
     }
-}
-
-fn bit_reverse(byte: u8) -> u8 {
-    let mut value = byte;
-    value = ((value & 0xaa) >> 1) | ((value & 0x55) << 1);
-    value = ((value & 0xcc) >> 2) | ((value & 0x33) << 2);
-    ((value & 0xf0) >> 4) | ((value & 0x0f) << 4)
 }
 
 fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {

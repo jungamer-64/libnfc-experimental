@@ -28,3 +28,29 @@ pub(crate) const fn device_error_message_cstr(code: i32) -> &'static CStr {
         _ => c"Unknown error",
     }
 }
+
+pub(crate) const fn baud_rate_label_cstr(value: rt::BaudRate) -> &'static CStr {
+    match value {
+        rt::BaudRate::Undefined => c"undefined baud rate",
+        rt::BaudRate::Br106 => c"106 kbps",
+        rt::BaudRate::Br212 => c"212 kbps",
+        rt::BaudRate::Br424 => c"424 kbps",
+        rt::BaudRate::Br847 => c"847 kbps",
+    }
+}
+
+pub(crate) const fn modulation_label_cstr(value: rt::ModulationType) -> &'static CStr {
+    match value {
+        rt::ModulationType::Undefined => c"???",
+        rt::ModulationType::Iso14443A => c"ISO/IEC 14443A",
+        rt::ModulationType::Jewel => c"Innovision Jewel",
+        rt::ModulationType::Iso14443B => c"ISO/IEC 14443-4B",
+        rt::ModulationType::Iso14443Bi => c"ISO/IEC 14443-4B'",
+        rt::ModulationType::Iso14443B2Sr => c"ISO/IEC 14443-2B ST SRx",
+        rt::ModulationType::Iso14443B2Ct => c"ISO/IEC 14443-2B ASK CTx",
+        rt::ModulationType::Felica => c"FeliCa",
+        rt::ModulationType::Dep => c"D.E.P.",
+        rt::ModulationType::Barcode => c"Thinfilm NFC Barcode",
+        rt::ModulationType::Iso14443BiClass => c"ISO/IEC 14443-2B-3B iClass (Picopass)",
+    }
+}

@@ -8,6 +8,8 @@ use super::pn53x::{
     payload_from_host_frame,
 };
 use crate::rust_api::{ConnectionString, Context, Driver, Error, OpenedDevice, ScanType};
+#[cfg(any(target_os = "linux", windows))]
+use proximate_platform::pcsc::ctl_code as platform_pcsc_ctl_code;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -32,9 +34,9 @@ const IOCTL_CCID_ESCAPE_SCARD_CTL_CODE: u64 = (((0x31u32) << 16) | (3500u32 << 2
 ))]
 const IOCTL_CCID_ESCAPE_SCARD_CTL_CODE: u64 = 3500;
 #[cfg(target_os = "linux")]
-const IOCTL_CCID_ESCAPE_SCARD_CTL_CODE: u64 = pcsc::ctl_code(1);
+const IOCTL_CCID_ESCAPE_SCARD_CTL_CODE: u64 = platform_pcsc_ctl_code(1);
 #[cfg(windows)]
-const IOCTL_CCID_ESCAPE_SCARD_CTL_CODE: u64 = pcsc::ctl_code(3500);
+const IOCTL_CCID_ESCAPE_SCARD_CTL_CODE: u64 = platform_pcsc_ctl_code(3500);
 
 fn device_error(operation: &'static str, code: i32) -> Error {
     Error::DeviceOperationFailed { operation, code }

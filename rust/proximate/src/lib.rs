@@ -4,9 +4,6 @@
 //
 // Pure Rust API surface for libnfc experiments.
 
-#[cfg(feature = "native_helpers")]
-#[doc(hidden)]
-pub mod native_helpers;
 mod native;
 pub mod rust_api;
 

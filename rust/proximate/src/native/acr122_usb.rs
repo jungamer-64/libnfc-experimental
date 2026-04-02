@@ -5,13 +5,10 @@ use super::pn53x::{
     payload_from_host_frame,
 };
 use crate::rust_api::{ConnectionString, Context, Driver, Error, OpenedDevice, Property, ScanType};
-use nusb::descriptors::TransferType;
-use nusb::transfer::{Buffer, Bulk, In, Out, TransferError};
-use nusb::{Device, DeviceInfo, Interface, MaybeFuture};
+use proximate_platform::usb::{UsbDeviceInfo, UsbError, UsbHandle, list_devices, strerror};
 use std::collections::VecDeque;
 #[cfg(test)]
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 const DRIVER_NAME: &str = "acr122_usb";
 const PROBE_TIMEOUT_MS: i32 = 250;
@@ -44,19 +41,17 @@ impl Driver for Acr122UsbDriver {
     }
 
     fn scan(&self, _context: &Context) -> Result<Vec<ConnectionString>, Error> {
-        let devices = nusb::list_devices()
-            .wait()
-            .map_err(|error| Error::DriverOpenFailed(error.to_string()))?;
+        let devices = list_devices().map_err(usb_open_error)?;
 
         let mut found = Vec::new();
         for info in devices {
-            if !acr122::is_usb_device(info.vendor_id(), info.product_id()) {
+            if !acr122::is_usb_device(info.vendor_id, info.product_id) {
                 continue;
             }
             found.push(build_usb_connstring_for(
                 DRIVER_NAME,
-                device_bus_number(&info),
-                info.device_address(),
+                info.bus_number,
+                info.device_address,
             )?);
         }
 
@@ -89,22 +84,20 @@ impl Driver for Acr122UsbDriver {
     }
 }
 
-fn select_usb_device(selector: UsbSelector) -> Result<DeviceInfo, Error> {
-    let devices = nusb::list_devices()
-        .wait()
-        .map_err(|error| Error::DriverOpenFailed(error.to_string()))?;
+fn select_usb_device(selector: UsbSelector) -> Result<UsbDeviceInfo, Error> {
+    let devices = list_devices().map_err(usb_open_error)?;
 
     for info in devices {
-        if !acr122::is_usb_device(info.vendor_id(), info.product_id()) {
+        if !acr122::is_usb_device(info.vendor_id, info.product_id) {
             continue;
         }
         if let Some(bus) = selector.bus
-            && device_bus_number(&info) != bus
+            && info.bus_number != bus
         {
             continue;
         }
         if let Some(device) = selector.device
-            && info.device_address() != device
+            && info.device_address != device
         {
             continue;
         }
@@ -116,49 +109,43 @@ fn select_usb_device(selector: UsbSelector) -> Result<DeviceInfo, Error> {
     ))
 }
 
-fn usb_display_name(info: &DeviceInfo) -> String {
-    match (info.manufacturer_string(), info.product_string()) {
+fn usb_display_name(info: &UsbDeviceInfo) -> String {
+    match (
+        info.manufacturer_string.as_deref(),
+        info.product_string.as_deref(),
+    ) {
         (Some(manufacturer), Some(product)) if !manufacturer.is_empty() && !product.is_empty() => {
             format!("{manufacturer} / {product}")
         }
-        _ => acr122::usb_device_name(info.vendor_id(), info.product_id())
+        _ => acr122::usb_device_name(info.vendor_id, info.product_id)
             .unwrap_or("ACS ACR122")
             .to_string(),
     }
 }
 
-fn device_bus_number(info: &DeviceInfo) -> u8 {
-    #[cfg(target_os = "linux")]
-    {
-        info.busnum()
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        info.bus_id().parse::<u8>().unwrap_or(0)
-    }
-}
-
-fn transfer_timeout(timeout_ms: i32) -> Duration {
-    if timeout_ms <= 0 {
-        Duration::from_secs(5)
-    } else {
-        Duration::from_millis(timeout_ms as u64)
-    }
+fn usb_open_error(error: UsbError) -> Error {
+    Error::DriverOpenFailed(strerror(error).to_string())
 }
 
 fn device_error(operation: &'static str, code: i32) -> Error {
     Error::DeviceOperationFailed { operation, code }
 }
 
-fn map_transfer_error(operation: &'static str, error: TransferError) -> Error {
+fn map_usb_error(operation: &'static str, error: UsbError) -> Error {
     let code = match error {
-        TransferError::Cancelled => NFC_ETIMEOUT,
-        TransferError::Disconnected
-        | TransferError::Fault
-        | TransferError::InvalidArgument
-        | TransferError::Stall
-        | TransferError::Unknown(_) => NFC_EIO,
+        UsbError::Timeout => NFC_ETIMEOUT,
+        UsbError::Io
+        | UsbError::InvalidParam
+        | UsbError::Access
+        | UsbError::NoDevice
+        | UsbError::NotFound
+        | UsbError::Busy
+        | UsbError::Overflow
+        | UsbError::Pipe
+        | UsbError::Interrupted
+        | UsbError::NoMem
+        | UsbError::NotSupported
+        | UsbError::Other => NFC_EIO,
     };
     device_error(operation, code)
 }
@@ -172,36 +159,33 @@ struct EndpointSelection {
     max_packet_size: u16,
 }
 
-fn resolve_endpoints(device: &Device) -> Result<EndpointSelection, Error> {
-    for configuration in device.configurations() {
-        for interface_group in configuration.interfaces() {
-            let alt = interface_group.first_alt_setting();
-            let mut endpoint_in = None;
-            let mut endpoint_out = None;
-            let mut max_packet_size = 0u16;
+fn resolve_endpoints(device: &UsbDeviceInfo) -> Result<EndpointSelection, Error> {
+    for interface in &device.interfaces {
+        let mut endpoint_in = None;
+        let mut endpoint_out = None;
+        let mut max_packet_size = 0u16;
 
-            for endpoint in alt.endpoints() {
-                if endpoint.transfer_type() != TransferType::Bulk {
-                    continue;
-                }
-                if endpoint.address() & 0x80 != 0 {
-                    endpoint_in = Some(endpoint.address());
-                } else {
-                    endpoint_out = Some(endpoint.address());
-                }
-                max_packet_size = max_packet_size.max(endpoint.max_packet_size() as u16);
+        for endpoint in &interface.endpoints {
+            if endpoint.attributes & 0x03 != 0x02 {
+                continue;
             }
+            if endpoint.address & 0x80 != 0 {
+                endpoint_in = Some(endpoint.address);
+            } else {
+                endpoint_out = Some(endpoint.address);
+            }
+            max_packet_size = max_packet_size.max(endpoint.max_packet_size);
+        }
 
-            if let (Some(endpoint_in), Some(endpoint_out)) = (endpoint_in, endpoint_out) {
-                return Ok(EndpointSelection {
-                    configuration_value: configuration.configuration_value(),
-                    interface_number: alt.interface_number(),
-                    alternate_setting: alt.alternate_setting(),
-                    endpoint_in,
-                    endpoint_out,
-                    max_packet_size,
-                });
-            }
+        if let (Some(endpoint_in), Some(endpoint_out)) = (endpoint_in, endpoint_out) {
+            return Ok(EndpointSelection {
+                configuration_value: device.configuration_value,
+                interface_number: interface.number,
+                alternate_setting: interface.alternate_setting,
+                endpoint_in,
+                endpoint_out,
+                max_packet_size,
+            });
         }
     }
 
@@ -295,48 +279,33 @@ trait Acr122UsbIo: Send {
 }
 
 struct UsbCcidHandle {
-    _device: Device,
-    interface: Interface,
+    handle: UsbHandle,
     endpoint_in: u8,
     endpoint_out: u8,
     max_packet_size: u16,
 }
 
 impl UsbCcidHandle {
-    fn open(info: &DeviceInfo) -> Result<Self, Error> {
-        let device = info
-            .open()
-            .wait()
-            .map_err(|error| Error::DriverOpenFailed(error.to_string()))?;
-        let selection = resolve_endpoints(&device)?;
-        device
-            .reset()
-            .wait()
-            .map_err(|error| Error::DriverOpenFailed(error.to_string()))?;
-        drop(device);
-
-        let device = info
-            .open()
-            .wait()
-            .map_err(|error| Error::DriverOpenFailed(error.to_string()))?;
-        device
-            .set_configuration(selection.configuration_value)
-            .wait()
-            .map_err(|error| Error::DriverOpenFailed(error.to_string()))?;
-        let interface = device
+    fn open(info: &UsbDeviceInfo) -> Result<Self, Error> {
+        let mut handle = UsbHandle::open(info).map_err(usb_open_error)?;
+        let selection = resolve_endpoints(info)?;
+        handle.reset().map_err(usb_open_error)?;
+        if selection.configuration_value != 0 {
+            handle
+                .set_configuration(selection.configuration_value)
+                .map_err(usb_open_error)?;
+        }
+        handle
             .claim_interface(selection.interface_number)
-            .wait()
-            .map_err(|error| Error::DriverOpenFailed(error.to_string()))?;
+            .map_err(usb_open_error)?;
         if selection.alternate_setting != 0 {
-            interface
-                .set_alt_setting(selection.alternate_setting)
-                .wait()
-                .map_err(|error| Error::DriverOpenFailed(error.to_string()))?;
+            handle
+                .set_altinterface(selection.interface_number, selection.alternate_setting)
+                .map_err(usb_open_error)?;
         }
 
         Ok(Self {
-            _device: device,
-            interface,
+            handle,
             endpoint_in: selection.endpoint_in,
             endpoint_out: selection.endpoint_out,
             max_packet_size: selection.max_packet_size,
@@ -346,34 +315,16 @@ impl UsbCcidHandle {
 
 impl Acr122UsbIo for UsbCcidHandle {
     fn bulk_read(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
-        let mut bulk_in = self
-            .interface
-            .endpoint::<Bulk, In>(self.endpoint_in)
-            .map_err(|_| device_error("acr122_usb_bulk_read", NFC_EIO))?;
-        let completion =
-            bulk_in.transfer_blocking(Buffer::new(buffer.len()), transfer_timeout(timeout_ms));
-        let actual_len = completion.actual_len.min(buffer.len());
-        match completion.into_result() {
-            Ok(received) => {
-                let data = received.into_vec();
-                buffer[..actual_len].copy_from_slice(&data[..actual_len]);
-                Ok(actual_len)
-            }
-            Err(error) => Err(map_transfer_error("acr122_usb_bulk_read", error)),
-        }
+        self.handle
+            .bulk_read(self.endpoint_in, buffer, timeout_ms)
+            .map_err(|error| map_usb_error("acr122_usb_bulk_read", error))
     }
 
     fn bulk_write(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
-        let mut bulk_out = self
-            .interface
-            .endpoint::<Bulk, Out>(self.endpoint_out)
-            .map_err(|_| device_error("acr122_usb_bulk_write", NFC_EIO))?;
-        let completion =
-            bulk_out.transfer_blocking(payload.to_vec().into(), transfer_timeout(timeout_ms));
-        let actual_len = completion.actual_len;
-        completion
-            .into_result()
-            .map_err(|error| map_transfer_error("acr122_usb_bulk_write", error))?;
+        let actual_len = self
+            .handle
+            .bulk_write(self.endpoint_out, payload, timeout_ms)
+            .map_err(|error| map_usb_error("acr122_usb_bulk_write", error))?;
         if actual_len != payload.len() {
             return Err(device_error("acr122_usb_bulk_write", NFC_EIO));
         }
@@ -381,11 +332,9 @@ impl Acr122UsbIo for UsbCcidHandle {
             && !payload.is_empty()
             && actual_len % usize::from(self.max_packet_size) == 0
         {
-            let completion =
-                bulk_out.transfer_blocking(Buffer::new(0), transfer_timeout(timeout_ms));
-            completion
-                .into_result()
-                .map_err(|error| map_transfer_error("acr122_usb_bulk_write", error))?;
+            self.handle
+                .bulk_write(self.endpoint_out, &[], timeout_ms)
+                .map_err(|error| map_usb_error("acr122_usb_bulk_write", error))?;
         }
         Ok(())
     }

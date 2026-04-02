@@ -94,17 +94,6 @@ impl BaudRate {
             Self::Br847 => "847 kbps",
         }
     }
-
-    #[doc(hidden)]
-    pub const fn label_cstr(self) -> &'static CStr {
-        match self {
-            Self::Undefined => c"undefined baud rate",
-            Self::Br106 => c"106 kbps",
-            Self::Br212 => c"212 kbps",
-            Self::Br424 => c"424 kbps",
-            Self::Br847 => c"847 kbps",
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -136,23 +125,6 @@ impl ModulationType {
             Self::Dep => "D.E.P.",
             Self::Barcode => "Thinfilm NFC Barcode",
             Self::Iso14443BiClass => "ISO/IEC 14443-2B-3B iClass (Picopass)",
-        }
-    }
-
-    #[doc(hidden)]
-    pub const fn label_cstr(self) -> &'static CStr {
-        match self {
-            Self::Undefined => c"???",
-            Self::Iso14443A => c"ISO/IEC 14443A",
-            Self::Jewel => c"Innovision Jewel",
-            Self::Iso14443B => c"ISO/IEC 14443-4B",
-            Self::Iso14443Bi => c"ISO/IEC 14443-4B'",
-            Self::Iso14443B2Sr => c"ISO/IEC 14443-2B ST SRx",
-            Self::Iso14443B2Ct => c"ISO/IEC 14443-2B ASK CTx",
-            Self::Felica => c"FeliCa",
-            Self::Dep => c"D.E.P.",
-            Self::Barcode => c"Thinfilm NFC Barcode",
-            Self::Iso14443BiClass => c"ISO/IEC 14443-2B-3B iClass (Picopass)",
         }
     }
 }
@@ -244,4 +216,3 @@ impl Target {
         }
     }
 }
-use std::ffi::CStr;

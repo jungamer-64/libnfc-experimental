@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -375,7 +374,7 @@ fn env_lock() -> &'static Mutex<()> {
 }
 
 struct ScopedEnv {
-    saved: Vec<(String, Option<OsString>)>,
+    saved: Vec<(String, Option<String>)>,
 }
 
 impl ScopedEnv {
@@ -387,7 +386,10 @@ impl ScopedEnv {
         if self.saved.iter().any(|(saved_key, _)| saved_key == key) {
             return;
         }
-        self.saved.push((key.to_string(), std::env::var_os(key)));
+        self.saved.push((
+            key.to_string(),
+            std::env::var_os(key).map(|value| value.to_string_lossy().into_owned()),
+        ));
     }
 
     fn set(&mut self, key: &str, value: &str) {

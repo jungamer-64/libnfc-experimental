@@ -2,12 +2,12 @@
 //
 // Free/Libre Near Field Communication (NFC) library
 //
-// USB helper layer backed by `proximate::native_helpers`.
+// USB helper layer backed by `proximate-platform`.
 
 #![allow(non_camel_case_types)]
 
 use crate::ffi_support::{as_mut, as_ref, copy_bytes_with_truncation};
-use ::proximate::native_helpers::usb::{
+use ::proximate_platform::usb::{
     UsbBulkEndpoints as NativeUsbBulkEndpoints, UsbDeviceInfo as NativeUsbDeviceInfo,
     UsbDeviceSelector, UsbError as NativeUsbError, UsbHandle as NativeUsbHandle,
     bulk_endpoints as native_bulk_endpoints, bus_device_strings as native_bus_device_strings,

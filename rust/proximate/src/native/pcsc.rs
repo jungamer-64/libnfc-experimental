@@ -3,11 +3,12 @@ use crate::rust_api::{
     BaudRate, ConnectionString, Context, Driver, Error, Mode, Modulation, ModulationType,
     OpenedDevice, Property, ScanType, Target, TargetInfo, decode_connstring, device_error_message,
 };
+#[cfg(feature = "pcsc_helper")]
+use proximate_platform::pcsc as platform_pcsc;
 #[cfg(test)]
 use std::collections::HashMap;
 #[cfg(test)]
 use std::collections::VecDeque;
-use std::ffi::CString;
 use std::fmt;
 use std::sync::Arc;
 #[cfg(test)]
@@ -44,49 +45,7 @@ fn invalid_connection(message: impl Into<String>) -> Error {
 fn pcsc_error_message(code: i32) -> Option<&'static str> {
     #[cfg(feature = "pcsc_helper")]
     {
-        use pcsc::ffi;
-
-        let code = i64::from(code);
-        Some(match code {
-            x if x == ffi::SCARD_S_SUCCESS => "Command successful.",
-            x if x == ffi::SCARD_F_INTERNAL_ERROR => "Internal error.",
-            x if x == ffi::SCARD_E_CANCELLED => "Command cancelled.",
-            x if x == ffi::SCARD_E_INVALID_HANDLE => "Invalid handle.",
-            x if x == ffi::SCARD_E_INVALID_PARAMETER => "Invalid parameter given.",
-            x if x == ffi::SCARD_E_INVALID_TARGET => "Invalid target given.",
-            x if x == ffi::SCARD_E_NO_MEMORY => "Not enough memory.",
-            x if x == ffi::SCARD_F_WAITED_TOO_LONG => "Waited too long.",
-            x if x == ffi::SCARD_E_INSUFFICIENT_BUFFER => "Insufficient buffer.",
-            x if x == ffi::SCARD_E_UNKNOWN_READER => "Unknown reader specified.",
-            x if x == ffi::SCARD_E_TIMEOUT => "Command timeout.",
-            x if x == ffi::SCARD_E_SHARING_VIOLATION => "Sharing violation.",
-            x if x == ffi::SCARD_E_NO_SMARTCARD => "No smart card inserted.",
-            x if x == ffi::SCARD_E_UNKNOWN_CARD => "Unknown card.",
-            x if x == ffi::SCARD_E_CANT_DISPOSE => "Cannot dispose handle.",
-            x if x == ffi::SCARD_E_PROTO_MISMATCH => "Card protocol mismatch.",
-            x if x == ffi::SCARD_E_NOT_READY => "Subsystem not ready.",
-            x if x == ffi::SCARD_E_INVALID_VALUE => "Invalid value given.",
-            x if x == ffi::SCARD_E_SYSTEM_CANCELLED => "System cancelled.",
-            x if x == ffi::SCARD_F_COMM_ERROR => "RPC transport error.",
-            x if x == ffi::SCARD_F_UNKNOWN_ERROR => "Unknown error.",
-            x if x == ffi::SCARD_E_INVALID_ATR => "Invalid ATR.",
-            x if x == ffi::SCARD_E_NOT_TRANSACTED => "Transaction failed.",
-            x if x == ffi::SCARD_E_READER_UNAVAILABLE => "Reader is unavailable.",
-            x if x == ffi::SCARD_E_PCI_TOO_SMALL => "PCI struct too small.",
-            x if x == ffi::SCARD_E_READER_UNSUPPORTED => "Reader is unsupported.",
-            x if x == ffi::SCARD_E_DUPLICATE_READER => "Reader already exists.",
-            x if x == ffi::SCARD_E_CARD_UNSUPPORTED => "Card is unsupported.",
-            x if x == ffi::SCARD_E_NO_SERVICE => "Service not available.",
-            x if x == ffi::SCARD_E_SERVICE_STOPPED => "Service was stopped.",
-            x if x == ffi::SCARD_E_NO_READERS_AVAILABLE => "Cannot find a smart card reader.",
-            x if x == ffi::SCARD_W_UNSUPPORTED_CARD => "Card is not supported.",
-            x if x == ffi::SCARD_W_UNRESPONSIVE_CARD => "Card is unresponsive.",
-            x if x == ffi::SCARD_W_UNPOWERED_CARD => "Card is unpowered.",
-            x if x == ffi::SCARD_W_RESET_CARD => "Card was reset.",
-            x if x == ffi::SCARD_W_REMOVED_CARD => "Card was removed.",
-            x if x == ffi::SCARD_E_UNSUPPORTED_FEATURE => "Feature not supported.",
-            _ => return None,
-        })
+        platform_pcsc::error_message(code)
     }
 
     #[cfg(not(feature = "pcsc_helper"))]
@@ -195,61 +154,56 @@ pub(super) trait PcscBackend: Send + Sync {
 }
 
 #[cfg(feature = "pcsc_helper")]
-fn pcsc_error_code(error: pcsc::Error) -> i32 {
-    error as u32 as i32
-}
-
-#[cfg(feature = "pcsc_helper")]
-fn map_share_mode(value: PcscShareMode) -> pcsc::ShareMode {
+fn map_share_mode(value: PcscShareMode) -> platform_pcsc::ShareMode {
     match value {
-        PcscShareMode::Exclusive => pcsc::ShareMode::Exclusive,
-        PcscShareMode::Shared => pcsc::ShareMode::Shared,
-        PcscShareMode::Direct => pcsc::ShareMode::Direct,
+        PcscShareMode::Exclusive => platform_pcsc::ShareMode::Exclusive,
+        PcscShareMode::Shared => platform_pcsc::ShareMode::Shared,
+        PcscShareMode::Direct => platform_pcsc::ShareMode::Direct,
     }
 }
 
 #[cfg(feature = "pcsc_helper")]
-fn map_protocols(value: PcscProtocols) -> pcsc::Protocols {
-    let mut protocols = pcsc::Protocols::UNDEFINED;
+fn map_protocols(value: PcscProtocols) -> platform_pcsc::Protocols {
+    let mut protocols = platform_pcsc::Protocols::UNDEFINED;
     if value.contains(PcscProtocol::T0) {
-        protocols |= pcsc::Protocols::T0;
+        protocols = platform_pcsc::Protocols(protocols.0 | platform_pcsc::Protocols::T0.0);
     }
     if value.contains(PcscProtocol::T1) {
-        protocols |= pcsc::Protocols::T1;
+        protocols = platform_pcsc::Protocols(protocols.0 | platform_pcsc::Protocols::T1.0);
     }
     if value.contains(PcscProtocol::Raw) {
-        protocols |= pcsc::Protocols::RAW;
+        protocols = platform_pcsc::Protocols(protocols.0 | platform_pcsc::Protocols::RAW.0);
     }
     protocols
 }
 
 #[cfg(feature = "pcsc_helper")]
-fn map_disposition(value: PcscDisposition) -> pcsc::Disposition {
+fn map_disposition(value: PcscDisposition) -> platform_pcsc::Disposition {
     match value {
-        PcscDisposition::LeaveCard => pcsc::Disposition::LeaveCard,
-        PcscDisposition::ResetCard => pcsc::Disposition::ResetCard,
-        PcscDisposition::UnpowerCard => pcsc::Disposition::UnpowerCard,
-        PcscDisposition::EjectCard => pcsc::Disposition::EjectCard,
+        PcscDisposition::LeaveCard => platform_pcsc::Disposition::LeaveCard,
+        PcscDisposition::ResetCard => platform_pcsc::Disposition::ResetCard,
+        PcscDisposition::UnpowerCard => platform_pcsc::Disposition::UnpowerCard,
+        PcscDisposition::EjectCard => platform_pcsc::Disposition::EjectCard,
     }
 }
 
 #[cfg(feature = "pcsc_helper")]
-fn map_protocol(value: pcsc::Protocol) -> PcscProtocol {
+fn map_protocol(value: platform_pcsc::Protocol) -> PcscProtocol {
     match value {
-        pcsc::Protocol::T0 => PcscProtocol::T0,
-        pcsc::Protocol::T1 => PcscProtocol::T1,
-        pcsc::Protocol::RAW => PcscProtocol::Raw,
+        platform_pcsc::Protocol::T0 => PcscProtocol::T0,
+        platform_pcsc::Protocol::T1 => PcscProtocol::T1,
+        platform_pcsc::Protocol::Raw => PcscProtocol::Raw,
     }
 }
 
 #[cfg(feature = "pcsc_helper")]
-fn map_attribute(value: PcscAttribute) -> pcsc::Attribute {
+fn map_attribute(value: PcscAttribute) -> platform_pcsc::Attribute {
     match value {
-        PcscAttribute::VendorName => pcsc::Attribute::VendorName,
-        PcscAttribute::VendorIfdType => pcsc::Attribute::VendorIfdType,
-        PcscAttribute::VendorIfdVersion => pcsc::Attribute::VendorIfdVersion,
-        PcscAttribute::VendorIfdSerialNo => pcsc::Attribute::VendorIfdSerialNo,
-        PcscAttribute::IccTypePerAtr => pcsc::Attribute::IccTypePerAtr,
+        PcscAttribute::VendorName => platform_pcsc::Attribute::VendorName,
+        PcscAttribute::VendorIfdType => platform_pcsc::Attribute::VendorIfdType,
+        PcscAttribute::VendorIfdVersion => platform_pcsc::Attribute::VendorIfdVersion,
+        PcscAttribute::VendorIfdSerialNo => platform_pcsc::Attribute::VendorIfdSerialNo,
+        PcscAttribute::IccTypePerAtr => platform_pcsc::Attribute::IccTypePerAtr,
     }
 }
 
@@ -257,16 +211,8 @@ fn map_attribute(value: PcscAttribute) -> pcsc::Attribute {
 pub(super) struct SystemPcscBackend;
 
 #[cfg(feature = "pcsc_helper")]
-impl SystemPcscBackend {
-    fn establish() -> Result<pcsc::Context, i32> {
-        pcsc::Context::establish(pcsc::Scope::User).map_err(pcsc_error_code)
-    }
-}
-
-#[cfg(feature = "pcsc_helper")]
 struct SystemPcscCard {
-    _context: pcsc::Context,
-    card: pcsc::Card,
+    inner: Box<dyn platform_pcsc::Card>,
 }
 
 #[cfg(feature = "pcsc_helper")]
@@ -277,38 +223,28 @@ impl PcscCard for SystemPcscCard {
         preferred_protocols: PcscProtocols,
         disposition: PcscDisposition,
     ) -> Result<(), i32> {
-        self.card
+        self.inner
             .reconnect(
                 map_share_mode(share_mode),
                 map_protocols(preferred_protocols),
                 map_disposition(disposition),
             )
-            .map_err(pcsc_error_code)
     }
 
     fn status2_owned(&self) -> Result<PcscCardStatus, i32> {
-        self.card
-            .status2_owned()
-            .map(|status| PcscCardStatus {
-                present: status.status().contains(pcsc::Status::PRESENT),
-                atr: status.atr().to_vec(),
-                protocol: status.protocol2().map(map_protocol),
-            })
-            .map_err(pcsc_error_code)
+        self.inner.status2_owned().map(|status| PcscCardStatus {
+            present: status.present,
+            atr: status.atr,
+            protocol: status.protocol.map(map_protocol),
+        })
     }
 
     fn get_attribute_owned(&self, attribute: PcscAttribute) -> Result<Vec<u8>, i32> {
-        self.card
-            .get_attribute_owned(map_attribute(attribute))
-            .map_err(pcsc_error_code)
+        self.inner.get_attribute_owned(map_attribute(attribute))
     }
 
     fn transmit(&self, send_buffer: &[u8], receive_capacity: usize) -> Result<Vec<u8>, i32> {
-        let mut buffer = vec![0u8; receive_capacity.max(2)];
-        self.card
-            .transmit(send_buffer, &mut buffer)
-            .map(|payload| payload.to_vec())
-            .map_err(pcsc_error_code)
+        self.inner.transmit(send_buffer, receive_capacity)
     }
 
     fn control(
@@ -317,23 +253,15 @@ impl PcscCard for SystemPcscCard {
         send_buffer: &[u8],
         receive_capacity: usize,
     ) -> Result<Vec<u8>, i32> {
-        let mut buffer = vec![0u8; receive_capacity.max(2)];
-        self.card
-            .control(control_code, send_buffer, &mut buffer)
-            .map(|payload| payload.to_vec())
-            .map_err(pcsc_error_code)
+        self.inner
+            .control(control_code, send_buffer, receive_capacity)
     }
 }
 
 #[cfg(feature = "pcsc_helper")]
 impl PcscBackend for SystemPcscBackend {
     fn list_readers_owned(&self) -> Result<Vec<String>, i32> {
-        let context = Self::establish()?;
-        let readers = context.list_readers_owned().map_err(pcsc_error_code)?;
-        Ok(readers
-            .into_iter()
-            .map(|value| value.to_string_lossy().into_owned())
-            .collect())
+        platform_pcsc::Backend::list_readers_owned(&platform_pcsc::SystemBackend)
     }
 
     fn connect(
@@ -342,19 +270,13 @@ impl PcscBackend for SystemPcscBackend {
         share_mode: PcscShareMode,
         preferred_protocols: PcscProtocols,
     ) -> Result<Box<dyn PcscCard>, i32> {
-        let context = Self::establish()?;
-        let reader = CString::new(reader).map_err(|_| NFC_EINVARG)?;
-        let card = context
-            .connect(
-                reader.as_c_str(),
-                map_share_mode(share_mode),
-                map_protocols(preferred_protocols),
-            )
-            .map_err(pcsc_error_code)?;
-        Ok(Box::new(SystemPcscCard {
-            _context: context,
-            card,
-        }))
+        let card = platform_pcsc::Backend::connect(
+            &platform_pcsc::SystemBackend,
+            reader,
+            map_share_mode(share_mode),
+            map_protocols(preferred_protocols),
+        )?;
+        Ok(Box::new(SystemPcscCard { inner: card }))
     }
 }
 

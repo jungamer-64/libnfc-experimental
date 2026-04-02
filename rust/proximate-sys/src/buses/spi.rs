@@ -20,7 +20,7 @@ pub type spi_port = *mut c_void;
 #[cfg(all(not(test), target_os = "linux"))]
 mod linux_impl {
     use super::*;
-    use ::proximate::native_helpers::spi::{
+    use ::proximate_platform::spi::{
         SpiHandle, SpiIoError, SpiOpenError, list_ports as list_internal_ports,
     };
 

@@ -1,7 +1,6 @@
 use super::connstring::{build_path_connstring, decode_path_descriptor};
 use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport};
 use crate::rust_api::{ConnectionString, Context, Driver, Error, OpenedDevice, ScanType};
-use std::fs;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -9,13 +8,7 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 #[cfg(target_os = "linux")]
-use rustix::fd::OwnedFd;
-#[cfg(target_os = "linux")]
-use rustix::fs::{Mode, OFlags, open};
-#[cfg(target_os = "linux")]
-use rustix::io::{read, write};
-#[cfg(target_os = "linux")]
-use rustix::ioctl::{self, Ioctl, IoctlOutput, Opcode};
+use proximate_platform::i2c::{I2cHandle, I2cIoError, I2cOpenError};
 
 const DRIVER_NAME: &str = "pn532_i2c";
 const PN532_I2C_ADDR: u16 = 0x24;
@@ -107,52 +100,12 @@ impl Driver for Pn532I2cDriver {
 }
 
 fn list_candidate_paths() -> Vec<String> {
-    let mut ports = Vec::new();
-    let Ok(entries) = fs::read_dir("/dev") else {
-        return ports;
-    };
-
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name.starts_with("i2c-") {
-            ports.push(format!("/dev/{name}"));
-        }
-    }
-
-    ports.sort();
-    ports
-}
-
-#[cfg(target_os = "linux")]
-struct I2cSetSlave {
-    address: u16,
-}
-
-#[cfg(target_os = "linux")]
-unsafe impl Ioctl for I2cSetSlave {
-    type Output = ();
-    const IS_MUTATING: bool = false;
-
-    fn opcode(&self) -> Opcode {
-        0x0703
-    }
-
-    fn as_ptr(&mut self) -> *mut std::ffi::c_void {
-        self.address as usize as *mut std::ffi::c_void
-    }
-
-    unsafe fn output_from_ptr(
-        _out: IoctlOutput,
-        _extract_output: *mut std::ffi::c_void,
-    ) -> rustix::io::Result<Self::Output> {
-        Ok(())
-    }
+    proximate_platform::i2c::list_ports()
 }
 
 #[cfg(target_os = "linux")]
 pub struct I2cTransport {
-    fd: OwnedFd,
+    handle: I2cHandle,
     abort_requested: Arc<AtomicBool>,
     last_transaction_stop: Option<Instant>,
 }
@@ -160,29 +113,20 @@ pub struct I2cTransport {
 #[cfg(target_os = "linux")]
 impl I2cTransport {
     pub fn open(path: &str) -> Result<Self, Error> {
-        let fd = open(
-            path,
-            OFlags::RDWR | OFlags::NONBLOCK | OFlags::NOCTTY,
-            Mode::empty(),
-        )
-        .map_err(|error| {
-            Error::DriverOpenFailed(format!("failed to open {path}: {}", error.raw_os_error()))
-        })?;
-
-        unsafe {
-            ioctl::ioctl(
-                &fd,
-                I2cSetSlave {
-                    address: PN532_I2C_ADDR,
-                },
-            )
-        }
-        .map_err(|_| {
-            Error::DriverOpenFailed(format!("failed to bind PN532 I2C address on {path}"))
-        })?;
+        let handle = match I2cHandle::open(path, u32::from(PN532_I2C_ADDR)) {
+            Ok(handle) => handle,
+            Err(I2cOpenError::InvalidBus) => {
+                return Err(Error::DriverOpenFailed(format!("failed to open {path}")));
+            }
+            Err(I2cOpenError::InvalidAddress) => {
+                return Err(Error::DriverOpenFailed(format!(
+                    "failed to bind PN532 I2C address on {path}"
+                )));
+            }
+        };
 
         Ok(Self {
-            fd,
+            handle,
             abort_requested: Arc::new(AtomicBool::new(false)),
             last_transaction_stop: None,
         })
@@ -211,13 +155,14 @@ impl Pn53xTransport for I2cTransport {
 
         for _ in 0..PN532_SEND_RETRIES {
             self.respect_bus_free_time();
-            match write(&self.fd, payload) {
-                Ok(len) if len == payload.len() => {
+            match self.handle.write(payload) {
+                Ok(()) => {
                     self.note_transaction_stop();
                     return Ok(());
                 }
-                Ok(_) => last_error = Some(device_error("i2c_send", NFC_EIO)),
-                Err(_) => last_error = Some(device_error("i2c_send", NFC_EIO)),
+                Err(I2cIoError::Io | I2cIoError::InvalidArgument) => {
+                    last_error = Some(device_error("i2c_send", NFC_EIO));
+                }
             }
             self.note_transaction_stop();
         }
@@ -234,8 +179,10 @@ impl Pn53xTransport for I2cTransport {
 
             self.respect_bus_free_time();
             let mut scratch = vec![0u8; buffer.len() + 1];
-            let len = read(&self.fd, scratch.as_mut_slice())
+            self.handle
+                .read(scratch.as_mut_slice())
                 .map_err(|_| device_error("i2c_receive", NFC_EIO))?;
+            let len = scratch.len();
             self.note_transaction_stop();
 
             if len == 0 {

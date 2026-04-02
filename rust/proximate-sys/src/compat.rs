@@ -6,7 +6,7 @@
 // installed surface even after the core implementation moved to Rust.
 
 use crate::ffi_support::{as_ref, bounded_strlen};
-use crate::ffi_strings::version_cstr;
+use crate::ffi_strings::{baud_rate_label_cstr, modulation_label_cstr, version_cstr};
 use crate::ffi_types::{nfc_baud_rate, nfc_modulation_type, nfc_target};
 use crate::lifecycle::nfc_device;
 use crate::runtime_bridge::{baud_rate_from_c, modulation_type_from_c};
@@ -26,11 +26,11 @@ const NFC_ESOFT: c_int = -80;
 const TARGET_RENDER_BUFFER_SIZE: usize = 4096;
 
 fn modulation_label(value: nfc_modulation_type) -> *const c_char {
-    modulation_type_from_c(value).label_cstr().as_ptr()
+    modulation_label_cstr(modulation_type_from_c(value)).as_ptr()
 }
 
 fn baud_rate_label(value: nfc_baud_rate) -> *const c_char {
-    baud_rate_from_c(value).label_cstr().as_ptr()
+    baud_rate_label_cstr(baud_rate_from_c(value)).as_ptr()
 }
 
 fn iso14443a_crc_bytes(data: &[u8]) -> [u8; 2] {

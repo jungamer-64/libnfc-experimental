@@ -10,8 +10,8 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 libc = "0.2"
-nusb = { version = "0.2", optional = true }
 proximate = { path = "../proximate", default-features = false }
+proximate-platform = { path = "../proximate-platform", default-features = false }
 
 [features]
 default = ["secure", "lifecycle", "orchestration", "usb_helper"]
@@ -19,14 +19,13 @@ secure = []
 lifecycle = ["proximate/lifecycle"]
 orchestration = [
     "lifecycle",
-    "dep:nusb",
     "proximate/orchestration",
-    "proximate/native_helpers",
     "proximate/usb_helper",
+    "proximate-platform/orchestration",
 ]
-usb_helper = ["dep:nusb", "proximate/usb_helper", "proximate/native_helpers"]
+usb_helper = ["proximate/usb_helper", "proximate-platform/usb_helper"]
 pcsc_helper = ["proximate/pcsc_helper"]
-nci_helper = ["proximate/nci_helper"]
+nci_helper = ["proximate/nci_helper", "proximate-platform/nci_helper"]
 c_ffi = ["secure", "lifecycle", "orchestration"]
 nfc_secure_debug = []
 asan_tests = []

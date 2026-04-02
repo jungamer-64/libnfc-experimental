@@ -8,19 +8,15 @@ build = "build.rs"
 name = "proximate"
 
 [dependencies]
-nusb = { version = "0.2", optional = true }
-pcsc = { version = "2.9.0", optional = true }
-linux-raw-sys = { version = "0.12", features = ["general", "ioctl"] }
+proximate-platform = { path = "../proximate-platform", default-features = false }
 rustix = { version = "1.1", default-features = false, features = ["std", "fs", "event", "termios", "time"] }
 
 [features]
 default = ["lifecycle", "orchestration", "usb_helper"]
 lifecycle = []
-orchestration = ["lifecycle"]
-usb_helper = ["dep:nusb"]
-pcsc_helper = ["dep:pcsc"]
-nci_helper = ["orchestration"]
-native_helpers = []
-ffi_internal_native = ["native_helpers"]
+orchestration = ["lifecycle", "proximate-platform/orchestration"]
+usb_helper = ["proximate-platform/usb_helper"]
+pcsc_helper = ["proximate-platform/pcsc_helper"]
+nci_helper = ["orchestration", "proximate-platform/nci_helper"]
 # Feature used by the nightly ASan job to compile sanitizer-only tests cleanly.
 asan_tests = []
