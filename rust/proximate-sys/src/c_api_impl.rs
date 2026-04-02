@@ -16,6 +16,7 @@
 // See AUTHORS file for a more comprehensive list of contributors.
 
 use crate::ffi_support::{bounded_strlen, copy_bytes_to_c_buffer};
+use crate::logger;
 use libc::{c_char, c_int, c_void, size_t};
 use proximate::rust_api as rt;
 use std::cell::RefCell;
@@ -41,58 +42,15 @@ const LOG_CATEGORY: *const c_char = b"libnfc.common\0" as *const u8 as *const c_
 pub const NFC_BUFSIZE_CONNSTRING: usize = 1024;
 pub(crate) const MALLOC_LABEL: *const c_char = b"malloc\0" as *const u8 as *const c_char;
 
-#[cfg(all(not(test), libnfc_external_bridges))]
-unsafe extern "C" {
-    fn nfc_rs_log_message(group: u8, category: *const c_char, priority: u8, message: *const c_char);
-}
-
-// ...existing code...
-
-#[cfg(test)]
-thread_local! {
-    static TEST_LOG_MESSAGES: RefCell<Vec<CString>> = const { RefCell::new(Vec::new()) };
-}
-
-#[cfg(test)]
-pub unsafe fn nfc_rs_log_message(
-    _group: u8,
-    _category: *const c_char,
-    _priority: u8,
-    _message: *const c_char,
+#[cfg(any(feature = "c_ffi", cbindgen, test))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nfc_rs_log_message(
+    group: u8,
+    category: *const c_char,
+    priority: u8,
+    message: *const c_char,
 ) {
-    if !_message.is_null() {
-        let c = unsafe { CStr::from_ptr(_message) };
-        // Store a cloned CString so tests can inspect it
-        let stored =
-            CString::new(c.to_bytes()).unwrap_or_else(|_| CString::new("<invalid>").unwrap());
-        TEST_LOG_MESSAGES.with(|cell| {
-            cell.borrow_mut().push(stored);
-        });
-    }
-}
-
-#[cfg(test)]
-pub fn test_get_last_log() -> Option<String> {
-    TEST_LOG_MESSAGES.with(|cell| {
-        cell.borrow()
-            .last()
-            .map(|c| c.to_string_lossy().into_owned())
-    })
-}
-
-#[cfg(test)]
-pub fn test_get_logs() -> Vec<String> {
-    TEST_LOG_MESSAGES.with(|cell| {
-        cell.borrow()
-            .iter()
-            .map(|entry| entry.to_string_lossy().into_owned())
-            .collect()
-    })
-}
-
-#[cfg(test)]
-pub fn test_clear_last_log() {
-    TEST_LOG_MESSAGES.with(|cell| cell.borrow_mut().clear());
+    unsafe { logger::log_message_ptrs(group, category, priority, message) };
 }
 
 pub(crate) fn log_message(priority: u8, message: &str) {
@@ -101,31 +59,13 @@ pub(crate) fn log_message(priority: u8, message: &str) {
     }
 }
 
-#[cfg(all(not(test), libnfc_external_bridges))]
 pub(crate) unsafe fn emit_log_message(
     group: u8,
     category: *const c_char,
     priority: u8,
     message: *const c_char,
 ) {
-    unsafe { nfc_rs_log_message(group, category, priority, message) };
-}
-
-#[cfg(any(test, not(libnfc_external_bridges)))]
-pub(crate) unsafe fn emit_log_message(
-    group: u8,
-    category: *const c_char,
-    priority: u8,
-    message: *const c_char,
-) {
-    #[cfg(test)]
-    unsafe {
-        nfc_rs_log_message(group, category, priority, message);
-        return;
-    }
-
-    #[cfg(not(test))]
-    let _ = (group, category, priority, message);
+    unsafe { logger::log_message_ptrs(group, category, priority, message) };
 }
 
 #[inline]
@@ -611,6 +551,7 @@ pub unsafe fn connstring_decode(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{test_clear_last_log, test_get_last_log};
     use std::ffi::{CStr, CString};
 
     fn free_if_not_null(ptr: *mut c_char) {
@@ -716,6 +657,7 @@ mod tests {
     fn parse_connstring_logs_on_prefix_mismatch() {
         unsafe {
             test_clear_last_log();
+            crate::logger::log_init(3);
             let conn = CString::new("pn53x_usb:/dev/usb").unwrap();
             let prefix = CString::new("pn532").unwrap();
             let mut buf = [0u8; 64];

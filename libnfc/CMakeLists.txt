@@ -36,11 +36,7 @@ if(EXISTS "${LIBNFC_EXPORTS_FILE}")
 endif()
 
 if(LIBNFC_LOG)
-  if(WIN32)
-    list(APPEND LIBRARY_SOURCES log.cpp ../contrib/win32/libnfc/log-internal.c)
-  else()
-    list(APPEND LIBRARY_SOURCES log.cpp log-internal.c)
-  endif()
+  list(APPEND LIBRARY_SOURCES log.c)
 endif()
 
 set(LIBNFC_OPTIONAL_PRIVATE_INCLUDE_DIRS

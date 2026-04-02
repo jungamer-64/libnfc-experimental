@@ -20,6 +20,8 @@ mod ffi_types;
 mod initiator;
 #[cfg(any(feature = "lifecycle", cbindgen))]
 mod lifecycle;
+/// cbindgen:ignore
+mod logger;
 #[cfg(any(feature = "lifecycle", feature = "orchestration", cbindgen))]
 /// cbindgen:ignore
 mod runtime_bridge;
@@ -63,7 +65,10 @@ pub(crate) use c_api_impl::{
     set_last_error_message,
 };
 #[cfg(test)]
-pub(crate) use c_api_impl::{test_clear_last_log, test_get_last_log, test_get_logs};
+pub(crate) use logger::{
+    test_clear_rendered_logs as test_clear_last_log, test_get_last_log, test_get_logs,
+    test_reset_log_level,
+};
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
 /// cbindgen:ignore

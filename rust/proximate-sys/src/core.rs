@@ -32,10 +32,6 @@ const NFC_ESOFT: c_int = -80;
 
 const LOG_PRIORITY_INFO: u8 = 2;
 const GENERAL_LOG_CATEGORY: *const c_char = b"libnfc.general\0" as *const u8 as *const c_char;
-#[cfg(test)]
-const ENV_LIBNFC_LOG_LEVEL: &[u8] = b"LIBNFC_LOG_LEVEL\0";
-#[cfg(test)]
-const ENV_LIBNFC_LOG_LEVEL_NAME: &str = "LIBNFC_LOG_LEVEL";
 
 #[derive(Clone, Copy)]
 pub(crate) struct DriverHandle(pub(crate) *const nfc_driver);
@@ -752,6 +748,7 @@ mod tests {
         reset_fake_driver_state();
         reset_core_bridge_test_state();
         reset_lifecycle_test_state();
+        crate::test_reset_log_level();
         test_clear_last_log();
     }
 
@@ -984,7 +981,7 @@ mod tests {
     }
 
     #[test]
-    fn list_devices_skips_unavailable_optional_entries_and_restores_log_env() {
+    fn list_devices_skips_unavailable_optional_entries_without_touching_log_env() {
         let _guard = core_test_guard();
         reset_core_test_world();
         add_failing_connstring("alpha:optional");
@@ -1013,24 +1010,17 @@ mod tests {
             (*context).user_defined_devices[0].optional = true;
         }
 
-        let original = CString::new("7").unwrap();
-        unsafe {
-            std::env::set_var(
-                ENV_LIBNFC_LOG_LEVEL_NAME,
-                original.to_string_lossy().as_ref(),
-            )
-        };
+        unsafe { std::env::remove_var("LIBNFC_LOG_LEVEL") };
 
         let mut connstrings = [[0 as c_char; NFC_BUFSIZE_CONNSTRING]; 2];
         let found =
             unsafe { nfc_list_devices(context, connstrings.as_mut_ptr(), connstrings.len()) };
         assert_eq!(found, 0);
 
-        let restored = unsafe { libc::getenv(ENV_LIBNFC_LOG_LEVEL.as_ptr() as *const c_char) };
-        assert_eq!(c_string_ptr_to_string(restored, 16), "7".to_string());
+        let restored = unsafe { libc::getenv(c"LIBNFC_LOG_LEVEL".as_ptr()) };
+        assert!(restored.is_null());
 
         unsafe {
-            std::env::remove_var(ENV_LIBNFC_LOG_LEVEL_NAME);
             nfc_exit(context);
         }
     }
@@ -1039,6 +1029,7 @@ mod tests {
     fn list_devices_warns_when_autoscan_is_disabled_without_manual_devices() {
         let _guard = core_test_guard();
         reset_core_test_world();
+        crate::logger::log_init(LOG_PRIORITY_INFO.into());
 
         let context = unsafe { nfc_context_alloc_defaults() };
         unsafe {

@@ -4,7 +4,6 @@
 #include <nfc/nfc.h>
 
 #include "chips/pn53x.h"
-#include "libnfc/rust_bridge.h"
 
 /*
  * Build-tree link support for test_usbbus_helpers.
@@ -12,27 +11,6 @@
  * this target provides the internal bridge symbols that are intentionally not
  * part of the exported shared-library ABI while the test only exercises usb_*.
  */
-
-void
-nfc_rs_context_log_init(const nfc_context *context)
-{
-  (void)context;
-}
-
-void
-nfc_rs_context_log_exit(void)
-{
-}
-
-void
-nfc_rs_log_message(uint8_t group, const char *category, uint8_t priority,
-                   const char *message)
-{
-  (void)group;
-  (void)category;
-  (void)priority;
-  (void)message;
-}
 
 void
 snprint_nfc_target(char *dst, size_t size, const nfc_target *pnt, bool verbose)

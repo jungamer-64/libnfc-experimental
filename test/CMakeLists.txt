@@ -33,6 +33,16 @@ add_executable(test_core_device_io
 target_link_libraries(test_core_device_io nfc)
 add_test(NAME core_device_io COMMAND test_core_device_io)
 
+if(PROXIMATE_C_FFI)
+  add_executable(test_log_bridge
+    test_log_bridge.c
+    ${CMAKE_SOURCE_DIR}/libnfc/log.c
+  )
+  target_compile_definitions(test_log_bridge PRIVATE LOG)
+  target_link_libraries(test_log_bridge PRIVATE "${RUST_LIB_PATH}")
+  add_test(NAME log_bridge COMMAND test_log_bridge)
+endif()
+
 find_package(LIBNFC_NCI QUIET)
 set(PN71XX_SMOKE_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/pn71xx-smoke")
 set(PN71XX_SMOKE_CONFIGURE_ARGS

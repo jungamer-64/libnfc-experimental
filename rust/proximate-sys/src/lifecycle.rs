@@ -14,11 +14,12 @@
 // See AUTHORS file for a more comprehensive list of contributors.
 
 use crate::c_api_impl::{LOG_PRIORITY_DEBUG, LOG_PRIORITY_NONE, NFC_BUFSIZE_CONNSTRING};
-use crate::ffi_support::{as_mut, bounded_strlen, fixed_c_buffer_to_string};
+use crate::ffi_support::{as_mut, as_ref, bounded_strlen, fixed_c_buffer_to_string};
 use crate::ffi_types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_mode, nfc_modulation, nfc_modulation_type,
     nfc_property, nfc_target,
 };
+use crate::logger;
 use crate::runtime_bridge::write_context_to_c;
 use crate::{
     emit_log_message, ffi_catch_unwind_ptr, ffi_catch_unwind_void, log_error, log_message,
@@ -236,43 +237,12 @@ pub struct nfc_device {
     pub last_error: c_int,
 }
 
-#[cfg(all(not(test), libnfc_external_bridges))]
-unsafe extern "C" {
-    fn nfc_rs_context_log_init(context: *const nfc_context);
-    fn nfc_rs_context_log_exit();
-}
-
-#[cfg(all(not(test), libnfc_external_bridges))]
 unsafe fn bridge_context_log_init(context: *const nfc_context) {
     unsafe { nfc_rs_context_log_init(context) };
 }
 
-#[cfg(any(test, not(libnfc_external_bridges)))]
-unsafe fn bridge_context_log_init(context: *const nfc_context) {
-    #[cfg(test)]
-    unsafe {
-        nfc_rs_context_log_init(context);
-    }
-
-    #[cfg(not(test))]
-    let _ = context;
-}
-
-#[cfg(all(not(test), libnfc_external_bridges))]
 unsafe fn bridge_context_log_exit() {
     unsafe { nfc_rs_context_log_exit() };
-}
-
-#[cfg(any(test, not(libnfc_external_bridges)))]
-unsafe fn bridge_context_log_exit() {
-    #[cfg(test)]
-    unsafe {
-        nfc_rs_context_log_exit();
-        return;
-    }
-
-    #[cfg(not(test))]
-    {}
 }
 
 unsafe fn allocate_zeroed<T>(label: &str) -> *mut T {
@@ -535,21 +505,47 @@ fn increment_context_free_count_for_tests() {
 fn increment_context_free_count_for_tests() {}
 
 #[cfg(test)]
-pub unsafe fn nfc_rs_context_log_init(_context: *const nfc_context) {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nfc_rs_context_log_init(context: *const nfc_context) {
     TEST_LIFECYCLE_STATE.with(|cell| {
         let mut state = cell.borrow_mut();
         state.log_init_calls += 1;
         state.events.push("log_init");
     });
+
+    let log_level = unsafe { as_ref(context) }
+        .map(|context| context.log_level)
+        .unwrap_or_else(logger::default_log_level);
+    logger::log_init(log_level);
+}
+
+#[cfg(not(test))]
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nfc_rs_context_log_init(context: *const nfc_context) {
+    let log_level = unsafe { as_ref(context) }
+        .map(|context| context.log_level)
+        .unwrap_or_else(logger::default_log_level);
+    logger::log_init(log_level);
 }
 
 #[cfg(test)]
-pub unsafe fn nfc_rs_context_log_exit() {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nfc_rs_context_log_exit() {
     TEST_LIFECYCLE_STATE.with(|cell| {
         let mut state = cell.borrow_mut();
         state.log_exit_calls += 1;
         state.events.push("log_exit");
     });
+
+    logger::log_exit();
+}
+
+#[cfg(not(test))]
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nfc_rs_context_log_exit() {
+    logger::log_exit();
 }
 
 #[cfg(test)]
@@ -660,6 +656,7 @@ mod tests {
     fn reset_test_world() {
         reset_lifecycle_test_state();
         set_test_conf_root(None);
+        crate::test_reset_log_level();
         crate::test_clear_last_log();
     }
 
@@ -702,10 +699,14 @@ mod tests {
         assert_eq!(bridge_state.log_init_calls, 1);
         assert_eq!(bridge_state.log_exit_calls, 0);
         assert_eq!(bridge_state.events, vec!["log_init"]);
-        assert_eq!(
-            crate::test_get_last_log().as_deref(),
-            Some("0 device(s) defined by user")
-        );
+        if DEFAULT_CONTEXT_LOG_LEVEL >= LOG_PRIORITY_DEBUG.into() {
+            assert_eq!(
+                crate::test_get_last_log().as_deref(),
+                Some("0 device(s) defined by user")
+            );
+        } else {
+            assert_eq!(crate::test_get_last_log(), None);
+        }
 
         release_context(context);
     }
@@ -743,6 +744,7 @@ mod tests {
         let mut env = ScopedEnv::new();
         clear_env(&mut env);
         reset_test_world();
+        crate::logger::log_init(3);
 
         let confdir = TempConfigDir::new();
         confdir.write_file(
@@ -801,7 +803,9 @@ mod tests {
         let logs = crate::test_get_logs();
         assert!(
             logs.iter()
-                .any(|entry| entry.contains("key: [allow_autoscan], value: [false]"))
+                .any(|entry| entry.contains("key: [allow_autoscan], value: [false]")),
+            "captured logs: {:?}",
+            logs
         );
 
         release_context(context);
@@ -813,6 +817,7 @@ mod tests {
         let mut env = ScopedEnv::new();
         clear_env(&mut env);
         reset_test_world();
+        crate::logger::log_init(3);
 
         let confdir = TempConfigDir::new();
         confdir.write_file(
@@ -847,11 +852,15 @@ mod tests {
         let logs = crate::test_get_logs();
         assert!(
             logs.iter()
-                .any(|entry| entry.contains("Unknown key in config line: unknown.key = value"))
+                .any(|entry| entry.contains("Unknown key in config line: unknown.key = value")),
+            "captured logs: {:?}",
+            logs
         );
         assert!(
             logs.iter()
-                .any(|entry| entry.contains("Parse error on line #2: broken line"))
+                .any(|entry| entry.contains("Parse error on line #2: broken line")),
+            "captured logs: {:?}",
+            logs
         );
         assert!(logs
             .iter()
