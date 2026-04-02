@@ -63,7 +63,11 @@ unsafe fn open_raw_device(
     }
     unsafe {
         (*raw).driver = driver;
-        copy_bytes_to_c_buffer((*raw).name.as_mut_ptr(), DEVICE_NAME_LENGTH, &name[..name.len() - 1]);
+        copy_bytes_to_c_buffer(
+            (*raw).name.as_mut_ptr(),
+            DEVICE_NAME_LENGTH,
+            &name[..name.len() - 1],
+        );
     }
     raw
 }
@@ -72,7 +76,10 @@ unsafe extern "C" fn primary_usb_open(
     _context: *const nfc_context,
     connstring: *const c_char,
 ) -> *mut nfc_device {
-    let conn = c_string_ptr_to_string(connstring, bounded_strlen(connstring, NFC_BUFSIZE_CONNSTRING));
+    let conn = c_string_ptr_to_string(
+        connstring,
+        bounded_strlen(connstring, NFC_BUFSIZE_CONNSTRING),
+    );
     with_raw_scan_state(|state| state.open_attempts.push(format!("primary:{conn}")));
     ptr::null_mut()
 }
@@ -81,7 +88,10 @@ unsafe extern "C" fn fallback_usb_open(
     context: *const nfc_context,
     connstring: *const c_char,
 ) -> *mut nfc_device {
-    let conn = c_string_ptr_to_string(connstring, bounded_strlen(connstring, NFC_BUFSIZE_CONNSTRING));
+    let conn = c_string_ptr_to_string(
+        connstring,
+        bounded_strlen(connstring, NFC_BUFSIZE_CONNSTRING),
+    );
     with_raw_scan_state(|state| state.open_attempts.push(format!("fallback:{conn}")));
     unsafe {
         open_raw_device(
@@ -230,7 +240,10 @@ impl rt::OpenedDevice for FakeRustHandle {
         Ok(())
     }
 
-    fn supported_modulations(&mut self, _mode: rt::Mode) -> Result<Vec<rt::ModulationType>, rt::Error> {
+    fn supported_modulations(
+        &mut self,
+        _mode: rt::Mode,
+    ) -> Result<Vec<rt::ModulationType>, rt::Error> {
         Ok(vec![rt::ModulationType::Iso14443A])
     }
 
@@ -271,7 +284,10 @@ fn external_driver_grows_scan_capacity_until_result_is_not_saturated() {
     let listed = driver.scan(&rt::Context::default()).unwrap();
 
     assert_eq!(listed.len(), 3);
-    assert_eq!(with_raw_scan_state(|state| state.capacities.clone()), vec![4, 8, 16]);
+    assert_eq!(
+        with_raw_scan_state(|state| state.capacities.clone()),
+        vec![4, 8, 16]
+    );
 }
 
 #[test]
@@ -293,8 +309,12 @@ fn external_driver_stops_scanning_at_max_capacity() {
 fn external_driver_registry_keeps_usb_fallback_and_name_override_behavior() {
     reset_raw_scan_state();
     let mut registry = rt::DriverRegistry::new();
-    registry.register_driver(Box::new(ExternalDriver::new(ptr::addr_of!(FALLBACK_USB_DRIVER))));
-    registry.register_driver(Box::new(ExternalDriver::new(ptr::addr_of!(PRIMARY_USB_DRIVER))));
+    registry.register_driver(Box::new(ExternalDriver::new(ptr::addr_of!(
+        FALLBACK_USB_DRIVER
+    ))));
+    registry.register_driver(Box::new(ExternalDriver::new(ptr::addr_of!(
+        PRIMARY_USB_DRIVER
+    ))));
 
     let context = rt::Context::with_config(rt::ContextConfig {
         allow_autoscan: true,
@@ -325,12 +345,17 @@ fn borrowed_rust_device_normalizes_missing_caps_and_clears_last_error_on_success
         connstring: rt::ConnectionString::new("alpha:001").unwrap(),
         caps: rt::DeviceCaps::SET_PROPERTY_BOOL,
         property_calls: property_calls.clone(),
-        info_result: Err(rt::Error::UnsupportedOperation("device_get_information_about")),
+        info_result: Err(rt::Error::UnsupportedOperation(
+            "device_get_information_about",
+        )),
     });
 
     let mut device = borrowed_device(raw);
     let error = device.information_about().unwrap_err();
-    assert_eq!(error, rt::Error::MissingCapability("device_get_information_about"));
+    assert_eq!(
+        error,
+        rt::Error::MissingCapability("device_get_information_about")
+    );
     assert_eq!(device.last_error(), NFC_EDEVNOTSUPP);
 
     device

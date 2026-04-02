@@ -40,7 +40,7 @@ const MAX_SCAN_CAPACITY: usize = 256;
 const RUST_DEVICE_DRIVER_NAME: *const c_char =
     b"proximate_rust_shim\0" as *const u8 as *const c_char;
 
-use common::*;
 pub(crate) use borrowed_rust::borrowed_device;
+use common::*;
 pub(crate) use external::ExternalDriver;
 pub(crate) use rust_owned::{attach_rust_device, is_rust_shim_device};

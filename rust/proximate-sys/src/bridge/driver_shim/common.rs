@@ -159,7 +159,10 @@ pub(super) fn unsupported_driver_status(device: *mut nfc_device) -> c_int {
     0
 }
 
-pub(super) fn status_from_result(device: *mut nfc_device, result: Result<c_int, rt::Error>) -> c_int {
+pub(super) fn status_from_result(
+    device: *mut nfc_device,
+    result: Result<c_int, rt::Error>,
+) -> c_int {
     match result {
         Ok(status) => {
             set_device_last_error(device, 0);
@@ -177,7 +180,10 @@ pub(super) fn status_from_result(device: *mut nfc_device, result: Result<c_int, 
     }
 }
 
-pub(super) fn count_from_result(device: *mut nfc_device, result: Result<usize, rt::Error>) -> c_int {
+pub(super) fn count_from_result(
+    device: *mut nfc_device,
+    result: Result<usize, rt::Error>,
+) -> c_int {
     match result {
         Ok(count) => {
             set_device_last_error(device, 0);
