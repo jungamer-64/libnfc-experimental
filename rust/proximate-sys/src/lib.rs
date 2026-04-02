@@ -54,9 +54,7 @@ pub(crate) use logger::{
 #[cfg(any(feature = "c_ffi", cbindgen))]
 /// cbindgen:ignore
 mod proximate {
-    pub use crate::c_api_impl::{
-        nfc_clear_last_error, nfc_get_last_error, nfc_rs_free, nfc_set_last_error,
-    };
+    pub use crate::c_api_impl::{nfc_rs_free, nfc_set_last_error};
     #[cfg(any(feature = "lifecycle", cbindgen))]
     pub use crate::compat::{
         nfc_close, nfc_free, nfc_version, str_nfc_baud_rate, str_nfc_modulation_type,
@@ -719,16 +717,4 @@ pub unsafe extern "C" fn nfc_strerror_r(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_perror(device: *const nfc_device, message: *const libc::c_char) {
     unsafe { proximate::nfc_perror(device, message) }
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub extern "C" fn nfc_get_last_error() -> *const libc::c_char {
-    proximate::nfc_get_last_error()
-}
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-#[unsafe(no_mangle)]
-pub extern "C" fn nfc_clear_last_error() {
-    proximate::nfc_clear_last_error()
 }

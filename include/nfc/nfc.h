@@ -120,8 +120,6 @@ extern "C"
     NFC_EXPORT int nfc_strerror_r(const nfc_device *pnd, char *buf, size_t buflen);
     NFC_EXPORT void nfc_perror(const nfc_device *pnd, const char *s);
     NFC_EXPORT int nfc_device_get_last_error(const nfc_device *pnd);
-    NFC_EXPORT const char *nfc_get_last_error(void);
-    NFC_EXPORT void nfc_clear_last_error(void);
 
     /* Special data accessors */
     NFC_EXPORT const char *nfc_device_get_name(nfc_device *pnd);

@@ -33,8 +33,6 @@ exclude = ["criterion", "libc"]
 
 [export]
 include = [
-    "nfc_get_last_error",
-    "nfc_clear_last_error",
     "nfc_set_last_error",
     "nfc_context_alloc_defaults",
     "nfc_device_new",

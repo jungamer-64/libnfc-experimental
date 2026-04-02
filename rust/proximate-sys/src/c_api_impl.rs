@@ -186,14 +186,16 @@ where
     operation()
 }
 
-pub fn nfc_get_last_error() -> *const c_char {
+#[cfg(test)]
+pub(crate) fn nfc_get_last_error() -> *const c_char {
     LAST_ERROR.with(|cell| match cell.borrow().as_ref() {
         Some(message) => message.as_ptr(),
         None => ptr::null(),
     })
 }
 
-pub fn nfc_clear_last_error() {
+#[cfg(test)]
+pub(crate) fn nfc_clear_last_error() {
     ffi_catch_unwind_void("nfc_clear_last_error", reset_last_error);
 }
 

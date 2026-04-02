@@ -610,10 +610,6 @@ int nfc_strerror_r(const struct nfc_device *device, char *buf, size_t buflen);
 
 void nfc_perror(const struct nfc_device *device, const char *message);
 
-const char *nfc_get_last_error(void);
-
-void nfc_clear_last_error(void);
-
 #if !defined(RUST_TEST)
 void nfc_rs_context_log_init(const struct nfc_context *context);
 #endif

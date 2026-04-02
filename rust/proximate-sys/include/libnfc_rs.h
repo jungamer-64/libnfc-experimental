@@ -142,10 +142,6 @@ int pn53x_write_register(struct nfc_device *device,
 
 int pn532_SAMConfiguration(struct nfc_device *device, int mode, int timeout);
 
-const char *nfc_get_last_error(void);
-
-void nfc_clear_last_error(void);
-
 #endif  /* LIBNFC_RS_H */
 
 /* End of generated header */

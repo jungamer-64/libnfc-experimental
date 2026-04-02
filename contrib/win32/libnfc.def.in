@@ -8,7 +8,6 @@ EXPORTS
   iso14443b_crc
   iso14443b_crc_append
   nfc_abort_command
-  nfc_clear_last_error
   nfc_close
   nfc_device_get_connstring
   nfc_device_get_information_about
@@ -22,7 +21,6 @@ EXPORTS
   nfc_emulate_target
   nfc_exit
   nfc_free
-  nfc_get_last_error
   nfc_idle
   nfc_init
   nfc_initiator_deselect_target
