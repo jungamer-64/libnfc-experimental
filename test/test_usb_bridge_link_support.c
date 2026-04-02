@@ -4,7 +4,7 @@
 #include <nfc/nfc.h>
 
 #include "chips/pn53x.h"
-#include "nfc-internal.h"
+#include "libnfc/rust_bridge.h"
 
 /*
  * Build-tree link support for test_usbbus_helpers.

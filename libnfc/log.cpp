@@ -25,6 +25,8 @@
  */
 
 #include "log.h"
+#include "nfc-internal.h"
+#include "rust_bridge.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -51,6 +53,24 @@ extern "C"
       break;
     }
     return "unknown";
+  }
+
+  void
+  nfc_rs_context_log_init(const nfc_context *context)
+  {
+    log_init(context);
+  }
+
+  void
+  nfc_rs_context_log_exit(void)
+  {
+    log_exit();
+  }
+
+  void
+  nfc_rs_log_message(uint8_t group, const char *category, uint8_t priority, const char *message)
+  {
+    log_put_message(group, category, priority, message);
   }
 
 #ifdef LOG
