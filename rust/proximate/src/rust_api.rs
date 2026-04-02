@@ -1,4 +1,5 @@
 mod backend;
+mod caps;
 mod connstring;
 mod context;
 mod device;
@@ -8,6 +9,7 @@ mod types;
 
 #[doc(hidden)]
 pub use backend::{DeviceBackend, DriverBackend, wrap_device_backend, wrap_driver_backend};
+pub use caps::{DeviceCaps, DriverCaps};
 pub use connstring::{
     ConnectionString, DecodedConnectionString, build_connstring, decode_connstring,
     parse_connstring,

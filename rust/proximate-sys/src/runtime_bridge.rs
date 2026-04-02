@@ -34,9 +34,98 @@ pub(crate) fn error_to_status(error: &rt::Error) -> c_int {
         rt::Error::InvalidConnectionString(_) => NFC_EINVARG,
         rt::Error::DriverNotFound(_) => NFC_ENOTSUCHDEV,
         rt::Error::DriverOpenFailed(_) => NFC_ESOFT,
+        rt::Error::MissingCapability(_) => NFC_EDEVNOTSUPP,
         rt::Error::UnsupportedOperation(_) => NFC_ENOTIMPL,
         rt::Error::DeviceOperationFailed { code, .. } => *code,
     }
+}
+
+fn driver_caps_from_raw(driver: &nfc_driver) -> rt::DriverCaps {
+    let mut caps = rt::DriverCaps::NONE;
+    if driver.scan.is_some() {
+        caps |= rt::DriverCaps::SCAN;
+    }
+    if driver.open.is_some() {
+        caps |= rt::DriverCaps::OPEN;
+    }
+    caps
+}
+
+fn device_caps_from_raw(driver: &nfc_driver) -> rt::DeviceCaps {
+    let mut caps = rt::DeviceCaps::NONE;
+    if driver.device_get_information_about.is_some() {
+        caps |= rt::DeviceCaps::INFO;
+    }
+    if driver.device_set_property_bool.is_some() {
+        caps |= rt::DeviceCaps::SET_PROPERTY_BOOL;
+    }
+    if driver.device_set_property_int.is_some() {
+        caps |= rt::DeviceCaps::SET_PROPERTY_INT;
+    }
+    if driver.get_supported_modulation.is_some() {
+        caps |= rt::DeviceCaps::SUPPORTED_MODULATIONS;
+    }
+    if driver.get_supported_baud_rate.is_some() {
+        caps |= rt::DeviceCaps::SUPPORTED_BAUD_RATES;
+    }
+    if driver.initiator_init.is_some() {
+        caps |= rt::DeviceCaps::INITIATOR_INIT;
+    }
+    if driver.initiator_init_secure_element.is_some() {
+        caps |= rt::DeviceCaps::INITIATOR_INIT_SECURE_ELEMENT;
+    }
+    if driver.initiator_select_passive_target.is_some() {
+        caps |= rt::DeviceCaps::SELECT_PASSIVE_TARGET;
+    }
+    if driver.initiator_poll_target.is_some() {
+        caps |= rt::DeviceCaps::POLL_TARGET;
+    }
+    if driver.initiator_select_dep_target.is_some() {
+        caps |= rt::DeviceCaps::SELECT_DEP_TARGET;
+    }
+    if driver.initiator_deselect_target.is_some() {
+        caps |= rt::DeviceCaps::DESELECT_TARGET;
+    }
+    if driver.initiator_target_is_present.is_some() {
+        caps |= rt::DeviceCaps::TARGET_IS_PRESENT;
+    }
+    if driver.target_init.is_some() {
+        caps |= rt::DeviceCaps::TARGET_INIT;
+    }
+    if driver.initiator_transceive_bytes.is_some() {
+        caps |= rt::DeviceCaps::TRANSCEIVE_BYTES;
+    }
+    if driver.initiator_transceive_bits.is_some() {
+        caps |= rt::DeviceCaps::TRANSCEIVE_BITS;
+    }
+    if driver.initiator_transceive_bytes_timed.is_some() {
+        caps |= rt::DeviceCaps::TRANSCEIVE_BYTES_TIMED;
+    }
+    if driver.initiator_transceive_bits_timed.is_some() {
+        caps |= rt::DeviceCaps::TRANSCEIVE_BITS_TIMED;
+    }
+    if driver.target_send_bytes.is_some() {
+        caps |= rt::DeviceCaps::TARGET_SEND_BYTES;
+    }
+    if driver.target_receive_bytes.is_some() {
+        caps |= rt::DeviceCaps::TARGET_RECEIVE_BYTES;
+    }
+    if driver.target_send_bits.is_some() {
+        caps |= rt::DeviceCaps::TARGET_SEND_BITS;
+    }
+    if driver.target_receive_bits.is_some() {
+        caps |= rt::DeviceCaps::TARGET_RECEIVE_BITS;
+    }
+    if driver.abort_command.is_some() {
+        caps |= rt::DeviceCaps::ABORT_COMMAND;
+    }
+    if driver.idle.is_some() {
+        caps |= rt::DeviceCaps::IDLE;
+    }
+    if driver.powerdown.is_some() {
+        caps |= rt::DeviceCaps::POWERDOWN;
+    }
+    caps
 }
 
 struct RustDeviceState {
@@ -497,7 +586,8 @@ pub(crate) fn register_external_drivers(
 
 pub(crate) fn is_rust_shim_device(raw: *mut nfc_device) -> bool {
     unsafe { as_ref(raw) }
-        .map(|device| ptr::eq(device.driver, ptr::addr_of!(RUST_DEVICE_SHIM_DRIVER)))
+        .and_then(|device| unsafe { as_ref(device.driver) })
+        .map(|driver| ptr::eq(driver.name, RUST_DEVICE_DRIVER_NAME))
         .unwrap_or(false)
 }
 
@@ -597,11 +687,17 @@ unsafe extern "C" fn rust_device_close(device: *mut nfc_device) {
     };
 
     let state_ptr = device_ref.driver_data as *mut RustDeviceState;
+    let driver_ptr = device_ref.driver as *mut nfc_driver;
     device_ref.driver_data = ptr::null_mut();
     device_ref.driver = ptr::null();
     if !state_ptr.is_null() {
         unsafe {
             drop(Box::from_raw(state_ptr));
+        }
+    }
+    if !driver_ptr.is_null() {
+        unsafe {
+            drop(Box::from_raw(driver_ptr));
         }
     }
     unsafe { release_allocated_ptr(device.cast()) };
@@ -1171,38 +1267,88 @@ unsafe extern "C" fn rust_device_powerdown(device: *mut nfc_device) -> c_int {
 const RUST_DEVICE_DRIVER_NAME: *const c_char =
     b"proximate_rust_shim\0" as *const u8 as *const c_char;
 
-static RUST_DEVICE_SHIM_DRIVER: nfc_driver = nfc_driver {
-    name: RUST_DEVICE_DRIVER_NAME,
-    scan_type: scan_type_enum::NOT_AVAILABLE,
-    scan: None,
-    open: None,
-    close: Some(rust_device_close),
-    strerror: Some(rust_device_strerror),
-    initiator_init: Some(rust_device_initiator_init),
-    initiator_init_secure_element: Some(rust_device_initiator_init_secure_element),
-    initiator_select_passive_target: Some(rust_device_select_passive_target),
-    initiator_poll_target: Some(rust_device_poll_target),
-    initiator_select_dep_target: Some(rust_device_select_dep_target),
-    initiator_deselect_target: Some(rust_device_deselect_target),
-    initiator_transceive_bytes: Some(rust_device_transceive_bytes),
-    initiator_transceive_bits: Some(rust_device_transceive_bits),
-    initiator_transceive_bytes_timed: Some(rust_device_transceive_bytes_timed),
-    initiator_transceive_bits_timed: Some(rust_device_transceive_bits_timed),
-    initiator_target_is_present: Some(rust_device_target_is_present),
-    target_init: Some(rust_device_target_init),
-    target_send_bytes: Some(rust_device_target_send_bytes),
-    target_receive_bytes: Some(rust_device_target_receive_bytes),
-    target_send_bits: Some(rust_device_target_send_bits),
-    target_receive_bits: Some(rust_device_target_receive_bits),
-    device_set_property_bool: Some(rust_device_set_property_bool),
-    device_set_property_int: Some(rust_device_set_property_int),
-    get_supported_modulation: Some(rust_device_get_supported_modulation),
-    get_supported_baud_rate: Some(rust_device_get_supported_baud_rate),
-    device_get_information_about: Some(rust_device_get_information_about),
-    abort_command: Some(rust_device_abort_command),
-    idle: Some(rust_device_idle),
-    powerdown: Some(rust_device_powerdown),
-};
+fn build_rust_device_shim_driver(caps: rt::DeviceCaps) -> nfc_driver {
+    nfc_driver {
+        name: RUST_DEVICE_DRIVER_NAME,
+        scan_type: scan_type_enum::NOT_AVAILABLE,
+        scan: None,
+        open: None,
+        close: Some(rust_device_close),
+        strerror: Some(rust_device_strerror),
+        initiator_init: caps
+            .contains(rt::DeviceCaps::INITIATOR_INIT)
+            .then_some(rust_device_initiator_init),
+        initiator_init_secure_element: caps
+            .contains(rt::DeviceCaps::INITIATOR_INIT_SECURE_ELEMENT)
+            .then_some(rust_device_initiator_init_secure_element),
+        initiator_select_passive_target: caps
+            .contains(rt::DeviceCaps::SELECT_PASSIVE_TARGET)
+            .then_some(rust_device_select_passive_target),
+        initiator_poll_target: caps
+            .contains(rt::DeviceCaps::POLL_TARGET)
+            .then_some(rust_device_poll_target),
+        initiator_select_dep_target: caps
+            .contains(rt::DeviceCaps::SELECT_DEP_TARGET)
+            .then_some(rust_device_select_dep_target),
+        initiator_deselect_target: caps
+            .contains(rt::DeviceCaps::DESELECT_TARGET)
+            .then_some(rust_device_deselect_target),
+        initiator_transceive_bytes: caps
+            .contains(rt::DeviceCaps::TRANSCEIVE_BYTES)
+            .then_some(rust_device_transceive_bytes),
+        initiator_transceive_bits: caps
+            .contains(rt::DeviceCaps::TRANSCEIVE_BITS)
+            .then_some(rust_device_transceive_bits),
+        initiator_transceive_bytes_timed: caps
+            .contains(rt::DeviceCaps::TRANSCEIVE_BYTES_TIMED)
+            .then_some(rust_device_transceive_bytes_timed),
+        initiator_transceive_bits_timed: caps
+            .contains(rt::DeviceCaps::TRANSCEIVE_BITS_TIMED)
+            .then_some(rust_device_transceive_bits_timed),
+        initiator_target_is_present: caps
+            .contains(rt::DeviceCaps::TARGET_IS_PRESENT)
+            .then_some(rust_device_target_is_present),
+        target_init: caps
+            .contains(rt::DeviceCaps::TARGET_INIT)
+            .then_some(rust_device_target_init),
+        target_send_bytes: caps
+            .contains(rt::DeviceCaps::TARGET_SEND_BYTES)
+            .then_some(rust_device_target_send_bytes),
+        target_receive_bytes: caps
+            .contains(rt::DeviceCaps::TARGET_RECEIVE_BYTES)
+            .then_some(rust_device_target_receive_bytes),
+        target_send_bits: caps
+            .contains(rt::DeviceCaps::TARGET_SEND_BITS)
+            .then_some(rust_device_target_send_bits),
+        target_receive_bits: caps
+            .contains(rt::DeviceCaps::TARGET_RECEIVE_BITS)
+            .then_some(rust_device_target_receive_bits),
+        device_set_property_bool: caps
+            .contains(rt::DeviceCaps::SET_PROPERTY_BOOL)
+            .then_some(rust_device_set_property_bool),
+        device_set_property_int: caps
+            .contains(rt::DeviceCaps::SET_PROPERTY_INT)
+            .then_some(rust_device_set_property_int),
+        get_supported_modulation: caps
+            .contains(rt::DeviceCaps::SUPPORTED_MODULATIONS)
+            .then_some(rust_device_get_supported_modulation),
+        get_supported_baud_rate: caps
+            .contains(rt::DeviceCaps::SUPPORTED_BAUD_RATES)
+            .then_some(rust_device_get_supported_baud_rate),
+        device_get_information_about: caps
+            .contains(rt::DeviceCaps::INFO)
+            .then_some(rust_device_get_information_about),
+        abort_command: caps
+            .contains(rt::DeviceCaps::ABORT_COMMAND)
+            .then_some(rust_device_abort_command),
+        idle: caps
+            .contains(rt::DeviceCaps::IDLE)
+            .then_some(rust_device_idle),
+        powerdown: caps
+            .contains(rt::DeviceCaps::POWERDOWN)
+            .then_some(rust_device_powerdown),
+    }
+}
 
 pub(crate) fn attach_rust_device(
     device: rt::Device,
@@ -1211,6 +1357,7 @@ pub(crate) fn attach_rust_device(
     let name = device.name().to_string();
     let connstring = device.connstring().clone();
     let handle = device.into_handle();
+    let caps = handle.caps();
     let connstring_c =
         CString::new(connstring.as_str()).map_err(|_| rt::Error::InvalidEncoding("connstring"))?;
     let raw = unsafe { crate::lifecycle::nfc_device_new(context, connstring_c.as_ptr()) };
@@ -1225,9 +1372,11 @@ pub(crate) fn attach_rust_device(
         supported_modulations: Vec::new(),
         supported_baud_rates: Vec::new(),
     });
+    let driver = Box::new(build_rust_device_shim_driver(caps));
+    let driver_ptr = Box::into_raw(driver);
     if let Some(device_ref) = unsafe { as_mut(raw) } {
         device_ref.context = context;
-        device_ref.driver = ptr::addr_of!(RUST_DEVICE_SHIM_DRIVER);
+        device_ref.driver = driver_ptr;
         device_ref.driver_data = Box::into_raw(state).cast();
     }
 
@@ -1293,6 +1442,12 @@ impl rt::DeviceBackend for RustBorrowedDeviceBackend {
 
     fn connstring(&self) -> &rt::ConnectionString {
         &self.connstring
+    }
+
+    fn caps(&self) -> rt::DeviceCaps {
+        unsafe { rust_device_state(self.raw) }
+            .map(|state| state.handle.caps())
+            .unwrap_or(rt::DeviceCaps::NONE)
     }
 
     fn last_error(&self) -> i32 {
@@ -1540,6 +1695,7 @@ pub(crate) struct DriverAdapter {
     raw: *const nfc_driver,
     name: String,
     scan_type: rt::ScanType,
+    caps: rt::DriverCaps,
 }
 
 unsafe impl Send for DriverAdapter {}
@@ -1557,10 +1713,14 @@ impl DriverAdapter {
                 scan_type_enum::NOT_AVAILABLE => rt::ScanType::NotAvailable,
             })
             .unwrap_or(rt::ScanType::NotAvailable);
+        let caps = unsafe { as_ref(raw) }
+            .map(driver_caps_from_raw)
+            .unwrap_or(rt::DriverCaps::NONE);
         Self {
             raw,
             name,
             scan_type,
+            caps,
         }
     }
 }
@@ -1572,6 +1732,10 @@ impl rt::DriverBackend for DriverAdapter {
 
     fn scan_type(&self) -> rt::ScanType {
         self.scan_type
+    }
+
+    fn caps(&self) -> rt::DriverCaps {
+        self.caps
     }
 
     fn scan_with_capacity(
@@ -1632,6 +1796,7 @@ pub(crate) struct DeviceAdapter {
     raw: *mut nfc_device,
     name: String,
     connstring: rt::ConnectionString,
+    caps: rt::DeviceCaps,
     owned: bool,
 }
 
@@ -1656,10 +1821,15 @@ impl DeviceAdapter {
             .unwrap_or_else(|| "unknown".to_string());
         let connstring = rt::ConnectionString::new(connstring_string)
             .unwrap_or_else(|_| rt::ConnectionString::new("unknown").expect("valid connstring"));
+        let caps = unsafe { as_ref(raw) }
+            .and_then(|device| unsafe { as_ref(device.driver) })
+            .map(device_caps_from_raw)
+            .unwrap_or(rt::DeviceCaps::NONE);
         Self {
             raw,
             name,
             connstring,
+            caps,
             owned,
         }
     }
@@ -1702,6 +1872,10 @@ impl rt::DeviceBackend for DeviceAdapter {
 
     fn connstring(&self) -> &rt::ConnectionString {
         &self.connstring
+    }
+
+    fn caps(&self) -> rt::DeviceCaps {
+        self.caps
     }
 
     fn last_error(&self) -> i32 {
@@ -2471,6 +2645,7 @@ fn modulation_type_to_c(value: rt::ModulationType) -> nfc_modulation_type {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proximate::rust_api::{DeviceBackend as _, DriverBackend as _};
     use std::ffi::CStr;
 
     struct ShimTestDevice {
@@ -2498,6 +2673,24 @@ mod tests {
 
         fn connstring(&self) -> &rt::ConnectionString {
             &self.connstring
+        }
+
+        fn caps(&self) -> rt::DeviceCaps {
+            rt::DeviceCaps::INFO
+                | rt::DeviceCaps::SET_PROPERTY_BOOL
+                | rt::DeviceCaps::SET_PROPERTY_INT
+                | rt::DeviceCaps::SUPPORTED_MODULATIONS
+                | rt::DeviceCaps::SUPPORTED_BAUD_RATES
+                | rt::DeviceCaps::INITIATOR_INIT
+                | rt::DeviceCaps::TRANSCEIVE_BYTES
+                | rt::DeviceCaps::TRANSCEIVE_BITS_TIMED
+                | rt::DeviceCaps::TARGET_IS_PRESENT
+                | rt::DeviceCaps::TARGET_SEND_BITS
+                | rt::DeviceCaps::TARGET_RECEIVE_BITS
+                | rt::DeviceCaps::PN53X_TRANSCEIVE
+                | rt::DeviceCaps::PN53X_READ_REGISTER
+                | rt::DeviceCaps::PN53X_WRITE_REGISTER
+                | rt::DeviceCaps::PN532_SAM_CONFIGURATION
         }
 
         fn information_about(&mut self) -> Result<String, rt::Error> {
@@ -2682,6 +2875,193 @@ mod tests {
         }
     }
 
+    struct LimitedShimTestDevice {
+        connstring: rt::ConnectionString,
+    }
+
+    impl LimitedShimTestDevice {
+        fn new(connstring: &str) -> Self {
+            Self {
+                connstring: rt::ConnectionString::new(connstring).unwrap(),
+            }
+        }
+    }
+
+    impl rt::OpenedDevice for LimitedShimTestDevice {
+        fn name(&self) -> &str {
+            "limited-shim-device"
+        }
+
+        fn connstring(&self) -> &rt::ConnectionString {
+            &self.connstring
+        }
+
+        fn caps(&self) -> rt::DeviceCaps {
+            rt::DeviceCaps::SET_PROPERTY_BOOL
+        }
+
+        fn set_property_bool(
+            &mut self,
+            _property: rt::Property,
+            _enable: bool,
+        ) -> Result<(), rt::Error> {
+            Ok(())
+        }
+
+        fn set_property_int(
+            &mut self,
+            _property: rt::Property,
+            _value: i32,
+        ) -> Result<(), rt::Error> {
+            Err(rt::Error::MissingCapability("device_set_property_int"))
+        }
+
+        fn supported_modulations(
+            &mut self,
+            _mode: rt::Mode,
+        ) -> Result<Vec<rt::ModulationType>, rt::Error> {
+            Err(rt::Error::MissingCapability("get_supported_modulation"))
+        }
+
+        fn supported_baud_rates(
+            &mut self,
+            _mode: rt::Mode,
+            _modulation_type: rt::ModulationType,
+        ) -> Result<Vec<rt::BaudRate>, rt::Error> {
+            Err(rt::Error::MissingCapability("get_supported_baud_rate"))
+        }
+    }
+
+    struct LimitedShimTestDriver;
+
+    impl rt::Driver for LimitedShimTestDriver {
+        fn name(&self) -> &str {
+            "limited-shim"
+        }
+
+        fn scan_type(&self) -> rt::ScanType {
+            rt::ScanType::NotAvailable
+        }
+
+        fn scan(&self, _context: &rt::Context) -> Result<Vec<rt::ConnectionString>, rt::Error> {
+            Ok(Vec::new())
+        }
+
+        fn open(
+            &self,
+            _context: &rt::Context,
+            connstring: &rt::ConnectionString,
+        ) -> Result<Box<dyn rt::OpenedDevice>, rt::Error> {
+            Ok(Box::new(LimitedShimTestDevice::new(connstring.as_str())))
+        }
+    }
+
+    unsafe extern "C" fn test_scan_callback(
+        _context: *const nfc_context,
+        _connstrings: *mut crate::lifecycle::nfc_connstring,
+        _connstrings_len: usize,
+    ) -> usize {
+        0
+    }
+
+    unsafe extern "C" fn test_open_callback(
+        _context: *const nfc_context,
+        _connstring: *const c_char,
+    ) -> *mut nfc_device {
+        ptr::null_mut()
+    }
+
+    unsafe extern "C" fn test_set_property_bool_callback(
+        _device: *mut nfc_device,
+        _property: nfc_property,
+        _enable: bool,
+    ) -> c_int {
+        0
+    }
+
+    unsafe extern "C" fn test_transceive_bytes_callback(
+        _device: *mut nfc_device,
+        _tx: *const u8,
+        _tx_len: usize,
+        _rx: *mut u8,
+        _rx_len: usize,
+        _timeout: c_int,
+    ) -> c_int {
+        0
+    }
+
+    unsafe extern "C" fn test_information_about_callback(
+        _device: *mut nfc_device,
+        _buf: *mut *mut c_char,
+    ) -> c_int {
+        0
+    }
+
+    #[test]
+    fn driver_and_device_adapters_derive_caps_from_c_callbacks() {
+        let driver = nfc_driver {
+            name: RUST_DEVICE_DRIVER_NAME,
+            scan_type: scan_type_enum::NOT_INTRUSIVE,
+            scan: Some(test_scan_callback),
+            open: Some(test_open_callback),
+            close: None,
+            strerror: None,
+            initiator_init: None,
+            initiator_init_secure_element: None,
+            initiator_select_passive_target: None,
+            initiator_poll_target: None,
+            initiator_select_dep_target: None,
+            initiator_deselect_target: None,
+            initiator_transceive_bytes: Some(test_transceive_bytes_callback),
+            initiator_transceive_bits: None,
+            initiator_transceive_bytes_timed: None,
+            initiator_transceive_bits_timed: None,
+            initiator_target_is_present: None,
+            target_init: None,
+            target_send_bytes: None,
+            target_receive_bytes: None,
+            target_send_bits: None,
+            target_receive_bits: None,
+            device_set_property_bool: Some(test_set_property_bool_callback),
+            device_set_property_int: None,
+            get_supported_modulation: None,
+            get_supported_baud_rate: None,
+            device_get_information_about: Some(test_information_about_callback),
+            abort_command: None,
+            idle: None,
+            powerdown: None,
+        };
+        let mut device = nfc_device {
+            context: ptr::null(),
+            driver: ptr::addr_of!(driver),
+            driver_data: ptr::null_mut(),
+            chip_data: ptr::null_mut(),
+            name: [0; DEVICE_NAME_LENGTH],
+            connstring: [0; NFC_BUFSIZE_CONNSTRING],
+            bCrc: false,
+            bPar: false,
+            bEasyFraming: false,
+            bInfiniteSelect: false,
+            bAutoIso14443_4: false,
+            btSupportByte: 0,
+            last_error: 0,
+        };
+
+        let driver_adapter = DriverAdapter::new(ptr::addr_of!(driver));
+        assert_eq!(
+            driver_adapter.caps(),
+            rt::DriverCaps::SCAN | rt::DriverCaps::OPEN
+        );
+
+        let device_adapter = DeviceAdapter::borrowed(ptr::addr_of_mut!(device));
+        assert_eq!(
+            device_adapter.caps(),
+            rt::DeviceCaps::INFO
+                | rt::DeviceCaps::SET_PROPERTY_BOOL
+                | rt::DeviceCaps::TRANSCEIVE_BYTES
+        );
+    }
+
     #[test]
     fn rust_device_shim_routes_public_calls_back_to_runtime_handle() {
         let mut registry = rt::DriverRegistry::new();
@@ -2825,6 +3205,27 @@ mod tests {
         assert_eq!(&rx_cmd[..tx_cmd.len()], &tx_cmd);
 
         assert_eq!(unsafe { crate::pn532_SAMConfiguration(raw, 0x03, 10) }, 3);
+
+        unsafe { crate::compat::nfc_close(raw) };
+    }
+
+    #[test]
+    fn rust_device_shim_builds_callbacks_from_caps_and_preserves_c_missing_callback_behavior() {
+        let mut registry = rt::DriverRegistry::new();
+        registry.register_driver(Box::new(LimitedShimTestDriver));
+
+        let context = rt::Context::default();
+        let connstring = rt::ConnectionString::new("limited-shim:device").unwrap();
+        let device = registry.open(&context, Some(&connstring)).unwrap();
+        let raw = attach_rust_device(device, ptr::null()).unwrap();
+
+        let driver = unsafe { as_ref((*raw).driver) }.unwrap();
+        assert!(driver.device_set_property_bool.is_some());
+        assert!(driver.initiator_init.is_none());
+        assert!(driver.get_supported_modulation.is_none());
+
+        assert_eq!(unsafe { crate::initiator::nfc_initiator_init(raw) }, 0);
+        assert_eq!(unsafe { (*raw).last_error }, NFC_EDEVNOTSUPP);
 
         unsafe { crate::compat::nfc_close(raw) };
     }

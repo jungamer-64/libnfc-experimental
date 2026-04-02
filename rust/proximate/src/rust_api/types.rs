@@ -6,6 +6,7 @@ pub enum Error {
     InvalidConnectionString(String),
     DriverNotFound(String),
     DriverOpenFailed(String),
+    MissingCapability(&'static str),
     UnsupportedOperation(&'static str),
     DeviceOperationFailed { operation: &'static str, code: i32 },
 }

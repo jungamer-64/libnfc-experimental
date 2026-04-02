@@ -1,7 +1,8 @@
 use super::acr122;
 use crate::rust_api::{
-    BaudRate, ConnectionString, Context, Driver, Error, Mode, Modulation, ModulationType,
-    OpenedDevice, Property, ScanType, Target, TargetInfo, decode_connstring, device_error_message,
+    BaudRate, ConnectionString, Context, DeviceCaps, Driver, Error, Mode, Modulation,
+    ModulationType, OpenedDevice, Property, ScanType, Target, TargetInfo, decode_connstring,
+    device_error_message,
 };
 #[cfg(feature = "pcsc_helper")]
 use proximate_platform::pcsc as platform_pcsc;
@@ -857,6 +858,18 @@ impl OpenedDevice for PcscDevice {
 
     fn connstring(&self) -> &ConnectionString {
         &self.connstring
+    }
+
+    fn caps(&self) -> DeviceCaps {
+        DeviceCaps::INFO
+            | DeviceCaps::SET_PROPERTY_BOOL
+            | DeviceCaps::SUPPORTED_MODULATIONS
+            | DeviceCaps::SUPPORTED_BAUD_RATES
+            | DeviceCaps::INITIATOR_INIT
+            | DeviceCaps::SELECT_PASSIVE_TARGET
+            | DeviceCaps::POLL_TARGET
+            | DeviceCaps::TARGET_IS_PRESENT
+            | DeviceCaps::TRANSCEIVE_BYTES
     }
 
     fn last_error(&self) -> i32 {

@@ -1,13 +1,24 @@
 use crate::rust_api::{
-    BaudRate, ConnectionString, Context, Driver, Error, Mode, Modulation, ModulationType,
-    OpenedDevice, Property, ScanType, Target, TargetInfo,
+    BaudRate, ConnectionString, Context, DeviceCaps, Driver, Error, Mode, Modulation,
+    ModulationType, OpenedDevice, Property, ScanType, Target, TargetInfo,
 };
+#[cfg(feature = "nci_helper")]
 use proximate_platform::nci::TagInfo;
 #[cfg(all(feature = "nci_helper", not(test)))]
 use proximate_platform::nci::{self as platform_nci, Backend as _};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
+
+#[cfg(not(feature = "nci_helper"))]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct TagInfo {
+    technology: u32,
+    handle: u32,
+    uid: [u8; 32],
+    uid_length: u32,
+    protocol: u8,
+}
 
 const NFC_SUCCESS: i32 = 0;
 const NFC_EIO: i32 = -1;
@@ -543,6 +554,23 @@ impl OpenedDevice for Pn71xxDevice {
 
     fn connstring(&self) -> &ConnectionString {
         &self.connstring
+    }
+
+    fn caps(&self) -> DeviceCaps {
+        DeviceCaps::INFO
+            | DeviceCaps::SET_PROPERTY_BOOL
+            | DeviceCaps::SET_PROPERTY_INT
+            | DeviceCaps::SUPPORTED_MODULATIONS
+            | DeviceCaps::SUPPORTED_BAUD_RATES
+            | DeviceCaps::INITIATOR_INIT
+            | DeviceCaps::SELECT_PASSIVE_TARGET
+            | DeviceCaps::POLL_TARGET
+            | DeviceCaps::DESELECT_TARGET
+            | DeviceCaps::TARGET_IS_PRESENT
+            | DeviceCaps::TRANSCEIVE_BYTES
+            | DeviceCaps::ABORT_COMMAND
+            | DeviceCaps::IDLE
+            | DeviceCaps::POWERDOWN
     }
 
     fn last_error(&self) -> i32 {

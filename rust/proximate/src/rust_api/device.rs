@@ -1,11 +1,27 @@
 use std::any::Any;
 
 use super::{
-    BaudRate, ConnectionString, DepInfo, DepMode, Error, Mode, Modulation, ModulationType,
-    Property, Target,
+    BaudRate, ConnectionString, DepInfo, DepMode, DeviceCaps, Error, Mode, Modulation,
+    ModulationType, Property, Target,
 };
 
-const POLL_DEP_PERIOD_MS: i32 = 300;
+pub(crate) const POLL_DEP_PERIOD_MS: i32 = 300;
+
+fn missing_capability(operation: &'static str) -> Error {
+    Error::MissingCapability(operation)
+}
+
+fn ensure_device_caps(
+    caps: DeviceCaps,
+    required: DeviceCaps,
+    operation: &'static str,
+) -> Result<(), Error> {
+    if caps.contains(required) {
+        Ok(())
+    } else {
+        Err(missing_capability(operation))
+    }
+}
 
 pub trait Logger: Send + Sync {
     fn log(&self, _priority: u8, _message: &str) {}
@@ -14,6 +30,9 @@ pub trait Logger: Send + Sync {
 pub trait OpenedDevice: Send + Any {
     fn name(&self) -> &str;
     fn connstring(&self) -> &ConnectionString;
+    fn caps(&self) -> DeviceCaps {
+        DeviceCaps::NONE
+    }
 
     fn last_error(&self) -> i32 {
         0
@@ -231,6 +250,11 @@ pub trait OpenedDevice: Send + Any {
     }
 
     fn initiator_init(&mut self) -> Result<i32, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::SET_PROPERTY_BOOL | DeviceCaps::INITIATOR_INIT,
+            "initiator_init",
+        )?;
         apply_bool_property_sequence(
             self,
             &[
@@ -248,6 +272,11 @@ pub trait OpenedDevice: Send + Any {
     }
 
     fn initiator_init_secure_element(&mut self) -> Result<i32, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::INITIATOR_INIT_SECURE_ELEMENT,
+            "initiator_init_secure_element",
+        )?;
         self.initiator_init_secure_element_driver()
     }
 
@@ -256,6 +285,13 @@ pub trait OpenedDevice: Send + Any {
         nm: Modulation,
         init_data: Option<&[u8]>,
     ) -> Result<Option<Target>, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::SUPPORTED_MODULATIONS
+                | DeviceCaps::SUPPORTED_BAUD_RATES
+                | DeviceCaps::SELECT_PASSIVE_TARGET,
+            "initiator_select_passive_target",
+        )?;
         validate_modulation(self, Mode::Initiator, nm)?;
 
         let payload = if init_data.is_some_and(|value| !value.is_empty()) {
@@ -279,6 +315,15 @@ pub trait OpenedDevice: Send + Any {
         if max_targets == 0 {
             return Ok(Vec::new());
         }
+
+        let mut required = DeviceCaps::SUPPORTED_MODULATIONS
+            | DeviceCaps::SUPPORTED_BAUD_RATES
+            | DeviceCaps::SELECT_PASSIVE_TARGET
+            | DeviceCaps::SET_PROPERTY_BOOL;
+        if max_targets > 1 && !modulation_requires_single_attempt(nm) {
+            required |= DeviceCaps::DESELECT_TARGET;
+        }
+        ensure_device_caps(self.caps(), required, "list_passive_targets")?;
 
         let previous = self.property_bool_state(Property::InfiniteSelect);
         self.set_property_bool(Property::InfiniteSelect, false)?;
@@ -310,6 +355,11 @@ pub trait OpenedDevice: Send + Any {
         poll_nr: u8,
         period: u8,
     ) -> Result<Option<Target>, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::POLL_TARGET,
+            "initiator_poll_target",
+        )?;
         self.poll_target_driver(modulations, poll_nr, period)
     }
 
@@ -320,6 +370,11 @@ pub trait OpenedDevice: Send + Any {
         initiator: Option<&DepInfo>,
         timeout: i32,
     ) -> Result<Option<Target>, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::SELECT_DEP_TARGET,
+            "initiator_select_dep_target",
+        )?;
         self.select_dep_target_driver(ndm, nbr, initiator, timeout)
     }
 
@@ -330,6 +385,11 @@ pub trait OpenedDevice: Send + Any {
         initiator: Option<&DepInfo>,
         timeout: i32,
     ) -> Result<Option<Target>, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::SET_PROPERTY_BOOL | DeviceCaps::SELECT_DEP_TARGET,
+            "poll_dep_target",
+        )?;
         let previous = self.property_bool_state(Property::InfiniteSelect);
         self.set_property_bool(Property::InfiniteSelect, true)?;
 
@@ -353,14 +413,29 @@ pub trait OpenedDevice: Send + Any {
     }
 
     fn deselect_target(&mut self) -> Result<(), Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::DESELECT_TARGET,
+            "initiator_deselect_target",
+        )?;
         self.deselect_target_driver()
     }
 
     fn target_is_present(&mut self, target: Option<&Target>) -> Result<bool, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::TARGET_IS_PRESENT,
+            "initiator_target_is_present",
+        )?;
         self.target_is_present_driver(target)
     }
 
     fn transceive_bytes(&mut self, tx: &[u8], rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::TRANSCEIVE_BYTES,
+            "initiator_transceive_bytes",
+        )?;
         self.transceive_bytes_driver(tx, rx, timeout)
     }
 
@@ -372,10 +447,20 @@ pub trait OpenedDevice: Send + Any {
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<usize, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::TRANSCEIVE_BITS,
+            "initiator_transceive_bits",
+        )?;
         self.transceive_bits_driver(tx, tx_bits_len, tx_parity, rx, rx_parity)
     }
 
     fn transceive_bytes_timed(&mut self, tx: &[u8], rx: &mut [u8]) -> Result<(usize, u32), Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::TRANSCEIVE_BYTES_TIMED,
+            "initiator_transceive_bytes_timed",
+        )?;
         self.transceive_bytes_timed_driver(tx, rx)
     }
 
@@ -387,6 +472,11 @@ pub trait OpenedDevice: Send + Any {
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<(usize, u32), Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::TRANSCEIVE_BITS_TIMED,
+            "initiator_transceive_bits_timed",
+        )?;
         self.transceive_bits_timed_driver(tx, tx_bits_len, tx_parity, rx, rx_parity)
     }
 
@@ -396,6 +486,11 @@ pub trait OpenedDevice: Send + Any {
         rx: &mut [u8],
         timeout: i32,
     ) -> Result<usize, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::SET_PROPERTY_BOOL | DeviceCaps::TARGET_INIT,
+            "target_init",
+        )?;
         apply_bool_property_sequence(
             self,
             &[
@@ -413,10 +508,20 @@ pub trait OpenedDevice: Send + Any {
     }
 
     fn target_send_bytes(&mut self, tx: &[u8], timeout: i32) -> Result<usize, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::TARGET_SEND_BYTES,
+            "target_send_bytes",
+        )?;
         self.target_send_bytes_driver(tx, timeout)
     }
 
     fn target_receive_bytes(&mut self, rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::TARGET_RECEIVE_BYTES,
+            "target_receive_bytes",
+        )?;
         self.target_receive_bytes_driver(rx, timeout)
     }
 
@@ -426,6 +531,11 @@ pub trait OpenedDevice: Send + Any {
         tx_bits_len: usize,
         tx_parity: Option<&[u8]>,
     ) -> Result<usize, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::TARGET_SEND_BITS,
+            "target_send_bits",
+        )?;
         self.target_send_bits_driver(tx, tx_bits_len, tx_parity)
     }
 
@@ -434,28 +544,46 @@ pub trait OpenedDevice: Send + Any {
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<usize, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::TARGET_RECEIVE_BITS,
+            "target_receive_bits",
+        )?;
         self.target_receive_bits_driver(rx, rx_parity)
     }
 
     fn abort_command(&mut self) -> Result<(), Error> {
+        ensure_device_caps(self.caps(), DeviceCaps::ABORT_COMMAND, "abort_command")?;
         self.abort_command_driver()
     }
 
     fn idle(&mut self) -> Result<(), Error> {
+        ensure_device_caps(self.caps(), DeviceCaps::IDLE, "idle")?;
         self.idle_driver()
     }
 
     fn powerdown(&mut self) -> Result<(), Error> {
+        ensure_device_caps(self.caps(), DeviceCaps::POWERDOWN, "powerdown")?;
         self.powerdown_driver()
     }
 
     #[doc(hidden)]
     fn pn53x_transceive(&mut self, tx: &[u8], rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::PN53X_TRANSCEIVE,
+            "pn53x_transceive",
+        )?;
         self.pn53x_transceive_driver(tx, rx, timeout)
     }
 
     #[doc(hidden)]
     fn pn53x_read_register(&mut self, register: u16) -> Result<u8, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::PN53X_READ_REGISTER,
+            "pn53x_read_register",
+        )?;
         self.pn53x_read_register_driver(register)
     }
 
@@ -466,11 +594,21 @@ pub trait OpenedDevice: Send + Any {
         symbol_mask: u8,
         value: u8,
     ) -> Result<(), Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::PN53X_WRITE_REGISTER,
+            "pn53x_write_register",
+        )?;
         self.pn53x_write_register_driver(register, symbol_mask, value)
     }
 
     #[doc(hidden)]
     fn pn532_sam_configuration(&mut self, mode: u8, timeout: i32) -> Result<i32, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::PN532_SAM_CONFIGURATION,
+            "pn532_SAMConfiguration",
+        )?;
         self.pn532_sam_configuration_driver(mode, timeout)
     }
 }
@@ -493,6 +631,10 @@ impl OpenedDevice for NamedOpenedDevice {
 
     fn connstring(&self) -> &ConnectionString {
         self.inner.connstring()
+    }
+
+    fn caps(&self) -> DeviceCaps {
+        self.inner.caps()
     }
 
     fn last_error(&self) -> i32 {
@@ -685,6 +827,10 @@ impl Device {
         self.handle.connstring()
     }
 
+    pub fn caps(&self) -> DeviceCaps {
+        self.handle.caps()
+    }
+
     pub fn last_error(&self) -> i32 {
         self.handle.last_error()
     }
@@ -707,18 +853,38 @@ impl Device {
     }
 
     pub fn information_about(&mut self) -> Result<String, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::INFO,
+            "device_get_information_about",
+        )?;
         self.handle.information_about()
     }
 
     pub fn set_property_bool(&mut self, property: Property, enable: bool) -> Result<(), Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::SET_PROPERTY_BOOL,
+            "device_set_property_bool",
+        )?;
         self.handle.set_property_bool(property, enable)
     }
 
     pub fn set_property_int(&mut self, property: Property, value: i32) -> Result<(), Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::SET_PROPERTY_INT,
+            "device_set_property_int",
+        )?;
         self.handle.set_property_int(property, value)
     }
 
     pub fn supported_modulations(&mut self, mode: Mode) -> Result<Vec<ModulationType>, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::SUPPORTED_MODULATIONS,
+            "get_supported_modulation",
+        )?;
         self.handle.supported_modulations(mode)
     }
 
@@ -727,6 +893,11 @@ impl Device {
         mode: Mode,
         modulation_type: ModulationType,
     ) -> Result<Vec<BaudRate>, Error> {
+        ensure_device_caps(
+            self.caps(),
+            DeviceCaps::SUPPORTED_BAUD_RATES,
+            "get_supported_baud_rate",
+        )?;
         self.handle.supported_baud_rates(mode, modulation_type)
     }
 
@@ -881,7 +1052,7 @@ impl Device {
     }
 }
 
-fn apply_bool_property_sequence<D: OpenedDevice + ?Sized>(
+pub(crate) fn apply_bool_property_sequence<D: OpenedDevice + ?Sized>(
     device: &mut D,
     settings: &[(Property, bool)],
 ) -> Result<(), Error> {
@@ -891,7 +1062,7 @@ fn apply_bool_property_sequence<D: OpenedDevice + ?Sized>(
     Ok(())
 }
 
-fn restore_property_bool<D: OpenedDevice + ?Sized>(
+pub(crate) fn restore_property_bool<D: OpenedDevice + ?Sized>(
     device: &mut D,
     property: Property,
     previous: Option<bool>,
@@ -905,7 +1076,7 @@ fn restore_property_bool<D: OpenedDevice + ?Sized>(
     Ok(())
 }
 
-fn validate_modulation<D: OpenedDevice + ?Sized>(
+pub(crate) fn validate_modulation<D: OpenedDevice + ?Sized>(
     device: &mut D,
     mode: Mode,
     modulation: Modulation,
@@ -923,7 +1094,7 @@ fn validate_modulation<D: OpenedDevice + ?Sized>(
     Ok(())
 }
 
-fn default_initiator_payload(modulation: Modulation) -> &'static [u8] {
+pub(crate) fn default_initiator_payload(modulation: Modulation) -> &'static [u8] {
     match modulation.modulation_type {
         ModulationType::Iso14443B => &[0x00],
         ModulationType::Iso14443Bi => &[0x01, 0x0b, 0x3f, 0x80],
@@ -932,7 +1103,7 @@ fn default_initiator_payload(modulation: Modulation) -> &'static [u8] {
     }
 }
 
-fn cascade_iso14443a_uid(uid: &[u8]) -> Vec<u8> {
+pub(crate) fn cascade_iso14443a_uid(uid: &[u8]) -> Vec<u8> {
     match uid.len() {
         4 => uid.to_vec(),
         7 => {
@@ -952,7 +1123,7 @@ fn cascade_iso14443a_uid(uid: &[u8]) -> Vec<u8> {
     }
 }
 
-fn modulation_requires_single_attempt(modulation: Modulation) -> bool {
+pub(crate) fn modulation_requires_single_attempt(modulation: Modulation) -> bool {
     matches!(
         modulation.modulation_type,
         ModulationType::Felica

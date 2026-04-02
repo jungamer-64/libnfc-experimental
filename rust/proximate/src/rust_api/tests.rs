@@ -11,6 +11,7 @@ use super::*;
 struct FakeDevice {
     name: String,
     connstring: ConnectionString,
+    caps: DeviceCaps,
     property_calls: Vec<(Property, bool)>,
     property_state: Vec<(Property, bool)>,
     supported_modulations: Vec<ModulationType>,
@@ -27,6 +28,15 @@ impl Default for FakeDevice {
         Self {
             name: String::new(),
             connstring: ConnectionString::new("test").unwrap(),
+            caps: DeviceCaps::SET_PROPERTY_BOOL
+                | DeviceCaps::SET_PROPERTY_INT
+                | DeviceCaps::SUPPORTED_MODULATIONS
+                | DeviceCaps::SUPPORTED_BAUD_RATES
+                | DeviceCaps::INITIATOR_INIT
+                | DeviceCaps::SELECT_PASSIVE_TARGET
+                | DeviceCaps::SELECT_DEP_TARGET
+                | DeviceCaps::DESELECT_TARGET
+                | DeviceCaps::TARGET_INIT,
             property_calls: Vec::new(),
             property_state: Vec::new(),
             supported_modulations: Vec::new(),
@@ -64,6 +74,10 @@ impl OpenedDevice for FakeDevice {
 
     fn connstring(&self) -> &ConnectionString {
         &self.connstring
+    }
+
+    fn caps(&self) -> DeviceCaps {
+        self.caps
     }
 
     fn set_property_bool(&mut self, property: Property, enable: bool) -> Result<(), Error> {
@@ -187,6 +201,7 @@ struct BackendDeviceState {
 struct BackendDevice {
     name: String,
     connstring: ConnectionString,
+    caps: DeviceCaps,
     state: Arc<Mutex<BackendDeviceState>>,
     unsupported_error_code: i32,
     custom_strerror: Option<String>,
@@ -203,6 +218,11 @@ impl BackendDevice {
         Self {
             name: "backend-device".into(),
             connstring: ConnectionString::new(connstring).unwrap(),
+            caps: DeviceCaps::INFO
+                | DeviceCaps::SET_PROPERTY_BOOL
+                | DeviceCaps::SET_PROPERTY_INT
+                | DeviceCaps::SUPPORTED_MODULATIONS
+                | DeviceCaps::SUPPORTED_BAUD_RATES,
             state: Arc::new(Mutex::new(BackendDeviceState::default())),
             unsupported_error_code: -3,
             custom_strerror: None,
@@ -223,6 +243,10 @@ impl DeviceBackend for BackendDevice {
 
     fn connstring(&self) -> &ConnectionString {
         &self.connstring
+    }
+
+    fn caps(&self) -> DeviceCaps {
+        self.caps
     }
 
     fn last_error(&self) -> i32 {
@@ -286,6 +310,7 @@ struct BackendDriverState {
 struct BackendDriver {
     name: String,
     scan_type: ScanType,
+    caps: DriverCaps,
     scan_sizes: Arc<Mutex<VecDeque<usize>>>,
     state: Arc<Mutex<BackendDriverState>>,
     opened_device: BackendDevice,
@@ -297,6 +322,11 @@ impl BackendDriver {
         Self {
             name: name.into(),
             scan_type,
+            caps: if scan_type == ScanType::NotAvailable {
+                DriverCaps::OPEN
+            } else {
+                DriverCaps::SCAN | DriverCaps::OPEN
+            },
             scan_sizes: Arc::new(Mutex::new(scan_sizes.iter().copied().collect())),
             state: Arc::new(Mutex::new(BackendDriverState::default())),
             opened_device: BackendDevice::new(opened_connstring),
@@ -312,6 +342,10 @@ impl DriverBackend for BackendDriver {
 
     fn scan_type(&self) -> ScanType {
         self.scan_type
+    }
+
+    fn caps(&self) -> DriverCaps {
+        self.caps
     }
 
     fn scan_with_capacity(
@@ -659,15 +693,15 @@ fn backend_device_wrapper_normalizes_unsupported_operations_and_clears_last_erro
     let error = device.information_about().unwrap_err();
     assert_eq!(
         error,
-        Error::DeviceOperationFailed {
-            operation: "device_get_information_about",
-            code: -3,
-        }
+        Error::MissingCapability("device_get_information_about")
     );
     assert_eq!(device.last_error(), -3);
 
-    let supported = device.supported_modulations(Mode::Initiator).unwrap();
-    assert!(supported.is_empty());
+    let supported = device.supported_modulations(Mode::Initiator).unwrap_err();
+    assert_eq!(
+        supported,
+        Error::MissingCapability("get_supported_modulation")
+    );
     assert_eq!(device.last_error(), -3);
 
     device
@@ -678,6 +712,110 @@ fn backend_device_wrapper_normalizes_unsupported_operations_and_clears_last_erro
         state.lock().unwrap().property_calls,
         vec![(Property::ActivateField, true)]
     );
+}
+
+#[test]
+fn backend_device_wrapper_rejects_missing_caps_without_dispatch() {
+    let mut backend = BackendDevice::new("alpha:001");
+    backend.caps = DeviceCaps::SET_PROPERTY_BOOL;
+    let state = backend.state.clone();
+    let mut device = wrap_device_backend(Box::new(backend));
+
+    let error = device.supported_modulations(Mode::Initiator).unwrap_err();
+    assert_eq!(error, Error::MissingCapability("get_supported_modulation"));
+    assert_eq!(device.last_error(), -3);
+    assert!(state.lock().unwrap().property_calls.is_empty());
+}
+
+#[test]
+fn device_caps_propagate_through_wrappers() {
+    let backend = BackendDevice::new("alpha:001");
+    let caps = backend.caps;
+    let handle = wrap_device_backend(Box::new(backend));
+    let named = crate::rust_api::device::NamedOpenedDevice::new("named".into(), handle);
+    assert_eq!(named.caps(), caps);
+
+    let device = Device::new(Box::new(named));
+    assert_eq!(device.caps(), caps);
+}
+
+#[test]
+fn backend_driver_wrapper_reports_caps_and_blocks_missing_scan_capability() {
+    let mut backend = BackendDriver::new("alpha", ScanType::NotIntrusive, &[1], "alpha:001");
+    backend.caps = DriverCaps::OPEN;
+
+    let driver = wrap_driver_backend(Box::new(backend));
+    assert_eq!(driver.caps(), DriverCaps::OPEN);
+    assert_eq!(
+        driver.scan(&Context::default()),
+        Err(Error::MissingCapability("scan"))
+    );
+}
+
+#[test]
+fn initiator_init_requires_caps_before_property_sequence() {
+    let mut device = FakeDevice::new("pn53x_usb");
+    device.caps = DeviceCaps::INITIATOR_INIT;
+
+    let error = device.initiator_init().unwrap_err();
+    assert_eq!(error, Error::MissingCapability("initiator_init"));
+    assert!(device.property_calls.is_empty());
+}
+
+#[test]
+fn target_init_requires_caps_before_property_sequence() {
+    let mut device = FakeDevice::new("pn53x_usb");
+    device.caps = DeviceCaps::TARGET_INIT;
+    let mut target = Target::new(modulation(ModulationType::Iso14443A, BaudRate::Br106));
+    let mut rx = [0u8; 8];
+
+    let error = device.target_init(&mut target, &mut rx, 25).unwrap_err();
+    assert_eq!(error, Error::MissingCapability("target_init"));
+    assert!(device.property_calls.is_empty());
+    assert_eq!(device.target_init_calls, 0);
+}
+
+#[test]
+fn select_passive_target_requires_validation_caps_before_dispatch() {
+    let mut device = FakeDevice::new("pn53x_usb");
+    device.caps = DeviceCaps::SELECT_PASSIVE_TARGET;
+
+    let error = device
+        .select_passive_target(modulation(ModulationType::Iso14443A, BaudRate::Br106), None)
+        .unwrap_err();
+    assert_eq!(
+        error,
+        Error::MissingCapability("initiator_select_passive_target")
+    );
+    assert!(device.select_passive_payloads.is_empty());
+}
+
+#[test]
+fn list_passive_targets_requires_deselect_cap_before_mutation() {
+    let mut device = FakeDevice::new("pn53x_usb");
+    device.caps = DeviceCaps::SUPPORTED_MODULATIONS
+        | DeviceCaps::SUPPORTED_BAUD_RATES
+        | DeviceCaps::SELECT_PASSIVE_TARGET
+        | DeviceCaps::SET_PROPERTY_BOOL;
+
+    let error = device
+        .list_passive_targets(modulation(ModulationType::Iso14443A, BaudRate::Br106), 2)
+        .unwrap_err();
+    assert_eq!(error, Error::MissingCapability("list_passive_targets"));
+    assert!(device.property_calls.is_empty());
+    assert_eq!(device.deselect_calls, 0);
+}
+
+#[test]
+fn poll_dep_target_requires_caps_before_property_sequence() {
+    let mut device = FakeDevice::new("pn53x_usb");
+    device.caps = DeviceCaps::SELECT_DEP_TARGET;
+
+    let error = device
+        .poll_dep_target(DepMode::Passive, BaudRate::Br106, None, 1000)
+        .unwrap_err();
+    assert_eq!(error, Error::MissingCapability("poll_dep_target"));
+    assert!(device.property_calls.is_empty());
 }
 
 #[test]

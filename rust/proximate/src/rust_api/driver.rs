@@ -1,9 +1,18 @@
 use super::device::NamedOpenedDevice;
-use super::{ConnectionString, Context, ContextConfig, Device, Error, OpenedDevice, ScanType};
+use super::{
+    ConnectionString, Context, ContextConfig, Device, DriverCaps, Error, OpenedDevice, ScanType,
+};
 
 pub trait Driver: Send + Sync {
     fn name(&self) -> &str;
     fn scan_type(&self) -> ScanType;
+    fn caps(&self) -> DriverCaps {
+        let mut caps = DriverCaps::OPEN;
+        if self.scan_type() != ScanType::NotAvailable {
+            caps |= DriverCaps::SCAN;
+        }
+        caps
+    }
     fn scan(&self, context: &Context) -> Result<Vec<ConnectionString>, Error>;
     fn open(
         &self,
@@ -123,6 +132,9 @@ impl DriverRegistry {
         }
 
         for driver in self.drivers.iter().rev() {
+            if !driver.caps().contains(DriverCaps::SCAN) {
+                continue;
+            }
             if !scan_allowed_for_driver(&context.config, driver.as_ref()) {
                 continue;
             }
@@ -157,6 +169,9 @@ impl DriverRegistry {
         }
 
         for driver in self.drivers.iter().rev() {
+            if !driver.caps().contains(DriverCaps::SCAN) {
+                continue;
+            }
             if !scan_allowed_for_driver(&context.config, driver.as_ref()) {
                 continue;
             }
@@ -186,6 +201,9 @@ impl DriverRegistry {
         let mut last_error = None;
 
         for driver in self.drivers.iter().rev() {
+            if !driver.caps().contains(DriverCaps::OPEN) {
+                continue;
+            }
             if !driver_matches_connstring(driver.as_ref(), &requested) {
                 continue;
             }
