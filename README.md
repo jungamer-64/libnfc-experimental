@@ -71,7 +71,8 @@ For security information, see [SECURITY.md](SECURITY.md).
 ## Memory Safety (`nfc-secure`)
 
 This experimental tree includes an internal memory safety layer in
-`libnfc/nfc-secure.h/c`.
+the repo-local generated header `libnfc_rs_private.h`, backed by the Rust
+bridge.
 
 It is used by the in-tree library, utilities, and examples, but it is not
 installed as part of the orig-compatible public headers. External consumers
@@ -88,7 +89,7 @@ should continue to treat `<nfc/nfc.h>` as the supported include surface.
 **Documentation**:
 
 * **Security Notes**: [SECURITY.md](SECURITY.md)
-* **Internal API**: `libnfc/nfc-secure.h`
+* **Internal API**: `rust/proximate-sys/include/libnfc_rs_private.h`
 * **In-tree Examples**: `libnfc/nfc-secure-examples.c`
 
 **Standards Support**: C89/C99/C11/C23

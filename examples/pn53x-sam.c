@@ -51,10 +51,8 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <nfc/nfc.h>
-
+#include "libnfc_rs_private.h"
 #include "utils/nfc-utils.h"
-#include "libnfc/chips/pn53x.h"
 
 #define MAX_FRAME_LEN 264
 #define TIMEOUT 60              // secs.

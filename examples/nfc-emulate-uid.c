@@ -56,8 +56,7 @@
 #include <string.h>
 #include <signal.h>
 
-#include <nfc/nfc.h>
-#include "../libnfc/nfc-secure.h"
+#include "libnfc_rs_private.h"
 
 #include "utils/nfc-utils.h"
 

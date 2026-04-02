@@ -43,8 +43,7 @@ pub const NFC_BUFSIZE_CONNSTRING: usize = 1024;
 pub(crate) const MALLOC_LABEL: *const c_char = b"malloc\0" as *const u8 as *const c_char;
 
 #[cfg(any(feature = "c_ffi", cbindgen, test))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_rs_log_message(
+pub(crate) unsafe fn nfc_rs_log_message(
     group: u8,
     category: *const c_char,
     priority: u8,

@@ -14,9 +14,7 @@
 #include <unistd.h>
 #endif
 
-#include <nfc/nfc.h>
-
-#include "libnfc/nfc-internal.h"
+#include "libnfc_rs_private.h"
 
 #define TEST_DRIVER_NAME "rust_core_device_io_test"
 #define TEST_DEVICE_NAME "rust-core-device"

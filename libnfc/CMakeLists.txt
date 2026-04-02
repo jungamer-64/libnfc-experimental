@@ -21,7 +21,6 @@ if(WIN32)
 endif()
 
 set(CHIPS_SOURCES)
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/chips")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 
 set(LIBRARY_SOURCES
@@ -59,8 +58,7 @@ target_include_directories(nfc
     "${CMAKE_SOURCE_DIR}"
     "${CMAKE_BINARY_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/chips"
-    "${CMAKE_CURRENT_SOURCE_DIR}/buses"
+    "${RUST_GENERATED_INCLUDE_DIR}"
     ${LIBNFC_OPTIONAL_PRIVATE_INCLUDE_DIRS})
 
 set(LIBNFC_SHARED_LINK_LIBRARIES)

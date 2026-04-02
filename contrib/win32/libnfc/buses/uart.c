@@ -36,8 +36,6 @@
 
 #include "uart.h"
 
-#include <nfc/nfc.h>
-
 #include <inttypes.h>
 #include "log.h"
 

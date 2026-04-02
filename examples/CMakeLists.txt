@@ -14,8 +14,6 @@ set(EXAMPLE_SOURCES
   pn53x-tamashell
 )
 
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../libnfc")
-
 foreach(source ${EXAMPLE_SOURCES})
   set(TARGETS "${source}.c")
 
@@ -37,6 +35,10 @@ foreach(source ${EXAMPLE_SOURCES})
   endif()
 
   add_executable("${source}" ${TARGETS})
+  if(PROXIMATE_C_FFI)
+    add_dependencies("${source}" proximate_sys_headers)
+    target_include_directories("${source}" PRIVATE "${RUST_GENERATED_INCLUDE_DIR}")
+  endif()
   target_link_libraries("${source}" PRIVATE nfc nfcutils)
   install(TARGETS "${source}" RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT examples)
 endforeach()

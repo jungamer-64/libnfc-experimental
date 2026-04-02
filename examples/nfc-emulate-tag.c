@@ -54,9 +54,7 @@
 #include <string.h>
 #include <signal.h>
 
-#include <nfc/nfc.h>
-
-#include "../libnfc/nfc-secure.h"
+#include "libnfc_rs_private.h"
 #include "utils/nfc-utils.h"
 
 #define MAX_FRAME_LEN (264)
@@ -97,7 +95,7 @@ target_io(nfc_target *pnt, const uint8_t *pbtInput, const size_t szInput, uint8_
     switch (pbtInput[0]) {
       case 0x30: // Mifare read
         // block address is in pbtInput[1]
-        *pszOutput = 16;
+        *pszOutput = 17;
         snprintf((char *)pbtOutput, *pszOutput, "You read block %c", pbtInput[1]);
         break;
       case 0x50: // HLTA (ISO14443-3)

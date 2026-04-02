@@ -53,11 +53,9 @@
 #include <string.h>
 #include <ctype.h>
 
-#include <nfc/nfc.h>
-
+#include "libnfc_rs_private.h"
 #include "nfc-utils.h"
 #include "jewel.h"
-#include "../libnfc/nfc-secure.h"
 
 static nfc_device *pnd;
 static nfc_target nt;

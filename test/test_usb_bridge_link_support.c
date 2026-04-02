@@ -1,9 +1,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <nfc/nfc.h>
-
-#include "chips/pn53x.h"
+#include "libnfc_rs_private.h"
 
 /*
  * Build-tree link support for test_usbbus_helpers.

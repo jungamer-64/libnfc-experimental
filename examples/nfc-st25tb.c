@@ -59,11 +59,11 @@
 #endif // HAVE_CONFIG_H
 
 #include <unistd.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include <nfc/nfc.h>
-#include "../libnfc/nfc-secure.h"
+#include "libnfc_rs_private.h"
 
 #if defined(WIN32) /* mingw compiler */
 #include <getopt.h>

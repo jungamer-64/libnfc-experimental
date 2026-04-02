@@ -26,7 +26,7 @@
  * using the nfc-secure memory operations library.
  */
 
-#include "nfc-secure.h"
+#include "libnfc_rs_private.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

@@ -37,12 +37,10 @@
  * @file mifare.c
  * @brief provide samples structs and functions to manipulate MIFARE Classic and Ultralight tags using libnfc
  */
-#include "mifare.h"
-
 #include <string.h>
 
-#include <nfc/nfc.h>
-#include "../libnfc/nfc-secure.h"
+#include "libnfc_rs_private.h"
+#include "mifare.h"
 
 /**
  * @brief Execute a MIFARE Classic Command

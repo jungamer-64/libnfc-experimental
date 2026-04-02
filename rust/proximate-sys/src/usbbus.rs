@@ -89,6 +89,7 @@ pub struct usb_bulk_endpoints {
 }
 
 #[repr(C)]
+/// cbindgen:no-export
 pub struct usb_dev_handle {
     _private: [u8; 0],
 }

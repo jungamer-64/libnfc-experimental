@@ -22,8 +22,10 @@ ROOT = Path(__file__).resolve().parents[1]
 CDB_TOML = ROOT / "cbindgen.toml"
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--config", required=False, default=str(CDB_TOML), help="Path to the cbindgen config file to update")
 parser.add_argument("--features", required=False, help="Accepted for compatibility; cbindgen feature forwarding is not used on stable")
 args = parser.parse_args()
+config_path = Path(args.config).resolve()
 
 # Build cbindgen invocation. Feature forwarding is intentionally not
 # used here because stable cbindgen does not accept Cargo feature flags
@@ -31,7 +33,7 @@ args = parser.parse_args()
 CMD = [
     "cbindgen",
     "--config",
-    str(CDB_TOML),
+    str(config_path),
     "--crate",
     "proximate-sys",
     "--output",
@@ -54,7 +56,7 @@ if not found:
     print("No missing define expressions found in cbindgen output.")
     exit(0)
 
-existing = CDB_TOML.read_text()
+existing = config_path.read_text()
 added = []
 
 def derive_macro_for_expr(expr: str):
@@ -95,12 +97,12 @@ for expr in sorted(found):
         continue
     # Append the entry at the end of the [defines] section if present
     # Conservative approach: append near end of file.
-    CDB_TOML.write_text(existing + "\n" + entry)
-    existing = CDB_TOML.read_text()
+    config_path.write_text(existing + "\n" + entry)
+    existing = config_path.read_text()
     added.append((expr, macro))
     print(f"Added mapping for `{expr}` -> {macro}")
 
 if added:
-    print(f"Added {len(added)} entries to {CDB_TOML}")
+    print(f"Added {len(added)} entries to {config_path}")
 else:
     print("No entries added; existing mappings covered the discovered expressions.")

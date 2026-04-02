@@ -1,67 +1,87 @@
-// tests/cbindgen_diff.rs
-
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[test]
 fn tracked_cbindgen_header_is_up_to_date() {
-    // Skip test if cbindgen is not available in PATH — CI should install it where needed.
+    assert_header_matches(
+        "cbindgen.toml",
+        "include/libnfc_rs.h",
+        "proximate_sys.generated.h",
+    );
+}
+
+#[test]
+fn tracked_private_cbindgen_header_is_up_to_date() {
+    assert_header_matches(
+        "cbindgen.private.toml",
+        "include/libnfc_rs_private.h",
+        "proximate_sys.private.generated.h",
+    );
+}
+
+fn assert_header_matches(config_rel: &str, tracked_rel: &str, generated_name: &str) {
     if Command::new("cbindgen").arg("--version").output().is_err() {
         eprintln!("cbindgen not found in PATH; skipping header diff test");
         return;
     }
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let tracked = manifest_dir.join("include/libnfc_rs.h");
-    let generated = std::env::temp_dir().join("proximate_sys.generated.h");
+    let config = manifest_dir.join(config_rel);
+    let tracked = manifest_dir.join(tracked_rel);
+    let generated = std::env::temp_dir().join(generated_name);
 
-    // Use the stable wrapper script to generate the header. The wrapper
-    // centralizes cbindgen invocation, suppresses a known class of
-    // benign warnings and optionally can auto-update the cbindgen
-    // defines mapping when requested.
     let status = Command::new("python3")
         .arg("tools/generate_cbindgen_header.py")
+        .arg("--config")
+        .arg(&config)
         .arg("--output")
         .arg(&generated)
         .current_dir(&manifest_dir)
         .status()
         .expect("failed to execute header generation wrapper");
 
-    if !status.success() {
-        panic!("header generation wrapper failed (status: {:?})", status);
-    }
+    assert!(
+        status.success(),
+        "header generation wrapper failed for {} (status: {:?})",
+        config.display(),
+        status
+    );
 
-    let a = fs::read_to_string(&tracked).expect("failed to read tracked header");
-    let b = fs::read_to_string(&generated).expect("failed to read generated header");
+    compare_headers(&config, &tracked, &generated);
+}
 
-    if normalize(&a) != normalize(&b) {
-        // Try to show a unified diff if `diff` is available
+fn compare_headers(config: &Path, tracked: &Path, generated: &Path) {
+    let tracked_contents = fs::read_to_string(tracked).expect("failed to read tracked header");
+    let generated_contents =
+        fs::read_to_string(generated).expect("failed to read generated header");
+
+    if normalize(&tracked_contents) != normalize(&generated_contents) {
         if let Ok(out) = Command::new("diff")
             .arg("-u")
-            .arg(&tracked)
-            .arg(&generated)
+            .arg(tracked)
+            .arg(generated)
             .output()
         {
-            let s = String::from_utf8_lossy(&out.stdout);
-            eprintln!("Header mismatch detected (diff):\n{}", s);
+            let diff = String::from_utf8_lossy(&out.stdout);
+            eprintln!("Header mismatch detected (diff):\n{}", diff);
         } else {
-            eprintln!("Tracked header:\n{}\n", a);
-            eprintln!("Generated header:\n{}\n", b);
+            eprintln!("Tracked header:\n{}\n", tracked_contents);
+            eprintln!("Generated header:\n{}\n", generated_contents);
         }
+
         panic!(
-            "Tracked cbindgen header is out-of-date. Regenerate with:\n  python3 {}/tools/generate_cbindgen_header.py --output {}",
-            manifest_dir.display(),
+            "Tracked cbindgen header is out-of-date. Regenerate with:\n  python3 tools/generate_cbindgen_header.py --config {} --output {}",
+            config.display(),
             tracked.display()
         );
     }
 }
 
 fn normalize(s: &str) -> String {
-    // Normalize line endings and trim trailing whitespace for robust comparison
     s.replace("\r\n", "\n")
         .lines()
-        .map(|l| l.trim_end())
+        .map(|line| line.trim_end())
         .collect::<Vec<_>>()
         .join("\n")
 }

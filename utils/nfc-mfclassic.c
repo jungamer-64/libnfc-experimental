@@ -60,11 +60,9 @@
 #include <unistd.h>
 #endif
 
-#include <nfc/nfc.h>
-
+#include "libnfc_rs_private.h"
 #include "mifare.h"
 #include "nfc-utils.h"
-#include "../libnfc/nfc-secure.h"
 
 static nfc_context *context;
 static nfc_device *pnd;

@@ -13,7 +13,7 @@
 #endif
 
 #include "libnfc/log.h"
-#include "libnfc/nfc-internal.h"
+#include "libnfc_rs_private.h"
 
 #define CHECK(condition, ...)                                           \
   do {                                                                  \

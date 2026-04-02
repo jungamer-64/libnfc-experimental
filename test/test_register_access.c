@@ -1,7 +1,6 @@
 #include <cutter.h>
 
-#include <nfc/nfc.h>
-#include "chips/pn53x.h"
+#include "libnfc_rs_private.h"
 
 #define MAX_DEVICE_COUNT 1
 #define MAX_TARGET_COUNT 1

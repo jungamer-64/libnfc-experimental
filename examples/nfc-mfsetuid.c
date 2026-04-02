@@ -49,8 +49,6 @@
 #include "config.h"
 #endif // HAVE_CONFIG_H
 
-#include "../libnfc/nfc-secure.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -58,8 +56,7 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include <nfc/nfc.h>
-
+#include "libnfc_rs_private.h"
 #include "utils/nfc-utils.h"
 
 #define SAK_FLAG_ATS_SUPPORTED 0x20

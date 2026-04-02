@@ -16,6 +16,15 @@
 #define NFC_SECURE_ERROR_RANGE -3
 #define NFC_SECURE_ERROR_ZERO_SIZE -4
 #define NFC_SECURE_ERROR_INTERNAL -5
+
+#if defined(_MSC_VER)
+#include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
+#else
+#include <sys/types.h>
+#endif
+
+typedef struct usb_dev_handle usb_dev_handle;
 typedef struct nfc_driver nfc_driver;
 
 
@@ -99,10 +108,6 @@ typedef struct usb_bulk_endpoints {
   uint8_t endpoint_out;
   uint16_t max_packet_size;
 } usb_bulk_endpoints;
-
-typedef struct usb_dev_handle {
-  uint8_t _private[0];
-} usb_dev_handle;
 
 typedef struct nfc_user_defined_device {
   char name[DEVICE_NAME_LENGTH];

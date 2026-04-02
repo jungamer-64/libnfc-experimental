@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "rust_usb_bridge.h"
+#include "libnfc_rs_private.h"
 
 static void
 expect_true(int condition)

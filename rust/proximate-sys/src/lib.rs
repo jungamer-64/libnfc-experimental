@@ -16,12 +16,13 @@ mod ffi_support;
 #[cfg(any(feature = "lifecycle", cbindgen))]
 mod ffi_types;
 #[cfg(any(feature = "orchestration", cbindgen))]
-/// cbindgen:ignore
 mod initiator;
 #[cfg(any(feature = "lifecycle", cbindgen))]
 mod lifecycle;
 /// cbindgen:ignore
 mod logger;
+#[cfg(cbindgen)]
+mod private_ffi;
 #[cfg(any(feature = "lifecycle", feature = "orchestration", cbindgen))]
 /// cbindgen:ignore
 mod runtime_bridge;
@@ -170,6 +171,17 @@ pub unsafe extern "C" fn nfc_build_connstring(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_set_last_error(message: *const libc::c_char) {
     unsafe { proximate::nfc_set_last_error(message) }
+}
+
+#[cfg(any(feature = "c_ffi", cbindgen))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nfc_rs_log_message(
+    group: u8,
+    category: *const libc::c_char,
+    priority: u8,
+    message: *const libc::c_char,
+) {
+    unsafe { c_api_impl::nfc_rs_log_message(group, category, priority, message) }
 }
 
 #[cfg(any(feature = "c_ffi", cbindgen))]

@@ -31,8 +31,7 @@
 #include "config.h"
 #endif // HAVE_CONFIG_H
 
-#include <nfc/nfc.h>
-#include "nfc-secure.h"
+#include "libnfc_rs_private.h"
 
 #ifdef __cplusplus
 extern "C"

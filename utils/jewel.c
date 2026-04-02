@@ -38,11 +38,10 @@
  * @file jewel.c
  * @brief provide samples structs and functions to manipulate Jewel Topaz tags using libnfc
  */
-#include "jewel.h"
-
 #include <string.h>
 
-#include <nfc/nfc.h>
+#include "libnfc_rs_private.h"
+#include "jewel.h"
 
 /**
  * @brief Execute a Jewel Topaz Command

@@ -44,13 +44,12 @@
 #endif // HAVE_CONFIG_H
 
 #include <err.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <nfc/nfc.h>
-
+#include "libnfc_rs_private.h"
 #include "utils/nfc-utils.h"
-#include "libnfc/chips/pn53x.h"
 
 #define MAX_DEVICE_COUNT 16
 

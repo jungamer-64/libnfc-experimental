@@ -4,9 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <nfc/nfc.h>
-
-#include "libnfc/nfc-internal.h"
+#include "libnfc_rs_private.h"
 
 #define TEST_DRIVER_NAME "rust_core_initiator_test"
 #define MAX_PROPERTY_CALLS 16

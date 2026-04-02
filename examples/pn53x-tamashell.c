@@ -69,11 +69,8 @@
 #define msleep Sleep
 #endif
 
-#include <nfc/nfc.h>
-
+#include "libnfc_rs_private.h"
 #include "utils/nfc-utils.h"
-#include "libnfc/chips/pn53x.h"
-#include "../libnfc/nfc-secure.h"
 
 #define MAX_FRAME_LEN 264
 

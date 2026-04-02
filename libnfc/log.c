@@ -26,7 +26,6 @@
  */
 
 #include "log.h"
-#include "rust_bridge.h"
 
 #include <stdarg.h>
 #include <stdint.h>

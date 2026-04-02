@@ -38,25 +38,28 @@ const ISO7816_SHORT_R_APDU_MAX_LEN: usize = 258;
 const GENERAL_LOG_CATEGORY: *const c_char = b"libnfc.general\0" as *const u8 as *const c_char;
 const NULL_ERROR_PREFIX: *const c_char = b"(null)\0" as *const u8 as *const c_char;
 
+#[allow(non_camel_case_types)]
+pub type nfc_emulation_io_fn = Option<
+    unsafe extern "C" fn(
+        emulator: *mut nfc_emulator,
+        data_in: *const u8,
+        data_in_len: size_t,
+        data_out: *mut u8,
+        data_out_len: size_t,
+    ) -> c_int,
+>;
+
 #[repr(C)]
-pub(crate) struct nfc_emulator {
-    target: *mut nfc_target,
-    state_machine: *mut nfc_emulation_state_machine,
-    user_data: *mut c_void,
+pub struct nfc_emulator {
+    pub target: *mut nfc_target,
+    pub state_machine: *mut nfc_emulation_state_machine,
+    pub user_data: *mut c_void,
 }
 
 #[repr(C)]
-pub(crate) struct nfc_emulation_state_machine {
-    io: Option<
-        unsafe extern "C" fn(
-            emulator: *mut nfc_emulator,
-            data_in: *const u8,
-            data_in_len: size_t,
-            data_out: *mut u8,
-            data_out_len: size_t,
-        ) -> c_int,
-    >,
-    data: *mut c_void,
+pub struct nfc_emulation_state_machine {
+    pub io: nfc_emulation_io_fn,
+    pub data: *mut c_void,
 }
 
 unsafe extern "C" {

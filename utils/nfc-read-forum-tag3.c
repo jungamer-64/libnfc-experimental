@@ -56,13 +56,12 @@
 #include <errno.h>
 #include <limits.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-#include <nfc/nfc.h>
-
+#include "libnfc_rs_private.h"
 #include "nfc-utils.h"
-#include "../libnfc/nfc-secure.h"
 
 #if defined(WIN32) /* mingw compiler */
 #include <getopt.h>

@@ -2,9 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <nfc/nfc.h>
-
-#include "libnfc/nfc-internal.h"
+#include "libnfc_rs_private.h"
 
 #define TEST_ALPHA_DRIVER_NAME "test_alpha"
 #define TEST_BETA_DRIVER_NAME "test_beta"

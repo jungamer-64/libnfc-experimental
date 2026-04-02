@@ -73,12 +73,10 @@
 
 #include <errno.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
 
-#include <nfc/nfc.h>
-#include <nfc/nfc-emulation.h>
-
-#include "../libnfc/nfc-secure.h"
+#include "libnfc_rs_private.h"
 #include "utils/nfc-utils.h"
 
 static nfc_device *pnd;
