@@ -1,5 +1,13 @@
 use super::operations::{nfc_target_init, nfc_target_receive_bytes, nfc_target_send_bytes};
-use super::*;
+use crate::bridge::status::{NFC_EINVARG, NFC_ESOFT};
+use crate::ffi_catch_unwind_int;
+use crate::ffi_support::as_mut;
+use crate::ffi_types::nfc_target;
+use crate::lifecycle::nfc_device;
+use libc::{c_int, c_void, size_t};
+
+pub(super) const ISO7816_SHORT_C_APDU_MAX_LEN: usize = 261;
+pub(super) const ISO7816_SHORT_R_APDU_MAX_LEN: usize = 258;
 
 #[allow(non_camel_case_types)]
 pub type nfc_emulation_io_fn = Option<
@@ -25,7 +33,7 @@ pub struct nfc_emulation_state_machine {
     pub data: *mut c_void,
 }
 
-pub unsafe fn nfc_emulate_target(
+pub(crate) unsafe fn nfc_emulate_target(
     device: *mut nfc_device,
     emulator: *mut nfc_emulator,
     timeout: c_int,

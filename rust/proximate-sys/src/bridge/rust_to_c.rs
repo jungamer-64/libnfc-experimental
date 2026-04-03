@@ -1,3 +1,4 @@
+use crate::bridge::driver_shim::rust_device_state_mut;
 use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
 use crate::ffi_support::{as_mut, copy_bytes_to_c_buffer};
 use crate::ffi_types::{
@@ -386,14 +387,14 @@ impl SupportedModulationsOut {
         device: *mut nfc_device,
         raw: *mut *const nfc_modulation_type,
     ) -> Result<Self, c_int> {
-        if raw.is_null() || unsafe { super::rust_device_state_mut(device) }.is_none() {
+        if raw.is_null() || unsafe { rust_device_state_mut(device) }.is_none() {
             return Err(super::status::invalid_argument_status(device));
         }
         Ok(Self { device, raw })
     }
 
     pub(crate) fn write_back(&self, values: Vec<rt::ModulationType>) -> c_int {
-        let Some(state) = (unsafe { super::rust_device_state_mut(self.device) }) else {
+        let Some(state) = (unsafe { rust_device_state_mut(self.device) }) else {
             return super::status::invalid_argument_status(self.device);
         };
         state.supported_modulations.clear();
@@ -421,14 +422,14 @@ impl SupportedBaudRatesOut {
         device: *mut nfc_device,
         raw: *mut *const nfc_baud_rate,
     ) -> Result<Self, c_int> {
-        if raw.is_null() || unsafe { super::rust_device_state_mut(device) }.is_none() {
+        if raw.is_null() || unsafe { rust_device_state_mut(device) }.is_none() {
             return Err(super::status::invalid_argument_status(device));
         }
         Ok(Self { device, raw })
     }
 
     pub(crate) fn write_back(&self, values: Vec<rt::BaudRate>) -> c_int {
-        let Some(state) = (unsafe { super::rust_device_state_mut(self.device) }) else {
+        let Some(state) = (unsafe { rust_device_state_mut(self.device) }) else {
             return super::status::invalid_argument_status(self.device);
         };
         state.supported_baud_rates.clear();

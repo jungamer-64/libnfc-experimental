@@ -1,4 +1,12 @@
-use super::*;
+use super::{log_general_debug, log_general_error, log_general_info};
+use crate::bridge::decode::{context_from_c, decode_connstring_ptr};
+use crate::bridge::driver_shim::attach_rust_device;
+use crate::bridge::encode::ConnstringsOut;
+use crate::bridge::external_registry::register_external_drivers;
+use crate::ffi_catch_unwind_ptr;
+use crate::lifecycle::{nfc_connstring, nfc_context, nfc_device};
+use libc::{c_char, size_t};
+use proximate_driver as rt;
 use std::ptr;
 
 fn register_compiled_bridge_drivers(_registry: &mut rt::DriverRegistry) {}
@@ -73,11 +81,14 @@ where
     }
 }
 
-pub unsafe fn nfc_open(context: *mut nfc_context, connstring: *const c_char) -> *mut nfc_device {
+pub(crate) unsafe fn nfc_open(
+    context: *mut nfc_context,
+    connstring: *const c_char,
+) -> *mut nfc_device {
     ffi_catch_unwind_ptr("nfc_open", || unsafe { nfc_open_impl(context, connstring) })
 }
 
-pub unsafe fn nfc_list_devices(
+pub(crate) unsafe fn nfc_list_devices(
     context: *mut nfc_context,
     connstrings: *mut nfc_connstring,
     connstrings_len: size_t,

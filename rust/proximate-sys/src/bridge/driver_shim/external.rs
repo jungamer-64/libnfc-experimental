@@ -1,4 +1,5 @@
 use super::*;
+use crate::core::driver_registration::bridge_close_device;
 
 pub(crate) struct ExternalDriver {
     raw: *const nfc_driver,
@@ -206,7 +207,7 @@ impl ExternalDevice {
 impl Drop for ExternalDevice {
     fn drop(&mut self) {
         if self.owned && !self.raw.is_null() {
-            unsafe { crate::core::bridge_close_device(self.raw) };
+            unsafe { bridge_close_device(self.raw) };
         }
     }
 }

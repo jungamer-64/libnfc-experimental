@@ -1,8 +1,9 @@
-use crate::bridge::{
-    NFC_EDEVNOTSUPP, baud_rate_from_c, baud_rate_to_c, dep_info_to_c, dep_mode_to_c, mode_to_c,
-    modulation_to_c, modulation_type_from_c, modulation_type_to_c, property_to_c,
-    set_device_last_error, target_from_c, target_to_c, write_context_to_c,
+use crate::bridge::decode::{baud_rate_from_c, modulation_type_from_c, target_from_c};
+use crate::bridge::encode::{
+    baud_rate_to_c, dep_info_to_c, dep_mode_to_c, mode_to_c, modulation_to_c, modulation_type_to_c,
+    property_to_c, target_to_c, write_context_to_c,
 };
+use crate::bridge::status::{NFC_EDEVNOTSUPP, set_device_last_error};
 use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
 use crate::ffi_support::{
     as_mut, as_ref, bounded_strlen, c_string_ptr_to_string, copy_bytes_to_c_buffer,

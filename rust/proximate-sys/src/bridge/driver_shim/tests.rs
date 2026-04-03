@@ -2,7 +2,7 @@ use super::external::ExternalDriver;
 use super::rust_owned::RustDeviceState;
 use super::*;
 use crate::ffi_types::nfc_mode;
-use crate::initiator::{
+use crate::initiator::accessors::{
     nfc_device_get_information_about, nfc_device_get_supported_baud_rate,
     nfc_device_get_supported_baud_rate_target_mode, nfc_device_get_supported_modulation,
 };
@@ -470,7 +470,7 @@ fn rust_shim_information_about_allocates_owned_c_string_and_clears_last_error() 
         info_result: Ok("shim-info".into()),
     });
 
-    let mut info = ptr::null_mut();
+    let mut info: *mut c_char = ptr::null_mut();
     assert_eq!(
         unsafe { nfc_device_get_information_about(raw, ptr::addr_of_mut!(info)) },
         "shim-info".len() as c_int

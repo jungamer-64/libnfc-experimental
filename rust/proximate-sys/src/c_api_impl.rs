@@ -40,7 +40,7 @@ const LOG_CATEGORY: *const c_char = b"libnfc.common\0" as *const u8 as *const c_
 pub const NFC_BUFSIZE_CONNSTRING: usize = 1024;
 pub(crate) const MALLOC_LABEL: *const c_char = b"malloc\0" as *const u8 as *const c_char;
 
-#[cfg(any(feature = "c_ffi", cbindgen, test))]
+#[cfg(any(feature = "c_ffi", cbindgen))]
 pub(crate) unsafe fn nfc_rs_log_message(
     group: u8,
     category: *const c_char,

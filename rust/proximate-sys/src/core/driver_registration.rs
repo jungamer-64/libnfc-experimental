@@ -1,5 +1,21 @@
-use super::*;
-use crate::bridge::push_driver as bridge_push_driver;
+use super::log_general_debug;
+use crate::bridge::external_registry::push_driver as bridge_push_driver;
+use crate::bridge::status::NFC_ESOFT;
+use crate::ffi_catch_unwind_int;
+use crate::ffi_support::as_ref;
+use crate::lifecycle::{nfc_device, nfc_driver};
+use libc::c_int;
+
+#[cfg(test)]
+use super::log_general_error;
+#[cfg(test)]
+use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
+#[cfg(test)]
+use crate::ffi_support::{bounded_strlen, copy_bytes_to_c_buffer, copy_c_string_to_c_buffer};
+#[cfg(test)]
+use crate::lifecycle::nfc_connstring;
+#[cfg(test)]
+use libc::c_char;
 
 #[cfg(test)]
 fn string_contains_control_chars(value: *const c_char, length: usize) -> bool {
@@ -105,7 +121,7 @@ pub(crate) unsafe fn bridge_close_device(device: *mut nfc_device) {
     }
 }
 
-pub unsafe fn nfc_register_driver(driver: *const nfc_driver) -> c_int {
+pub(crate) unsafe fn nfc_register_driver(driver: *const nfc_driver) -> c_int {
     ffi_catch_unwind_int("nfc_register_driver", NFC_ESOFT, || unsafe {
         push_driver(driver)
     })

@@ -1,8 +1,17 @@
-use super::*;
+use crate::bridge::status::{reset_device_last_error, unsupported_driver_operation};
+use crate::ffi_support::as_ref;
+use crate::ffi_types::{nfc_baud_rate, nfc_mode, nfc_modulation, nfc_modulation_type, nfc_target};
+use crate::lifecycle::{nfc_device, nfc_driver};
+use libc::{c_char, c_int};
+
+#[cfg(test)]
+use std::mem::size_of;
+#[cfg(test)]
+use std::ptr;
 
 pub(super) unsafe fn dispatch_driver_call(
     device: *mut nfc_device,
-    call: impl FnOnce(&crate::lifecycle::nfc_driver) -> Option<c_int>,
+    call: impl FnOnce(&nfc_driver) -> Option<c_int>,
 ) -> c_int {
     reset_device_last_error(device);
     let Some(device_ref) = (unsafe { as_ref(device) }) else {

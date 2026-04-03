@@ -1,4 +1,7 @@
-use super::*;
+use crate::bridge::driver_shim::borrowed_device;
+use crate::lifecycle::nfc_device;
+use libc::c_int;
+use proximate_driver as rt;
 
 pub(super) fn with_device<R>(
     raw: *mut nfc_device,

@@ -5,10 +5,9 @@
 // Public C-ABI compatibility helpers that remain part of libnfc's
 // installed surface even after the core implementation moved to Rust.
 
-use crate::bridge::{
-    CStringOut, InputBytes, OutputBytes, baud_rate_from_c, free_rust_device, is_rust_shim_device,
-    modulation_type_from_c,
-};
+use crate::bridge::decode::{InputBytes, OutputBytes, baud_rate_from_c, modulation_type_from_c};
+use crate::bridge::driver_shim::{free_rust_device, is_rust_shim_device};
+use crate::bridge::encode::CStringOut;
 use crate::ffi_strings::{baud_rate_label_cstr, modulation_label_cstr, version_cstr};
 use crate::ffi_support::as_ref;
 use crate::ffi_types::{

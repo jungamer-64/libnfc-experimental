@@ -1,8 +1,35 @@
-use super::*;
+use super::accessors::{
+    nfc_device_get_connstring, nfc_device_get_information_about, nfc_device_get_last_error,
+    nfc_device_get_name, nfc_device_get_supported_baud_rate,
+    nfc_device_get_supported_baud_rate_target_mode, nfc_strerror, nfc_strerror_r,
+};
+use super::driver_dispatch::copy_target_bytes;
+use super::emulation::{
+    ISO7816_SHORT_R_APDU_MAX_LEN, nfc_emulate_target, nfc_emulation_state_machine, nfc_emulator,
+};
+use super::operations::{
+    nfc_abort_command, nfc_device_set_property_bool, nfc_device_set_property_int, nfc_idle,
+    nfc_initiator_init, nfc_initiator_init_secure_element, nfc_initiator_list_passive_targets,
+    nfc_initiator_poll_dep_target, nfc_initiator_poll_target, nfc_initiator_select_dep_target,
+    nfc_initiator_select_passive_target, nfc_initiator_target_is_present,
+    nfc_initiator_transceive_bits, nfc_initiator_transceive_bits_timed,
+    nfc_initiator_transceive_bytes, nfc_initiator_transceive_bytes_timed, nfc_target_init,
+    nfc_target_receive_bits, nfc_target_receive_bytes, nfc_target_send_bits, nfc_target_send_bytes,
+};
+use crate::bridge::status::{NFC_EDEVNOTSUPP, NFC_EINVARG};
 use crate::lifecycle::{nfc_context_alloc_defaults, nfc_device_free, nfc_device_new};
+use crate::{
+    nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_device, nfc_mode, nfc_modulation,
+    nfc_modulation_type, nfc_property, nfc_target,
+};
+use libc::{c_char, c_int, size_t};
 use std::cell::RefCell;
 use std::ffi::{CStr, CString};
+use std::ptr;
+use std::slice;
 use std::sync::{Mutex, MutexGuard, OnceLock};
+
+const NFC_ETIMEOUT: c_int = -6;
 
 #[derive(Clone, Copy)]
 struct PassiveResponse {
