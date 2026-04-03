@@ -1,6 +1,6 @@
 #[path = "native_helpers/i2c.rs"]
 pub mod i2c;
-#[cfg(feature = "nci_helper")]
+#[cfg(any(test, feature = "nci_helper"))]
 pub mod nci;
 #[cfg(feature = "pcsc_helper")]
 pub mod pcsc;
