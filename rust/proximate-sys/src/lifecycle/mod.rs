@@ -4,10 +4,11 @@ mod logging;
 #[cfg(test)]
 mod tests;
 
-pub use abi::{
-    DEVICE_NAME_LENGTH, MAX_USER_DEFINED_DEVICES, NFC_DRIVER_NAME_MAX, nfc_connstring, nfc_context,
-    nfc_device, nfc_driver, nfc_user_defined_device, scan_type_enum,
+pub(crate) use abi::{
+    DEVICE_NAME_LENGTH, MAX_USER_DEFINED_DEVICES, NFC_DRIVER_NAME_MAX, nfc_user_defined_device,
+    scan_type_enum,
 };
+pub use abi::{nfc_connstring, nfc_context, nfc_device, nfc_driver};
 
 #[cfg(test)]
 pub(crate) use alloc::{nfc_context_alloc_defaults, nfc_device_free};

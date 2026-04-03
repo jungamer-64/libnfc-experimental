@@ -6,7 +6,7 @@ use super::pn53x::{
 };
 use crate::usb::{UsbDeviceInfo, UsbError, UsbHandle, list_devices, strerror};
 use proximate_driver::{
-    ConnectionString, Context, DeviceHandle, Driver, Error, Property, ScanType,
+    ConnectionString, Context, DeviceHandle, Driver, Error, Property, PropertyBackend, ScanType,
 };
 use std::collections::VecDeque;
 #[cfg(test)]

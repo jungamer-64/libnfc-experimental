@@ -26,29 +26,22 @@ thread_local! {
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
 }
 
+#[allow(dead_code)]
 pub const NFC_COMMON_SUCCESS: c_int = 0;
+#[allow(dead_code)]
 pub const NFC_COMMON_ERROR: c_int = -1;
+#[allow(dead_code)]
 pub const NFC_COMMON_INVALID: c_int = -(libc::EINVAL as c_int);
 
-pub const LOG_GROUP_GENERAL: u8 = 1;
+pub(crate) const LOG_GROUP_GENERAL: u8 = 1;
 #[cfg(any(feature = "lifecycle", cbindgen))]
 pub(crate) const LOG_PRIORITY_NONE: u8 = 0;
-pub const LOG_PRIORITY_ERROR: u8 = 1;
-pub const LOG_PRIORITY_DEBUG: u8 = 3;
+pub(crate) const LOG_PRIORITY_ERROR: u8 = 1;
+pub(crate) const LOG_PRIORITY_DEBUG: u8 = 3;
 
 const LOG_CATEGORY: *const c_char = b"libnfc.common\0" as *const u8 as *const c_char;
 pub const NFC_BUFSIZE_CONNSTRING: usize = 1024;
 pub(crate) const MALLOC_LABEL: *const c_char = b"malloc\0" as *const u8 as *const c_char;
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-pub(crate) unsafe fn nfc_rs_log_message(
-    group: u8,
-    category: *const c_char,
-    priority: u8,
-    message: *const c_char,
-) {
-    unsafe { logger::log_message_ptrs(group, category, priority, message) };
-}
 
 pub(crate) fn log_message(priority: u8, message: &str) {
     if let Ok(c_msg) = CString::new(message) {

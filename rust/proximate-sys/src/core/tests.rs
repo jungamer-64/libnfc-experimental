@@ -10,7 +10,8 @@ use crate::lifecycle::{
     nfc_context_alloc_defaults, nfc_context_new, nfc_device, nfc_device_free, nfc_driver,
     reset_lifecycle_test_state, scan_type_enum, snapshot_lifecycle_test_state,
 };
-use crate::{NFC_COMMON_SUCCESS as NFC_SUCCESS, test_clear_last_log, test_get_last_log};
+use crate::c_api_impl::NFC_COMMON_SUCCESS as NFC_SUCCESS;
+use crate::{test_clear_last_log, test_get_last_log};
 use libc::c_char;
 use std::ffi::CString;
 use std::ptr;

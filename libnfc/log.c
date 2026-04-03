@@ -36,12 +36,53 @@
 #define va_copy(dst, src) ((dst) = (src))
 #endif
 
+#ifdef DEBUG
+#define NFC_LOG_DEFAULT_LEVEL 3u
+#else
+#define NFC_LOG_DEFAULT_LEVEL 1u
+#endif
+
 static const char LOG_FORMATTING_FAILED[] = "<log formatting failed>";
+static uint32_t current_log_level = NFC_LOG_DEFAULT_LEVEL;
+
+static uint32_t
+log_group_level(uint32_t log_level, uint8_t group)
+{
+  const uint32_t shift = (uint32_t) group * 2u;
+
+  if (shift >= 32u) {
+    return 0u;
+  }
+
+  return (log_level >> shift) & 0x00000003u;
+}
+
+static int
+log_should_emit(uint32_t log_level, uint8_t group, uint8_t priority)
+{
+  if (log_level == 0u) {
+    return 0;
+  }
+
+  return ((log_level & 0x00000003u) >= (uint32_t) priority)
+      || (log_group_level(log_level, group) >= (uint32_t) priority);
+}
 
 static void
 log_dispatch_message(uint8_t group, const char *category, uint8_t priority, const char *message)
 {
-  nfc_rs_log_message(group, category, priority, message);
+  const char *rendered_category = (category != NULL) ? category : "";
+  const char *rendered_message = (message != NULL) ? message : "";
+
+  if (!log_should_emit(current_log_level, group, priority)) {
+    return;
+  }
+
+  fprintf(stderr, "%s\t%s\t%s\n",
+      log_priority_to_str(priority),
+      rendered_category,
+      rendered_message);
+  fflush(stderr);
 }
 
 const char *
@@ -65,13 +106,13 @@ log_priority_to_str(const int priority)
 void
 log_init(const nfc_context *context)
 {
-  nfc_rs_context_log_init(context);
+  (void) context;
+  current_log_level = NFC_LOG_DEFAULT_LEVEL;
 }
 
 void
 log_exit(void)
 {
-  nfc_rs_context_log_exit();
 }
 
 void

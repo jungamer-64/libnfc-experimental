@@ -54,10 +54,6 @@ extern "C"
 {
 #endif
 
-  void nfc_rs_log_message(uint8_t group, const char *category, uint8_t priority, const char *message);
-  void nfc_rs_context_log_init(const nfc_context *context);
-  void nfc_rs_context_log_exit(void);
-
 #define NFC_LOG_PRIORITY_NONE 0
 #define NFC_LOG_PRIORITY_ERROR 1
 #define NFC_LOG_PRIORITY_INFO 2

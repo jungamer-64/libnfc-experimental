@@ -30,10 +30,7 @@ mod logger;
 #[cfg(cbindgen)]
 mod private_ffi;
 #[cfg(any(feature = "c_ffi", cbindgen, test))]
-pub use c_api_impl::{
-    LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING,
-    NFC_COMMON_ERROR, NFC_COMMON_INVALID, NFC_COMMON_SUCCESS,
-};
+pub use c_api_impl::NFC_BUFSIZE_CONNSTRING;
 pub(crate) use c_api_impl::{
     MALLOC_LABEL, emit_log_message, ffi_catch_unwind_int, ffi_catch_unwind_ptr,
     ffi_catch_unwind_void, log_error, log_message, release_allocated_ptr, reset_last_error,
@@ -47,28 +44,12 @@ pub use ffi_types::{
     nfc_modulation_type, nfc_property, nfc_target, nfc_target_info,
 };
 #[cfg(any(feature = "c_ffi", cbindgen, test))]
-pub use lifecycle::{
-    DEVICE_NAME_LENGTH, MAX_USER_DEFINED_DEVICES, NFC_DRIVER_NAME_MAX, nfc_context, nfc_device,
-    nfc_driver, nfc_user_defined_device, scan_type_enum,
-};
+pub use lifecycle::{nfc_connstring, nfc_context, nfc_device, nfc_driver};
 #[cfg(test)]
 pub(crate) use logger::{
     test_clear_rendered_logs as test_clear_last_log, test_get_last_log, test_get_logs,
     test_reset_log_level,
 };
-
-#[cfg(any(feature = "c_ffi", cbindgen))]
-/// # Safety
-/// The caller must uphold the libnfc C ABI requirements for all pointers, lengths, and output buffers passed to this function.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_rs_log_message(
-    group: u8,
-    category: *const libc::c_char,
-    priority: u8,
-    message: *const libc::c_char,
-) {
-    unsafe { c_api_impl::nfc_rs_log_message(group, category, priority, message) }
-}
 
 #[cfg(any(feature = "c_ffi", cbindgen))]
 /// # Safety
@@ -95,7 +76,7 @@ pub unsafe extern "C" fn nfc_open(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nfc_list_devices(
     context: *mut nfc_context,
-    connstrings: *mut crate::lifecycle::nfc_connstring,
+    connstrings: *mut nfc_connstring,
     connstrings_len: libc::size_t,
 ) -> libc::size_t {
     unsafe { crate::core::runtime::nfc_list_devices(context, connstrings, connstrings_len) }

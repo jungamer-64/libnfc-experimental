@@ -12,12 +12,38 @@ const LOG_PRIORITY_ERROR: u8 = 1;
 const LOG_PRIORITY_INFO: u8 = 2;
 const LOG_CATEGORY_CONFIG: *const c_char = b"libnfc.config\0" as *const u8 as *const c_char;
 
-unsafe fn bridge_context_log_init(context: *const nfc_context) {
-    unsafe { nfc_rs_context_log_init(context) };
+fn record_log_init_for_tests() {
+    #[cfg(test)]
+    TEST_LIFECYCLE_STATE.with(|cell| {
+        let mut state = cell.borrow_mut();
+        state.log_init_calls += 1;
+        state.events.push("log_init");
+    });
 }
 
-pub(crate) unsafe fn bridge_context_log_exit() {
-    unsafe { nfc_rs_context_log_exit() };
+fn record_log_exit_for_tests() {
+    #[cfg(test)]
+    TEST_LIFECYCLE_STATE.with(|cell| {
+        let mut state = cell.borrow_mut();
+        state.log_exit_calls += 1;
+        state.events.push("log_exit");
+    });
+}
+
+fn context_log_level(context: *const nfc_context) -> u32 {
+    unsafe { as_ref(context) }
+        .map(|context| context.log_level)
+        .unwrap_or_else(logger::default_log_level)
+}
+
+unsafe fn initialize_context_logging(context: *const nfc_context) {
+    record_log_init_for_tests();
+    logger::log_init(context_log_level(context));
+}
+
+pub(crate) fn bridge_context_log_exit() {
+    record_log_exit_for_tests();
+    logger::log_exit();
 }
 
 fn log_config_diagnostic(priority: u8, message: &str) {
@@ -131,7 +157,7 @@ fn log_context_state(context: &nfc_context) {
 
 pub(crate) unsafe fn initialize_loaded_context_logging(context: *mut nfc_context) {
     unsafe {
-        bridge_context_log_init(context);
+        initialize_context_logging(context);
         if let Some(context_ref) = as_mut(context) {
             log_context_state(context_ref);
         }
@@ -174,45 +200,3 @@ pub(crate) fn increment_context_free_count_for_tests() {
 
 #[cfg(not(test))]
 pub(crate) fn increment_context_free_count_for_tests() {}
-
-#[cfg(test)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_rs_context_log_init(context: *const nfc_context) {
-    TEST_LIFECYCLE_STATE.with(|cell| {
-        let mut state = cell.borrow_mut();
-        state.log_init_calls += 1;
-        state.events.push("log_init");
-    });
-
-    let log_level = unsafe { as_ref(context) }
-        .map(|context| context.log_level)
-        .unwrap_or_else(logger::default_log_level);
-    logger::log_init(log_level);
-}
-
-#[cfg(not(test))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_rs_context_log_init(context: *const nfc_context) {
-    let log_level = unsafe { as_ref(context) }
-        .map(|context| context.log_level)
-        .unwrap_or_else(logger::default_log_level);
-    logger::log_init(log_level);
-}
-
-#[cfg(test)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_rs_context_log_exit() {
-    TEST_LIFECYCLE_STATE.with(|cell| {
-        let mut state = cell.borrow_mut();
-        state.log_exit_calls += 1;
-        state.events.push("log_exit");
-    });
-
-    logger::log_exit();
-}
-
-#[cfg(not(test))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nfc_rs_context_log_exit() {
-    logger::log_exit();
-}
