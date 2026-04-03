@@ -1,4 +1,3 @@
-use super::io::{CStringOut, SupportedBaudRatesOut, SupportedModulationsOut};
 use super::*;
 
 fn mode_from_c(mode: nfc_mode) -> rt::Mode {

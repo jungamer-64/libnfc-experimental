@@ -7,7 +7,8 @@
 #[cfg(test)]
 use crate::bridge::registry_snapshot;
 use crate::bridge::{
-    attach_rust_device, clear_registry, context_from_c, register_external_drivers,
+    ConnstringsOut, attach_rust_device, clear_registry, context_from_c, decode_connstring_ptr,
+    register_external_drivers,
 };
 use crate::c_api_impl::{
     LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR, NFC_BUFSIZE_CONNSTRING,

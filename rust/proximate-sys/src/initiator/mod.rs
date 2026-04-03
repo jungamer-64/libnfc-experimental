@@ -5,9 +5,14 @@
 // Ported from libnfc/nfc.c.
 
 use crate::bridge::{
-    baud_rate_from_c, baud_rate_to_c, borrowed_device, dep_info_from_c, dep_mode_from_c,
-    error_to_status, is_rust_shim_device, modulation_from_c, modulation_type_from_c,
-    modulation_type_to_c, property_from_c, rust_device_state_mut, target_from_c, write_target_to_c,
+    CStringOut, CyclesOut, InputBytes, NFC_EDEVNOTSUPP, NFC_EINVARG, NFC_ESOFT, OutputBytes,
+    ParityMarker, ParityMarkerMut, SupportedBaudRatesOut, SupportedModulationsOut, TargetInOut,
+    TargetOut, TargetSliceOut, baud_rate_from_c, baud_rate_to_c, borrowed_device,
+    decode_modulations, decode_optional_dep_info, decode_optional_target, dep_info_from_c,
+    dep_mode_from_c, device_last_error, error_message_ptr, error_to_status, is_rust_shim_device,
+    modulation_from_c, modulation_type_from_c, modulation_type_to_c, property_from_c,
+    reset_device_last_error, runtime_result_status, rust_device_state_mut, set_device_last_error,
+    target_from_c, unsupported_driver_operation, write_target_to_c,
 };
 use crate::c_api_impl::{LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG};
 use crate::ffi_strings::device_error_message_cstr;
@@ -29,20 +34,15 @@ use std::ptr;
 use std::slice;
 
 mod accessors;
-mod common;
 mod driver_dispatch;
 mod emulation;
-mod io;
 mod operations;
 mod runtime;
 #[cfg(test)]
 mod tests;
 
-const NFC_EINVARG: c_int = -2;
-const NFC_EDEVNOTSUPP: c_int = -3;
 #[cfg(test)]
 const NFC_ETIMEOUT: c_int = -6;
-const NFC_ESOFT: c_int = -80;
 const ISO7816_SHORT_C_APDU_MAX_LEN: usize = 261;
 const ISO7816_SHORT_R_APDU_MAX_LEN: usize = 258;
 
@@ -59,7 +59,6 @@ pub use accessors::{
     nfc_device_get_supported_baud_rate_target_mode, nfc_device_get_supported_modulation,
     nfc_perror, nfc_strerror, nfc_strerror_r,
 };
-use common::*;
 use driver_dispatch::*;
 #[allow(unused_imports)]
 pub use emulation::{
@@ -75,3 +74,24 @@ pub use operations::{
     nfc_initiator_transceive_bytes_timed, nfc_target_init, nfc_target_receive_bits,
     nfc_target_receive_bytes, nfc_target_send_bits, nfc_target_send_bytes,
 };
+
+fn log_general_message(priority: u8, message: &str) {
+    if let Ok(c_msg) = CString::new(message) {
+        unsafe {
+            emit_log_message(
+                LOG_GROUP_GENERAL,
+                GENERAL_LOG_CATEGORY,
+                priority,
+                c_msg.as_ptr(),
+            );
+        }
+    }
+}
+
+fn log_general_debug(message: &str) {
+    log_general_message(LOG_PRIORITY_DEBUG, message);
+}
+
+fn property_name(property: nfc_property) -> &'static str {
+    property_from_c(property).name()
+}

@@ -14,17 +14,9 @@ fn create_runtime_registry() -> rt::DriverRegistry {
 unsafe fn nfc_open_impl(context: *mut nfc_context, connstring: *const c_char) -> *mut nfc_device {
     let runtime_context = context_from_c(context.cast_const());
     let registry = create_runtime_registry();
-    let requested = if connstring.is_null() {
-        None
-    } else {
-        let value = c_string_ptr_to_string(
-            connstring,
-            bounded_strlen(connstring, NFC_BUFSIZE_CONNSTRING),
-        );
-        match rt::ConnectionString::new(value) {
-            Ok(connstring) => Some(connstring),
-            Err(_) => return ptr::null_mut(),
-        }
+    let requested: Option<rt::ConnectionString> = match decode_connstring_ptr(connstring) {
+        Ok(connstring) => connstring,
+        Err(_) => return ptr::null_mut(),
     };
 
     match registry.open(&runtime_context, requested.as_ref()) {
@@ -41,9 +33,11 @@ unsafe fn nfc_list_devices_impl(
     connstrings: *mut nfc_connstring,
     connstrings_len: usize,
 ) -> usize {
-    if connstrings.is_null() || connstrings_len == 0 {
+    let Some(output): Option<ConnstringsOut> =
+        (unsafe { ConnstringsOut::from_raw(connstrings, connstrings_len) })
+    else {
         return 0;
-    }
+    };
     let runtime_context = context_from_c(context.cast_const());
     let registry = create_runtime_registry();
     let Ok(outcome) = registry.list_devices_outcome(&runtime_context) else {
@@ -53,17 +47,7 @@ unsafe fn nfc_list_devices_impl(
         log_general_info("Warning: user must specify device(s) manually when autoscan is disabled");
     }
 
-    let mut written = 0usize;
-    for connstring in outcome.devices.into_iter().take(connstrings_len) {
-        let value = connstring.as_str();
-        let destination = unsafe { connstrings.add(written) };
-        if unsafe {
-            copy_bytes_to_c_buffer(destination.cast(), NFC_BUFSIZE_CONNSTRING, value.as_bytes())
-        } {
-            written += 1;
-        }
-    }
-    written
+    output.write_back(outcome.devices)
 }
 
 fn ffi_catch_unwind_size_t<F>(context: &str, operation: F) -> size_t

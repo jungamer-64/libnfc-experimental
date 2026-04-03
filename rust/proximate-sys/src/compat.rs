@@ -6,10 +6,11 @@
 // installed surface even after the core implementation moved to Rust.
 
 use crate::bridge::{
-    baud_rate_from_c, free_rust_device, is_rust_shim_device, modulation_type_from_c,
+    CStringOut, InputBytes, OutputBytes, baud_rate_from_c, free_rust_device, is_rust_shim_device,
+    modulation_type_from_c,
 };
 use crate::ffi_strings::{baud_rate_label_cstr, modulation_label_cstr, version_cstr};
-use crate::ffi_support::{as_ref, bounded_strlen, copy_bytes_with_truncation};
+use crate::ffi_support::as_ref;
 use crate::ffi_types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_felica_info, nfc_iso14443a_info,
     nfc_iso14443b_info, nfc_iso14443b2ct_info, nfc_iso14443b2sr_info, nfc_iso14443bi_info,
@@ -25,9 +26,9 @@ use libc::{c_char, c_int, c_void, size_t};
 use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
 use std::fmt::{self, Write as _};
 use std::ptr;
+#[cfg(test)]
 use std::slice;
 
-const NFC_EINVARG: c_int = -2;
 const NFC_ESOFT: c_int = -80;
 const TARGET_RENDER_BUFFER_SIZE: usize = 4096;
 const SAK_UID_NOT_COMPLETE: u8 = 0x04;
@@ -259,6 +260,18 @@ fn write_rendered(rendered: &mut String, args: fmt::Arguments<'_>) {
     rendered
         .write_fmt(args)
         .expect("rendering to a String should not fail");
+}
+
+fn truncate_rendered_bytes(rendered: &str, max_len: usize) -> &str {
+    if rendered.len() <= max_len {
+        return rendered;
+    }
+
+    let mut end = max_len;
+    while !rendered.is_char_boundary(end) {
+        end -= 1;
+    }
+    &rendered[..end]
 }
 
 fn write_hex(rendered: &mut String, bytes: &[u8]) {
@@ -924,24 +937,15 @@ pub unsafe fn str_nfc_target(
     verbose: bool,
 ) -> c_int {
     ffi_catch_unwind_int("str_nfc_target", NFC_ESOFT, || unsafe {
-        if buf.is_null() {
-            return NFC_EINVARG;
-        }
-
-        let rendered = libc::malloc(TARGET_RENDER_BUFFER_SIZE) as *mut c_char;
-        *buf = rendered;
-        if rendered.is_null() {
-            return NFC_ESOFT;
-        }
-
-        *rendered = 0;
+        let output = match CStringOut::from_raw(ptr::null_mut(), buf) {
+            Ok(output) => output,
+            Err(status) => return status,
+        };
         let rendered_text = render_nfc_target(target, verbose);
-        copy_bytes_with_truncation(
-            rendered,
-            TARGET_RENDER_BUFFER_SIZE,
-            rendered_text.as_bytes(),
-        );
-        bounded_strlen(rendered, TARGET_RENDER_BUFFER_SIZE) as c_int
+        output.write_back(
+            ptr::null_mut(),
+            truncate_rendered_bytes(&rendered_text, TARGET_RENDER_BUFFER_SIZE.saturating_sub(1)),
+        )
     })
 }
 
@@ -950,10 +954,20 @@ pub unsafe fn iso14443a_crc(data: *mut u8, len: size_t, crc: *mut u8) {
         if data.is_null() || crc.is_null() {
             return;
         }
-        let bytes = slice::from_raw_parts(data.cast_const(), len);
-        let out = iso14443a_crc_bytes(bytes);
-        *crc = out[0];
-        *crc.add(1) = out[1];
+        let bytes = match InputBytes::from_raw(ptr::null_mut(), data.cast_const(), len) {
+            Ok(bytes) => bytes,
+            Err(_) => return,
+        };
+        let mut crc_out = match OutputBytes::from_raw(ptr::null_mut(), crc, 2) {
+            Ok(bytes) => bytes,
+            Err(_) => return,
+        };
+        let out = iso14443a_crc_bytes(bytes.as_slice());
+        let buffer = crc_out.as_mut_slice();
+        if buffer.len() < out.len() {
+            return;
+        }
+        buffer[..out.len()].copy_from_slice(&out);
     });
 }
 
@@ -962,8 +976,11 @@ pub unsafe fn iso14443a_crc_append(data: *mut u8, len: size_t) {
         if data.is_null() {
             return;
         }
-        let bytes = slice::from_raw_parts(data.cast_const(), len);
-        let out = iso14443a_crc_bytes(bytes);
+        let bytes = match InputBytes::from_raw(ptr::null_mut(), data.cast_const(), len) {
+            Ok(bytes) => bytes,
+            Err(_) => return,
+        };
+        let out = iso14443a_crc_bytes(bytes.as_slice());
         *data.add(len) = out[0];
         *data.add(len + 1) = out[1];
     });
@@ -974,10 +991,20 @@ pub unsafe fn iso14443b_crc(data: *mut u8, len: size_t, crc: *mut u8) {
         if data.is_null() || crc.is_null() {
             return;
         }
-        let bytes = slice::from_raw_parts(data.cast_const(), len);
-        let out = iso14443b_crc_bytes(bytes);
-        *crc = out[0];
-        *crc.add(1) = out[1];
+        let bytes = match InputBytes::from_raw(ptr::null_mut(), data.cast_const(), len) {
+            Ok(bytes) => bytes,
+            Err(_) => return,
+        };
+        let mut crc_out = match OutputBytes::from_raw(ptr::null_mut(), crc, 2) {
+            Ok(bytes) => bytes,
+            Err(_) => return,
+        };
+        let out = iso14443b_crc_bytes(bytes.as_slice());
+        let buffer = crc_out.as_mut_slice();
+        if buffer.len() < out.len() {
+            return;
+        }
+        buffer[..out.len()].copy_from_slice(&out);
     });
 }
 
@@ -986,8 +1013,11 @@ pub unsafe fn iso14443b_crc_append(data: *mut u8, len: size_t) {
         if data.is_null() {
             return;
         }
-        let bytes = slice::from_raw_parts(data.cast_const(), len);
-        let out = iso14443b_crc_bytes(bytes);
+        let bytes = match InputBytes::from_raw(ptr::null_mut(), data.cast_const(), len) {
+            Ok(bytes) => bytes,
+            Err(_) => return,
+        };
+        let out = iso14443b_crc_bytes(bytes.as_slice());
         *data.add(len) = out[0];
         *data.add(len + 1) = out[1];
     });
@@ -1006,8 +1036,11 @@ pub unsafe fn iso14443a_locate_historical_bytes(
             return ptr::null_mut();
         }
 
-        let ats_slice = slice::from_raw_parts(ats.cast_const(), ats_len);
-        let Some(offset) = locate_historical_bytes_offset(ats_slice) else {
+        let ats_slice = match InputBytes::from_raw(ptr::null_mut(), ats.cast_const(), ats_len) {
+            Ok(bytes) => bytes,
+            Err(_) => return ptr::null_mut(),
+        };
+        let Some(offset) = locate_historical_bytes_offset(ats_slice.as_slice()) else {
             return ptr::null_mut();
         };
         if !tk_len.is_null() {

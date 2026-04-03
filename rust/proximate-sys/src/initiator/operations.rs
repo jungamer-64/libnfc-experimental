@@ -1,7 +1,3 @@
-use super::io::{
-    CyclesOut, InputBytes, OutputBytes, ParityMarker, ParityMarkerMut, TargetInOut, TargetOut,
-    TargetSliceOut, decode_modulations, decode_optional_dep_info, decode_optional_target,
-};
 use super::*;
 
 pub unsafe fn nfc_device_set_property_int(
@@ -307,8 +303,7 @@ pub unsafe fn nfc_initiator_transceive_bits(
     ffi_catch_unwind_int("nfc_initiator_transceive_bits", NFC_ESOFT, || unsafe {
         let tx_bytes_len = tx_bits_len.div_ceil(8);
         if tx_bytes_len > 0 && tx.is_null() {
-            set_device_last_error(device, NFC_EINVARG);
-            return NFC_EINVARG;
+            return crate::bridge::invalid_argument_status(device);
         }
         if !is_rust_shim_device(device) {
             return dispatch_driver_call(device, |driver| {
@@ -393,8 +388,7 @@ pub unsafe fn nfc_initiator_transceive_bits_timed(
         || unsafe {
             let tx_bytes_len = tx_bits_len.div_ceil(8);
             if tx_bytes_len > 0 && tx.is_null() {
-                set_device_last_error(device, NFC_EINVARG);
-                return NFC_EINVARG;
+                return crate::bridge::invalid_argument_status(device);
             }
             if !is_rust_shim_device(device) {
                 return dispatch_driver_call(device, |driver| {

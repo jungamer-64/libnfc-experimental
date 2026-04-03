@@ -4,17 +4,17 @@ pub(super) unsafe fn dispatch_driver_call(
     device: *mut nfc_device,
     call: impl FnOnce(&crate::lifecycle::nfc_driver) -> Option<c_int>,
 ) -> c_int {
-    unsafe { reset_device_last_error(device) };
+    reset_device_last_error(device);
     let Some(device_ref) = (unsafe { as_ref(device) }) else {
         return 0;
     };
     let Some(driver_ref) = (unsafe { as_ref(device_ref.driver) }) else {
-        return unsafe { unsupported_driver_operation(device) };
+        return unsupported_driver_operation(device);
     };
 
     match call(driver_ref) {
         Some(result) => result,
-        None => unsafe { unsupported_driver_operation(device) },
+        None => unsupported_driver_operation(device),
     }
 }
 

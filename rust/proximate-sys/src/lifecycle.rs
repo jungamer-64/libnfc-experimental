@@ -15,7 +15,7 @@
 
 use crate::bridge::write_context_to_c;
 use crate::c_api_impl::{LOG_PRIORITY_DEBUG, LOG_PRIORITY_NONE, NFC_BUFSIZE_CONNSTRING};
-use crate::ffi_support::{as_mut, as_ref, bounded_strlen, fixed_c_buffer_to_string};
+use crate::ffi_support::{as_mut, as_ref, copy_c_string_to_c_buffer, fixed_c_buffer_to_string};
 use crate::ffi_types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_mode, nfc_modulation, nfc_modulation_type,
     nfc_property, nfc_target,
@@ -304,16 +304,52 @@ unsafe fn nfc_device_new_impl(
         return ptr::null_mut();
     };
     device_ref.context = context;
-    let copy_len = bounded_strlen(connstring, NFC_BUFSIZE_CONNSTRING.saturating_sub(1));
-    if copy_len > 0 {
-        unsafe {
-            ptr::copy_nonoverlapping(connstring, device_ref.connstring.as_mut_ptr(), copy_len);
-        }
-    }
-    device_ref.connstring[copy_len] = 0;
+    let _ = unsafe {
+        copy_c_string_to_c_buffer(
+            device_ref.connstring.as_mut_ptr(),
+            NFC_BUFSIZE_CONNSTRING,
+            connstring,
+        )
+    };
 
     reset_last_error();
     device
+}
+
+fn load_context_outcome() -> Result<rt::diagnostics::ContextLoadOutcome, ()> {
+    match rt::diagnostics::load_context_with_diagnostics() {
+        Ok(outcome) => {
+            emit_context_load_diagnostics(&outcome.diagnostics);
+            Ok(outcome)
+        }
+        Err(failure) => {
+            emit_context_load_diagnostics(&failure.diagnostics);
+            set_last_error_message(failure.error.message().to_string());
+            Err(())
+        }
+    }
+}
+
+unsafe fn finalize_loaded_context(
+    loaded: &rt::diagnostics::ContextLoadOutcome,
+) -> *mut nfc_context {
+    let context = unsafe { nfc_context_alloc_defaults_impl() };
+    if context.is_null() {
+        return ptr::null_mut();
+    }
+
+    write_context_to_c(&loaded.context, context);
+    unsafe { set_runtime_context(context, loaded.context.clone()) };
+
+    unsafe {
+        bridge_context_log_init(context);
+        if let Some(context_ref) = as_mut(context) {
+            log_context_state(context_ref);
+        }
+    }
+
+    reset_last_error();
+    context
 }
 
 fn log_config_diagnostic(priority: u8, message: &str) {
@@ -444,34 +480,10 @@ unsafe fn free_context_allocation(context: *mut nfc_context) {
 }
 
 unsafe fn nfc_context_new_impl() -> *mut nfc_context {
-    let loaded = match rt::diagnostics::load_context_with_diagnostics() {
-        Ok(outcome) => outcome,
-        Err(failure) => {
-            emit_context_load_diagnostics(&failure.diagnostics);
-            set_last_error_message(failure.error.message().to_string());
-            return ptr::null_mut();
-        }
-    };
-
-    emit_context_load_diagnostics(&loaded.diagnostics);
-
-    let context = unsafe { nfc_context_alloc_defaults_impl() };
-    if context.is_null() {
+    let Ok(loaded) = load_context_outcome() else {
         return ptr::null_mut();
-    }
-
-    write_context_to_c(&loaded.context, context);
-    unsafe { set_runtime_context(context, loaded.context.clone()) };
-
-    unsafe {
-        bridge_context_log_init(context);
-        if let Some(context_ref) = as_mut(context) {
-            log_context_state(context_ref);
-        }
-    }
-
-    reset_last_error();
-    context
+    };
+    unsafe { finalize_loaded_context(&loaded) }
 }
 
 #[cfg(test)]
