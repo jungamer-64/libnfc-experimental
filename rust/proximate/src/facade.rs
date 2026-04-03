@@ -1,13 +1,12 @@
+use std::fmt;
 use std::path::Path;
 
 use proximate_driver as rt;
 
-pub type ConfiguredDevice = rt::UserDefinedDevice;
-
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DeviceSelector(rt::ConnectionString);
+pub struct Selector(rt::ConnectionString);
 
-impl DeviceSelector {
+impl Selector {
     pub fn new(value: impl Into<String>) -> Result<Self, rt::Error> {
         Ok(Self(rt::ConnectionString::new(value)?))
     }
@@ -25,14 +24,26 @@ impl DeviceSelector {
     }
 }
 
-impl From<rt::ConnectionString> for DeviceSelector {
+impl fmt::Display for Selector {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl AsRef<rt::ConnectionString> for Selector {
+    fn as_ref(&self) -> &rt::ConnectionString {
+        self.as_connection_string()
+    }
+}
+
+impl From<rt::ConnectionString> for Selector {
     fn from(value: rt::ConnectionString) -> Self {
         Self(value)
     }
 }
 
-impl From<DeviceSelector> for rt::ConnectionString {
-    fn from(value: DeviceSelector) -> Self {
+impl From<Selector> for rt::ConnectionString {
+    fn from(value: Selector) -> Self {
         value.0
     }
 }
@@ -73,7 +84,7 @@ impl Config {
         self.0.log_level
     }
 
-    pub fn user_defined_devices(&self) -> &[ConfiguredDevice] {
+    pub fn user_defined_devices(&self) -> &[rt::UserDefinedDevice] {
         &self.0.user_defined_devices
     }
 
@@ -92,12 +103,12 @@ impl Config {
         self
     }
 
-    pub fn with_user_device(mut self, device: ConfiguredDevice) -> Self {
+    pub fn with_user_device(mut self, device: rt::UserDefinedDevice) -> Self {
         self.0.user_defined_devices.push(device);
         self
     }
 
-    pub fn push_user_device(&mut self, device: ConfiguredDevice) {
+    pub fn push_user_device(&mut self, device: rt::UserDefinedDevice) {
         self.0.user_defined_devices.push(device);
     }
 
@@ -119,7 +130,7 @@ impl From<rt::ContextConfig> for Config {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeviceInfo {
     pub display_name: String,
-    pub selector: DeviceSelector,
+    pub selector: Selector,
     pub caps_hint: Option<rt::DeviceCaps>,
 }
 
@@ -232,14 +243,13 @@ impl Context {
             .collect())
     }
 
-    pub fn open(&self, selector: &DeviceSelector) -> Result<Device, rt::Error> {
+    pub fn open(&self, selector: &Selector) -> Result<rt::Device, rt::Error> {
         self.registry
             .open(&self.runtime, Some(selector.as_connection_string()))
-            .map(Device::new)
     }
 
-    pub fn open_default(&self) -> Result<Device, rt::Error> {
-        self.registry.open(&self.runtime, None).map(Device::new)
+    pub fn open_default(&self) -> Result<rt::Device, rt::Error> {
+        self.registry.open(&self.runtime, None)
     }
 }
 
@@ -250,271 +260,13 @@ impl Default for Context {
 }
 
 fn configured_name<'a>(
-    devices: &'a [ConfiguredDevice],
+    devices: &'a [rt::UserDefinedDevice],
     selector: &rt::ConnectionString,
 ) -> Option<&'a str> {
     devices
         .iter()
         .find(|device| device.connstring == *selector)
         .map(|device| device.name.as_str())
-}
-
-pub struct Device {
-    inner: rt::Device,
-}
-
-impl Device {
-    fn new(inner: rt::Device) -> Self {
-        Self { inner }
-    }
-
-    pub fn name(&self) -> &str {
-        self.inner.name()
-    }
-
-    pub fn selector(&self) -> DeviceSelector {
-        self.inner.connstring().clone().into()
-    }
-
-    pub fn caps(&self) -> rt::DeviceCaps {
-        self.inner.caps()
-    }
-
-    pub fn last_error(&self) -> i32 {
-        self.inner.last_error()
-    }
-
-    pub fn strerror(&self) -> String {
-        self.inner.strerror()
-    }
-
-    pub fn information_about(&mut self) -> Result<String, rt::Error> {
-        self.inner.information_about()
-    }
-
-    pub fn set_property_bool(
-        &mut self,
-        property: rt::Property,
-        enable: bool,
-    ) -> Result<(), rt::Error> {
-        self.inner.set_property_bool(property, enable)
-    }
-
-    pub fn set_property_int(
-        &mut self,
-        property: rt::Property,
-        value: i32,
-    ) -> Result<(), rt::Error> {
-        self.inner.set_property_int(property, value)
-    }
-
-    pub fn initiator(&mut self) -> Result<InitiatorDevice<'_>, rt::Error> {
-        self.inner
-            .initiator()
-            .map(|inner| InitiatorDevice { inner })
-    }
-
-    pub fn target(&mut self) -> Result<TargetDevice<'_>, rt::Error> {
-        self.inner.target().map(|inner| TargetDevice { inner })
-    }
-
-    pub fn pn53x(&mut self) -> Result<Pn53xDevice<'_>, rt::Error> {
-        self.inner.pn53x().map(|inner| Pn53xDevice { inner })
-    }
-}
-
-pub struct InitiatorDevice<'a> {
-    inner: rt::InitiatorDevice<'a>,
-}
-
-impl<'a> InitiatorDevice<'a> {
-    pub fn init(&mut self) -> Result<i32, rt::Error> {
-        self.inner.init()
-    }
-
-    pub fn init_secure_element(&mut self) -> Result<i32, rt::Error> {
-        self.inner.init_secure_element()
-    }
-
-    pub fn select_passive_target(
-        &mut self,
-        modulation: rt::Modulation,
-        init_data: Option<&[u8]>,
-    ) -> Result<Option<rt::Target>, rt::Error> {
-        self.inner.select_passive_target(modulation, init_data)
-    }
-
-    pub fn list_passive_targets(
-        &mut self,
-        modulation: rt::Modulation,
-        max_targets: usize,
-    ) -> Result<Vec<rt::Target>, rt::Error> {
-        self.inner.list_passive_targets(modulation, max_targets)
-    }
-
-    pub fn poll_target(
-        &mut self,
-        modulations: &[rt::Modulation],
-        poll_nr: u8,
-        period: u8,
-    ) -> Result<Option<rt::Target>, rt::Error> {
-        self.inner.poll_target(modulations, poll_nr, period)
-    }
-
-    pub fn select_dep_target(
-        &mut self,
-        mode: rt::DepMode,
-        baud_rate: rt::BaudRate,
-        initiator: Option<&rt::DepInfo>,
-        timeout: i32,
-    ) -> Result<Option<rt::Target>, rt::Error> {
-        self.inner
-            .select_dep_target(mode, baud_rate, initiator, timeout)
-    }
-
-    pub fn poll_dep_target(
-        &mut self,
-        mode: rt::DepMode,
-        baud_rate: rt::BaudRate,
-        initiator: Option<&rt::DepInfo>,
-        timeout: i32,
-    ) -> Result<Option<rt::Target>, rt::Error> {
-        self.inner
-            .poll_dep_target(mode, baud_rate, initiator, timeout)
-    }
-
-    pub fn deselect_target(&mut self) -> Result<(), rt::Error> {
-        self.inner.deselect_target()
-    }
-
-    pub fn target_is_present(&mut self, target: Option<&rt::Target>) -> Result<bool, rt::Error> {
-        self.inner.target_is_present(target)
-    }
-
-    pub fn transceive_bytes(
-        &mut self,
-        tx: &[u8],
-        rx: &mut [u8],
-        timeout: i32,
-    ) -> Result<usize, rt::Error> {
-        self.inner.transceive_bytes(tx, rx, timeout)
-    }
-
-    pub fn transceive_bits(
-        &mut self,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
-        rx: &mut [u8],
-        rx_parity: Option<&mut [u8]>,
-    ) -> Result<usize, rt::Error> {
-        self.inner
-            .transceive_bits(tx, tx_bits_len, tx_parity, rx, rx_parity)
-    }
-
-    pub fn transceive_bytes_timed(
-        &mut self,
-        tx: &[u8],
-        rx: &mut [u8],
-    ) -> Result<(usize, u32), rt::Error> {
-        self.inner.transceive_bytes_timed(tx, rx)
-    }
-
-    pub fn transceive_bits_timed(
-        &mut self,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
-        rx: &mut [u8],
-        rx_parity: Option<&mut [u8]>,
-    ) -> Result<(usize, u32), rt::Error> {
-        self.inner
-            .transceive_bits_timed(tx, tx_bits_len, tx_parity, rx, rx_parity)
-    }
-
-    pub fn abort_command(&mut self) -> Result<(), rt::Error> {
-        self.inner.abort_command()
-    }
-
-    pub fn idle(&mut self) -> Result<(), rt::Error> {
-        self.inner.idle()
-    }
-
-    pub fn powerdown(&mut self) -> Result<(), rt::Error> {
-        self.inner.powerdown()
-    }
-}
-
-pub struct TargetDevice<'a> {
-    inner: rt::TargetDevice<'a>,
-}
-
-impl<'a> TargetDevice<'a> {
-    pub fn init(
-        &mut self,
-        target: &mut rt::Target,
-        rx: &mut [u8],
-        timeout: i32,
-    ) -> Result<usize, rt::Error> {
-        self.inner.init(target, rx, timeout)
-    }
-
-    pub fn send_bytes(&mut self, tx: &[u8], timeout: i32) -> Result<usize, rt::Error> {
-        self.inner.send_bytes(tx, timeout)
-    }
-
-    pub fn receive_bytes(&mut self, rx: &mut [u8], timeout: i32) -> Result<usize, rt::Error> {
-        self.inner.receive_bytes(rx, timeout)
-    }
-
-    pub fn send_bits(
-        &mut self,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
-    ) -> Result<usize, rt::Error> {
-        self.inner.send_bits(tx, tx_bits_len, tx_parity)
-    }
-
-    pub fn receive_bits(
-        &mut self,
-        rx: &mut [u8],
-        rx_parity: Option<&mut [u8]>,
-    ) -> Result<usize, rt::Error> {
-        self.inner.receive_bits(rx, rx_parity)
-    }
-}
-
-pub struct Pn53xDevice<'a> {
-    inner: rt::Pn53xDevice<'a>,
-}
-
-impl<'a> Pn53xDevice<'a> {
-    pub fn transceive(
-        &mut self,
-        tx: &[u8],
-        rx: &mut [u8],
-        timeout: i32,
-    ) -> Result<usize, rt::Error> {
-        self.inner.transceive(tx, rx, timeout)
-    }
-
-    pub fn read_register(&mut self, register: u16) -> Result<u8, rt::Error> {
-        self.inner.read_register(register)
-    }
-
-    pub fn write_register(
-        &mut self,
-        register: u16,
-        symbol_mask: u8,
-        value: u8,
-    ) -> Result<(), rt::Error> {
-        self.inner.write_register(register, symbol_mask, value)
-    }
-
-    pub fn sam_configuration(&mut self, mode: u8, timeout: i32) -> Result<i32, rt::Error> {
-        self.inner.sam_configuration(mode, timeout)
-    }
 }
 
 #[cfg(test)]
@@ -678,7 +430,7 @@ mod tests {
     #[test]
     fn config_builder_updates_user_devices() {
         let mut config = Config::new().with_allow_autoscan(false).with_log_level(4);
-        config.push_user_device(ConfiguredDevice {
+        config.push_user_device(rt::UserDefinedDevice {
             name: "named".into(),
             connstring: rt::ConnectionString::new("fake:001").unwrap(),
             optional: false,
@@ -694,16 +446,22 @@ mod tests {
 
     #[test]
     fn context_scan_returns_device_info() {
+        let config =
+            Config::new()
+                .with_allow_autoscan(false)
+                .with_user_device(rt::UserDefinedDevice {
+                    name: "named".into(),
+                    connstring: rt::ConnectionString::new("fake:001").unwrap(),
+                    optional: false,
+                });
         let context = Context::builder()
+            .with_config(config)
             .without_builtin_drivers()
-            .register_driver(FakeDriver {
-                caps: rt::DeviceCaps::SET_PROPERTY_BOOL,
-            })
             .build();
 
         let scanned = context.scan().unwrap();
         assert_eq!(scanned.len(), 1);
-        assert_eq!(scanned[0].display_name, "fake:001");
+        assert_eq!(scanned[0].display_name, "named");
         assert_eq!(scanned[0].selector.as_str(), "fake:001");
         assert_eq!(scanned[0].caps_hint, None);
     }
@@ -716,8 +474,8 @@ mod tests {
                 caps: rt::DeviceCaps::SET_PROPERTY_BOOL,
             })
             .build();
-        let selector = DeviceSelector::new("fake:001").unwrap();
-        let mut device = context.open(&selector).unwrap();
+        let selector = Selector::new("fake:001").unwrap();
+        let mut device: rt::Device = context.open(&selector).unwrap();
 
         assert!(matches!(
             device.initiator(),
@@ -731,6 +489,20 @@ mod tests {
             device.pn53x(),
             Err(rt::Error::MissingCapability(_))
         ));
+    }
+
+    #[test]
+    fn open_default_returns_runtime_device() {
+        let context = Context::builder()
+            .without_builtin_drivers()
+            .register_driver(FakeDriver {
+                caps: rt::DeviceCaps::SET_PROPERTY_BOOL,
+            })
+            .build();
+
+        let device: rt::Device = context.open_default().unwrap();
+        assert_eq!(device.name(), "fake");
+        assert_eq!(device.connstring().as_str(), "fake:001");
     }
 
     #[test]
