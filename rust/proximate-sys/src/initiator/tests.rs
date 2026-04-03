@@ -1125,6 +1125,152 @@ fn transceive_wrappers_dispatch_and_preserve_hal_style_szrx_behavior() {
 }
 
 #[test]
+fn ffi_wrappers_allow_zero_length_null_buffers() {
+    let _guard = initiator_test_guard();
+    reset_test_state();
+
+    let device = unsafe { make_device(ptr::addr_of!(TEST_DRIVER_FULL)) };
+
+    assert_eq!(
+        unsafe { nfc_initiator_transceive_bytes(device, ptr::null(), 0, ptr::null_mut(), 0, 75) },
+        12
+    );
+    assert_eq!(
+        unsafe {
+            nfc_initiator_transceive_bits(
+                device,
+                ptr::null(),
+                0,
+                ptr::null(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        },
+        13
+    );
+    assert_eq!(
+        unsafe {
+            nfc_initiator_transceive_bytes_timed(
+                device,
+                ptr::null(),
+                0,
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+            )
+        },
+        14
+    );
+    assert_eq!(
+        unsafe {
+            nfc_initiator_transceive_bits_timed(
+                device,
+                ptr::null(),
+                0,
+                ptr::null(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            )
+        },
+        15
+    );
+    assert_eq!(
+        unsafe { nfc_target_send_bytes(device, ptr::null(), 0, 125) },
+        16
+    );
+    assert_eq!(
+        unsafe { nfc_target_receive_bytes(device, ptr::null_mut(), 0, 175) },
+        17
+    );
+    assert_eq!(
+        unsafe { nfc_target_send_bits(device, ptr::null(), 0, ptr::null()) },
+        18
+    );
+    assert_eq!(
+        unsafe { nfc_target_receive_bits(device, ptr::null_mut(), 0, ptr::null_mut()) },
+        19
+    );
+
+    unsafe { destroy_device(device) };
+}
+
+#[test]
+fn ffi_wrappers_reject_non_zero_length_null_buffers() {
+    let _guard = initiator_test_guard();
+    reset_test_state();
+
+    let device = unsafe { make_device(ptr::addr_of!(TEST_DRIVER_FULL)) };
+    let tx = [0xa5u8, 0x5a];
+    let mut rx = [0u8; 2];
+
+    assert_eq!(
+        unsafe {
+            nfc_initiator_transceive_bytes(device, ptr::null(), 1, rx.as_mut_ptr(), rx.len(), 75)
+        },
+        NFC_EINVARG
+    );
+    assert_eq!(unsafe { (*device).last_error }, NFC_EINVARG);
+
+    assert_eq!(
+        unsafe {
+            nfc_initiator_transceive_bytes(device, tx.as_ptr(), tx.len(), ptr::null_mut(), 1, 75)
+        },
+        NFC_EINVARG
+    );
+    assert_eq!(unsafe { (*device).last_error }, NFC_EINVARG);
+
+    assert_eq!(
+        unsafe {
+            nfc_initiator_transceive_bits(
+                device,
+                ptr::null(),
+                1,
+                ptr::null(),
+                rx.as_mut_ptr(),
+                rx.len(),
+                ptr::null_mut(),
+            )
+        },
+        NFC_EINVARG
+    );
+    assert_eq!(unsafe { (*device).last_error }, NFC_EINVARG);
+
+    assert_eq!(
+        unsafe {
+            nfc_initiator_transceive_bits_timed(
+                device,
+                ptr::null(),
+                1,
+                ptr::null(),
+                rx.as_mut_ptr(),
+                rx.len(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            )
+        },
+        NFC_EINVARG
+    );
+    assert_eq!(unsafe { (*device).last_error }, NFC_EINVARG);
+
+    assert_eq!(
+        unsafe { nfc_target_receive_bytes(device, ptr::null_mut(), 1, 175) },
+        NFC_EINVARG
+    );
+    assert_eq!(unsafe { (*device).last_error }, NFC_EINVARG);
+
+    assert_eq!(
+        unsafe { nfc_target_receive_bits(device, ptr::null_mut(), 1, ptr::null_mut()) },
+        NFC_EINVARG
+    );
+    assert_eq!(unsafe { (*device).last_error }, NFC_EINVARG);
+
+    unsafe { destroy_device(device) };
+}
+
+#[test]
 fn poll_dep_target_retries_timeouts_and_restores_infinite_select() {
     let _guard = initiator_test_guard();
     reset_test_state();

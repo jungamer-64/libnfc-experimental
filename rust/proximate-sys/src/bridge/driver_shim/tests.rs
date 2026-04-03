@@ -3,11 +3,12 @@ use super::rust_owned::RustDeviceState;
 use super::*;
 use crate::ffi_types::nfc_mode;
 use crate::initiator::{
-    nfc_device_get_supported_baud_rate, nfc_device_get_supported_baud_rate_target_mode,
-    nfc_device_get_supported_modulation,
+    nfc_device_get_information_about, nfc_device_get_supported_baud_rate,
+    nfc_device_get_supported_baud_rate_target_mode, nfc_device_get_supported_modulation,
 };
 use proximate_driver::{DeviceHandle, DeviceMeta, Driver};
 use std::collections::VecDeque;
+use std::ffi::CStr;
 use std::sync::{Arc, Mutex};
 use std::{ptr, slice};
 
@@ -451,6 +452,79 @@ fn rust_shim_capability_accessors_return_success_and_terminated_arrays() {
         [nfc_baud_rate::NBR_106, nfc_baud_rate::NBR_UNDEFINED]
     );
     assert_eq!(unsafe { (*raw).last_error }, 0);
+
+    unsafe {
+        let driver = (*raw).driver as *mut nfc_driver;
+        let close = (*driver).close.unwrap();
+        close(raw);
+    }
+}
+
+#[test]
+fn rust_shim_information_about_allocates_owned_c_string_and_clears_last_error() {
+    let raw = make_rust_shim_device(FakeRustHandle {
+        name: "rust-shim".into(),
+        connstring: rt::ConnectionString::new("alpha:001").unwrap(),
+        caps: rt::DeviceCaps::INFO,
+        property_calls: Arc::new(Mutex::new(Vec::new())),
+        info_result: Ok("shim-info".into()),
+    });
+
+    let mut info = ptr::null_mut();
+    assert_eq!(
+        unsafe { nfc_device_get_information_about(raw, ptr::addr_of_mut!(info)) },
+        "shim-info".len() as c_int
+    );
+    assert!(!info.is_null());
+    assert_eq!(
+        unsafe { CStr::from_ptr(info.cast_const()) }
+            .to_str()
+            .unwrap(),
+        "shim-info"
+    );
+    assert_eq!(unsafe { (*raw).last_error }, 0);
+
+    unsafe {
+        libc::free(info.cast());
+        let driver = (*raw).driver as *mut nfc_driver;
+        let close = (*driver).close.unwrap();
+        close(raw);
+    }
+}
+
+#[test]
+fn rust_shim_accessors_reject_null_output_pointers() {
+    let raw = make_rust_shim_device(FakeRustHandle {
+        name: "rust-shim".into(),
+        connstring: rt::ConnectionString::new("alpha:001").unwrap(),
+        caps: rt::DeviceCaps::INFO
+            | rt::DeviceCaps::SUPPORTED_MODULATIONS
+            | rt::DeviceCaps::SUPPORTED_BAUD_RATES,
+        property_calls: Arc::new(Mutex::new(Vec::new())),
+        info_result: Ok("shim".into()),
+    });
+
+    assert_eq!(
+        unsafe { nfc_device_get_supported_modulation(raw, nfc_mode::N_INITIATOR, ptr::null_mut()) },
+        -2
+    );
+    assert_eq!(unsafe { (*raw).last_error }, -2);
+    assert_eq!(
+        unsafe {
+            nfc_device_get_supported_baud_rate(
+                raw,
+                nfc_modulation_type::NMT_ISO14443A,
+                ptr::null_mut(),
+            )
+        },
+        -2
+    );
+    assert_eq!(unsafe { (*raw).last_error }, -2);
+    assert_eq!(
+        unsafe { nfc_device_get_information_about(raw, ptr::null_mut()) },
+        -2
+    );
+    assert_eq!(unsafe { (*raw).last_error }, -2);
 
     unsafe {
         let driver = (*raw).driver as *mut nfc_driver;

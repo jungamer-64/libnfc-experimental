@@ -56,52 +56,6 @@ pub(super) unsafe fn unsupported_driver_operation(device: *mut nfc_device) -> c_
     0
 }
 
-pub(super) unsafe fn input_bytes<'a>(
-    device: *mut nfc_device,
-    bytes: *const u8,
-    len: size_t,
-) -> Result<&'a [u8], c_int> {
-    if len == 0 {
-        return Ok(&[]);
-    }
-    if bytes.is_null() {
-        unsafe { set_device_last_error(device, NFC_EINVARG) };
-        return Err(NFC_EINVARG);
-    }
-    Ok(unsafe { slice::from_raw_parts(bytes, len) })
-}
-
-pub(super) unsafe fn output_bytes<'a>(
-    device: *mut nfc_device,
-    bytes: *mut u8,
-    len: size_t,
-) -> Result<&'a mut [u8], c_int> {
-    if len == 0 {
-        return Ok(&mut []);
-    }
-    if bytes.is_null() {
-        unsafe { set_device_last_error(device, NFC_EINVARG) };
-        return Err(NFC_EINVARG);
-    }
-    Ok(unsafe { slice::from_raw_parts_mut(bytes, len) })
-}
-
-pub(super) unsafe fn marker_bytes<'a>(bytes: *const u8) -> Option<&'a [u8]> {
-    if bytes.is_null() {
-        None
-    } else {
-        Some(unsafe { slice::from_raw_parts(bytes, 1) })
-    }
-}
-
-pub(super) unsafe fn marker_bytes_mut<'a>(bytes: *mut u8) -> Option<&'a mut [u8]> {
-    if bytes.is_null() {
-        None
-    } else {
-        Some(unsafe { slice::from_raw_parts_mut(bytes, 1) })
-    }
-}
-
 pub(super) fn property_name(property: nfc_property) -> &'static str {
     property_from_c(property).name()
 }

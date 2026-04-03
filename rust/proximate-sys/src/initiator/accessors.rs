@@ -1,3 +1,4 @@
+use super::io::{CStringOut, SupportedBaudRatesOut, SupportedModulationsOut};
 use super::*;
 
 fn mode_from_c(mode: nfc_mode) -> rt::Mode {
@@ -7,108 +8,51 @@ fn mode_from_c(mode: nfc_mode) -> rt::Mode {
     }
 }
 
-unsafe fn get_supported_modulation_direct_impl(
+fn get_supported_modulation_direct_impl(
     device: *mut nfc_device,
     mode: nfc_mode,
     supported: *mut *const nfc_modulation_type,
 ) -> c_int {
-    if supported.is_null() {
-        unsafe { set_device_last_error(device, NFC_EINVARG) };
-        return NFC_EINVARG;
-    }
+    let supported = match unsafe { SupportedModulationsOut::from_raw(device, supported) } {
+        Ok(supported) => supported,
+        Err(status) => return status,
+    };
 
-    let mut adapter = borrowed_device(device);
-    match adapter.supported_modulations(mode_from_c(mode)) {
-        Ok(values) => {
-            let Some(state) = (unsafe { rust_device_state_mut(device) }) else {
-                unsafe { set_device_last_error(device, NFC_EINVARG) };
-                return NFC_EINVARG;
-            };
-            state.supported_modulations.clear();
-            state
-                .supported_modulations
-                .extend(values.into_iter().map(modulation_type_to_c));
-            state
-                .supported_modulations
-                .push(nfc_modulation_type::NMT_UNDEFINED);
-            unsafe {
-                *supported = state.supported_modulations.as_ptr();
-            }
-            unsafe { set_device_last_error(device, 0) };
-            0
-        }
+    match runtime::supported_modulations(device, mode_from_c(mode)) {
+        Ok(values) => supported.write_back(values),
         Err(error) => runtime_result_status(device, &error, true),
     }
 }
 
-unsafe fn get_supported_baud_rate_direct_impl(
+fn get_supported_baud_rate_direct_impl(
     device: *mut nfc_device,
     mode: nfc_mode,
     modulation_type: nfc_modulation_type,
     supported: *mut *const nfc_baud_rate,
 ) -> c_int {
-    if supported.is_null() {
-        unsafe { set_device_last_error(device, NFC_EINVARG) };
-        return NFC_EINVARG;
-    }
+    let supported = match unsafe { SupportedBaudRatesOut::from_raw(device, supported) } {
+        Ok(supported) => supported,
+        Err(status) => return status,
+    };
 
-    let mut adapter = borrowed_device(device);
-    match adapter.supported_baud_rates(mode_from_c(mode), modulation_type_from_c(modulation_type)) {
-        Ok(values) => {
-            let Some(state) = (unsafe { rust_device_state_mut(device) }) else {
-                unsafe { set_device_last_error(device, NFC_EINVARG) };
-                return NFC_EINVARG;
-            };
-            state.supported_baud_rates.clear();
-            state
-                .supported_baud_rates
-                .extend(values.into_iter().map(baud_rate_to_c));
-            state
-                .supported_baud_rates
-                .push(nfc_baud_rate::NBR_UNDEFINED);
-            unsafe {
-                *supported = state.supported_baud_rates.as_ptr();
-            }
-            unsafe { set_device_last_error(device, 0) };
-            0
-        }
+    match runtime::supported_baud_rates(
+        device,
+        mode_from_c(mode),
+        modulation_type_from_c(modulation_type),
+    ) {
+        Ok(values) => supported.write_back(values),
         Err(error) => runtime_result_status(device, &error, true),
     }
 }
 
-unsafe fn get_information_about_direct_impl(
-    device: *mut nfc_device,
-    buf: *mut *mut c_char,
-) -> c_int {
-    if buf.is_null() {
-        unsafe { set_device_last_error(device, NFC_EINVARG) };
-        return NFC_EINVARG;
-    }
+fn get_information_about_direct_impl(device: *mut nfc_device, buf: *mut *mut c_char) -> c_int {
+    let output = match unsafe { CStringOut::from_raw(device, buf) } {
+        Ok(output) => output,
+        Err(status) => return status,
+    };
 
-    let mut adapter = borrowed_device(device);
-    match adapter.information_about() {
-        Ok(value) => {
-            let rendered = match CString::new(value) {
-                Ok(value) => value,
-                Err(_) => {
-                    unsafe { set_device_last_error(device, NFC_ESOFT) };
-                    return NFC_ESOFT;
-                }
-            };
-            let bytes = rendered.as_bytes_with_nul();
-            let allocation = unsafe { libc::malloc(bytes.len()) as *mut c_char };
-            if allocation.is_null() {
-                unsafe { set_device_last_error(device, NFC_ESOFT) };
-                return NFC_ESOFT;
-            }
-
-            unsafe {
-                ptr::copy_nonoverlapping(bytes.as_ptr().cast::<c_char>(), allocation, bytes.len());
-                *buf = allocation;
-            }
-            unsafe { set_device_last_error(device, 0) };
-            rendered.as_bytes().len() as c_int
-        }
+    match runtime::information_about(device) {
+        Ok(value) => output.write_back(device, &value),
         Err(error) => runtime_result_status(device, &error, true),
     }
 }

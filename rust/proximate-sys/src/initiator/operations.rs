@@ -1,22 +1,8 @@
+use super::io::{
+    CyclesOut, InputBytes, OutputBytes, ParityMarker, ParityMarkerMut, TargetInOut, TargetOut,
+    TargetSliceOut, decode_modulations, decode_optional_dep_info, decode_optional_target,
+};
 use super::*;
-
-fn with_initiator_device<R>(
-    device: *mut nfc_device,
-    f: impl FnOnce(&mut rt::InitiatorDevice<'_>) -> Result<R, rt::Error>,
-) -> Result<R, rt::Error> {
-    let mut runtime_device = borrowed_device(device);
-    let mut initiator = runtime_device.initiator()?;
-    f(&mut initiator)
-}
-
-fn with_target_device<R>(
-    device: *mut nfc_device,
-    f: impl FnOnce(&mut rt::TargetDevice<'_>) -> Result<R, rt::Error>,
-) -> Result<R, rt::Error> {
-    let mut runtime_device = borrowed_device(device);
-    let mut target = runtime_device.target()?;
-    f(&mut target)
-}
 
 pub unsafe fn nfc_device_set_property_int(
     device: *mut nfc_device,
@@ -29,8 +15,7 @@ pub unsafe fn nfc_device_set_property_int(
             property_name(property),
             if value != 0 { "True" } else { "False" }
         ));
-        let mut adapter = borrowed_device(device);
-        match adapter.set_property_int(property_from_c(property), value) {
+        match runtime::set_property_int(device, property_from_c(property), value) {
             Ok(()) => 0,
             Err(error) => runtime_result_status(device, &error, true),
         }
@@ -48,8 +33,7 @@ pub unsafe fn nfc_device_set_property_bool(
             property_name(property),
             if enable { "True" } else { "False" }
         ));
-        let mut adapter = borrowed_device(device);
-        match adapter.set_property_bool(property_from_c(property), enable) {
+        match runtime::set_property_bool(device, property_from_c(property), enable) {
             Ok(()) => 0,
             Err(error) => runtime_result_status(device, &error, true),
         }
@@ -60,7 +44,7 @@ pub unsafe fn nfc_initiator_init(device: *mut nfc_device) -> c_int {
     ffi_catch_unwind_int(
         "nfc_initiator_init",
         NFC_ESOFT,
-        || match with_initiator_device(device, |initiator| initiator.init()) {
+        || match runtime::initiator_init(device) {
             Ok(status) => status,
             Err(error) => runtime_result_status(device, &error, true),
         },
@@ -69,7 +53,7 @@ pub unsafe fn nfc_initiator_init(device: *mut nfc_device) -> c_int {
 
 pub unsafe fn nfc_initiator_init_secure_element(device: *mut nfc_device) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_init_secure_element", NFC_ESOFT, || {
-        match with_initiator_device(device, |initiator| initiator.init_secure_element()) {
+        match runtime::initiator_init_secure_element(device) {
             Ok(status) => status,
             Err(error) => runtime_result_status(device, &error, true),
         }
@@ -87,19 +71,19 @@ pub unsafe fn nfc_initiator_select_passive_target(
         "nfc_initiator_select_passive_target",
         NFC_ESOFT,
         || unsafe {
-            let payload = match input_bytes(device, init_data, init_data_len) {
-                Ok([]) => None,
-                Ok(bytes) => Some(bytes),
+            let payload = match InputBytes::from_raw(device, init_data, init_data_len) {
+                Ok(bytes) => bytes,
                 Err(status) => return status,
             };
+            let target = TargetOut::from_raw(target);
 
-            match with_initiator_device(device, |initiator| {
-                initiator.select_passive_target(modulation_from_c(nm), payload)
-            }) {
+            match runtime::select_passive_target(
+                device,
+                modulation_from_c(nm),
+                payload.as_optional(),
+            ) {
                 Ok(Some(runtime_target)) => {
-                    if !target.is_null() {
-                        write_target_to_c(&runtime_target, target);
-                    }
+                    target.write_back(&runtime_target);
                     1
                 }
                 Ok(None) => 0,
@@ -119,18 +103,14 @@ pub unsafe fn nfc_initiator_list_passive_targets(
         if targets_len == 0 {
             return 0;
         }
-        if targets.is_null() {
-            set_device_last_error(device, NFC_EINVARG);
-            return NFC_EINVARG;
-        }
+        let targets = match TargetSliceOut::from_raw(device, targets, targets_len) {
+            Ok(targets) => targets,
+            Err(status) => return status,
+        };
 
-        match with_initiator_device(device, |initiator| {
-            initiator.list_passive_targets(modulation_from_c(nm), targets_len)
-        }) {
+        match runtime::list_passive_targets(device, modulation_from_c(nm), targets_len) {
             Ok(runtime_targets) => {
-                for (index, runtime_target) in runtime_targets.iter().enumerate() {
-                    write_target_to_c(runtime_target, targets.add(index));
-                }
+                targets.write_back(&runtime_targets);
                 runtime_targets.len() as c_int
             }
             Err(error) => runtime_result_status(device, &error, true),
@@ -158,24 +138,15 @@ pub unsafe fn nfc_initiator_poll_target(
             );
         }
 
-        let modulations = if modulations_len == 0 {
-            &[]
-        } else if modulations.is_null() {
-            set_device_last_error(device, NFC_EINVARG);
-            return NFC_EINVARG;
-        } else {
-            slice::from_raw_parts(modulations, modulations_len)
+        let modulations = match decode_modulations(device, modulations, modulations_len) {
+            Ok(modulations) => modulations,
+            Err(status) => return status,
         };
-        let runtime_modulations: Vec<_> =
-            modulations.iter().copied().map(modulation_from_c).collect();
+        let target = TargetOut::from_raw(target);
 
-        match with_initiator_device(device, |initiator| {
-            initiator.poll_target(&runtime_modulations, poll_nr, period)
-        }) {
+        match runtime::poll_target(device, &modulations, poll_nr, period) {
             Ok(Some(runtime_target)) => {
-                if !target.is_null() {
-                    write_target_to_c(&runtime_target, target);
-                }
+                target.write_back(&runtime_target);
                 1
             }
             Ok(None) => 0,
@@ -201,23 +172,18 @@ pub unsafe fn nfc_initiator_select_dep_target(
             });
         }
 
-        let initiator_info = if initiator.is_null() {
-            None
-        } else {
-            Some(dep_info_from_c(ptr::read_unaligned(initiator)))
-        };
-        match with_initiator_device(device, |initiator| {
-            initiator.select_dep_target(
-                dep_mode_from_c(ndm),
-                baud_rate_from_c(nbr),
-                initiator_info.as_ref(),
-                timeout,
-            )
-        }) {
+        let initiator_info = decode_optional_dep_info(initiator);
+        let target = TargetOut::from_raw(target);
+
+        match runtime::select_dep_target(
+            device,
+            dep_mode_from_c(ndm),
+            baud_rate_from_c(nbr),
+            initiator_info.as_ref(),
+            timeout,
+        ) {
             Ok(Some(runtime_target)) => {
-                if !target.is_null() {
-                    write_target_to_c(&runtime_target, target);
-                }
+                target.write_back(&runtime_target);
                 1
             }
             Ok(None) => 0,
@@ -235,23 +201,18 @@ pub unsafe fn nfc_initiator_poll_dep_target(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_poll_dep_target", NFC_ESOFT, || unsafe {
-        let initiator_info = if initiator.is_null() {
-            None
-        } else {
-            Some(dep_info_from_c(ptr::read_unaligned(initiator)))
-        };
-        match with_initiator_device(device, |initiator| {
-            initiator.poll_dep_target(
-                dep_mode_from_c(ndm),
-                baud_rate_from_c(nbr),
-                initiator_info.as_ref(),
-                timeout,
-            )
-        }) {
+        let initiator_info = decode_optional_dep_info(initiator);
+        let target = TargetOut::from_raw(target);
+
+        match runtime::poll_dep_target(
+            device,
+            dep_mode_from_c(ndm),
+            baud_rate_from_c(nbr),
+            initiator_info.as_ref(),
+            timeout,
+        ) {
             Ok(Some(runtime_target)) => {
-                if !target.is_null() {
-                    write_target_to_c(&runtime_target, target);
-                }
+                target.write_back(&runtime_target);
                 1
             }
             Ok(None) => 0,
@@ -261,25 +222,21 @@ pub unsafe fn nfc_initiator_poll_dep_target(
 }
 
 pub unsafe fn nfc_initiator_deselect_target(device: *mut nfc_device) -> c_int {
-    ffi_catch_unwind_int(
-        "nfc_initiator_deselect_target",
-        NFC_ESOFT,
-        || match with_initiator_device(device, |initiator| initiator.deselect_target()) {
+    ffi_catch_unwind_int("nfc_initiator_deselect_target", NFC_ESOFT, || {
+        match runtime::deselect_target(device) {
             Ok(()) => 0,
             Err(error) => runtime_result_status(device, &error, true),
-        },
-    )
+        }
+    })
 }
 
 pub unsafe fn nfc_initiator_target_is_present(
     device: *mut nfc_device,
     target: *const nfc_target,
 ) -> c_int {
-    ffi_catch_unwind_int("nfc_initiator_target_is_present", NFC_ESOFT, || {
-        let runtime_target = (!target.is_null()).then(|| target_from_c(target));
-        match with_initiator_device(device, |initiator| {
-            initiator.target_is_present(runtime_target.as_ref())
-        }) {
+    ffi_catch_unwind_int("nfc_initiator_target_is_present", NFC_ESOFT, || unsafe {
+        let runtime_target = decode_optional_target(target);
+        match runtime::target_is_present(device, runtime_target.as_ref()) {
             Ok(true) => 1,
             Ok(false) => 0,
             Err(error) => runtime_result_status(device, &error, true),
@@ -295,21 +252,18 @@ pub unsafe fn nfc_target_init(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_target_init", NFC_ESOFT, || unsafe {
-        if target.is_null() {
-            set_device_last_error(device, NFC_EINVARG);
-            return NFC_EINVARG;
-        }
-        let mut runtime_target = target_from_c(target.cast_const());
-        let rx = match output_bytes(device, rx, rx_len) {
+        let mut target = match TargetInOut::from_raw(device, target) {
+            Ok(target) => target,
+            Err(status) => return status,
+        };
+        let mut rx = match OutputBytes::from_raw(device, rx, rx_len) {
             Ok(bytes) => bytes,
             Err(status) => return status,
         };
 
-        match with_target_device(device, |target_device| {
-            target_device.init(&mut runtime_target, rx, timeout)
-        }) {
+        match runtime::target_init(device, target.as_mut(), rx.as_mut_slice(), timeout) {
             Ok(count) => {
-                write_target_to_c(&runtime_target, target);
+                target.write_back();
                 count as c_int
             }
             Err(error) => runtime_result_status(device, &error, true),
@@ -326,17 +280,15 @@ pub unsafe fn nfc_initiator_transceive_bytes(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_transceive_bytes", NFC_ESOFT, || unsafe {
-        let tx = match input_bytes(device, tx, tx_len) {
+        let tx = match InputBytes::from_raw(device, tx, tx_len) {
             Ok(bytes) => bytes,
             Err(status) => return status,
         };
-        let rx = match output_bytes(device, rx, rx_len) {
+        let mut rx = match OutputBytes::from_raw(device, rx, rx_len) {
             Ok(bytes) => bytes,
             Err(status) => return status,
         };
-        match with_initiator_device(device, |initiator| {
-            initiator.transceive_bytes(tx, rx, timeout)
-        }) {
+        match runtime::transceive_bytes(device, tx.as_slice(), rx.as_mut_slice(), timeout) {
             Ok(count) => count as c_int,
             Err(error) => runtime_result_status(device, &error, true),
         }
@@ -365,23 +317,24 @@ pub unsafe fn nfc_initiator_transceive_bits(
                     .map(|callback| callback(device, tx, tx_bits_len, tx_parity, rx, rx_parity))
             });
         }
-        let tx = match input_bytes(device, tx, tx_bytes_len) {
+        let tx = match InputBytes::from_raw(device, tx, tx_bytes_len) {
             Ok(bytes) => bytes,
             Err(status) => return status,
         };
-        let rx = match output_bytes(device, rx, rx_len) {
+        let mut rx = match OutputBytes::from_raw(device, rx, rx_len) {
             Ok(bytes) => bytes,
             Err(status) => return status,
         };
-        match with_initiator_device(device, |initiator| {
-            initiator.transceive_bits(
-                tx,
-                tx_bits_len,
-                marker_bytes(tx_parity),
-                rx,
-                marker_bytes_mut(rx_parity),
-            )
-        }) {
+        let tx_parity = ParityMarker::from_raw(tx_parity);
+        let mut rx_parity = ParityMarkerMut::from_raw(rx_parity);
+        match runtime::transceive_bits(
+            device,
+            tx.as_slice(),
+            tx_bits_len,
+            tx_parity.as_deref(),
+            rx.as_mut_slice(),
+            rx_parity.as_deref_mut(),
+        ) {
             Ok(count) => count as c_int,
             Err(error) => runtime_result_status(device, &error, true),
         }
@@ -400,21 +353,18 @@ pub unsafe fn nfc_initiator_transceive_bytes_timed(
         "nfc_initiator_transceive_bytes_timed",
         NFC_ESOFT,
         || unsafe {
-            let tx = match input_bytes(device, tx, tx_len) {
+            let tx = match InputBytes::from_raw(device, tx, tx_len) {
                 Ok(bytes) => bytes,
                 Err(status) => return status,
             };
-            let rx = match output_bytes(device, rx, rx_len) {
+            let mut rx = match OutputBytes::from_raw(device, rx, rx_len) {
                 Ok(bytes) => bytes,
                 Err(status) => return status,
             };
-            match with_initiator_device(device, |initiator| {
-                initiator.transceive_bytes_timed(tx, rx)
-            }) {
+            let cycles = CyclesOut::from_raw(cycles);
+            match runtime::transceive_bytes_timed(device, tx.as_slice(), rx.as_mut_slice()) {
                 Ok((count, measured_cycles)) => {
-                    if let Some(cycles) = as_mut(cycles) {
-                        *cycles = measured_cycles;
-                    }
+                    cycles.write_back(measured_cycles);
                     count as c_int
                 }
                 Err(error) => runtime_result_status(device, &error, true),
@@ -453,27 +403,27 @@ pub unsafe fn nfc_initiator_transceive_bits_timed(
                     })
                 });
             }
-            let tx = match input_bytes(device, tx, tx_bytes_len) {
+            let tx = match InputBytes::from_raw(device, tx, tx_bytes_len) {
                 Ok(bytes) => bytes,
                 Err(status) => return status,
             };
-            let rx = match output_bytes(device, rx, rx_len) {
+            let mut rx = match OutputBytes::from_raw(device, rx, rx_len) {
                 Ok(bytes) => bytes,
                 Err(status) => return status,
             };
-            match with_initiator_device(device, |initiator| {
-                initiator.transceive_bits_timed(
-                    tx,
-                    tx_bits_len,
-                    marker_bytes(tx_parity),
-                    rx,
-                    marker_bytes_mut(rx_parity),
-                )
-            }) {
+            let tx_parity = ParityMarker::from_raw(tx_parity);
+            let mut rx_parity = ParityMarkerMut::from_raw(rx_parity);
+            let cycles = CyclesOut::from_raw(cycles);
+            match runtime::transceive_bits_timed(
+                device,
+                tx.as_slice(),
+                tx_bits_len,
+                tx_parity.as_deref(),
+                rx.as_mut_slice(),
+                rx_parity.as_deref_mut(),
+            ) {
                 Ok((count, measured_cycles)) => {
-                    if let Some(cycles) = as_mut(cycles) {
-                        *cycles = measured_cycles;
-                    }
+                    cycles.write_back(measured_cycles);
                     count as c_int
                 }
                 Err(error) => runtime_result_status(device, &error, true),
@@ -489,13 +439,11 @@ pub unsafe fn nfc_target_send_bytes(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_target_send_bytes", NFC_ESOFT, || unsafe {
-        let tx = match input_bytes(device, tx, tx_len) {
+        let tx = match InputBytes::from_raw(device, tx, tx_len) {
             Ok(bytes) => bytes,
             Err(status) => return status,
         };
-        match with_target_device(device, |target_device| {
-            target_device.send_bytes(tx, timeout)
-        }) {
+        match runtime::target_send_bytes(device, tx.as_slice(), timeout) {
             Ok(count) => count as c_int,
             Err(error) => runtime_result_status(device, &error, true),
         }
@@ -509,13 +457,11 @@ pub unsafe fn nfc_target_receive_bytes(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_target_receive_bytes", NFC_ESOFT, || unsafe {
-        let rx = match output_bytes(device, rx, rx_len) {
+        let mut rx = match OutputBytes::from_raw(device, rx, rx_len) {
             Ok(bytes) => bytes,
             Err(status) => return status,
         };
-        match with_target_device(device, |target_device| {
-            target_device.receive_bytes(rx, timeout)
-        }) {
+        match runtime::target_receive_bytes(device, rx.as_mut_slice(), timeout) {
             Ok(count) => count as c_int,
             Err(error) => runtime_result_status(device, &error, true),
         }
@@ -530,13 +476,12 @@ pub unsafe fn nfc_target_send_bits(
 ) -> c_int {
     ffi_catch_unwind_int("nfc_target_send_bits", NFC_ESOFT, || unsafe {
         let tx_bytes_len = tx_bits_len.div_ceil(8);
-        let tx = match input_bytes(device, tx, tx_bytes_len) {
+        let tx = match InputBytes::from_raw(device, tx, tx_bytes_len) {
             Ok(bytes) => bytes,
             Err(status) => return status,
         };
-        match with_target_device(device, |target_device| {
-            target_device.send_bits(tx, tx_bits_len, marker_bytes(tx_parity))
-        }) {
+        let tx_parity = ParityMarker::from_raw(tx_parity);
+        match runtime::target_send_bits(device, tx.as_slice(), tx_bits_len, tx_parity.as_deref()) {
             Ok(count) => count as c_int,
             Err(error) => runtime_result_status(device, &error, true),
         }
@@ -550,13 +495,12 @@ pub unsafe fn nfc_target_receive_bits(
     rx_parity: *mut u8,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_target_receive_bits", NFC_ESOFT, || unsafe {
-        let rx = match output_bytes(device, rx, rx_len) {
+        let mut rx = match OutputBytes::from_raw(device, rx, rx_len) {
             Ok(bytes) => bytes,
             Err(status) => return status,
         };
-        match with_target_device(device, |target_device| {
-            target_device.receive_bits(rx, marker_bytes_mut(rx_parity))
-        }) {
+        let mut rx_parity = ParityMarkerMut::from_raw(rx_parity);
+        match runtime::target_receive_bits(device, rx.as_mut_slice(), rx_parity.as_deref_mut()) {
             Ok(count) => count as c_int,
             Err(error) => runtime_result_status(device, &error, true),
         }
@@ -569,7 +513,7 @@ pub unsafe fn nfc_abort_command(device: *mut nfc_device) -> c_int {
             return call_abort_command_impl(device);
         }
 
-        match with_initiator_device(device, |initiator| initiator.abort_command()) {
+        match runtime::abort_command(device) {
             Ok(()) => 0,
             Err(error) => runtime_result_status(device, &error, true),
         }
@@ -582,7 +526,7 @@ pub unsafe fn nfc_idle(device: *mut nfc_device) -> c_int {
             return call_idle_impl(device);
         }
 
-        match with_initiator_device(device, |initiator| initiator.idle()) {
+        match runtime::idle(device) {
             Ok(()) => 0,
             Err(error) => runtime_result_status(device, &error, true),
         }
