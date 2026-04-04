@@ -45,12 +45,13 @@ shared code paths.
 Recommended local checks:
 
 ```bash
-cargo test -p proximate-sys --no-default-features --features c_ffi
+cargo test --manifest-path rust/Cargo.toml -p proximate-sys --no-default-features --features c_ffi
 bash scripts/check_callerfree_usage.sh
 cargo test --manifest-path rust/Cargo.toml -p proximate -- --nocapture
 ```
 
-If you touch the Rust lifecycle/core bridge, also verify the Rust-owned core slice:
+If you touch the Rust lifecycle/core bridge, also verify the Rust-backed core
+slice:
 
 ```bash
 cargo test --manifest-path rust/Cargo.toml -p proximate-sys --no-default-features --features "c_ffi,secure,lifecycle,orchestration" -- --nocapture
@@ -59,15 +60,13 @@ cmake --build build-rust-core -j"$(nproc)"
 ctest --test-dir build-rust-core --output-on-failure
 ```
 
-In this experimental branch, Rust is the only supported core implementation. The
-`PROXIMATE_SECURE`, `PROXIMATE_LIFECYCLE`, and `PROXIMATE_ORCHESTRATION` CMake options
-are deprecated no-ops kept for one compatibility cycle.
+In this experimental branch, Rust is the only supported core implementation.
+The `PROXIMATE_SECURE`, `PROXIMATE_LIFECYCLE`, and
+`PROXIMATE_ORCHESTRATION` CMake options are deprecated no-ops retained for
+older build scripts.
 
-The builtin `pn71xx`, `pn53x_usb`, `pn532_uart`, `pn532_spi`, and `pn532_i2c`
-drivers are Rust-owned in this branch. They now live in the layered
-`proximate-types` / `proximate-driver` / `proximate-native` / `proximate` /
-`proximate-sys` workspace instead of going through the retired
-`proximate-sys` USB/UART/SPI/I2C helper ABI.
+The Rust workspace lives under `rust/`, and `proximate-sys` remains the
+internal implementation used by the public C ABI exposed through `include/nfc/`.
 
 If you change exported CMake/package behavior, verify all of the following:
 
@@ -88,5 +87,5 @@ Keep pull requests small and intentional.
 - `perf`: performance work
 - `chore`: build, CI, or maintenance work
 
-If you change the FFI boundary, include regenerated headers and describe buffer
-ownership clearly in the PR description.
+If you change the public FFI boundary, update any affected headers under
+`include/nfc/` and describe buffer ownership clearly in the PR description.

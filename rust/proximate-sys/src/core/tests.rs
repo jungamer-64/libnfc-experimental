@@ -3,6 +3,7 @@ use super::driver_registration::{bridge_close_device, nfc_register_driver};
 use super::runtime::{nfc_list_devices, nfc_open};
 use crate::bridge::external_registry::{clear_registry, registry_snapshot};
 use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
+use crate::c_api_impl::NFC_COMMON_SUCCESS as NFC_SUCCESS;
 use crate::core::LOG_PRIORITY_INFO;
 use crate::ffi_support::{c_string_ptr_to_string, fixed_c_buffer_to_string};
 use crate::lifecycle::{
@@ -10,7 +11,6 @@ use crate::lifecycle::{
     nfc_context_alloc_defaults, nfc_context_new, nfc_device, nfc_device_free, nfc_driver,
     reset_lifecycle_test_state, scan_type_enum, snapshot_lifecycle_test_state,
 };
-use crate::c_api_impl::NFC_COMMON_SUCCESS as NFC_SUCCESS;
 use crate::{test_clear_last_log, test_get_last_log};
 use libc::c_char;
 use std::ffi::CString;

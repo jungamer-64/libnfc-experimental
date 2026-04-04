@@ -1,47 +1,48 @@
     *-
     * Free/Libre Near Field Communication (NFC) library
     *
-    * Windows-specific notes for the CMake build
+    * Libnfc historical contributors:
+    * Copyright (C) 2009      Roel Verdult
+    * Copyright (C) 2009-2013 Romuald Conty
+    * Copyright (C) 2010-2012 Romain Tartière
+    * Copyright (C) 2010-2013 Philippe Teuwen
+    * Copyright (C) 2012-2013 Ludovic Rousseau
+    * Additional contributors of Windows-specific parts:
+    * Copyright (C) 2010      Glenn Ergeerts
+    * Copyright (C) 2013      Alex Lian
     -*
 
 Requirements
 ============
 
-- MinGW-w64 or MSVC
-- CMake 3.16 or newer
-- Rust toolchain with `cargo`
+- MinGW-w64 compiler toolchain [1]
+- CMake 3.16 or newer [2]
+- Rust toolchain with `cargo` [3]
+- A WinUSB-compatible driver for readers accessed directly over USB
 
 Building
 ========
 
 This repository is built with CMake only.
 
-Example with MinGW Makefiles:
+A Rust toolchain is required because the public C ABI is backed by the Rust
+core in this branch.
 
-```bat
-cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-```
+To build the distribution the MinGW Makefiles generator of CMake can be used:
 
-Example with Ninja:
-
-```bat
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-```
+    C:\dev\libnfc-experimental> cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+    C:\dev\libnfc-experimental> cmake --build build --config Release
 
 Useful options:
 
-- `-DBUILD_SHARED_LIBS=OFF` for a static build
 - `-DINSTALL_BUNDLE=ON` to assemble a redistributable bundle around `nfc-list`
 - `-DLIBNFC_DRIVER_PCSC=ON` to enable the PC/SC driver
+- `-DLIBNFC_CONFDIR=...` to override the installed configuration directory
 
 Installation
 ============
 
-```bat
-cmake --install build --config Release
-```
+    cmake --install build --config Release
 
 The default Windows configuration directory is `./config` relative to the
 installed binaries. If you want a different location, set
@@ -50,11 +51,11 @@ installed binaries. If you want a different location, set
 USB-backed readers use the Rust `nusb` bridge in this branch. Install a
 WinUSB-compatible driver for the reader you want to access directly over USB.
 
-For compatibility with older build scripts, `-DLIBNFC_SYSCONFDIR=...` is still
-accepted and mapped to `LIBNFC_CONFDIR`.
-
 References
 ==========
 
-- MinGW-w64: <https://www.mingw-w64.org/>
-- CMake: <https://cmake.org/>
+[1] https://www.mingw-w64.org/
+
+[2] https://cmake.org/
+
+[3] https://www.rust-lang.org/tools/install
