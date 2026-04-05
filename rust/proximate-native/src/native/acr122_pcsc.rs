@@ -68,8 +68,22 @@ impl Driver for Acr122PcscDriver {
         ScanType::NotIntrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<ConnectionString>, Error> {
-        super::pcsc::scan_matching_readers(self.backend.as_ref(), DRIVER_NAME, ReaderFilter::Acr122)
+    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
+        Ok(super::pcsc::scan_matching_readers(
+            self.backend.as_ref(),
+            DRIVER_NAME,
+            ReaderFilter::Acr122,
+        )?
+        .into_iter()
+        .map(|connstring| {
+            let display_name = connstring.as_str().to_string();
+            self.describe_discovered(
+                display_name,
+                connstring,
+                Some(super::pn53x::scan_caps(Pn53xProfile::acr122_pcsc())),
+            )
+        })
+        .collect())
     }
 
     fn open(

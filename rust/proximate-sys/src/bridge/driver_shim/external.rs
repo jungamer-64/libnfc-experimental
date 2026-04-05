@@ -48,7 +48,7 @@ impl rt::Driver for ExternalDriver {
         self.caps
     }
 
-    fn scan(&self, context: &rt::Context) -> Result<Vec<rt::ConnectionString>, rt::Error> {
+    fn scan(&self, context: &rt::Context) -> Result<Vec<rt::DiscoveredDevice>, rt::Error> {
         if !self.caps.contains(rt::DriverCaps::SCAN) {
             return Err(missing_capability("scan"));
         }
@@ -73,7 +73,12 @@ impl rt::Driver for ExternalDriver {
                 if value.is_empty() {
                     continue;
                 }
-                devices.push(rt::ConnectionString::new(value)?);
+                let connstring = rt::ConnectionString::new(value)?;
+                devices.push(self.describe_discovered(
+                    connstring.as_str().to_string(),
+                    connstring,
+                    None,
+                ));
             }
 
             if devices.len() < capacity || capacity >= MAX_SCAN_CAPACITY {

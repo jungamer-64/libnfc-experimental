@@ -38,7 +38,7 @@ impl Driver for ArygonDriver {
         ScanType::Intrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<ConnectionString>, Error> {
+    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
         let mut devices = Vec::new();
 
         for path in list_candidate_paths() {
@@ -53,7 +53,11 @@ impl Driver for ArygonDriver {
                     continue;
                 };
                 if reset_tama(&mut port).is_ok() {
-                    devices.push(connstring);
+                    devices.push(self.describe_discovered(
+                        format!("{DRIVER_NAME}:{path}"),
+                        connstring,
+                        Some(super::pn53x::scan_caps(Pn53xProfile::arygon())),
+                    ));
                 }
             }
 

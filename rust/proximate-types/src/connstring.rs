@@ -13,6 +13,10 @@ impl ConnectionString {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    pub fn family(&self) -> &str {
+        self.0.split(':').next().unwrap_or_default()
+    }
 }
 
 impl std::fmt::Display for ConnectionString {

@@ -23,6 +23,23 @@ pub(super) struct Pn71xxDevice {
 }
 
 impl Pn71xxDevice {
+    pub(super) fn scan_caps() -> DeviceCaps {
+        DeviceCaps::INFO
+            | DeviceCaps::SET_PROPERTY_BOOL
+            | DeviceCaps::SET_PROPERTY_INT
+            | DeviceCaps::SUPPORTED_MODULATIONS
+            | DeviceCaps::SUPPORTED_BAUD_RATES
+            | DeviceCaps::INITIATOR_INIT
+            | DeviceCaps::SELECT_PASSIVE_TARGET
+            | DeviceCaps::POLL_TARGET
+            | DeviceCaps::DESELECT_TARGET
+            | DeviceCaps::TARGET_IS_PRESENT
+            | DeviceCaps::TRANSCEIVE_BYTES
+            | DeviceCaps::ABORT_COMMAND
+            | DeviceCaps::IDLE
+            | DeviceCaps::POWERDOWN
+    }
+
     pub(super) fn new(device_id: u64, connstring: ConnectionString) -> Self {
         Self {
             device_id,
@@ -58,20 +75,7 @@ impl DeviceMeta for Pn71xxDevice {
     }
 
     fn caps(&self) -> DeviceCaps {
-        DeviceCaps::INFO
-            | DeviceCaps::SET_PROPERTY_BOOL
-            | DeviceCaps::SET_PROPERTY_INT
-            | DeviceCaps::SUPPORTED_MODULATIONS
-            | DeviceCaps::SUPPORTED_BAUD_RATES
-            | DeviceCaps::INITIATOR_INIT
-            | DeviceCaps::SELECT_PASSIVE_TARGET
-            | DeviceCaps::POLL_TARGET
-            | DeviceCaps::DESELECT_TARGET
-            | DeviceCaps::TARGET_IS_PRESENT
-            | DeviceCaps::TRANSCEIVE_BYTES
-            | DeviceCaps::ABORT_COMMAND
-            | DeviceCaps::IDLE
-            | DeviceCaps::POWERDOWN
+        Self::scan_caps()
     }
 
     fn last_error(&self) -> i32 {

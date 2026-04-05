@@ -36,7 +36,7 @@ impl Driver for Pn532I2cDriver {
         ScanType::Intrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<ConnectionString>, Error> {
+    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
         let mut devices = Vec::new();
         for path in list_candidate_paths() {
             let Ok(connstring) = build_path_connstring(DRIVER_NAME, &path) else {
@@ -57,13 +57,21 @@ impl Driver for Pn532I2cDriver {
                 )
                 .is_ok()
                 {
-                    devices.push(connstring);
+                    devices.push(self.describe_discovered(
+                        format!("PN532 I2C ({path})"),
+                        connstring,
+                        Some(super::pn53x::scan_caps(Pn53xProfile::pn532(DRIVER_NAME))),
+                    ));
                 }
             }
 
             #[cfg(not(target_os = "linux"))]
             {
-                devices.push(connstring);
+                devices.push(self.describe_discovered(
+                    format!("PN532 I2C ({path})"),
+                    connstring,
+                    Some(super::pn53x::scan_caps(Pn53xProfile::pn532(DRIVER_NAME))),
+                ));
             }
         }
         Ok(devices)

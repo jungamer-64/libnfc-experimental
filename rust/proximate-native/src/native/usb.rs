@@ -94,16 +94,22 @@ impl Driver for Pn53xUsbDriver {
         ScanType::NotIntrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<ConnectionString>, Error> {
+    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
         let devices = list_devices().map_err(usb_open_error)?;
 
         let mut found = Vec::new();
         for info in devices {
-            if supported_device(&info).is_none() {
+            let Some(supported) = supported_device(&info) else {
                 continue;
-            }
+            };
             if let Ok(connstring) = build_usb_connstring(info.bus_number, info.device_address) {
-                found.push(connstring);
+                found.push(self.describe_discovered(
+                    usb_display_name(&info, supported),
+                    connstring,
+                    Some(super::pn53x::scan_caps(Pn53xProfile::pn53x_usb(
+                        supported.model,
+                    ))),
+                ));
             }
         }
 

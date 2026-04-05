@@ -23,10 +23,11 @@ pub use context::set_test_conf_root;
 #[doc(hidden)]
 pub use device::DeviceHandle;
 pub use device::{
-    Device, DeviceMeta, InfoBackend, InitiatorBackend, InitiatorDevice, Logger, Pn53xBackend,
-    Pn53xDevice, PropertyBackend, TargetBackend, TargetDevice,
+    DepOps, Device, DeviceMeta, InfoBackend, InfoOps, InitiatorBackend, InitiatorIoOps, Logger,
+    PassiveScanOps, Pn53xBackend, Pn53xOps, PropertyBackend, PropertyOps, SessionOps,
+    TargetBackend, TargetIoOps,
 };
-pub use driver::{Driver, DriverRegistry};
+pub use driver::{DeviceOrigin, DiscoveredDevice, Driver, DriverRegistry};
 
 #[cfg(test)]
 mod tests;

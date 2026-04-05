@@ -20,15 +20,23 @@ impl Driver for Pn71xxDriver {
         PN71XX_DRIVER_NAME
     }
 
+    fn exclusive(&self) -> bool {
+        true
+    }
+
     fn scan_type(&self) -> ScanType {
         ScanType::NotIntrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<ConnectionString>, Error> {
+    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
         normalize_inactive_runtime();
 
         if active_device().is_some() {
-            return Ok(vec![ConnectionString::new(PN71XX_DRIVER_NAME).unwrap()]);
+            return Ok(vec![self.describe_discovered(
+                PN71XX_DRIVER_NAME.to_string(),
+                ConnectionString::new(PN71XX_DRIVER_NAME).unwrap(),
+                Some(Pn71xxDevice::scan_caps()),
+            )]);
         }
 
         if backend().initialize() != 0 {
@@ -36,7 +44,11 @@ impl Driver for Pn71xxDriver {
         }
         backend().deinitialize();
 
-        Ok(vec![ConnectionString::new(PN71XX_DRIVER_NAME).unwrap()])
+        Ok(vec![self.describe_discovered(
+            PN71XX_DRIVER_NAME.to_string(),
+            ConnectionString::new(PN71XX_DRIVER_NAME).unwrap(),
+            Some(Pn71xxDevice::scan_caps()),
+        )])
     }
 
     fn open(

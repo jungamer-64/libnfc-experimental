@@ -24,6 +24,18 @@ impl fmt::Debug for PcscDevice {
 }
 
 impl PcscDevice {
+    pub(super) fn scan_caps() -> DeviceCaps {
+        DeviceCaps::INFO
+            | DeviceCaps::SET_PROPERTY_BOOL
+            | DeviceCaps::SUPPORTED_MODULATIONS
+            | DeviceCaps::SUPPORTED_BAUD_RATES
+            | DeviceCaps::INITIATOR_INIT
+            | DeviceCaps::SELECT_PASSIVE_TARGET
+            | DeviceCaps::POLL_TARGET
+            | DeviceCaps::TARGET_IS_PRESENT
+            | DeviceCaps::TRANSCEIVE_BYTES
+    }
+
     pub(super) fn new(
         name: String,
         connstring: ConnectionString,
@@ -380,15 +392,7 @@ impl DeviceMeta for PcscDevice {
     }
 
     fn caps(&self) -> DeviceCaps {
-        DeviceCaps::INFO
-            | DeviceCaps::SET_PROPERTY_BOOL
-            | DeviceCaps::SUPPORTED_MODULATIONS
-            | DeviceCaps::SUPPORTED_BAUD_RATES
-            | DeviceCaps::INITIATOR_INIT
-            | DeviceCaps::SELECT_PASSIVE_TARGET
-            | DeviceCaps::POLL_TARGET
-            | DeviceCaps::TARGET_IS_PRESENT
-            | DeviceCaps::TRANSCEIVE_BYTES
+        Self::scan_caps()
     }
 
     fn last_error(&self) -> i32 {

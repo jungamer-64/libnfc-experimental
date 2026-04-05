@@ -41,36 +41,58 @@ where
     }
 }
 
-fn initiator_view_caps() -> DeviceCaps {
-    DeviceCaps::INITIATOR_INIT
-        | DeviceCaps::INITIATOR_INIT_SECURE_ELEMENT
-        | DeviceCaps::SELECT_PASSIVE_TARGET
-        | DeviceCaps::POLL_TARGET
-        | DeviceCaps::SELECT_DEP_TARGET
-        | DeviceCaps::DESELECT_TARGET
-        | DeviceCaps::TARGET_IS_PRESENT
-        | DeviceCaps::TRANSCEIVE_BYTES
-        | DeviceCaps::TRANSCEIVE_BITS
-        | DeviceCaps::TRANSCEIVE_BYTES_TIMED
-        | DeviceCaps::TRANSCEIVE_BITS_TIMED
-        | DeviceCaps::ABORT_COMMAND
-        | DeviceCaps::IDLE
-        | DeviceCaps::POWERDOWN
-}
-
-fn target_view_caps() -> DeviceCaps {
-    DeviceCaps::TARGET_INIT
-        | DeviceCaps::TARGET_SEND_BYTES
-        | DeviceCaps::TARGET_RECEIVE_BYTES
-        | DeviceCaps::TARGET_SEND_BITS
-        | DeviceCaps::TARGET_RECEIVE_BITS
-}
-
 fn pn53x_view_caps() -> DeviceCaps {
     DeviceCaps::PN53X_TRANSCEIVE
         | DeviceCaps::PN53X_READ_REGISTER
         | DeviceCaps::PN53X_WRITE_REGISTER
         | DeviceCaps::PN532_SAM_CONFIGURATION
+}
+
+fn property_view_caps() -> DeviceCaps {
+    DeviceCaps::SET_PROPERTY_BOOL
+        | DeviceCaps::SET_PROPERTY_INT
+        | DeviceCaps::SUPPORTED_MODULATIONS
+        | DeviceCaps::SUPPORTED_BAUD_RATES
+}
+
+fn passive_scan_view_caps() -> DeviceCaps {
+    DeviceCaps::SET_PROPERTY_BOOL
+        | DeviceCaps::SUPPORTED_MODULATIONS
+        | DeviceCaps::SUPPORTED_BAUD_RATES
+        | DeviceCaps::INITIATOR_INIT
+        | DeviceCaps::SELECT_PASSIVE_TARGET
+        | DeviceCaps::POLL_TARGET
+        | DeviceCaps::DESELECT_TARGET
+}
+
+fn dep_view_caps() -> DeviceCaps {
+    DeviceCaps::SET_PROPERTY_BOOL
+        | DeviceCaps::INITIATOR_INIT_SECURE_ELEMENT
+        | DeviceCaps::SELECT_DEP_TARGET
+}
+
+fn session_view_caps() -> DeviceCaps {
+    DeviceCaps::DESELECT_TARGET
+        | DeviceCaps::TARGET_IS_PRESENT
+        | DeviceCaps::ABORT_COMMAND
+        | DeviceCaps::IDLE
+        | DeviceCaps::POWERDOWN
+}
+
+fn initiator_io_view_caps() -> DeviceCaps {
+    DeviceCaps::TRANSCEIVE_BYTES
+        | DeviceCaps::TRANSCEIVE_BITS
+        | DeviceCaps::TRANSCEIVE_BYTES_TIMED
+        | DeviceCaps::TRANSCEIVE_BITS_TIMED
+}
+
+fn target_io_view_caps() -> DeviceCaps {
+    DeviceCaps::SET_PROPERTY_BOOL
+        | DeviceCaps::TARGET_INIT
+        | DeviceCaps::TARGET_SEND_BYTES
+        | DeviceCaps::TARGET_RECEIVE_BYTES
+        | DeviceCaps::TARGET_SEND_BITS
+        | DeviceCaps::TARGET_RECEIVE_BITS
 }
 
 pub trait Logger: Send + Sync {
@@ -287,28 +309,8 @@ pub trait Pn53xBackend: DeviceMeta {
 }
 
 #[doc(hidden)]
-pub trait InitiatorHandle: DeviceMeta + PropertyBackend + InitiatorBackend {}
-impl<T> InitiatorHandle for T where T: DeviceMeta + PropertyBackend + InitiatorBackend + ?Sized {}
-
-#[doc(hidden)]
-pub trait TargetHandle: DeviceMeta + PropertyBackend + TargetBackend {}
-impl<T> TargetHandle for T where T: DeviceMeta + PropertyBackend + TargetBackend + ?Sized {}
-
-#[doc(hidden)]
-pub trait Pn53xHandle: DeviceMeta + Pn53xBackend {}
-impl<T> Pn53xHandle for T where T: DeviceMeta + Pn53xBackend + ?Sized {}
-
-#[doc(hidden)]
 pub trait DeviceHandle:
-    DeviceMeta
-    + InfoBackend
-    + PropertyBackend
-    + InitiatorBackend
-    + TargetBackend
-    + Pn53xBackend
-    + InitiatorHandle
-    + TargetHandle
-    + Pn53xHandle
+    DeviceMeta + InfoBackend + PropertyBackend + InitiatorBackend + TargetBackend + Pn53xBackend
 {
 }
 
@@ -363,47 +365,66 @@ impl Device {
         self.handle.strerror()
     }
 
-    pub fn information_about(&mut self) -> Result<String, Error> {
-        ops::info::information_about(self.handle.as_mut())
-    }
-
-    pub fn set_property_bool(&mut self, property: Property, enable: bool) -> Result<(), Error> {
-        ops::property::set_property_bool(self.handle.as_mut(), property, enable)
-    }
-
-    pub fn set_property_int(&mut self, property: Property, value: i32) -> Result<(), Error> {
-        ops::property::set_property_int(self.handle.as_mut(), property, value)
-    }
-
-    pub fn supported_modulations(&mut self, mode: Mode) -> Result<Vec<ModulationType>, Error> {
-        ops::property::supported_modulations(self.handle.as_mut(), mode)
-    }
-
-    pub fn supported_baud_rates(
-        &mut self,
-        mode: Mode,
-        modulation_type: ModulationType,
-    ) -> Result<Vec<BaudRate>, Error> {
-        ops::property::supported_baud_rates(self.handle.as_mut(), mode, modulation_type)
-    }
-
-    pub fn initiator(&mut self) -> Result<InitiatorDevice<'_>, Error> {
-        ensure_any_device_caps(self.handle.as_mut(), initiator_view_caps(), "initiator")?;
-        Ok(InitiatorDevice {
+    pub fn info_ops(&mut self) -> Result<InfoOps<'_>, Error> {
+        ensure_device_caps(self.handle.as_mut(), DeviceCaps::INFO, "info_ops")?;
+        Ok(InfoOps {
             device: self.handle.as_mut(),
         })
     }
 
-    pub fn target(&mut self) -> Result<TargetDevice<'_>, Error> {
-        ensure_any_device_caps(self.handle.as_mut(), target_view_caps(), "target")?;
-        Ok(TargetDevice {
+    pub fn property_ops(&mut self) -> Result<PropertyOps<'_>, Error> {
+        ensure_any_device_caps(self.handle.as_mut(), property_view_caps(), "property_ops")?;
+        Ok(PropertyOps {
             device: self.handle.as_mut(),
         })
     }
 
-    pub fn pn53x(&mut self) -> Result<Pn53xDevice<'_>, Error> {
-        ensure_any_device_caps(self.handle.as_mut(), pn53x_view_caps(), "pn53x")?;
-        Ok(Pn53xDevice {
+    pub fn passive_scan_ops(&mut self) -> Result<PassiveScanOps<'_>, Error> {
+        ensure_any_device_caps(
+            self.handle.as_mut(),
+            passive_scan_view_caps(),
+            "passive_scan_ops",
+        )?;
+        Ok(PassiveScanOps {
+            device: self.handle.as_mut(),
+        })
+    }
+
+    pub fn dep_ops(&mut self) -> Result<DepOps<'_>, Error> {
+        ensure_any_device_caps(self.handle.as_mut(), dep_view_caps(), "dep_ops")?;
+        Ok(DepOps {
+            device: self.handle.as_mut(),
+        })
+    }
+
+    pub fn session_ops(&mut self) -> Result<SessionOps<'_>, Error> {
+        ensure_any_device_caps(self.handle.as_mut(), session_view_caps(), "session_ops")?;
+        Ok(SessionOps {
+            device: self.handle.as_mut(),
+        })
+    }
+
+    pub fn initiator_io_ops(&mut self) -> Result<InitiatorIoOps<'_>, Error> {
+        ensure_any_device_caps(
+            self.handle.as_mut(),
+            initiator_io_view_caps(),
+            "initiator_io_ops",
+        )?;
+        Ok(InitiatorIoOps {
+            device: self.handle.as_mut(),
+        })
+    }
+
+    pub fn target_io_ops(&mut self) -> Result<TargetIoOps<'_>, Error> {
+        ensure_any_device_caps(self.handle.as_mut(), target_io_view_caps(), "target_io_ops")?;
+        Ok(TargetIoOps {
+            device: self.handle.as_mut(),
+        })
+    }
+
+    pub fn pn53x_ops(&mut self) -> Result<Pn53xOps<'_>, Error> {
+        ensure_any_device_caps(self.handle.as_mut(), pn53x_view_caps(), "pn53x_ops")?;
+        Ok(Pn53xOps {
             device: self.handle.as_mut(),
         })
     }
@@ -414,17 +435,49 @@ impl Device {
     }
 }
 
-pub struct InitiatorDevice<'a> {
-    device: &'a mut dyn InitiatorHandle,
+pub struct InfoOps<'a> {
+    device: &'a mut dyn DeviceHandle,
 }
 
-impl<'a> InitiatorDevice<'a> {
-    pub fn init(&mut self) -> Result<i32, Error> {
-        ops::initiator::init(self.device)
+impl<'a> InfoOps<'a> {
+    pub fn information_about(&mut self) -> Result<String, Error> {
+        ops::info::information_about(self.device)
+    }
+}
+
+pub struct PropertyOps<'a> {
+    device: &'a mut dyn DeviceHandle,
+}
+
+impl<'a> PropertyOps<'a> {
+    pub fn set_property_bool(&mut self, property: Property, enable: bool) -> Result<(), Error> {
+        ops::property::set_property_bool(self.device, property, enable)
     }
 
-    pub fn init_secure_element(&mut self) -> Result<i32, Error> {
-        ops::initiator::init_secure_element(self.device)
+    pub fn set_property_int(&mut self, property: Property, value: i32) -> Result<(), Error> {
+        ops::property::set_property_int(self.device, property, value)
+    }
+
+    pub fn supported_modulations(&mut self, mode: Mode) -> Result<Vec<ModulationType>, Error> {
+        ops::property::supported_modulations(self.device, mode)
+    }
+
+    pub fn supported_baud_rates(
+        &mut self,
+        mode: Mode,
+        modulation_type: ModulationType,
+    ) -> Result<Vec<BaudRate>, Error> {
+        ops::property::supported_baud_rates(self.device, mode, modulation_type)
+    }
+}
+
+pub struct PassiveScanOps<'a> {
+    device: &'a mut dyn DeviceHandle,
+}
+
+impl<'a> PassiveScanOps<'a> {
+    pub fn init(&mut self) -> Result<i32, Error> {
+        ops::initiator::init(self.device)
     }
 
     pub fn select_passive_target(
@@ -451,6 +504,16 @@ impl<'a> InitiatorDevice<'a> {
     ) -> Result<Option<Target>, Error> {
         ops::initiator::poll_target(self.device, modulations, poll_nr, period)
     }
+}
+
+pub struct DepOps<'a> {
+    device: &'a mut dyn DeviceHandle,
+}
+
+impl<'a> DepOps<'a> {
+    pub fn init_secure_element(&mut self) -> Result<i32, Error> {
+        ops::initiator::init_secure_element(self.device)
+    }
 
     pub fn select_dep_target(
         &mut self,
@@ -471,7 +534,13 @@ impl<'a> InitiatorDevice<'a> {
     ) -> Result<Option<Target>, Error> {
         ops::initiator::poll_dep_target(self.device, mode, baud_rate, initiator, timeout)
     }
+}
 
+pub struct SessionOps<'a> {
+    device: &'a mut dyn DeviceHandle,
+}
+
+impl<'a> SessionOps<'a> {
     pub fn deselect_target(&mut self) -> Result<(), Error> {
         ops::initiator::deselect_target(self.device)
     }
@@ -480,6 +549,24 @@ impl<'a> InitiatorDevice<'a> {
         ops::initiator::target_is_present(self.device, target)
     }
 
+    pub fn abort_command(&mut self) -> Result<(), Error> {
+        ops::initiator::abort_command(self.device)
+    }
+
+    pub fn idle(&mut self) -> Result<(), Error> {
+        ops::initiator::idle(self.device)
+    }
+
+    pub fn powerdown(&mut self) -> Result<(), Error> {
+        ops::initiator::powerdown(self.device)
+    }
+}
+
+pub struct InitiatorIoOps<'a> {
+    device: &'a mut dyn DeviceHandle,
+}
+
+impl<'a> InitiatorIoOps<'a> {
     pub fn transceive_bytes(
         &mut self,
         tx: &[u8],
@@ -525,25 +612,13 @@ impl<'a> InitiatorDevice<'a> {
             rx_parity,
         )
     }
-
-    pub fn abort_command(&mut self) -> Result<(), Error> {
-        ops::initiator::abort_command(self.device)
-    }
-
-    pub fn idle(&mut self) -> Result<(), Error> {
-        ops::initiator::idle(self.device)
-    }
-
-    pub fn powerdown(&mut self) -> Result<(), Error> {
-        ops::initiator::powerdown(self.device)
-    }
 }
 
-pub struct TargetDevice<'a> {
-    device: &'a mut dyn TargetHandle,
+pub struct TargetIoOps<'a> {
+    device: &'a mut dyn DeviceHandle,
 }
 
-impl<'a> TargetDevice<'a> {
+impl<'a> TargetIoOps<'a> {
     pub fn init(
         &mut self,
         target: &mut Target,
@@ -579,11 +654,11 @@ impl<'a> TargetDevice<'a> {
     }
 }
 
-pub struct Pn53xDevice<'a> {
-    device: &'a mut dyn Pn53xHandle,
+pub struct Pn53xOps<'a> {
+    device: &'a mut dyn DeviceHandle,
 }
 
-impl<'a> Pn53xDevice<'a> {
+impl<'a> Pn53xOps<'a> {
     pub fn transceive(&mut self, tx: &[u8], rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
         ops::pn53x::transceive(self.device, tx, rx, timeout)
     }

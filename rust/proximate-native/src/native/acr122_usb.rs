@@ -42,7 +42,7 @@ impl Driver for Acr122UsbDriver {
         ScanType::NotIntrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<ConnectionString>, Error> {
+    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
         let devices = list_devices().map_err(usb_open_error)?;
 
         let mut found = Vec::new();
@@ -50,11 +50,11 @@ impl Driver for Acr122UsbDriver {
             if !acr122::is_usb_device(info.vendor_id, info.product_id) {
                 continue;
             }
-            found.push(build_usb_connstring_for(
-                DRIVER_NAME,
-                info.bus_number,
-                info.device_address,
-            )?);
+            found.push(self.describe_discovered(
+                usb_display_name(&info),
+                build_usb_connstring_for(DRIVER_NAME, info.bus_number, info.device_address)?,
+                Some(super::pn53x::scan_caps(Pn53xProfile::acr122_usb())),
+            ));
         }
 
         Ok(found)

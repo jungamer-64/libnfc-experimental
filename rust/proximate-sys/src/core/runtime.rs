@@ -55,7 +55,7 @@ unsafe fn nfc_list_devices_impl(
         log_general_info("Warning: user must specify device(s) manually when autoscan is disabled");
     }
 
-    output.write_back(outcome.devices)
+    output.write_back(outcome.devices.into_iter().map(|device| device.connstring))
 }
 
 fn ffi_catch_unwind_size_t<F>(context: &str, operation: F) -> size_t

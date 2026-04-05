@@ -360,7 +360,7 @@ fn borrowed_rust_device_normalizes_missing_caps_and_clears_last_error_on_success
     let raw = make_rust_shim_device(FakeRustHandle {
         name: "rust-shim".into(),
         connstring: rt::ConnectionString::new("alpha:001").unwrap(),
-        caps: rt::DeviceCaps::SET_PROPERTY_BOOL,
+        caps: rt::DeviceCaps::INFO | rt::DeviceCaps::SET_PROPERTY_BOOL,
         property_calls: property_calls.clone(),
         info_result: Err(rt::Error::UnsupportedOperation(
             "device_get_information_about",
@@ -368,7 +368,7 @@ fn borrowed_rust_device_normalizes_missing_caps_and_clears_last_error_on_success
     });
 
     let mut device = borrowed_device(raw);
-    let error = device.information_about().unwrap_err();
+    let error = device.info_ops().unwrap().information_about().unwrap_err();
     assert_eq!(
         error,
         rt::Error::MissingCapability("device_get_information_about")
@@ -376,6 +376,8 @@ fn borrowed_rust_device_normalizes_missing_caps_and_clears_last_error_on_success
     assert_eq!(device.last_error(), NFC_EDEVNOTSUPP);
 
     device
+        .property_ops()
+        .unwrap()
         .set_property_bool(rt::Property::ActivateField, true)
         .unwrap();
     assert_eq!(device.last_error(), 0);

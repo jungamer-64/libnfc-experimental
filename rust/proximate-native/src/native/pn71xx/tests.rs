@@ -43,8 +43,8 @@ impl TestDeviceOps for proximate_driver::Device {
         modulation: Modulation,
         init_data: Option<&[u8]>,
     ) -> Result<Option<Target>, Error> {
-        let mut initiator = self.initiator()?;
-        initiator.select_passive_target(modulation, init_data)
+        let mut passive_scan = self.passive_scan_ops()?;
+        passive_scan.select_passive_target(modulation, init_data)
     }
 
     fn poll_target(
@@ -53,18 +53,18 @@ impl TestDeviceOps for proximate_driver::Device {
         poll_nr: u8,
         period: u8,
     ) -> Result<Option<Target>, Error> {
-        let mut initiator = self.initiator()?;
-        initiator.poll_target(modulations, poll_nr, period)
+        let mut passive_scan = self.passive_scan_ops()?;
+        passive_scan.poll_target(modulations, poll_nr, period)
     }
 
     fn transceive_bytes(&mut self, tx: &[u8], rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
-        let mut initiator = self.initiator()?;
-        initiator.transceive_bytes(tx, rx, timeout)
+        let mut initiator_io = self.initiator_io_ops()?;
+        initiator_io.transceive_bytes(tx, rx, timeout)
     }
 
     fn target_is_present(&mut self, target: Option<&Target>) -> Result<bool, Error> {
-        let mut initiator = self.initiator()?;
-        initiator.target_is_present(target)
+        let mut session = self.session_ops()?;
+        session.target_is_present(target)
     }
 }
 
@@ -98,7 +98,13 @@ fn scan_reports_success_and_failure() {
 
     let driver = Pn71xxDriver::new();
     let found = driver.scan(&Context::new()).unwrap();
-    assert_eq!(found, vec![ConnectionString::new("pn71xx").unwrap()]);
+    assert_eq!(
+        found
+            .into_iter()
+            .map(|device| device.connstring)
+            .collect::<Vec<_>>(),
+        vec![ConnectionString::new("pn71xx").unwrap()]
+    );
     let snapshot = backend_state_snapshot();
     assert_eq!(snapshot.initialize_calls, 1);
     assert_eq!(snapshot.deinitialize_calls, 1);
@@ -378,7 +384,7 @@ fn device_get_information_about_returns_expected_string() {
     let connstring = ConnectionString::new("pn71xx").unwrap();
     let mut device = open_device(&connstring);
     assert_eq!(
-        device.information_about().unwrap(),
+        device.info_ops().unwrap().information_about().unwrap(),
         "PN71XX nfc driver using libnfc-nci userspace library"
     );
 }

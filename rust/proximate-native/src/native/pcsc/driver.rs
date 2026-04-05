@@ -34,8 +34,20 @@ impl Driver for PcscDriver {
         ScanType::NotIntrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<ConnectionString>, Error> {
-        scan_matching_readers(self.backend.as_ref(), self.driver_name, self.filter)
+    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
+        Ok(
+            scan_matching_readers(self.backend.as_ref(), self.driver_name, self.filter)?
+                .into_iter()
+                .map(|connstring| {
+                    let display_name = connstring.as_str().to_string();
+                    self.describe_discovered(
+                        display_name,
+                        connstring,
+                        Some(PcscDevice::scan_caps()),
+                    )
+                })
+                .collect(),
+        )
     }
 
     fn open(

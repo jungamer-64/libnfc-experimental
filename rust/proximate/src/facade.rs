@@ -128,10 +128,13 @@ impl From<rt::ContextConfig> for Config {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DeviceInfo {
+pub struct DeviceDescriptor {
     pub display_name: String,
     pub selector: Selector,
-    pub caps_hint: Option<rt::DeviceCaps>,
+    pub caps: Option<rt::DeviceCaps>,
+    pub scan_type: rt::ScanType,
+    pub exclusive: bool,
+    pub origin: rt::DeviceOrigin,
 }
 
 pub struct ContextBuilder {
@@ -223,22 +226,17 @@ impl Context {
         Config(self.runtime.config.clone())
     }
 
-    pub fn scan(&self) -> Result<Vec<DeviceInfo>, rt::Error> {
+    pub fn scan(&self) -> Result<Vec<DeviceDescriptor>, rt::Error> {
         let devices = self.registry.list_devices(&self.runtime)?;
         Ok(devices
             .into_iter()
-            .map(|selector| {
-                let display_name = configured_name(
-                    self.runtime.config.user_defined_devices.as_slice(),
-                    &selector,
-                )
-                .map(str::to_owned)
-                .unwrap_or_else(|| selector.as_str().to_owned());
-                DeviceInfo {
-                    display_name,
-                    selector: selector.into(),
-                    caps_hint: None,
-                }
+            .map(|descriptor| DeviceDescriptor {
+                display_name: descriptor.display_name,
+                selector: descriptor.connstring.into(),
+                caps: descriptor.caps,
+                scan_type: descriptor.scan_type,
+                exclusive: descriptor.exclusive,
+                origin: descriptor.origin,
             })
             .collect())
     }
@@ -257,16 +255,6 @@ impl Default for Context {
     fn default() -> Self {
         Self::builder().build()
     }
-}
-
-fn configured_name<'a>(
-    devices: &'a [rt::UserDefinedDevice],
-    selector: &rt::ConnectionString,
-) -> Option<&'a str> {
-    devices
-        .iter()
-        .find(|device| device.connstring == *selector)
-        .map(|device| device.name.as_str())
 }
 
 #[cfg(test)]
@@ -359,8 +347,12 @@ mod tests {
             rt::ScanType::NotIntrusive
         }
 
-        fn scan(&self, _context: &rt::Context) -> Result<Vec<rt::ConnectionString>, rt::Error> {
-            Ok(vec![rt::ConnectionString::new("fake:001").unwrap()])
+        fn scan(&self, _context: &rt::Context) -> Result<Vec<rt::DiscoveredDevice>, rt::Error> {
+            Ok(vec![self.describe_discovered(
+                "fake descriptor".to_string(),
+                rt::ConnectionString::new("fake:001").unwrap(),
+                Some(self.caps),
+            )])
         }
 
         fn open(
@@ -463,11 +455,14 @@ mod tests {
         assert_eq!(scanned.len(), 1);
         assert_eq!(scanned[0].display_name, "named");
         assert_eq!(scanned[0].selector.as_str(), "fake:001");
-        assert_eq!(scanned[0].caps_hint, None);
+        assert_eq!(scanned[0].caps, None);
+        assert_eq!(scanned[0].scan_type, rt::ScanType::NotAvailable);
+        assert!(!scanned[0].exclusive);
+        assert_eq!(scanned[0].origin, rt::DeviceOrigin::UserDefined);
     }
 
     #[test]
-    fn device_views_fail_when_capability_is_missing() {
+    fn device_accessors_fail_when_capability_is_missing() {
         let context = Context::builder()
             .without_builtin_drivers()
             .register_driver(FakeDriver {
@@ -478,15 +473,15 @@ mod tests {
         let mut device: rt::Device = context.open(&selector).unwrap();
 
         assert!(matches!(
-            device.initiator(),
+            device.info_ops(),
             Err(rt::Error::MissingCapability(_))
         ));
         assert!(matches!(
-            device.target(),
+            device.session_ops(),
             Err(rt::Error::MissingCapability(_))
         ));
         assert!(matches!(
-            device.pn53x(),
+            device.pn53x_ops(),
             Err(rt::Error::MissingCapability(_))
         ));
     }

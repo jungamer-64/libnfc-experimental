@@ -47,7 +47,7 @@ impl Driver for Acr122sDriver {
         ScanType::Intrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<ConnectionString>, Error> {
+    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
         let mut devices = Vec::new();
 
         for path in list_candidate_paths() {
@@ -67,7 +67,11 @@ impl Driver for Acr122sDriver {
                     continue;
                 };
                 if acr122::is_acr122s_firmware(&firmware) {
-                    devices.push(connstring);
+                    devices.push(self.describe_discovered(
+                        firmware,
+                        connstring,
+                        Some(super::pn53x::scan_caps(Pn53xProfile::acr122s())),
+                    ));
                 }
             }
 

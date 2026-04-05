@@ -111,6 +111,40 @@ const PN53X_EXTENDED_FRAME_DATA_MAX_LEN: usize = 264;
 const PN53X_EXTENDED_FRAME_OVERHEAD: usize = 11;
 const PN532_BUFFER_LEN: usize = PN53X_EXTENDED_FRAME_DATA_MAX_LEN + PN53X_EXTENDED_FRAME_OVERHEAD;
 
+pub(crate) fn scan_caps(profile: Pn53xProfile) -> DeviceCaps {
+    let mut caps = DeviceCaps::INFO
+        | DeviceCaps::SET_PROPERTY_BOOL
+        | DeviceCaps::SET_PROPERTY_INT
+        | DeviceCaps::SUPPORTED_MODULATIONS
+        | DeviceCaps::SUPPORTED_BAUD_RATES
+        | DeviceCaps::INITIATOR_INIT
+        | DeviceCaps::SELECT_PASSIVE_TARGET
+        | DeviceCaps::POLL_TARGET
+        | DeviceCaps::SELECT_DEP_TARGET
+        | DeviceCaps::DESELECT_TARGET
+        | DeviceCaps::TARGET_IS_PRESENT
+        | DeviceCaps::TARGET_INIT
+        | DeviceCaps::TRANSCEIVE_BYTES
+        | DeviceCaps::TRANSCEIVE_BITS
+        | DeviceCaps::TRANSCEIVE_BYTES_TIMED
+        | DeviceCaps::TRANSCEIVE_BITS_TIMED
+        | DeviceCaps::TARGET_SEND_BYTES
+        | DeviceCaps::TARGET_RECEIVE_BYTES
+        | DeviceCaps::TARGET_SEND_BITS
+        | DeviceCaps::TARGET_RECEIVE_BITS
+        | DeviceCaps::ABORT_COMMAND
+        | DeviceCaps::IDLE
+        | DeviceCaps::POWERDOWN
+        | DeviceCaps::PN53X_TRANSCEIVE
+        | DeviceCaps::PN53X_READ_REGISTER
+        | DeviceCaps::PN53X_WRITE_REGISTER
+        | DeviceCaps::PN532_SAM_CONFIGURATION;
+    if profile.secure_element_mode.is_some() {
+        caps |= DeviceCaps::INITIATOR_INIT_SECURE_ELEMENT;
+    }
+    caps
+}
+
 use self::core::Pn53xCore;
 use self::crc_bits::{
     bits_to_bytes_len, even_parity_bit, pn53x_unwrap_frame, pn53x_wrap_frame, raw_frame_bits_len,

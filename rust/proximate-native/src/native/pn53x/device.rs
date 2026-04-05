@@ -549,37 +549,7 @@ impl<T: Pn53xTransport + Send + 'static> DeviceMeta for Pn53xDevice<T> {
     }
 
     fn caps(&self) -> DeviceCaps {
-        let mut caps = DeviceCaps::INFO
-            | DeviceCaps::SET_PROPERTY_BOOL
-            | DeviceCaps::SET_PROPERTY_INT
-            | DeviceCaps::SUPPORTED_MODULATIONS
-            | DeviceCaps::SUPPORTED_BAUD_RATES
-            | DeviceCaps::INITIATOR_INIT
-            | DeviceCaps::SELECT_PASSIVE_TARGET
-            | DeviceCaps::POLL_TARGET
-            | DeviceCaps::SELECT_DEP_TARGET
-            | DeviceCaps::DESELECT_TARGET
-            | DeviceCaps::TARGET_IS_PRESENT
-            | DeviceCaps::TARGET_INIT
-            | DeviceCaps::TRANSCEIVE_BYTES
-            | DeviceCaps::TRANSCEIVE_BITS
-            | DeviceCaps::TRANSCEIVE_BYTES_TIMED
-            | DeviceCaps::TRANSCEIVE_BITS_TIMED
-            | DeviceCaps::TARGET_SEND_BYTES
-            | DeviceCaps::TARGET_RECEIVE_BYTES
-            | DeviceCaps::TARGET_SEND_BITS
-            | DeviceCaps::TARGET_RECEIVE_BITS
-            | DeviceCaps::ABORT_COMMAND
-            | DeviceCaps::IDLE
-            | DeviceCaps::POWERDOWN
-            | DeviceCaps::PN53X_TRANSCEIVE
-            | DeviceCaps::PN53X_READ_REGISTER
-            | DeviceCaps::PN53X_WRITE_REGISTER
-            | DeviceCaps::PN532_SAM_CONFIGURATION;
-        if self.profile.secure_element_mode.is_some() {
-            caps |= DeviceCaps::INITIATOR_INIT_SECURE_ELEMENT;
-        }
-        caps
+        scan_caps(self.profile)
     }
 
     fn last_error(&self) -> i32 {

@@ -188,8 +188,15 @@ impl Driver for FakeDriver {
         self.scan_type
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<ConnectionString>, Error> {
-        Ok(self.scan_results.clone())
+    fn scan(&self, _context: &Context) -> Result<Vec<DiscoveredDevice>, Error> {
+        Ok(self
+            .scan_results
+            .iter()
+            .cloned()
+            .map(|connstring| {
+                self.describe_discovered(connstring.as_str().to_string(), connstring, None)
+            })
+            .collect())
     }
 
     fn open(
@@ -574,7 +581,13 @@ fn driver_registry_honors_intrusive_scan_and_usb_fallback() {
     });
 
     let listed = registry.list_devices(&context).unwrap();
-    assert_eq!(listed, vec![ConnectionString::new("usb:002").unwrap()]);
+    assert_eq!(
+        listed
+            .into_iter()
+            .map(|device| device.connstring)
+            .collect::<Vec<_>>(),
+        vec![ConnectionString::new("usb:002").unwrap()]
+    );
 
     let opened = registry
         .open(&context, Some(&ConnectionString::new("usb").unwrap()))
@@ -859,9 +872,16 @@ fn open_without_connstring_uses_first_listed_device() {
             ScanType::NotIntrusive
         }
 
-        fn scan(&self, _context: &Context) -> Result<Vec<ConnectionString>, Error> {
+        fn scan(&self, _context: &Context) -> Result<Vec<DiscoveredDevice>, Error> {
             self.scan_calls.fetch_add(1, Ordering::SeqCst);
-            Ok(self.scan_results.clone())
+            Ok(self
+                .scan_results
+                .iter()
+                .cloned()
+                .map(|connstring| {
+                    self.describe_discovered(connstring.as_str().to_string(), connstring, None)
+                })
+                .collect())
         }
 
         fn open(
@@ -936,7 +956,12 @@ fn list_devices_outcome_uses_effective_driver_priority_order() {
     });
 
     assert_eq!(
-        registry.list_devices(&context).unwrap(),
+        registry
+            .list_devices(&context)
+            .unwrap()
+            .into_iter()
+            .map(|device| device.connstring)
+            .collect::<Vec<_>>(),
         vec![
             ConnectionString::new("beta:001").unwrap(),
             ConnectionString::new("beta:002").unwrap(),
