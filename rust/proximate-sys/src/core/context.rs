@@ -1,6 +1,6 @@
 use super::log_general_error;
 use crate::MALLOC_LABEL;
-use crate::bridge::external_registry::clear_registry;
+use crate::c_boundary::external_registry::clear_registry;
 use crate::ffi_catch_unwind_void;
 use crate::lifecycle::{nfc_context, nfc_context_free, nfc_context_new};
 

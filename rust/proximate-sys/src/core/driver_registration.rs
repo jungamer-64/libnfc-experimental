@@ -1,17 +1,17 @@
 use super::log_general_debug;
-use crate::bridge::external_registry::push_driver as bridge_push_driver;
-use crate::bridge::status::NFC_ESOFT;
+use crate::c_boundary::external_registry::push_driver as bridge_push_driver;
+use crate::c_boundary::raw::optional_ref;
+use crate::c_boundary::status::NFC_ESOFT;
 use crate::ffi_catch_unwind_int;
-use crate::ffi_support::as_ref;
 use crate::lifecycle::{nfc_device, nfc_driver};
 use libc::c_int;
 
 #[cfg(test)]
 use super::log_general_error;
 #[cfg(test)]
-use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
+use crate::c_boundary::NFC_BUFSIZE_CONNSTRING;
 #[cfg(test)]
-use crate::ffi_support::{bounded_strlen, copy_bytes_to_c_buffer, copy_c_string_to_c_buffer};
+use crate::c_boundary::raw::{bounded_strlen, copy_bytes_to_c_buffer, copy_c_string_to_c_buffer};
 #[cfg(test)]
 use crate::lifecycle::nfc_connstring;
 #[cfg(test)]
@@ -63,7 +63,8 @@ pub(super) unsafe fn copy_connstring_safely(
         return false;
     }
 
-    let Some(destination): Option<&nfc_connstring> = (unsafe { as_ref(destination.cast_const()) })
+    let Some(destination): Option<&nfc_connstring> =
+        (unsafe { optional_ref(destination.cast_const()) })
     else {
         return false;
     };
@@ -90,11 +91,11 @@ unsafe extern "C" {
 
 #[cfg(any(test, not(libnfc_external_bridges)))]
 pub(super) unsafe fn invoke_driver_close(device: *mut nfc_device) {
-    let Some(device_ref) = (unsafe { as_ref(device) }) else {
+    let Some(device_ref) = (unsafe { optional_ref(device) }) else {
         return;
     };
 
-    let Some(driver_ref) = (unsafe { as_ref(device_ref.driver) }) else {
+    let Some(driver_ref) = (unsafe { optional_ref(device_ref.driver) }) else {
         return;
     };
 

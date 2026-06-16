@@ -4,7 +4,7 @@
 //
 // Ported from libnfc/nfc.c.
 
-use crate::c_api_impl::{LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR};
+use crate::c_boundary::{LOG_GROUP_GENERAL, LOG_PRIORITY_DEBUG, LOG_PRIORITY_ERROR};
 use crate::emit_log_message;
 use libc::c_char;
 use std::ffi::CString;

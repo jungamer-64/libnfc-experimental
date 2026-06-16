@@ -1,12 +1,12 @@
-use crate::bridge::driver_shim::rust_device_state_mut;
-use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
-use crate::ffi_support::{as_mut, copy_bytes_to_c_buffer};
-use crate::ffi_types::{
+use crate::c_abi::types::{
     nfc_barcode_info, nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_felica_info,
     nfc_iso14443a_info, nfc_iso14443b_info, nfc_iso14443b2ct_info, nfc_iso14443b2sr_info,
     nfc_iso14443bi_info, nfc_iso14443biclass_info, nfc_jewel_info, nfc_mode, nfc_modulation,
     nfc_modulation_type, nfc_property, nfc_target, nfc_target_info,
 };
+use crate::c_boundary::NFC_BUFSIZE_CONNSTRING;
+use crate::c_boundary::raw::{copy_bytes_to_c_buffer, optional_mut};
+use crate::domain_bridge::c_driver::rust_device_state_mut;
 use crate::lifecycle::{
     DEVICE_NAME_LENGTH, MAX_USER_DEFINED_DEVICES, nfc_connstring, nfc_context, nfc_device,
     nfc_user_defined_device,
@@ -16,7 +16,7 @@ use proximate_driver as rt;
 use std::{ffi::CString, ptr};
 
 pub(crate) fn write_context_to_c(context: &rt::Context, destination: *mut nfc_context) {
-    let Some(destination) = (unsafe { as_mut(destination) }) else {
+    let Some(destination) = (unsafe { optional_mut(destination) }) else {
         return;
     };
 
@@ -57,7 +57,7 @@ pub(crate) fn write_context_to_c(context: &rt::Context, destination: *mut nfc_co
 }
 
 pub(crate) fn write_target_to_c(target: &rt::Target, destination: *mut nfc_target) {
-    let Some(destination) = (unsafe { as_mut(destination) }) else {
+    let Some(destination) = (unsafe { optional_mut(destination) }) else {
         return;
     };
 
@@ -282,7 +282,7 @@ impl TargetSliceOut {
             return Ok(Self { raw, len: 0 });
         }
         if raw.is_null() {
-            return Err(super::status::invalid_argument_status(device));
+            return Err(crate::c_boundary::status::invalid_argument_status(device));
         }
         Ok(Self { raw, len })
     }
@@ -305,11 +305,11 @@ impl TargetInOut {
         raw: *mut nfc_target,
     ) -> Result<Self, c_int> {
         if raw.is_null() {
-            return Err(super::status::invalid_argument_status(device));
+            return Err(crate::c_boundary::status::invalid_argument_status(device));
         }
         Ok(Self {
             raw,
-            value: super::decode::target_from_c(raw.cast_const()),
+            value: crate::domain_bridge::decode::target_from_c(raw.cast_const()),
         })
     }
 
@@ -332,7 +332,7 @@ impl CyclesOut {
     }
 
     pub(crate) fn write_back(&self, cycles: u32) {
-        if let Some(raw) = unsafe { as_mut(self.raw) } {
+        if let Some(raw) = unsafe { optional_mut(self.raw) } {
             *raw = cycles;
         }
     }
@@ -348,7 +348,7 @@ impl CStringOut {
         raw: *mut *mut c_char,
     ) -> Result<Self, c_int> {
         if raw.is_null() {
-            return Err(super::status::invalid_argument_status(device));
+            return Err(crate::c_boundary::status::invalid_argument_status(device));
         }
         Ok(Self { raw })
     }
@@ -356,23 +356,23 @@ impl CStringOut {
     pub(crate) fn write_back(&self, device: *mut nfc_device, value: &str) -> c_int {
         let rendered = match CString::new(value) {
             Ok(value) => value,
-            Err(_) => return super::status::soft_error_status(device),
+            Err(_) => return crate::c_boundary::status::soft_error_status(device),
         };
         let allocation_len = rendered.as_bytes().len() + 1;
         let allocation = unsafe { libc::malloc(allocation_len) as *mut c_char };
         if allocation.is_null() {
-            return super::status::soft_error_status(device);
+            return crate::c_boundary::status::soft_error_status(device);
         }
 
         if !unsafe { copy_bytes_to_c_buffer(allocation, allocation_len, rendered.as_bytes()) } {
             unsafe { libc::free(allocation.cast()) };
-            return super::status::soft_error_status(device);
+            return crate::c_boundary::status::soft_error_status(device);
         }
 
         unsafe {
             *self.raw = allocation;
         }
-        super::status::reset_device_last_error(device);
+        crate::c_boundary::status::reset_device_last_error(device);
         rendered.as_bytes().len() as c_int
     }
 }
@@ -388,14 +388,14 @@ impl SupportedModulationsOut {
         raw: *mut *const nfc_modulation_type,
     ) -> Result<Self, c_int> {
         if raw.is_null() || unsafe { rust_device_state_mut(device) }.is_none() {
-            return Err(super::status::invalid_argument_status(device));
+            return Err(crate::c_boundary::status::invalid_argument_status(device));
         }
         Ok(Self { device, raw })
     }
 
     pub(crate) fn write_back(&self, values: Vec<rt::ModulationType>) -> c_int {
         let Some(state) = (unsafe { rust_device_state_mut(self.device) }) else {
-            return super::status::invalid_argument_status(self.device);
+            return crate::c_boundary::status::invalid_argument_status(self.device);
         };
         state.supported_modulations.clear();
         state
@@ -407,7 +407,7 @@ impl SupportedModulationsOut {
         unsafe {
             *self.raw = state.supported_modulations.as_ptr();
         }
-        super::status::reset_device_last_error(self.device);
+        crate::c_boundary::status::reset_device_last_error(self.device);
         0
     }
 }
@@ -423,14 +423,14 @@ impl SupportedBaudRatesOut {
         raw: *mut *const nfc_baud_rate,
     ) -> Result<Self, c_int> {
         if raw.is_null() || unsafe { rust_device_state_mut(device) }.is_none() {
-            return Err(super::status::invalid_argument_status(device));
+            return Err(crate::c_boundary::status::invalid_argument_status(device));
         }
         Ok(Self { device, raw })
     }
 
     pub(crate) fn write_back(&self, values: Vec<rt::BaudRate>) -> c_int {
         let Some(state) = (unsafe { rust_device_state_mut(self.device) }) else {
-            return super::status::invalid_argument_status(self.device);
+            return crate::c_boundary::status::invalid_argument_status(self.device);
         };
         state.supported_baud_rates.clear();
         state
@@ -442,7 +442,7 @@ impl SupportedBaudRatesOut {
         unsafe {
             *self.raw = state.supported_baud_rates.as_ptr();
         }
-        super::status::reset_device_last_error(self.device);
+        crate::c_boundary::status::reset_device_last_error(self.device);
         0
     }
 }
@@ -484,8 +484,8 @@ impl ConnstringsOut {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bridge::decode;
-    use crate::ffi_support::fixed_c_buffer_to_string;
+    use crate::c_boundary::raw::fixed_c_buffer_to_string;
+    use crate::domain_bridge::decode;
     use std::ffi::CStr;
     use std::ptr;
 
@@ -511,6 +511,337 @@ mod tests {
         let out = unsafe { TargetOut::from_raw(&mut raw) };
         out.write_back(&target);
         assert_eq!(decode::target_from_c(ptr::addr_of!(raw)), target);
+    }
+
+    #[test]
+    fn scalar_c_mappings_round_trip_all_values() {
+        let modulation_types = [
+            (
+                rt::ModulationType::Undefined,
+                nfc_modulation_type::NMT_UNDEFINED,
+            ),
+            (
+                rt::ModulationType::Iso14443A,
+                nfc_modulation_type::NMT_ISO14443A,
+            ),
+            (rt::ModulationType::Jewel, nfc_modulation_type::NMT_JEWEL),
+            (
+                rt::ModulationType::Iso14443B,
+                nfc_modulation_type::NMT_ISO14443B,
+            ),
+            (
+                rt::ModulationType::Iso14443Bi,
+                nfc_modulation_type::NMT_ISO14443BI,
+            ),
+            (
+                rt::ModulationType::Iso14443B2Sr,
+                nfc_modulation_type::NMT_ISO14443B2SR,
+            ),
+            (
+                rt::ModulationType::Iso14443B2Ct,
+                nfc_modulation_type::NMT_ISO14443B2CT,
+            ),
+            (rt::ModulationType::Felica, nfc_modulation_type::NMT_FELICA),
+            (rt::ModulationType::Dep, nfc_modulation_type::NMT_DEP),
+            (
+                rt::ModulationType::Barcode,
+                nfc_modulation_type::NMT_BARCODE,
+            ),
+            (
+                rt::ModulationType::Iso14443BiClass,
+                nfc_modulation_type::NMT_ISO14443BICLASS,
+            ),
+        ];
+        for (runtime, raw) in modulation_types {
+            assert_eq!(modulation_type_to_c(runtime), raw);
+            assert_eq!(decode::modulation_type_from_c(raw), runtime);
+        }
+
+        let baud_rates = [
+            (rt::BaudRate::Undefined, nfc_baud_rate::NBR_UNDEFINED),
+            (rt::BaudRate::Br106, nfc_baud_rate::NBR_106),
+            (rt::BaudRate::Br212, nfc_baud_rate::NBR_212),
+            (rt::BaudRate::Br424, nfc_baud_rate::NBR_424),
+            (rt::BaudRate::Br847, nfc_baud_rate::NBR_847),
+        ];
+        for (runtime, raw) in baud_rates {
+            assert_eq!(baud_rate_to_c(runtime), raw);
+            assert_eq!(decode::baud_rate_from_c(raw), runtime);
+        }
+
+        let dep_modes = [
+            (rt::DepMode::Undefined, nfc_dep_mode::NDM_UNDEFINED),
+            (rt::DepMode::Passive, nfc_dep_mode::NDM_PASSIVE),
+            (rt::DepMode::Active, nfc_dep_mode::NDM_ACTIVE),
+        ];
+        for (runtime, raw) in dep_modes {
+            assert_eq!(dep_mode_to_c(runtime), raw);
+            assert_eq!(decode::dep_mode_from_c(raw), runtime);
+        }
+
+        let modes = [
+            (rt::Mode::Target, nfc_mode::N_TARGET),
+            (rt::Mode::Initiator, nfc_mode::N_INITIATOR),
+        ];
+        for (runtime, raw) in modes {
+            assert_eq!(mode_to_c(runtime), raw);
+        }
+
+        let properties = [
+            (
+                rt::Property::TimeoutCommand,
+                nfc_property::NP_TIMEOUT_COMMAND,
+            ),
+            (rt::Property::TimeoutAtr, nfc_property::NP_TIMEOUT_ATR),
+            (rt::Property::TimeoutCom, nfc_property::NP_TIMEOUT_COM),
+            (rt::Property::HandleCrc, nfc_property::NP_HANDLE_CRC),
+            (rt::Property::HandleParity, nfc_property::NP_HANDLE_PARITY),
+            (rt::Property::ActivateField, nfc_property::NP_ACTIVATE_FIELD),
+            (
+                rt::Property::ActivateCrypto1,
+                nfc_property::NP_ACTIVATE_CRYPTO1,
+            ),
+            (
+                rt::Property::InfiniteSelect,
+                nfc_property::NP_INFINITE_SELECT,
+            ),
+            (
+                rt::Property::AcceptInvalidFrames,
+                nfc_property::NP_ACCEPT_INVALID_FRAMES,
+            ),
+            (
+                rt::Property::AcceptMultipleFrames,
+                nfc_property::NP_ACCEPT_MULTIPLE_FRAMES,
+            ),
+            (
+                rt::Property::AutoIso14443_4,
+                nfc_property::NP_AUTO_ISO14443_4,
+            ),
+            (rt::Property::EasyFraming, nfc_property::NP_EASY_FRAMING),
+            (
+                rt::Property::ForceIso14443A,
+                nfc_property::NP_FORCE_ISO14443_A,
+            ),
+            (
+                rt::Property::ForceIso14443B,
+                nfc_property::NP_FORCE_ISO14443_B,
+            ),
+            (
+                rt::Property::ForceSpeed106,
+                nfc_property::NP_FORCE_SPEED_106,
+            ),
+        ];
+        for (runtime, raw) in properties {
+            assert_eq!(property_to_c(runtime), raw);
+            assert_eq!(decode::property_from_c(raw), runtime);
+        }
+    }
+
+    #[test]
+    fn target_info_union_variants_round_trip_and_truncate_variable_fields() {
+        let long_uid: Vec<u8> = (0..20).map(|value| value as u8).collect();
+        let long_ats: Vec<u8> = (0..300).map(|value| value as u8).collect();
+        let long_atr: Vec<u8> = (0..48).map(|value| value as u8).collect();
+        let long_general_bytes: Vec<u8> = (0..80).map(|value| value as u8).collect();
+        let long_barcode: Vec<u8> = (0..64).map(|value| value as u8).collect();
+
+        let cases = [
+            (
+                rt::Target {
+                    modulation: rt::Modulation {
+                        modulation_type: rt::ModulationType::Undefined,
+                        baud_rate: rt::BaudRate::Undefined,
+                    },
+                    info: rt::TargetInfo::None,
+                },
+                rt::TargetInfo::None,
+            ),
+            (
+                rt::Target {
+                    modulation: rt::Modulation {
+                        modulation_type: rt::ModulationType::Iso14443A,
+                        baud_rate: rt::BaudRate::Br106,
+                    },
+                    info: rt::TargetInfo::Iso14443A {
+                        atqa: [1, 2],
+                        sak: 3,
+                        uid: long_uid.clone(),
+                        ats: long_ats.clone(),
+                    },
+                },
+                rt::TargetInfo::Iso14443A {
+                    atqa: [1, 2],
+                    sak: 3,
+                    uid: long_uid[..10].to_vec(),
+                    ats: long_ats[..254].to_vec(),
+                },
+            ),
+            (
+                rt::Target {
+                    modulation: rt::Modulation {
+                        modulation_type: rt::ModulationType::Felica,
+                        baud_rate: rt::BaudRate::Br212,
+                    },
+                    info: rt::TargetInfo::Felica {
+                        len: 18,
+                        response_code: 1,
+                        id: [2; 8],
+                        pad: [3; 8],
+                        system_code: [4; 2],
+                    },
+                },
+                rt::TargetInfo::Felica {
+                    len: 18,
+                    response_code: 1,
+                    id: [2; 8],
+                    pad: [3; 8],
+                    system_code: [4; 2],
+                },
+            ),
+            (
+                rt::Target {
+                    modulation: rt::Modulation {
+                        modulation_type: rt::ModulationType::Iso14443B,
+                        baud_rate: rt::BaudRate::Br106,
+                    },
+                    info: rt::TargetInfo::Iso14443B {
+                        pupi: [1, 2, 3, 4],
+                        application_data: [5, 6, 7, 8],
+                        protocol_info: [9, 10, 11],
+                        card_identifier: 12,
+                    },
+                },
+                rt::TargetInfo::Iso14443B {
+                    pupi: [1, 2, 3, 4],
+                    application_data: [5, 6, 7, 8],
+                    protocol_info: [9, 10, 11],
+                    card_identifier: 12,
+                },
+            ),
+            (
+                rt::Target {
+                    modulation: rt::Modulation {
+                        modulation_type: rt::ModulationType::Iso14443Bi,
+                        baud_rate: rt::BaudRate::Br106,
+                    },
+                    info: rt::TargetInfo::Iso14443Bi {
+                        div: [1, 2, 3, 4],
+                        version_log: 5,
+                        config: 6,
+                        atr: long_atr.clone(),
+                    },
+                },
+                rt::TargetInfo::Iso14443Bi {
+                    div: [1, 2, 3, 4],
+                    version_log: 5,
+                    config: 6,
+                    atr: long_atr[..33].to_vec(),
+                },
+            ),
+            (
+                rt::Target {
+                    modulation: rt::Modulation {
+                        modulation_type: rt::ModulationType::Iso14443BiClass,
+                        baud_rate: rt::BaudRate::Br106,
+                    },
+                    info: rt::TargetInfo::Iso14443BiClass { uid: [7; 8] },
+                },
+                rt::TargetInfo::Iso14443BiClass { uid: [7; 8] },
+            ),
+            (
+                rt::Target {
+                    modulation: rt::Modulation {
+                        modulation_type: rt::ModulationType::Iso14443B2Sr,
+                        baud_rate: rt::BaudRate::Br106,
+                    },
+                    info: rt::TargetInfo::Iso14443B2Sr { uid: [8; 8] },
+                },
+                rt::TargetInfo::Iso14443B2Sr { uid: [8; 8] },
+            ),
+            (
+                rt::Target {
+                    modulation: rt::Modulation {
+                        modulation_type: rt::ModulationType::Iso14443B2Ct,
+                        baud_rate: rt::BaudRate::Br106,
+                    },
+                    info: rt::TargetInfo::Iso14443B2Ct {
+                        uid: [9; 4],
+                        product_code: 10,
+                        fabrication_code: 11,
+                    },
+                },
+                rt::TargetInfo::Iso14443B2Ct {
+                    uid: [9; 4],
+                    product_code: 10,
+                    fabrication_code: 11,
+                },
+            ),
+            (
+                rt::Target {
+                    modulation: rt::Modulation {
+                        modulation_type: rt::ModulationType::Jewel,
+                        baud_rate: rt::BaudRate::Br106,
+                    },
+                    info: rt::TargetInfo::Jewel {
+                        sens_res: [12, 13],
+                        id: [14, 15, 16, 17],
+                    },
+                },
+                rt::TargetInfo::Jewel {
+                    sens_res: [12, 13],
+                    id: [14, 15, 16, 17],
+                },
+            ),
+            (
+                rt::Target {
+                    modulation: rt::Modulation {
+                        modulation_type: rt::ModulationType::Dep,
+                        baud_rate: rt::BaudRate::Br424,
+                    },
+                    info: rt::TargetInfo::Dep(rt::DepInfo {
+                        nfcid3: [18; 10],
+                        did: 19,
+                        bs: 20,
+                        br: 21,
+                        timeout: 22,
+                        pp: 23,
+                        general_bytes: long_general_bytes.clone(),
+                        mode: rt::DepMode::Active,
+                    }),
+                },
+                rt::TargetInfo::Dep(rt::DepInfo {
+                    nfcid3: [18; 10],
+                    did: 19,
+                    bs: 20,
+                    br: 21,
+                    timeout: 22,
+                    pp: 23,
+                    general_bytes: long_general_bytes[..48].to_vec(),
+                    mode: rt::DepMode::Active,
+                }),
+            ),
+            (
+                rt::Target {
+                    modulation: rt::Modulation {
+                        modulation_type: rt::ModulationType::Barcode,
+                        baud_rate: rt::BaudRate::Undefined,
+                    },
+                    info: rt::TargetInfo::Barcode {
+                        data: long_barcode.clone(),
+                    },
+                },
+                rt::TargetInfo::Barcode {
+                    data: long_barcode[..32].to_vec(),
+                },
+            ),
+        ];
+
+        for (target, expected_info) in cases {
+            let raw = target_to_c(&target);
+            let decoded = decode::target_from_c(ptr::addr_of!(raw));
+            assert_eq!(decoded.modulation, target.modulation);
+            assert_eq!(decoded.info, expected_info);
+        }
     }
 
     #[test]

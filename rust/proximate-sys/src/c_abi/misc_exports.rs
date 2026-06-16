@@ -5,16 +5,18 @@
 // Public C-ABI compatibility helpers that remain part of libnfc's
 // installed surface even after the core implementation moved to Rust.
 
-use crate::bridge::decode::{InputBytes, OutputBytes, baud_rate_from_c, modulation_type_from_c};
-use crate::bridge::driver_shim::{free_rust_device, is_rust_shim_device};
-use crate::bridge::encode::CStringOut;
-use crate::ffi_strings::{baud_rate_label_cstr, modulation_label_cstr, version_cstr};
-use crate::ffi_support::as_ref;
-use crate::ffi_types::{
+use crate::c_abi::types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_felica_info, nfc_iso14443a_info,
     nfc_iso14443b_info, nfc_iso14443b2ct_info, nfc_iso14443b2sr_info, nfc_iso14443bi_info,
     nfc_iso14443biclass_info, nfc_jewel_info, nfc_modulation_type, nfc_target,
 };
+use crate::c_boundary::raw::optional_ref;
+use crate::domain_bridge::c_driver::{free_rust_device, is_rust_shim_device};
+use crate::domain_bridge::decode::{
+    InputBytes, OutputBytes, baud_rate_from_c, modulation_type_from_c,
+};
+use crate::domain_bridge::encode::CStringOut;
+use crate::ffi_strings::{baud_rate_label_cstr, modulation_label_cstr, version_cstr};
 use crate::lifecycle::nfc_device;
 use crate::{
     ffi_catch_unwind_int, ffi_catch_unwind_ptr, ffi_catch_unwind_void, release_allocated_ptr,
@@ -22,7 +24,7 @@ use crate::{
 use libc::{c_char, c_int, c_void, size_t};
 
 #[cfg(test)]
-use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
+use crate::c_boundary::NFC_BUFSIZE_CONNSTRING;
 use std::fmt::{self, Write as _};
 use std::ptr;
 #[cfg(test)]
@@ -639,7 +641,7 @@ fn write_nfc_jewel_info(rendered: &mut String, info: nfc_jewel_info) {
     write_hex(rendered, &id);
 }
 
-fn write_nfc_barcode_info(rendered: &mut String, info: crate::ffi_types::nfc_barcode_info) {
+fn write_nfc_barcode_info(rendered: &mut String, info: crate::c_abi::types::nfc_barcode_info) {
     let data = read_unaligned_field!(info.abtData);
     let data_len = read_unaligned_field!(info.szDataLen).min(data.len());
     write_rendered(
@@ -898,10 +900,10 @@ pub unsafe fn nfc_close(device: *mut nfc_device) {
             return;
         }
 
-        let Some(device_ref) = as_ref(device) else {
+        let Some(device_ref) = optional_ref(device) else {
             return;
         };
-        let Some(driver_ref) = as_ref(device_ref.driver) else {
+        let Some(driver_ref) = optional_ref(device_ref.driver) else {
             return;
         };
         if let Some(close) = driver_ref.close {
@@ -1052,7 +1054,7 @@ pub unsafe fn iso14443a_locate_historical_bytes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ffi_types::{
+    use crate::c_abi::types::{
         nfc_dep_mode, nfc_felica_info, nfc_iso14443a_info, nfc_target, nfc_target_info,
     };
     use crate::lifecycle::nfc_driver;
@@ -1069,7 +1071,7 @@ mod tests {
 
     fn iso14443a_target() -> nfc_target {
         nfc_target {
-            nm: crate::ffi_types::nfc_modulation {
+            nm: crate::c_abi::types::nfc_modulation {
                 nmt: nfc_modulation_type::NMT_ISO14443A,
                 nbr: nfc_baud_rate::NBR_106,
             },
@@ -1182,12 +1184,12 @@ mod tests {
     #[test]
     fn target_renderer_includes_dep_mode_suffix() {
         let target = nfc_target {
-            nm: crate::ffi_types::nfc_modulation {
+            nm: crate::c_abi::types::nfc_modulation {
                 nmt: nfc_modulation_type::NMT_DEP,
                 nbr: nfc_baud_rate::NBR_106,
             },
             nti: nfc_target_info {
-                ndi: crate::ffi_types::nfc_dep_info {
+                ndi: crate::c_abi::types::nfc_dep_info {
                     abtNFCID3: [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a],
                     btDID: 0,
                     btBS: 0x11,
@@ -1212,7 +1214,7 @@ mod tests {
     #[test]
     fn target_renderer_formats_non_iso14443a_targets() {
         let target = nfc_target {
-            nm: crate::ffi_types::nfc_modulation {
+            nm: crate::c_abi::types::nfc_modulation {
                 nmt: nfc_modulation_type::NMT_FELICA,
                 nbr: nfc_baud_rate::NBR_212,
             },

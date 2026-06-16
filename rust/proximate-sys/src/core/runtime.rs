@@ -1,8 +1,8 @@
 use super::{log_general_debug, log_general_error, log_general_info};
-use crate::bridge::decode::{context_from_c, decode_connstring_ptr};
-use crate::bridge::driver_shim::attach_rust_device;
-use crate::bridge::encode::ConnstringsOut;
-use crate::bridge::external_registry::register_external_drivers;
+use crate::c_boundary::external_registry::register_external_drivers;
+use crate::domain_bridge::c_driver::attach_rust_device;
+use crate::domain_bridge::decode::{context_from_c, decode_connstring_ptr};
+use crate::domain_bridge::encode::ConnstringsOut;
 use crate::ffi_catch_unwind_ptr;
 use crate::lifecycle::{nfc_connstring, nfc_context, nfc_device};
 use libc::{c_char, size_t};
@@ -63,21 +63,12 @@ where
     F: FnOnce() -> size_t,
     F: std::panic::UnwindSafe,
 {
-    #[cfg(not(feature = "test_no_catch"))]
-    {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)) {
-            Ok(result) => result,
-            Err(_) => {
-                log_general_error(&format!("panic in {}", context));
-                0
-            }
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)) {
+        Ok(result) => result,
+        Err(_) => {
+            log_general_error(&format!("panic in {}", context));
+            0
         }
-    }
-
-    #[cfg(feature = "test_no_catch")]
-    {
-        let _ = context;
-        operation()
     }
 }
 

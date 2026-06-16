@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -14,6 +15,7 @@ main(void)
   nfc_target target;
   char *target_text = NULL;
   char *empty_target_text = NULL;
+  char strerror_buf[8];
   int target_text_len;
   const char *version;
   const char *baud_label;
@@ -57,6 +59,21 @@ main(void)
     return 4;
   }
 
+  if (sizeof(nfc_iso14443a_info) != 2 + 1 + sizeof(size_t) + 10 + sizeof(size_t) + 254 ||
+      offsetof(nfc_iso14443a_info, btSak) != 2 ||
+      offsetof(nfc_iso14443a_info, szUidLen) != 3 ||
+      offsetof(nfc_target_info, nai) != 0 ||
+      offsetof(nfc_target_info, ndi) != 0 ||
+      sizeof(nfc_target_info) < sizeof(nfc_iso14443a_info) ||
+      sizeof(nfc_target_info) < sizeof(nfc_dep_info) ||
+      offsetof(nfc_target, nm) != sizeof(nfc_target_info)) {
+    fprintf(stderr, "Public NFC target ABI layout does not match packed header contract\n");
+    if (context) {
+      nfc_exit(context);
+    }
+    return 5;
+  }
+
   memset(&target, 0, sizeof(target));
   target.nm.nmt = NMT_ISO14443A;
   target.nm.nbr = NBR_106;
@@ -72,7 +89,7 @@ main(void)
     if (context) {
       nfc_exit(context);
     }
-    return 5;
+    return 6;
   }
   if (strstr(target_text, "ISO/IEC 14443A") == NULL ||
       strstr(target_text, "106 kbps") == NULL) {
@@ -81,9 +98,17 @@ main(void)
     if (context) {
       nfc_exit(context);
     }
-    return 6;
+    return 7;
   }
   nfc_free(target_text);
+
+  if (str_nfc_target(NULL, &target, false) != NFC_EINVARG) {
+    fprintf(stderr, "str_nfc_target() accepted a NULL output pointer\n");
+    if (context) {
+      nfc_exit(context);
+    }
+    return 8;
+  }
 
   target_text_len = str_nfc_target(&empty_target_text, NULL, false);
   if (target_text_len != 0 || empty_target_text == NULL || empty_target_text[0] != '\0') {
@@ -92,9 +117,29 @@ main(void)
     if (context) {
       nfc_exit(context);
     }
-    return 7;
+    return 9;
   }
   nfc_free(empty_target_text);
+  nfc_free(NULL);
+
+  if (nfc_strerror_r(NULL, NULL, 1) != -1 ||
+      nfc_strerror_r(NULL, NULL, 0) != 0) {
+    fprintf(stderr, "nfc_strerror_r() did not enforce NULL buffer rules\n");
+    if (context) {
+      nfc_exit(context);
+    }
+    return 10;
+  }
+
+  memset(strerror_buf, 0xaa, sizeof(strerror_buf));
+  if (nfc_strerror_r(NULL, strerror_buf, sizeof(strerror_buf)) != 0 ||
+      strcmp(strerror_buf, "Success") != 0) {
+    fprintf(stderr, "nfc_strerror_r() did not write a NUL-terminated message\n");
+    if (context) {
+      nfc_exit(context);
+    }
+    return 11;
+  }
 
   memset(&target, 0, sizeof(target));
   target.nm.nmt = NMT_DEP;
@@ -118,7 +163,7 @@ main(void)
     if (context) {
       nfc_exit(context);
     }
-    return 8;
+    return 12;
   }
   if (strstr(target_text, "D.E.P. (106 kbpsactive mode) target:") == NULL ||
       strstr(target_text, "NFCID3: 01  02  03  04  05  06  07  08  09  0a") == NULL) {
@@ -127,7 +172,7 @@ main(void)
     if (context) {
       nfc_exit(context);
     }
-    return 9;
+    return 13;
   }
   nfc_free(target_text);
 

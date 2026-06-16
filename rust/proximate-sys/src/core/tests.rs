@@ -1,11 +1,10 @@
 use super::context::nfc_exit;
 use super::driver_registration::{bridge_close_device, nfc_register_driver};
 use super::runtime::{nfc_list_devices, nfc_open};
-use crate::bridge::external_registry::{clear_registry, registry_snapshot};
-use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
-use crate::c_api_impl::NFC_COMMON_SUCCESS as NFC_SUCCESS;
+use crate::c_boundary::NFC_BUFSIZE_CONNSTRING;
+use crate::c_boundary::external_registry::{clear_registry, registry_snapshot};
+use crate::c_boundary::raw::{c_string_ptr_to_string, fixed_c_buffer_to_string};
 use crate::core::LOG_PRIORITY_INFO;
-use crate::ffi_support::{c_string_ptr_to_string, fixed_c_buffer_to_string};
 use crate::lifecycle::{
     DEVICE_NAME_LENGTH, NFC_DRIVER_NAME_MAX, nfc_connstring, nfc_context,
     nfc_context_alloc_defaults, nfc_context_new, nfc_device, nfc_device_free, nfc_driver,
@@ -16,6 +15,8 @@ use libc::c_char;
 use std::ffi::CString;
 use std::ptr;
 use std::sync::{Mutex, MutexGuard, OnceLock};
+
+const NFC_SUCCESS: libc::c_int = 0;
 
 #[derive(Clone, Default)]
 struct FakeDriverState {

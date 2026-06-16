@@ -1,17 +1,17 @@
 use super::log_general_debug;
-use crate::bridge::decode::OutputBytes;
-use crate::bridge::decode::{
+use crate::c_abi::types::{
+    nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_modulation, nfc_property, nfc_target,
+};
+use crate::c_boundary::status::{NFC_ESOFT, invalid_argument_status, runtime_result_status};
+use crate::domain_bridge::c_driver::is_rust_shim_device;
+use crate::domain_bridge::decode::OutputBytes;
+use crate::domain_bridge::decode::{
     InputBytes, ParityMarker, ParityMarkerMut, baud_rate_from_c, decode_modulations,
     decode_optional_dep_info, decode_optional_target, dep_mode_from_c, modulation_from_c,
     property_from_c,
 };
-use crate::bridge::driver_shim::is_rust_shim_device;
-use crate::bridge::encode::{CyclesOut, TargetInOut, TargetOut, TargetSliceOut};
-use crate::bridge::status::{NFC_ESOFT, invalid_argument_status, runtime_result_status};
+use crate::domain_bridge::encode::{CyclesOut, TargetInOut, TargetOut, TargetSliceOut};
 use crate::ffi_catch_unwind_int;
-use crate::ffi_types::{
-    nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_modulation, nfc_property, nfc_target,
-};
 use crate::initiator::driver_dispatch::{
     call_abort_command_impl, call_idle_impl, call_initiator_poll_target_impl, dispatch_driver_call,
 };

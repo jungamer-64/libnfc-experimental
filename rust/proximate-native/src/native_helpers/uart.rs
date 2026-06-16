@@ -1,6 +1,7 @@
 use std::fs;
 #[cfg(target_os = "linux")]
 use std::os::fd::{BorrowedFd, FromRawFd, OwnedFd};
+#[cfg(target_os = "linux")]
 use std::time::Duration;
 
 #[cfg(target_os = "linux")]

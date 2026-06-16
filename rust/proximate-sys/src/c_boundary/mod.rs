@@ -19,19 +19,15 @@ use libc::{c_char, c_int, c_void};
 use std::cell::RefCell;
 use std::ffi::CString;
 use std::panic;
-#[cfg(not(feature = "test_no_catch"))]
 use std::ptr;
+
+pub(crate) mod external_registry;
+pub(crate) mod raw;
+pub(crate) mod status;
 
 thread_local! {
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
 }
-
-#[allow(dead_code)]
-pub const NFC_COMMON_SUCCESS: c_int = 0;
-#[allow(dead_code)]
-pub const NFC_COMMON_ERROR: c_int = -1;
-#[allow(dead_code)]
-pub const NFC_COMMON_INVALID: c_int = -(libc::EINVAL as c_int);
 
 pub(crate) const LOG_GROUP_GENERAL: u8 = 1;
 #[cfg(any(feature = "lifecycle", cbindgen))]
@@ -89,7 +85,6 @@ pub(crate) unsafe fn release_allocated_ptr(ptr: *mut c_void) {
     }
 }
 
-#[cfg(not(feature = "test_no_catch"))]
 fn record_panic(context: &str) {
     let message = format!("panic in {}", context);
     log_error(&message);
@@ -101,13 +96,6 @@ fn record_panic(context: &str) {
 /// unwinding across the FFI boundary. The function logs the panic and
 /// sets the thread-local last-error buffer so C callers can inspect it.
 ///
-/// For unit testing it's sometimes useful to observe panics directly.
-/// To support those cases we provide an opt-in feature
-/// `test_no_catch` which compiles a version that *does not* catch
-/// panics. This feature should only be enabled in test builds and is
-/// intentionally opt-in to avoid changing FFI behavior in normal
-/// builds.
-#[cfg(not(feature = "test_no_catch"))]
 pub(crate) fn ffi_catch_unwind_int<F>(context: &str, panic_code: c_int, operation: F) -> c_int
 where
     F: FnOnce() -> c_int,
@@ -122,20 +110,6 @@ where
     }
 }
 
-// Test-only variant that bypasses the panic-catching wrapper so tests
-// can observe panics directly. Enable by running `cargo test --features test_no_catch`.
-#[cfg(feature = "test_no_catch")]
-pub(crate) fn ffi_catch_unwind_int<F>(_context: &str, _panic_code: c_int, operation: F) -> c_int
-where
-    F: FnOnce() -> c_int,
-    F: panic::UnwindSafe,
-{
-    // Intentionally do not catch unwinds; let the panic propagate to
-    // the test harness so tests can assert #[should_panic] behavior.
-    operation()
-}
-
-#[cfg(not(feature = "test_no_catch"))]
 #[allow(dead_code)]
 pub(crate) fn ffi_catch_unwind_ptr<T, F>(context: &str, operation: F) -> *mut T
 where
@@ -151,17 +125,6 @@ where
     }
 }
 
-#[cfg(feature = "test_no_catch")]
-#[allow(dead_code)]
-pub(crate) fn ffi_catch_unwind_ptr<T, F>(_context: &str, operation: F) -> *mut T
-where
-    F: FnOnce() -> *mut T,
-    F: panic::UnwindSafe,
-{
-    operation()
-}
-
-#[cfg(not(feature = "test_no_catch"))]
 pub(crate) fn ffi_catch_unwind_void<F>(context: &str, operation: F)
 where
     F: FnOnce(),
@@ -170,15 +133,6 @@ where
     if panic::catch_unwind(panic::AssertUnwindSafe(operation)).is_err() {
         record_panic(context);
     }
-}
-
-#[cfg(feature = "test_no_catch")]
-pub(crate) fn ffi_catch_unwind_void<F>(_context: &str, operation: F)
-where
-    F: FnOnce(),
-    F: panic::UnwindSafe,
-{
-    operation()
 }
 
 #[cfg(test)]
@@ -197,6 +151,8 @@ pub(crate) fn nfc_clear_last_error() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const PANIC_ERROR_STATUS: c_int = -1;
     use std::ffi::{CStr, CString};
 
     #[test]
@@ -221,44 +177,34 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(feature = "test_no_catch", should_panic(expected = "boom"))]
     fn ffi_catch_unwind_maps_panic_to_error() {
         // Ensure the panic boundary converts a panic into the
         // appropriate external error code instead of letting the
         // panic unwind across the FFI boundary.
-        let _rc = ffi_catch_unwind_int("test_panic", NFC_COMMON_ERROR, || panic!("boom"));
-        #[cfg(not(feature = "test_no_catch"))]
-        assert_eq!(_rc, NFC_COMMON_ERROR);
+        let rc = ffi_catch_unwind_int("test_panic", PANIC_ERROR_STATUS, || panic!("boom"));
+        assert_eq!(rc, PANIC_ERROR_STATUS);
     }
 
     #[test]
-    #[cfg_attr(feature = "test_no_catch", should_panic(expected = "boom"))]
     fn ffi_catch_unwind_ptr_maps_panic_to_null() {
         reset_last_error();
-        let _ptr = ffi_catch_unwind_ptr::<c_char, _>("test_ptr_panic", || panic!("boom"));
-        #[cfg(not(feature = "test_no_catch"))]
-        {
-            assert!(_ptr.is_null());
+        let ptr = ffi_catch_unwind_ptr::<c_char, _>("test_ptr_panic", || panic!("boom"));
+        assert!(ptr.is_null());
 
-            let err = nfc_get_last_error();
-            assert!(!err.is_null());
-            let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
-            assert!(recovered.contains("panic in test_ptr_panic"));
-        }
+        let err = nfc_get_last_error();
+        assert!(!err.is_null());
+        let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
+        assert!(recovered.contains("panic in test_ptr_panic"));
     }
 
     #[test]
-    #[cfg_attr(feature = "test_no_catch", should_panic(expected = "boom"))]
     fn ffi_catch_unwind_void_maps_panic_to_last_error() {
         reset_last_error();
         ffi_catch_unwind_void("test_void_panic", || panic!("boom"));
 
-        #[cfg(not(feature = "test_no_catch"))]
-        {
-            let err = nfc_get_last_error();
-            assert!(!err.is_null());
-            let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
-            assert!(recovered.contains("panic in test_void_panic"));
-        }
+        let err = nfc_get_last_error();
+        assert!(!err.is_null());
+        let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
+        assert!(recovered.contains("panic in test_void_panic"));
     }
 }

@@ -1,7 +1,7 @@
 use super::external::ExternalDriver;
 use super::rust_owned::RustDeviceState;
 use super::*;
-use crate::ffi_types::nfc_mode;
+use crate::c_abi::types::nfc_mode;
 use crate::initiator::accessors::{
     nfc_device_get_information_about, nfc_device_get_supported_baud_rate,
     nfc_device_get_supported_baud_rate_target_mode, nfc_device_get_supported_modulation,

@@ -1,8 +1,12 @@
+#[cfg(target_os = "linux")]
 use std::ffi::c_void;
 use std::fs;
 
+#[cfg(target_os = "linux")]
 use rustix::fd::OwnedFd;
+#[cfg(target_os = "linux")]
 use rustix::fs::{Mode, OFlags, open};
+#[cfg(target_os = "linux")]
 use rustix::ioctl::{self, Direction, Ioctl, IoctlOutput, Opcode, Setter, opcode};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -15,7 +19,9 @@ pub enum SpiIoError {
     Io,
 }
 
+#[cfg(target_os = "linux")]
 const SPI_IOC_WR_MODE: Opcode = opcode::write::<u8>(b'k', 1);
+#[cfg(target_os = "linux")]
 const SPI_IOC_WR_MAX_SPEED_HZ: Opcode = opcode::write::<u32>(b'k', 4);
 
 pub fn list_ports() -> Vec<String> {
@@ -41,6 +47,7 @@ pub fn list_ports() -> Vec<String> {
     ports
 }
 
+#[cfg(target_os = "linux")]
 #[repr(C)]
 struct SpiTransfer {
     tx_buf: u64,
@@ -56,10 +63,12 @@ struct SpiTransfer {
     pad: u8,
 }
 
+#[cfg(target_os = "linux")]
 struct SpiMessage<'a> {
     transfers: &'a mut [SpiTransfer],
 }
 
+#[cfg(target_os = "linux")]
 unsafe impl Ioctl for SpiMessage<'_> {
     type Output = IoctlOutput;
     const IS_MUTATING: bool = true;
@@ -85,12 +94,14 @@ unsafe impl Ioctl for SpiMessage<'_> {
     }
 }
 
+#[cfg(target_os = "linux")]
 pub struct SpiHandle {
     fd: OwnedFd,
     speed: u32,
     mode: u32,
 }
 
+#[cfg(target_os = "linux")]
 impl SpiHandle {
     pub fn open(path: &str) -> Result<Self, SpiOpenError> {
         let fd = open(
@@ -205,11 +216,51 @@ impl SpiHandle {
     }
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn bit_reverse(byte: u8) -> u8 {
     let mut value = byte;
     value = ((value & 0xaa) >> 1) | ((value & 0x55) << 1);
     value = ((value & 0xcc) >> 2) | ((value & 0x33) << 2);
     ((value & 0xf0) >> 4) | ((value & 0x0f) << 4)
+}
+
+#[cfg(not(target_os = "linux"))]
+pub struct SpiHandle;
+
+#[cfg(not(target_os = "linux"))]
+impl SpiHandle {
+    pub fn open(_path: &str) -> Result<Self, SpiOpenError> {
+        Err(SpiOpenError::InvalidPort)
+    }
+
+    pub fn set_speed(&mut self, _speed: u32) -> Result<(), SpiIoError> {
+        Err(SpiIoError::Io)
+    }
+
+    pub fn get_speed(&self) -> u32 {
+        0
+    }
+
+    pub fn set_mode(&mut self, _mode: u32) -> Result<(), SpiIoError> {
+        Err(SpiIoError::Io)
+    }
+
+    pub fn send(&self, _tx: &[u8], _lsb_first: bool) -> Result<(), SpiIoError> {
+        Err(SpiIoError::Io)
+    }
+
+    pub fn receive(&self, _rx: &mut [u8], _lsb_first: bool) -> Result<(), SpiIoError> {
+        Err(SpiIoError::Io)
+    }
+
+    pub fn send_receive(
+        &self,
+        _tx: &[u8],
+        _rx: &mut [u8],
+        _lsb_first: bool,
+    ) -> Result<(), SpiIoError> {
+        Err(SpiIoError::Io)
+    }
 }
 
 #[cfg(test)]

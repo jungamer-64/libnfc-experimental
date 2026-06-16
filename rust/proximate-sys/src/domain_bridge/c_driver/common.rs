@@ -93,7 +93,7 @@ pub(super) fn device_caps_from_raw(driver: &nfc_driver) -> rt::DeviceCaps {
 }
 
 pub(super) fn sync_bool_property(device: *mut nfc_device, property: rt::Property, value: bool) {
-    let Some(device) = (unsafe { as_mut(device) }) else {
+    let Some(device) = (unsafe { optional_mut(device) }) else {
         return;
     };
 
@@ -126,7 +126,7 @@ pub(super) fn copy_device_identity(
     name: &str,
     connstring: &rt::ConnectionString,
 ) -> bool {
-    let Some(device) = (unsafe { as_mut(device) }) else {
+    let Some(device) = (unsafe { optional_mut(device) }) else {
         return false;
     };
 

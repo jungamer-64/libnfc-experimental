@@ -1,19 +1,19 @@
-use crate::bridge::status::invalid_argument_status;
-use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
-use crate::ffi_support::{
-    as_ref, bounded_strlen, c_string_ptr_to_string, fixed_c_buffer_to_string,
-};
-use crate::ffi_types::{
+use crate::c_abi::types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_modulation, nfc_modulation_type, nfc_property,
     nfc_target, nfc_target_info,
 };
+use crate::c_boundary::NFC_BUFSIZE_CONNSTRING;
+use crate::c_boundary::raw::{
+    bounded_strlen, c_string_ptr_to_string, fixed_c_buffer_to_string, optional_ref,
+};
+use crate::c_boundary::status::invalid_argument_status;
 use crate::lifecycle::{MAX_USER_DEFINED_DEVICES, nfc_context, runtime_context_from_c};
 use libc::{c_char, c_int, size_t};
 use proximate_driver as rt;
 use std::{ptr, slice};
 
 pub(crate) fn context_from_c(context: *const nfc_context) -> rt::Context {
-    let Some(context_ref) = (unsafe { as_ref(context) }) else {
+    let Some(context_ref) = (unsafe { optional_ref(context) }) else {
         return rt::Context::default();
     };
 
@@ -46,7 +46,7 @@ pub(crate) fn context_from_c(context: *const nfc_context) -> rt::Context {
 }
 
 pub(crate) fn target_from_c(target: *const nfc_target) -> rt::Target {
-    let Some(target_ref) = (unsafe { as_ref(target) }) else {
+    let Some(target_ref) = (unsafe { optional_ref(target) }) else {
         return rt::Target::new(rt::Modulation {
             modulation_type: rt::ModulationType::Undefined,
             baud_rate: rt::BaudRate::Undefined,
@@ -342,7 +342,7 @@ pub(crate) unsafe fn decode_optional_target(target: *const nfc_target) -> Option
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ffi_types::{nfc_baud_rate, nfc_dep_mode, nfc_modulation, nfc_modulation_type};
+    use crate::c_abi::types::{nfc_baud_rate, nfc_dep_mode, nfc_modulation, nfc_modulation_type};
     use crate::lifecycle::nfc_device;
     use std::ptr;
 
@@ -356,7 +356,7 @@ mod tests {
         let status = unsafe {
             OutputBytes::from_raw(std::ptr::null_mut(), std::ptr::null_mut(), 1).unwrap_err()
         };
-        assert_eq!(status, crate::bridge::status::NFC_EINVARG);
+        assert_eq!(status, crate::c_boundary::status::NFC_EINVARG);
     }
 
     #[test]
@@ -370,8 +370,8 @@ mod tests {
     fn input_bytes_rejects_null_nonzero_and_updates_last_error() {
         let mut device = unsafe { std::mem::zeroed::<nfc_device>() };
         let status = unsafe { InputBytes::from_raw(&mut device, ptr::null(), 1).unwrap_err() };
-        assert_eq!(status, crate::bridge::status::NFC_EINVARG);
-        assert_eq!(device.last_error, crate::bridge::status::NFC_EINVARG);
+        assert_eq!(status, crate::c_boundary::status::NFC_EINVARG);
+        assert_eq!(device.last_error, crate::c_boundary::status::NFC_EINVARG);
     }
 
     #[test]
@@ -396,8 +396,8 @@ mod tests {
     fn decode_modulations_requires_pointer_when_length_is_nonzero() {
         let mut device = unsafe { std::mem::zeroed::<nfc_device>() };
         let status = unsafe { decode_modulations(&mut device, ptr::null(), 1).unwrap_err() };
-        assert_eq!(status, crate::bridge::status::NFC_EINVARG);
-        assert_eq!(device.last_error, crate::bridge::status::NFC_EINVARG);
+        assert_eq!(status, crate::c_boundary::status::NFC_EINVARG);
+        assert_eq!(device.last_error, crate::c_boundary::status::NFC_EINVARG);
     }
 
     #[test]

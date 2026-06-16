@@ -7,13 +7,11 @@
 use libc::c_char;
 use std::{ptr, slice};
 
-#[allow(dead_code)]
-pub(crate) unsafe fn as_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
+pub(crate) unsafe fn optional_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
     unsafe { ptr.as_ref() }
 }
 
-#[allow(dead_code)]
-pub(crate) unsafe fn as_mut<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
+pub(crate) unsafe fn optional_mut<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
     unsafe { ptr.as_mut() }
 }
 
@@ -26,7 +24,6 @@ pub(crate) fn bounded_strlen(ptr: *const c_char, max: usize) -> usize {
     bytes.iter().position(|&byte| byte == 0).unwrap_or(max)
 }
 
-#[allow(dead_code)]
 pub(crate) fn c_string_ptr_to_string(ptr: *const c_char, max_len: usize) -> String {
     if ptr.is_null() {
         return String::new();
@@ -37,7 +34,6 @@ pub(crate) fn c_string_ptr_to_string(ptr: *const c_char, max_len: usize) -> Stri
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-#[allow(dead_code)]
 pub(crate) fn fixed_c_buffer_to_string(buffer: &[c_char]) -> String {
     let length = buffer
         .iter()
@@ -62,7 +58,6 @@ pub(crate) unsafe fn copy_bytes_to_c_buffer(dst: *mut c_char, dst_size: usize, s
     true
 }
 
-#[allow(dead_code)]
 pub(crate) unsafe fn copy_c_string_to_c_buffer(
     dst: *mut c_char,
     dst_size: usize,
@@ -85,19 +80,4 @@ pub(crate) unsafe fn copy_c_string_to_c_buffer(
     }
 
     true
-}
-
-#[allow(dead_code)]
-pub(crate) unsafe fn copy_bytes_with_truncation(dst: *mut c_char, dst_size: usize, src: &[u8]) {
-    if dst.is_null() || dst_size == 0 {
-        return;
-    }
-
-    let copy_len = src.len().min(dst_size - 1);
-    unsafe {
-        if copy_len > 0 {
-            ptr::copy_nonoverlapping(src.as_ptr().cast::<c_char>(), dst, copy_len);
-        }
-        *dst.add(copy_len) = 0;
-    }
 }

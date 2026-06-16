@@ -1,6 +1,6 @@
 use super::abi::nfc_context;
-use crate::c_api_impl::{LOG_PRIORITY_DEBUG, LOG_PRIORITY_NONE};
-use crate::ffi_support::{as_mut, as_ref, fixed_c_buffer_to_string};
+use crate::c_boundary::raw::{fixed_c_buffer_to_string, optional_mut, optional_ref};
+use crate::c_boundary::{LOG_PRIORITY_DEBUG, LOG_PRIORITY_NONE};
 use crate::logger;
 use crate::{emit_log_message, log_error, log_message, set_last_error_message};
 use libc::c_char;
@@ -31,7 +31,7 @@ fn record_log_exit_for_tests() {
 }
 
 fn context_log_level(context: *const nfc_context) -> u32 {
-    unsafe { as_ref(context) }
+    unsafe { optional_ref(context) }
         .map(|context| context.log_level)
         .unwrap_or_else(logger::default_log_level)
 }
@@ -158,7 +158,7 @@ fn log_context_state(context: &nfc_context) {
 pub(crate) unsafe fn initialize_loaded_context_logging(context: *mut nfc_context) {
     unsafe {
         initialize_context_logging(context);
-        if let Some(context_ref) = as_mut(context) {
+        if let Some(context_ref) = optional_mut(context) {
             log_context_state(context_ref);
         }
     }

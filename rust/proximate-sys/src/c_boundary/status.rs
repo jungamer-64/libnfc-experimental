@@ -1,5 +1,5 @@
+use crate::c_boundary::raw::{optional_mut, optional_ref};
 use crate::ffi_strings::device_error_message_cstr;
-use crate::ffi_support::{as_mut, as_ref};
 use crate::lifecycle::nfc_device;
 use libc::{c_char, c_int};
 use proximate_driver as rt;
@@ -26,13 +26,13 @@ pub(crate) fn error_to_status(error: &rt::Error) -> c_int {
 }
 
 pub(crate) fn set_device_last_error(device: *mut nfc_device, value: c_int) {
-    if let Some(device) = unsafe { as_mut(device) } {
+    if let Some(device) = unsafe { optional_mut(device) } {
         device.last_error = value;
     }
 }
 
 pub(crate) unsafe fn device_last_error(device: *const nfc_device) -> c_int {
-    unsafe { as_ref(device) }
+    unsafe { optional_ref(device) }
         .map(|device| device.last_error)
         .unwrap_or(0)
 }

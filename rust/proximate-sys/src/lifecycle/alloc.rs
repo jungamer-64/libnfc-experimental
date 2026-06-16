@@ -1,8 +1,8 @@
 use super::abi::{nfc_context, nfc_device};
 use super::logging;
-use crate::bridge::encode::write_context_to_c;
-use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
-use crate::ffi_support::{as_mut, as_ref, copy_c_string_to_c_buffer};
+use crate::c_boundary::NFC_BUFSIZE_CONNSTRING;
+use crate::c_boundary::raw::{copy_c_string_to_c_buffer, optional_mut, optional_ref};
+use crate::domain_bridge::encode::write_context_to_c;
 use crate::{
     ffi_catch_unwind_ptr, ffi_catch_unwind_void, log_error, release_allocated_ptr,
     reset_last_error, set_last_error_message,
@@ -51,7 +51,7 @@ unsafe fn nfc_device_new_impl(
         return ptr::null_mut();
     }
 
-    let Some(device_ref) = (unsafe { as_mut(device) }) else {
+    let Some(device_ref) = (unsafe { optional_mut(device) }) else {
         return ptr::null_mut();
     };
     device_ref.context = context;
@@ -68,7 +68,7 @@ unsafe fn nfc_device_new_impl(
 }
 
 pub(crate) unsafe fn set_runtime_context(context: *mut nfc_context, runtime: rt::Context) {
-    let Some(context_ref) = (unsafe { as_mut(context) }) else {
+    let Some(context_ref) = (unsafe { optional_mut(context) }) else {
         return;
     };
 
@@ -80,7 +80,7 @@ pub(crate) unsafe fn set_runtime_context(context: *mut nfc_context, runtime: rt:
 }
 
 pub(crate) unsafe fn runtime_context_from_c(context: *const nfc_context) -> Option<rt::Context> {
-    let context_ref = unsafe { as_ref(context) }?;
+    let context_ref = unsafe { optional_ref(context) }?;
     let runtime = context_ref.runtime_data as *const rt::Context;
     if runtime.is_null() {
         None
@@ -90,7 +90,7 @@ pub(crate) unsafe fn runtime_context_from_c(context: *const nfc_context) -> Opti
 }
 
 unsafe fn free_context_allocation(context: *mut nfc_context) {
-    if let Some(context_ref) = unsafe { as_mut(context) }
+    if let Some(context_ref) = unsafe { optional_mut(context) }
         && !context_ref.runtime_data.is_null()
     {
         unsafe { drop(Box::from_raw(context_ref.runtime_data as *mut rt::Context)) };

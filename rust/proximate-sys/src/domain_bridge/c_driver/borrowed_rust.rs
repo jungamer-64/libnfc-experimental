@@ -3,8 +3,8 @@ use super::rust_owned::RustDeviceState;
 use super::*;
 
 unsafe fn rust_device_state<'a>(device: *mut nfc_device) -> Option<&'a mut RustDeviceState> {
-    let device = unsafe { as_mut(device) }?;
-    unsafe { (device.driver_data as *mut RustDeviceState).as_mut() }
+    let device = unsafe { optional_mut(device) }?;
+    unsafe { optional_mut(device.driver_data as *mut RustDeviceState) }
 }
 
 pub(crate) fn borrowed_device(raw: *mut nfc_device) -> rt::Device {
@@ -24,10 +24,10 @@ unsafe impl Send for RustBorrowedDevice {}
 
 impl RustBorrowedDevice {
     fn new(raw: *mut nfc_device) -> Self {
-        let name = unsafe { as_ref(raw) }
+        let name = unsafe { optional_ref(raw) }
             .map(|device| fixed_c_buffer_to_string(&device.name))
             .unwrap_or_default();
-        let connstring_string = unsafe { as_ref(raw) }
+        let connstring_string = unsafe { optional_ref(raw) }
             .map(|device| fixed_c_buffer_to_string(&device.connstring))
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| "unknown".to_string());
@@ -97,7 +97,7 @@ impl rt::DeviceMeta for RustBorrowedDevice {
     }
 
     fn last_error(&self) -> i32 {
-        unsafe { as_ref(self.raw) }
+        unsafe { optional_ref(self.raw) }
             .map(|device| device.last_error)
             .unwrap_or(0)
     }
@@ -166,7 +166,7 @@ impl rt::PropertyBackend for RustBorrowedDevice {
     }
 
     fn property_bool_state(&self, property: rt::Property) -> Option<bool> {
-        let device = unsafe { as_ref(self.raw) }?;
+        let device = unsafe { optional_ref(self.raw) }?;
         Some(match property {
             rt::Property::HandleCrc => device.bCrc,
             rt::Property::HandleParity => device.bPar,

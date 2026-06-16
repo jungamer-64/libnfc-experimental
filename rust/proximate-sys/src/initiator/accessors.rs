@@ -1,14 +1,16 @@
-use crate::bridge::decode::modulation_type_from_c;
-use crate::bridge::driver_shim::is_rust_shim_device;
-use crate::bridge::encode::{CStringOut, SupportedBaudRatesOut, SupportedModulationsOut};
-use crate::bridge::status::{
+use crate::c_abi::types::{nfc_baud_rate, nfc_mode, nfc_modulation_type};
+use crate::c_boundary::raw::{
+    bounded_strlen, c_string_ptr_to_string, copy_bytes_to_c_buffer, optional_ref,
+};
+use crate::c_boundary::status::{
     NFC_ESOFT, device_last_error, error_message_ptr, runtime_result_status,
 };
+use crate::domain_bridge::c_driver::is_rust_shim_device;
+use crate::domain_bridge::decode::modulation_type_from_c;
+use crate::domain_bridge::encode::{CStringOut, SupportedBaudRatesOut, SupportedModulationsOut};
 use crate::ffi_catch_unwind_int;
 use crate::ffi_catch_unwind_ptr;
 use crate::ffi_catch_unwind_void;
-use crate::ffi_support::{as_ref, bounded_strlen, c_string_ptr_to_string, copy_bytes_to_c_buffer};
-use crate::ffi_types::{nfc_baud_rate, nfc_mode, nfc_modulation_type};
 use crate::initiator::driver_dispatch::{
     get_information_about_impl, get_supported_baud_rate_impl, get_supported_modulation_impl,
 };
@@ -16,15 +18,11 @@ use crate::initiator::runtime;
 use crate::lifecycle::nfc_device;
 use libc::{c_char, c_int, size_t};
 use proximate_driver as rt;
-use std::ffi::CString;
+use std::io::{self, Write};
 use std::ptr;
 use std::slice;
 
 const NULL_ERROR_PREFIX: *const c_char = b"(null)\0" as *const u8 as *const c_char;
-
-unsafe extern "C" {
-    static mut stderr: *mut libc::FILE;
-}
 
 fn mode_from_c(mode: nfc_mode) -> rt::Mode {
     match mode {
@@ -84,7 +82,7 @@ fn get_information_about_direct_impl(device: *mut nfc_device, buf: *mut *mut c_c
 
 pub(crate) unsafe fn nfc_device_get_name(device: *mut nfc_device) -> *const c_char {
     ffi_catch_unwind_ptr("nfc_device_get_name", || unsafe {
-        as_ref(device)
+        optional_ref(device)
             .map(|device| device.name.as_ptr().cast_mut())
             .unwrap_or(ptr::null_mut())
     }) as *const c_char
@@ -92,7 +90,7 @@ pub(crate) unsafe fn nfc_device_get_name(device: *mut nfc_device) -> *const c_ch
 
 pub(crate) unsafe fn nfc_device_get_connstring(device: *mut nfc_device) -> *const c_char {
     ffi_catch_unwind_ptr("nfc_device_get_connstring", || unsafe {
-        as_ref(device)
+        optional_ref(device)
             .map(|device| device.connstring.as_ptr().cast_mut())
             .unwrap_or(ptr::null_mut())
     }) as *const c_char
@@ -219,8 +217,9 @@ pub(crate) unsafe fn nfc_perror(device: *const nfc_device, message: *const c_cha
             c_string_ptr_to_string(message, 4096)
         };
         let error = c_string_ptr_to_string(nfc_strerror(device), 128);
-        if let Ok(rendered) = CString::new(format!("{}: {}\n", prefix, error)) {
-            libc::fputs(rendered.as_ptr(), stderr);
-        }
+        let rendered = format!("{}: {}\n", prefix, error);
+        let mut stderr = io::stderr().lock();
+        let _ = stderr.write_all(rendered.as_bytes());
+        let _ = stderr.flush();
     });
 }

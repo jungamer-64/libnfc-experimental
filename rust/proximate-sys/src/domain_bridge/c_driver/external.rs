@@ -13,17 +13,17 @@ unsafe impl Sync for ExternalDriver {}
 
 impl ExternalDriver {
     pub(crate) fn new(raw: *const nfc_driver) -> Self {
-        let name = unsafe { as_ref(raw) }
+        let name = unsafe { optional_ref(raw) }
             .map(|driver| c_string_ptr_to_string(driver.name, NFC_DRIVER_NAME_MAX))
             .unwrap_or_default();
-        let scan_type = unsafe { as_ref(raw) }
+        let scan_type = unsafe { optional_ref(raw) }
             .map(|driver| match driver.scan_type {
                 scan_type_enum::NOT_INTRUSIVE => rt::ScanType::NotIntrusive,
                 scan_type_enum::INTRUSIVE => rt::ScanType::Intrusive,
                 scan_type_enum::NOT_AVAILABLE => rt::ScanType::NotAvailable,
             })
             .unwrap_or(rt::ScanType::NotAvailable);
-        let caps = unsafe { as_ref(raw) }
+        let caps = unsafe { optional_ref(raw) }
             .map(driver_caps_from_raw)
             .unwrap_or(rt::DriverCaps::NONE);
         Self {
@@ -53,7 +53,7 @@ impl rt::Driver for ExternalDriver {
             return Err(missing_capability("scan"));
         }
 
-        let Some(driver) = (unsafe { as_ref(self.raw) }) else {
+        let Some(driver) = (unsafe { optional_ref(self.raw) }) else {
             return Ok(Vec::new());
         };
         let Some(scan) = driver.scan else {
@@ -97,7 +97,7 @@ impl rt::Driver for ExternalDriver {
             return Err(missing_capability("open"));
         }
 
-        let Some(driver) = (unsafe { as_ref(self.raw) }) else {
+        let Some(driver) = (unsafe { optional_ref(self.raw) }) else {
             return Err(rt::Error::DriverOpenFailed(connstring.as_str().to_string()));
         };
         let Some(open) = driver.open else {
@@ -138,17 +138,17 @@ impl ExternalDevice {
     }
 
     fn new(raw: *mut nfc_device, owned: bool) -> Self {
-        let name = unsafe { as_ref(raw) }
+        let name = unsafe { optional_ref(raw) }
             .map(|device| fixed_c_buffer_to_string(&device.name))
             .unwrap_or_default();
-        let connstring_string = unsafe { as_ref(raw) }
+        let connstring_string = unsafe { optional_ref(raw) }
             .map(|device| fixed_c_buffer_to_string(&device.connstring))
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| "unknown".to_string());
         let connstring = rt::ConnectionString::new(connstring_string)
             .unwrap_or_else(|_| rt::ConnectionString::new("unknown").expect("valid connstring"));
-        let caps = unsafe { as_ref(raw) }
-            .and_then(|device| unsafe { as_ref(device.driver) })
+        let caps = unsafe { optional_ref(raw) }
+            .and_then(|device| unsafe { optional_ref(device.driver) })
             .map(device_caps_from_raw)
             .unwrap_or(rt::DeviceCaps::NONE);
         Self {
@@ -165,8 +165,8 @@ impl ExternalDevice {
     }
 
     fn driver_ref(&self) -> Option<&nfc_driver> {
-        let device = unsafe { as_ref(self.raw) }?;
-        unsafe { as_ref(device.driver) }
+        let device = unsafe { optional_ref(self.raw) }?;
+        unsafe { optional_ref(device.driver) }
     }
 
     fn status_to_result(operation: &'static str, status: c_int) -> Result<c_int, rt::Error> {
@@ -231,7 +231,7 @@ impl rt::DeviceMeta for ExternalDevice {
     }
 
     fn last_error(&self) -> i32 {
-        unsafe { as_ref(self.raw) }
+        unsafe { optional_ref(self.raw) }
             .map(|device| device.last_error)
             .unwrap_or(0)
     }
@@ -403,7 +403,7 @@ impl rt::PropertyBackend for ExternalDevice {
     }
 
     fn property_bool_state(&self, property: rt::Property) -> Option<bool> {
-        let device = unsafe { as_ref(self.raw) }?;
+        let device = unsafe { optional_ref(self.raw) }?;
         Some(match property {
             rt::Property::HandleCrc => device.bCrc,
             rt::Property::HandleParity => device.bPar,

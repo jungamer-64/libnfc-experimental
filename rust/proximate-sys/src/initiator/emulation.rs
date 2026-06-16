@@ -1,8 +1,8 @@
 use super::operations::{nfc_target_init, nfc_target_receive_bytes, nfc_target_send_bytes};
-use crate::bridge::status::{NFC_EINVARG, NFC_ESOFT};
+use crate::c_abi::types::nfc_target;
+use crate::c_boundary::raw::optional_mut;
+use crate::c_boundary::status::{NFC_EINVARG, NFC_ESOFT};
 use crate::ffi_catch_unwind_int;
-use crate::ffi_support::as_mut;
-use crate::ffi_types::nfc_target;
 use crate::lifecycle::nfc_device;
 use libc::{c_int, c_void, size_t};
 
@@ -39,10 +39,10 @@ pub(crate) unsafe fn nfc_emulate_target(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_emulate_target", NFC_ESOFT, || unsafe {
-        let Some(emulator_ref) = as_mut(emulator) else {
+        let Some(emulator_ref) = optional_mut(emulator) else {
             return NFC_EINVARG;
         };
-        let Some(state_machine) = as_mut(emulator_ref.state_machine) else {
+        let Some(state_machine) = optional_mut(emulator_ref.state_machine) else {
             return NFC_EINVARG;
         };
         let Some(callback) = state_machine.io else {

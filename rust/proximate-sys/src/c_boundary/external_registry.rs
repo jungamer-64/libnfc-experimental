@@ -1,5 +1,5 @@
-use crate::bridge::driver_shim::ExternalDriver;
-use crate::bridge::status::{NFC_EINVARG, NFC_ESOFT};
+use crate::c_boundary::status::{NFC_EINVARG, NFC_ESOFT};
+use crate::domain_bridge::c_driver::ExternalDriver;
 use crate::lifecycle::nfc_driver;
 use libc::c_int;
 use proximate_driver as rt;

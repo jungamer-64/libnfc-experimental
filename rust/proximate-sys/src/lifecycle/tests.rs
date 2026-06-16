@@ -158,7 +158,7 @@ fn context_new_applies_defaults_and_initializes_logging() {
     assert_eq!(bridge_state.log_init_calls, 1);
     assert_eq!(bridge_state.log_exit_calls, 0);
     assert_eq!(bridge_state.events, vec!["log_init"]);
-    if DEFAULT_CONTEXT_LOG_LEVEL >= crate::c_api_impl::LOG_PRIORITY_DEBUG.into() {
+    if DEFAULT_CONTEXT_LOG_LEVEL >= crate::c_boundary::LOG_PRIORITY_DEBUG.into() {
         assert_eq!(
             crate::test_get_last_log().as_deref(),
             Some("0 device(s) defined by user")
@@ -479,39 +479,31 @@ fn device_new_rejects_null_connstring() {
     let device = unsafe { nfc_device_new(ptr::null(), ptr::null()) };
     assert!(device.is_null());
 
-    let err = crate::c_api_impl::nfc_get_last_error();
+    let err = crate::c_boundary::nfc_get_last_error();
     assert!(!err.is_null());
     let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
     assert!(recovered.contains("NULL connstring in nfc_device_new"));
 }
 
 #[test]
-#[cfg_attr(feature = "test_no_catch", should_panic(expected = "boom"))]
 fn lifecycle_pointer_panic_is_normalized_to_null() {
     reset_last_error();
-    let _ptr = ffi_catch_unwind_ptr::<nfc_context, _>("lifecycle_ptr_panic", || panic!("boom"));
-    #[cfg(not(feature = "test_no_catch"))]
-    {
-        assert!(_ptr.is_null());
+    let ptr = ffi_catch_unwind_ptr::<nfc_context, _>("lifecycle_ptr_panic", || panic!("boom"));
+    assert!(ptr.is_null());
 
-        let err = crate::c_api_impl::nfc_get_last_error();
-        assert!(!err.is_null());
-        let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
-        assert!(recovered.contains("panic in lifecycle_ptr_panic"));
-    }
+    let err = crate::c_boundary::nfc_get_last_error();
+    assert!(!err.is_null());
+    let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
+    assert!(recovered.contains("panic in lifecycle_ptr_panic"));
 }
 
 #[test]
-#[cfg_attr(feature = "test_no_catch", should_panic(expected = "boom"))]
 fn lifecycle_void_panic_is_normalized_to_noop() {
     reset_last_error();
     ffi_catch_unwind_void("lifecycle_void_panic", || panic!("boom"));
 
-    #[cfg(not(feature = "test_no_catch"))]
-    {
-        let err = crate::c_api_impl::nfc_get_last_error();
-        assert!(!err.is_null());
-        let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
-        assert!(recovered.contains("panic in lifecycle_void_panic"));
-    }
+    let err = crate::c_boundary::nfc_get_last_error();
+    assert!(!err.is_null());
+    let recovered = unsafe { CStr::from_ptr(err) }.to_str().unwrap();
+    assert!(recovered.contains("panic in lifecycle_void_panic"));
 }

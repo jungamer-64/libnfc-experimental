@@ -16,7 +16,7 @@ use super::operations::{
     nfc_initiator_transceive_bytes, nfc_initiator_transceive_bytes_timed, nfc_target_init,
     nfc_target_receive_bits, nfc_target_receive_bytes, nfc_target_send_bits, nfc_target_send_bytes,
 };
-use crate::bridge::status::{NFC_EDEVNOTSUPP, NFC_EINVARG};
+use crate::c_boundary::status::{NFC_EDEVNOTSUPP, NFC_EINVARG};
 use crate::lifecycle::{nfc_context_alloc_defaults, nfc_device_free, nfc_device_new};
 use crate::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_device, nfc_mode, nfc_modulation,

@@ -1,8 +1,8 @@
-use crate::c_api_impl::NFC_BUFSIZE_CONNSTRING;
-use crate::ffi_types::{
+use crate::c_abi::types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_modulation, nfc_modulation_type, nfc_property,
     nfc_target,
 };
+use crate::c_boundary::NFC_BUFSIZE_CONNSTRING;
 use libc::{c_char, c_int, c_uint, c_void};
 
 /// cbindgen:no-export
@@ -21,6 +21,7 @@ pub type nfc_connstring = [c_char; NFC_BUFSIZE_CONNSTRING];
 #[allow(dead_code)]
 pub(crate) enum scan_type_enum {
     NOT_INTRUSIVE = 0,
+    #[expect(clippy::upper_case_acronyms)]
     INTRUSIVE = 1,
     NOT_AVAILABLE = 2,
 }
@@ -128,7 +129,7 @@ pub(crate) type nfc_driver_device_set_property_int_fn =
 pub(crate) type nfc_driver_get_supported_modulation_fn = Option<
     unsafe extern "C" fn(
         *mut nfc_device,
-        crate::ffi_types::nfc_mode,
+        crate::c_abi::types::nfc_mode,
         *mut *const nfc_modulation_type,
     ) -> c_int,
 >;
@@ -136,7 +137,7 @@ pub(crate) type nfc_driver_get_supported_modulation_fn = Option<
 pub(crate) type nfc_driver_get_supported_baud_rate_fn = Option<
     unsafe extern "C" fn(
         *mut nfc_device,
-        crate::ffi_types::nfc_mode,
+        crate::c_abi::types::nfc_mode,
         nfc_modulation_type,
         *mut *const nfc_baud_rate,
     ) -> c_int,

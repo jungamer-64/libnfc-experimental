@@ -2,7 +2,7 @@
 //
 // Free/Libre Near Field Communication (NFC) library
 //
-// ABI mirrors for packed public NFC types from include/nfc/nfc-types.h.
+// ABI mirrors intentionally keep libnfc's public C names and exported layout.
 #![allow(dead_code, non_camel_case_types, non_snake_case)]
 
 use libc::size_t;

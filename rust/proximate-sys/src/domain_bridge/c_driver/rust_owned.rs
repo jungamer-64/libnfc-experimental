@@ -10,8 +10,8 @@ pub(crate) struct RustDeviceState {
 pub(crate) unsafe fn rust_device_state_mut<'a>(
     device: *mut nfc_device,
 ) -> Option<&'a mut RustDeviceState> {
-    let device = unsafe { as_mut(device) }?;
-    unsafe { (device.driver_data as *mut RustDeviceState).as_mut() }
+    let device = unsafe { optional_mut(device) }?;
+    unsafe { optional_mut(device.driver_data as *mut RustDeviceState) }
 }
 
 fn refresh_cached_strerror(state: &mut RustDeviceState) -> *const c_char {
@@ -22,7 +22,7 @@ fn refresh_cached_strerror(state: &mut RustDeviceState) -> *const c_char {
 }
 
 pub(crate) unsafe fn free_rust_device(device: *mut nfc_device) {
-    let Some(device_ref) = (unsafe { as_mut(device) }) else {
+    let Some(device_ref) = (unsafe { optional_mut(device) }) else {
         return;
     };
 
@@ -74,7 +74,7 @@ pub(crate) fn attach_rust_device(
 }
 
 pub(crate) fn is_rust_shim_device(raw: *mut nfc_device) -> bool {
-    let Some(device) = (unsafe { as_ref(raw) }) else {
+    let Some(device) = (unsafe { optional_ref(raw) }) else {
         return false;
     };
 
@@ -82,8 +82,8 @@ pub(crate) fn is_rust_shim_device(raw: *mut nfc_device) -> bool {
         return !device.driver_data.is_null();
     }
 
-    unsafe { as_ref(device.driver) }
-        .map(|driver| ptr::eq(driver.name, RUST_DEVICE_DRIVER_NAME))
+    unsafe { optional_ref(device.driver) }
+        .map(is_rust_device_driver)
         .unwrap_or(false)
 }
 
