@@ -50,9 +50,6 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include <nfc/nfc.h>
-
-#include "nfc-secure.h"
 #include "utils/nfc-utils.h"
 
 #define SAK_FLAG_ATS_SUPPORTED 0x20
@@ -213,7 +210,7 @@ int main(int argc, char *argv[])
     nfc_exit(context);
     exit(EXIT_FAILURE);
   }
-  if (nfc_safe_memcpy(abtAtqa, sizeof(abtAtqa), abtRx, 2) < 0) {
+  if (!nfc_util_copy_bytes(abtAtqa, sizeof(abtAtqa), abtRx, 2)) {
     ERR("Failed to copy ATQA");
     nfc_close(pnd);
     nfc_exit(context);
@@ -229,7 +226,7 @@ int main(int argc, char *argv[])
   }
 
   // Save the UID CL1
-  if (nfc_safe_memcpy(abtRawUid, sizeof(abtRawUid), abtRx, 4) < 0) {
+  if (!nfc_util_copy_bytes(abtRawUid, sizeof(abtRawUid), abtRx, 4)) {
     ERR("Failed to save UID CL1");
     nfc_close(pnd);
     nfc_exit(context);
@@ -237,7 +234,7 @@ int main(int argc, char *argv[])
   }
 
   // Prepare and send CL1 Select-Command
-  if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0) {
+  if (!nfc_util_copy_bytes(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5)) {
     ERR("Failed to prepare CL1 Select command");
     nfc_close(pnd);
     nfc_exit(context);
@@ -271,7 +268,7 @@ int main(int argc, char *argv[])
     }
 
     // Save UID CL2
-    if (nfc_safe_memcpy(abtRawUid + 4, sizeof(abtRawUid) - 4, abtRx, 4) < 0) {
+    if (!nfc_util_copy_bytes(abtRawUid + 4, sizeof(abtRawUid) - 4, abtRx, 4)) {
       ERR("Failed to save UID CL2");
       nfc_close(pnd);
       nfc_exit(context);
@@ -280,7 +277,7 @@ int main(int argc, char *argv[])
 
     // Selection
     abtSelectTag[0] = 0x95;
-    if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0) {
+    if (!nfc_util_copy_bytes(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5)) {
       ERR("Failed to prepare CL2 Select command");
       nfc_close(pnd);
       nfc_exit(context);
@@ -312,7 +309,7 @@ int main(int argc, char *argv[])
       }
 
       // Save UID CL3
-      if (nfc_safe_memcpy(abtRawUid + 8, sizeof(abtRawUid) - 8, abtRx, 4) < 0) {
+      if (!nfc_util_copy_bytes(abtRawUid + 8, sizeof(abtRawUid) - 8, abtRx, 4)) {
         ERR("Failed to save UID CL3");
         nfc_close(pnd);
         nfc_exit(context);
@@ -321,7 +318,7 @@ int main(int argc, char *argv[])
 
       // Prepare and send final Select-Command
       abtSelectTag[0] = 0x97;
-      if (nfc_safe_memcpy(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5) < 0) {
+      if (!nfc_util_copy_bytes(abtSelectTag + 2, sizeof(abtSelectTag) - 2, abtRx, 5)) {
         ERR("Failed to prepare CL3 Select command");
         nfc_close(pnd);
         nfc_exit(context);
@@ -340,7 +337,7 @@ int main(int argc, char *argv[])
   if ((abtRx[0] & SAK_FLAG_ATS_SUPPORTED) || force_rats) {
     iso14443a_crc_append(abtRats, 2);
     if (transmit_bytes(abtRats, 4)) {
-      if (nfc_safe_memcpy(abtAts, sizeof(abtAts), abtRx, szRx) < 0) {
+      if (!nfc_util_copy_bytes(abtAts, sizeof(abtAts), abtRx, szRx)) {
         ERR("Failed to copy ATS");
         nfc_close(pnd);
         nfc_exit(context);

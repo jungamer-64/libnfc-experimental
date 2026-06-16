@@ -56,11 +56,7 @@
 #include <string.h>
 #include <signal.h>
 
-#include <nfc/nfc.h>
-#include "../libnfc/nfc-secure.h"
-
 #include "utils/nfc-utils.h"
-#include "nfc-secure.h"
 
 #define MAX_FRAME_LEN 264
 
@@ -112,11 +108,11 @@ int main(int argc, char *argv[])
     size_t arg_len;
 
     /* Safely determine argument length with bounds check (CWE-126) */
-    if (!nfc_is_null_terminated(argv[arg], 256)) {
+    if (!nfc_util_string_fits(argv[arg], 256)) {
       ERR("Argument %d is not properly null-terminated", arg);
       exit(EXIT_FAILURE);
     }
-    arg_len = nfc_safe_strlen(argv[arg], 256);
+    arg_len = nfc_util_bounded_strlen(argv[arg], 256);
 
     if (0 == strcmp(argv[arg], "-h")) {
       print_usage(argv);
@@ -130,7 +126,7 @@ int main(int argc, char *argv[])
       printf("[+] Using UID: %s\n", argv[arg]);
       abtUidBcc[4] = 0x00;
       for (i = 0; i < 4; ++i) {
-        if (nfc_safe_memcpy(abtTmp, sizeof(abtTmp), argv[arg] + i * 2, 2) < 0) {
+        if (!nfc_util_copy_bytes(abtTmp, sizeof(abtTmp), argv[arg] + i * 2, 2)) {
           ERR("Failed to copy UID bytes from command line");
           exit(EXIT_FAILURE);
         }

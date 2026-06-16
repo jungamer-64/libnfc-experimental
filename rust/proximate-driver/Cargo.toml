@@ -1,0 +1,23 @@
+[package]
+name = "proximate-driver"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+description = "Driver/runtime traits and context management for the experimental libnfc Rust core."
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+proximate-types = { path = "../proximate-types" }
+
+[features]
+default = ["lifecycle", "orchestration", "usb_helper"]
+lifecycle = []
+orchestration = ["lifecycle"]
+usb_helper = []
+pcsc_helper = []
+nci_helper = ["orchestration"]
+asan_tests = []

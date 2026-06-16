@@ -1,115 +1,165 @@
 # Windows MinGW workarounds
-IF(WIN32)
-  SET(WINDOWS_SOURCES ../contrib/win32/stdlib.c)
-  INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32)
+if(WIN32)
+  set(WINDOWS_SOURCES ../contrib/win32/stdlib.c)
+  include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32")
 
-  # Add in the rc for version information in the dll
-  LIST(APPEND WINDOWS_SOURCES ${CMAKE_CURRENT_BINARY_DIR}/../windows/libnfc.rc)
-  IF (NOT MINGW)
-    LIST(APPEND WINDOWS_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/nfc_msvc.def)
-  ENDIF()
-ENDIF(WIN32)
+  set(RC_COMMENT "${PACKAGE_NAME} library")
+  set(RC_INTERNAL_NAME "libnfc")
+  set(RC_ORIGINAL_NAME "libnfc.dll")
+  set(RC_FILE_TYPE VFT_DLL)
+  set(RC_FILE_FLAGS 0x0)
+  if(LIBNFC_DEBUG_MODE)
+    set(RC_FILE_FLAGS VS_FF_DEBUG)
+  endif()
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/version.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/libnfc.rc" @ONLY)
+  list(APPEND WINDOWS_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/libnfc.rc")
 
-# Library's chips
-SET(CHIPS_SOURCES chips/pn53x.c)
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/chips)
+  if(BUILD_SHARED_LIBS)
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/libnfc.def.in" "${CMAKE_CURRENT_BINARY_DIR}/libnfc.def" @ONLY)
+    list(APPEND WINDOWS_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/libnfc.def")
+  endif()
+endif()
 
-# Library's buses
-IF(USB_REQUIRED)
-  LIST(APPEND BUSES_SOURCES buses/usbbus.c)
-ENDIF(USB_REQUIRED)
+set(CHIPS_SOURCES)
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 
-IF(UART_REQUIRED)
-  IF(WIN32)
-    # Windows have a special implementation for UART
-    LIST(APPEND BUSES_SOURCES ../contrib/win32/libnfc/buses/uart.c)
-  ELSE(WIN32)
-    LIST(APPEND BUSES_SOURCES buses/uart.c)
-  ENDIF(WIN32)
-ENDIF(UART_REQUIRED)
+set(LIBRARY_SOURCES
+  ${DRIVERS_SOURCES}
+  ${CHIPS_SOURCES}
+  ${WINDOWS_SOURCES})
 
-IF(I2C_REQUIRED)
-  IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    LIST(APPEND BUSES_SOURCES buses/i2c.c)
-  ELSE(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    # Only Linux is supported at the moment
-    #LIST(APPEND BUSES_SOURCES ../contrib/win32/libnfc/buses/i2c.c)
-    MESSAGE( FATAL_ERROR "I2C is only (yet) supported in Linux!" )
-  ENDIF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-ENDIF(I2C_REQUIRED)
+set(LIBNFC_EXPORTS_FILE "${CMAKE_SOURCE_DIR}/libnfc/libnfc.exports")
+set(LIBNFC_VERSION_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/libnfc.map")
+if(EXISTS "${LIBNFC_EXPORTS_FILE}")
+  file(STRINGS "${LIBNFC_EXPORTS_FILE}" LIBNFC_EXPORT_SYMBOLS)
+endif()
 
-IF(SPI_REQUIRED)
-  IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    LIST(APPEND BUSES_SOURCES buses/spi.c)
-  ELSE(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    # Only Linux is supported at the moment
-    #LIST(APPEND BUSES_SOURCES ../contrib/win32/libnfc/buses/spi.c)
-    MESSAGE( FATAL_ERROR "SPI is only (yet) supported in Linux!" )
-  ENDIF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-ENDIF(SPI_REQUIRED)
+if(LIBNFC_LOG)
+  list(APPEND LIBRARY_SOURCES log.c)
+endif()
 
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/buses)
+set(LIBNFC_OPTIONAL_PRIVATE_INCLUDE_DIRS
+  ${PCSC_INCLUDE_DIRS}
+)
+if(LIBNFC_NCI_FOUND)
+  list(APPEND LIBNFC_OPTIONAL_PRIVATE_INCLUDE_DIRS ${LIBNFC_NCI_INCLUDE_DIRS})
+endif()
 
-IF(PCSC_FOUND)
-  INCLUDE_DIRECTORIES(${PCSC_INCLUDE_DIRS})
-  LINK_DIRECTORIES(${PCSC_LIBRARY_DIRS})
-ENDIF(PCSC_FOUND)
+add_library(nfc ${LIBRARY_SOURCES})
+if(PROXIMATE_C_FFI)
+  add_dependencies(nfc proximate_sys_build)
+endif()
 
-IF(LIBUSB_FOUND)
-  INCLUDE_DIRECTORIES(${LIBUSB_INCLUDE_DIRS})
-  LINK_DIRECTORIES(${LIBUSB_LIBRARY_DIRS})
-ENDIF(LIBUSB_FOUND)
+target_include_directories(nfc
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  PRIVATE
+    "${CMAKE_SOURCE_DIR}"
+    "${CMAKE_BINARY_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    ${LIBNFC_OPTIONAL_PRIVATE_INCLUDE_DIRS})
 
-# Library
-SET(LIBRARY_SOURCES nfc.c nfc-device.c nfc-emulation.c nfc-internal.c nfc-secure.c nfc-common.c conf.c iso14443-subr.c mirror-subr.c target-subr.c target-subr-helpers.c target-subr-helpers2.c ${DRIVERS_SOURCES} ${BUSES_SOURCES} ${CHIPS_SOURCES} ${WINDOWS_SOURCES})
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
+set(LIBNFC_SHARED_LINK_LIBRARIES)
+set(LIBNFC_STATIC_LINK_LIBRARIES)
+set(LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES)
+set(LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES)
 
-IF(LIBNFC_LOG)
-  IF(WIN32)
-    IF(MINGW)
-      SET(CMAKE_C_FLAGS "-fgnu89-inline ${CMAKE_C_FLAGS}")
-    ENDIF(MINGW)
-    LIST(APPEND LIBRARY_SOURCES log.c ../contrib/win32/libnfc/log-internal.c)
-  ELSE(WIN32)
-    LIST(APPEND LIBRARY_SOURCES log.c log-internal.c)
-  ENDIF(WIN32)
-ENDIF(LIBNFC_LOG)
-ADD_LIBRARY(nfc SHARED ${LIBRARY_SOURCES})
+if(PROXIMATE_C_FFI)
+  list(APPEND LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES "${RUST_LIB_PATH}")
+  list(APPEND LIBNFC_STATIC_LINK_LIBRARIES "${RUST_LIB_PATH}")
+endif()
 
-IF(PCSC_FOUND)
-  TARGET_LINK_LIBRARIES(nfc ${PCSC_LIBRARIES})
-ENDIF(PCSC_FOUND)
+if(PCSC_FOUND)
+  list(APPEND LIBNFC_SHARED_LINK_LIBRARIES ${PCSC_LIBRARIES})
+  list(APPEND LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES ${PCSC_LIBRARIES})
+endif()
 
-IF(LIBUSB_FOUND)
-  TARGET_LINK_LIBRARIES(nfc ${LIBUSB_LIBRARIES})
-ENDIF(LIBUSB_FOUND)
+if(LIBNFC_NCI_FOUND)
+  list(APPEND LIBNFC_SHARED_LINK_LIBRARIES ${LIBNFC_NCI_LIBRARIES})
+  list(APPEND LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES ${LIBNFC_NCI_LIBRARIES})
+endif()
 
-IF(LIBRT_FOUND)
-  TARGET_LINK_LIBRARIES(nfc ${LIBRT_LIBRARIES})
-ENDIF(LIBRT_FOUND)
+if(LIBRT_FOUND)
+  list(APPEND LIBNFC_SHARED_LINK_LIBRARIES ${LIBRT_LIBRARIES})
+  list(APPEND LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES ${LIBRT_LIBRARIES})
+endif()
 
-SET_TARGET_PROPERTIES(nfc PROPERTIES SOVERSION 6 VERSION 6.0.0)
+if(WIN32)
+  list(APPEND LIBNFC_SHARED_LINK_LIBRARIES wsock32)
+  list(APPEND LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES wsock32)
+endif()
 
-IF(WIN32)
-  # Libraries that are windows specific
-  TARGET_LINK_LIBRARIES(nfc wsock32)
-  IF(MINGW)
-    ADD_CUSTOM_COMMAND(
+if(BUILD_SHARED_LIBS)
+  target_link_libraries(nfc PRIVATE ${LIBNFC_SHARED_LINK_LIBRARIES})
+  if(LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES)
+    if(MSVC)
+      foreach(whole_archive_lib ${LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES})
+        target_link_options(nfc PRIVATE "/WHOLEARCHIVE:${whole_archive_lib}")
+      endforeach()
+    elseif(APPLE)
+      foreach(whole_archive_lib ${LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES})
+        target_link_options(nfc PRIVATE "-Wl,-force_load,${whole_archive_lib}")
+      endforeach()
+    else()
+      target_link_libraries(nfc PRIVATE
+        "-Wl,--whole-archive"
+        ${LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES}
+        "-Wl,--no-whole-archive")
+    endif()
+  endif()
+elseif(LIBNFC_STATIC_LINK_LIBRARIES OR LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES)
+  target_link_libraries(nfc INTERFACE
+    $<BUILD_INTERFACE:${LIBNFC_STATIC_LINK_LIBRARIES}>
+    $<BUILD_INTERFACE:$<TARGET_FILE:nfc>>
+    $<BUILD_INTERFACE:${LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES}>)
+endif()
+
+if(BUILD_SHARED_LIBS AND PCSC_LIBRARY_DIRS)
+  target_link_directories(nfc PRIVATE ${PCSC_LIBRARY_DIRS})
+endif()
+if(BUILD_SHARED_LIBS AND LIBNFC_NCI_LIBRARY_DIRS)
+  target_link_directories(nfc PRIVATE ${LIBNFC_NCI_LIBRARY_DIRS})
+endif()
+
+if(UNIX AND NOT APPLE AND BUILD_SHARED_LIBS)
+  file(WRITE "${LIBNFC_VERSION_SCRIPT}" "LIBNFC_6 {\n  global:\n")
+  foreach(symbol ${LIBNFC_EXPORT_SYMBOLS})
+    file(APPEND "${LIBNFC_VERSION_SCRIPT}" "    ${symbol};\n")
+  endforeach()
+  file(APPEND "${LIBNFC_VERSION_SCRIPT}" "  local:\n    *;\n};\n")
+  target_link_options(nfc PRIVATE "-Wl,--version-script=${LIBNFC_VERSION_SCRIPT}")
+endif()
+
+set_target_properties(nfc PROPERTIES
+  OUTPUT_NAME nfc
+  VERSION 6.0.0
+  SOVERSION 6)
+
+if(WIN32)
+  set_target_properties(nfc PROPERTIES PREFIX lib)
+endif()
+
+if(WIN32 AND BUILD_SHARED_LIBS)
+  if(MINGW)
+    add_custom_command(
       OUTPUT libnfc.lib
-      COMMAND ${DLLTOOL} -d ${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/nfc.def -l ${CMAKE_CURRENT_BINARY_DIR}/libnfc.lib ${CMAKE_CURRENT_BINARY_DIR}/libnfc.dll
-      DEPENDS nfc ${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/nfc.def
-    )
-    ADD_CUSTOM_TARGET(win32lib ALL DEPENDS libnfc.lib)
-  ELSE()
-    ADD_LIBRARY(win32lib ALIAS nfc)
-  ENDIF()
+      COMMAND ${DLLTOOL} -d "${CMAKE_CURRENT_BINARY_DIR}/libnfc.def" -l "${CMAKE_CURRENT_BINARY_DIR}/libnfc.lib" "${CMAKE_CURRENT_BINARY_DIR}/libnfc.dll"
+      DEPENDS nfc "${CMAKE_CURRENT_BINARY_DIR}/libnfc.def")
+    add_custom_target(win32lib ALL DEPENDS libnfc.lib)
+  endif()
+endif()
 
-  # On Windows the shared (runtime) library should be either in the same
-  # directory as the excutables or in the path, we add it to same directory
-  INSTALL(TARGETS nfc RUNTIME DESTINATION bin COMPONENT libraries)
+install(TARGETS nfc
+  EXPORT LibNFCTargets
+  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT libraries
+  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libraries
+  ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libraries)
 
-  # At compile time we need the .LIB file, we place it in the lib directory
-  INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/libnfc.lib DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries)
-ELSE(WIN32)
-  INSTALL(TARGETS nfc LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries)
-ENDIF(WIN32)
+if(WIN32 AND BUILD_SHARED_LIBS AND MINGW)
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libnfc.lib" DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libraries)
+endif()
+
+if(NOT BUILD_SHARED_LIBS AND PROXIMATE_C_FFI)
+  install(FILES "${RUST_LIB_PATH}" DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libraries)
+endif()

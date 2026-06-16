@@ -43,7 +43,10 @@
 #ifndef _LIBNFC_MIFARE_H_
 #  define _LIBNFC_MIFARE_H_
 
-#  include <nfc/nfc-types.h>
+#  include <stdbool.h>
+#  include <stddef.h>
+#  include <stdint.h>
+#  include <nfc/nfc.h>
 
 // Compiler directive, set struct alignment to 1 uint8_t for compatibility
 #  pragma pack(1)

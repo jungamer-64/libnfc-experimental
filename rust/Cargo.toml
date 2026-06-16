@@ -1,0 +1,16 @@
+[workspace]
+members = [
+    "proximate",
+    "proximate-driver",
+    "proximate-native",
+    "proximate-sys",
+    "proximate-types",
+]
+resolver = "3"
+
+[workspace.package]
+license = "LGPL-3.0-or-later"
+repository = "https://github.com/jungamer-64/libnfc-experimental.git"
+readme = "../README.md"
+keywords = ["nfc", "libnfc", "pn532", "pn53x", "pcsc"]
+categories = ["hardware-support"]

@@ -127,24 +127,19 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential libusb-dev libpcsclite-dev
+          sudo apt-get install -y cmake ninja-build build-essential libpcsclite-dev
 
       - name: Configure with security flags
         run: |
-          mkdir -p build
-          cd build
-          cmake -DCMAKE_BUILD_TYPE=Release ..
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: |
-          cd build
-          make -j$(nproc)
+          cmake --build build --parallel
 
       - name: Run tests
         run: |
-          cd build
-          # Run any available tests
-          ctest --output-on-failure || echo "No tests configured"
+          ctest --test-dir build --output-on-failure || echo "No tests configured"
 
   summary:
     name: Security Scan Summary

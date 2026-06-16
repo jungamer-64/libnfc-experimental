@@ -54,9 +54,6 @@
 #include <string.h>
 #include <signal.h>
 
-#include <nfc/nfc.h>
-
-#include "nfc-secure.h"
 #include "utils/nfc-utils.h"
 
 #define MAX_FRAME_LEN (264)
@@ -97,7 +94,7 @@ target_io(nfc_target *pnt, const uint8_t *pbtInput, const size_t szInput, uint8_
     switch (pbtInput[0]) {
       case 0x30: // Mifare read
         // block address is in pbtInput[1]
-        *pszOutput = 16;
+        *pszOutput = 17;
         snprintf((char *)pbtOutput, *pszOutput, "You read block %c", pbtInput[1]);
         break;
       case 0x50: // HLTA (ISO14443-3)
@@ -120,8 +117,8 @@ target_io(nfc_target *pnt, const uint8_t *pbtInput, const size_t szInput, uint8_
         *pszOutput = pnt->nti.nai.szAtsLen + 1;
         pbtOutput[0] = pnt->nti.nai.szAtsLen + 1; // ISO14443-4 says that ATS contains ATS_Length as first byte
         if (pnt->nti.nai.szAtsLen) {
-          if (nfc_safe_memcpy(pbtOutput + 1, MAX_FRAME_LEN - 1,
-                              pnt->nti.nai.abtAts, pnt->nti.nai.szAtsLen) < 0) {
+          if (!nfc_util_copy_bytes(pbtOutput + 1, MAX_FRAME_LEN - 1,
+                                   pnt->nti.nai.abtAts, pnt->nti.nai.szAtsLen)) {
             ERR("Failed to copy ATS");
             loop = false;
             break;

@@ -59,13 +59,11 @@
 #endif // HAVE_CONFIG_H
 
 #include <unistd.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include <limits.h>
-#include <nfc/nfc.h>
 #include "utils/nfc-utils.h"
-#include "../libnfc/nfc-secure.h"
 
 #if defined(WIN32) /* mingw compiler */
 #include <getopt.h>
@@ -90,6 +88,7 @@ bool set_block_at(nfc_device *pnd, uint8_t block, uint8_t *data, uint8_t cbData,
 bool set_block_at_confirmed(nfc_device *pnd, uint8_t block, uint8_t *data, uint8_t cbData, bool bPrintIt);
 const st_data *get_info(const nfc_target *pnt, bool bPrintIt);
 void display_system_info(nfc_device *pnd, const st_data *stdata);
+void print_hex(const uint8_t *pbtData, const size_t szBytes);
 
 int main(int argc, char *argv[])
 {
@@ -112,16 +111,9 @@ int main(int argc, char *argv[])
       case 'b':
         if (optarg) {
           bIsBlock = true;
-          unsigned long parsed = strtoul(optarg, NULL, 0);
-          if (parsed > UINT8_MAX) {
-            fprintf(stderr, "Error: block number 0x%lX is out of range (max 0x%02X)\n", parsed, UINT8_MAX);
-            bIsBadCli = true;
-          } else {
-            blockNumber = (uint8_t)parsed;
-          }
-        } else {
+          blockNumber = strtoul(optarg, NULL, 0);
+        } else
           bIsBadCli = true;
-        }
 
         break;
 
@@ -133,12 +125,12 @@ int main(int argc, char *argv[])
       case 'w':
         if (optarg) {
           /* Safely determine optarg length with bounds check (CWE-126) */
-          if (!nfc_is_null_terminated(optarg, 1024)) {
+          if (!nfc_util_string_fits(optarg, 1024)) {
             fprintf(stderr, "Error: Option argument not properly null-terminated\n");
             bIsBadCli = true;
             break;
           }
-          cbData = nfc_safe_strlen(optarg, 1024);
+          cbData = nfc_util_bounded_strlen(optarg, 1024);
           if ((cbData == (2 * 2)) || ((cbData == (4 * 2)))) {
             cbData >>= 1;
             if (cbData == 2) {
@@ -155,10 +147,6 @@ int main(int argc, char *argv[])
           }
 
           if (!bIsWrite) {
-            bIsBadCli = true;
-          }
-          if (cbData > UINT8_MAX) {
-            fprintf(stderr, "Error: data length %zu exceeds maximum byte size\n", cbData);
             bIsBadCli = true;
           }
         }
@@ -193,38 +181,47 @@ int main(int argc, char *argv[])
   }
 
   if (!bIsBadCli) {
-    if (!nfc_example_prepare_initiator(&context, &pnd)) {
-      return EXIT_FAILURE;
-    }
+    nfc_init(&context);
+    if (context) {
+      pnd = nfc_open(context, NULL);
+      if (pnd) {
+        res = nfc_initiator_init(pnd);
+        if (res == NFC_SUCCESS) {
+          printf("Reader  : %s - via %s\n  ...wait for card...\n", nfc_device_get_name(pnd), nfc_device_get_connstring(pnd));
 
-    printf("Reader  : %s - via %s\n  ...wait for card...\n", nfc_device_get_name(pnd), nfc_device_get_connstring(pnd));
+          res = nfc_initiator_select_passive_target(pnd, nm, NULL, 0, &nt);
+          if (res > 0) {
+            stcurrent = get_info(&nt, true);
+            if (stcurrent) {
+              printf("\n");
 
-    res = nfc_initiator_select_passive_target(pnd, nm, NULL, 0, &nt);
-    if (res > 0) {
-      stcurrent = get_info(&nt, true);
-      if (stcurrent) {
-        printf("\n");
+              if (bIsBlock && (bIsRead || bIsWrite)) {
+                if (bIsRead) {
+                  get_block_at(pnd, blockNumber, NULL, 0, true);
+                }
 
-        if (bIsBlock && (bIsRead || bIsWrite)) {
-          if (bIsRead) {
-            get_block_at(pnd, blockNumber, NULL, 0, true);
-          }
+                if (bIsWrite) {
+                  set_block_at_confirmed(pnd, blockNumber, data, cbData, true);
+                }
+              } else if (!bIsRead && !bIsWrite && !bIsBlock) {
+                for (i = 0; i < stcurrent->nbNormalBlock; i++) {
+                  get_block_at(pnd, i, NULL, 0, true);
+                }
+                display_system_info(pnd, stcurrent);
+              }
+            }
+          } else
+            printf("ERROR - nfc_initiator_select_passive_target: %i\n", res);
+        } else
+          printf("ERROR - nfc_initiator_init: %i\n", res);
 
-          if (bIsWrite) {
-            set_block_at_confirmed(pnd, blockNumber, data, (uint8_t)cbData, true);
-          }
-        } else if (!bIsRead && !bIsWrite && !bIsBlock) {
-          for (i = 0; i < stcurrent->nbNormalBlock; i++) {
-            get_block_at(pnd, i, NULL, 0, true);
-          }
-          display_system_info(pnd, stcurrent);
-        }
-      }
-    } else {
-      printf("ERROR - nfc_initiator_select_passive_target: %i\n", res);
-    }
+        nfc_close(pnd);
+      } else
+        printf("ERROR - nfc_open\n");
 
-    nfc_example_cleanup(&context, &pnd);
+      nfc_exit(context);
+    } else
+      printf("ERROR - nfc_init\n");
   } else {
     printf(
       "Usage:\n"
@@ -264,7 +261,7 @@ bool get_block_at(nfc_device *pnd, uint8_t block, uint8_t *data, uint8_t cbData,
   if ((res == 2) || (res == 4)) {
     if (data) {
       if (cbData == res) {
-        if (nfc_safe_memcpy(data, cbData, rx, res) < 0) {
+        if (!nfc_util_copy_bytes(data, cbData, rx, res)) {
           printf("ERROR - Failed to copy received data\n");
           return false;
         }
@@ -294,7 +291,7 @@ bool set_block_at(nfc_device *pnd, uint8_t block, uint8_t *data, uint8_t cbData,
   int res;
 
   if (cbData <= ST25TB_SR_BLOCK_MAX_SIZE) {
-    if (nfc_safe_memcpy(tx + 2, ST25TB_SR_BLOCK_MAX_SIZE, data, cbData) < 0) {
+    if (!nfc_util_copy_bytes(tx + 2, ST25TB_SR_BLOCK_MAX_SIZE, data, cbData)) {
       printf("ERROR - Failed to copy data for transmission\n");
       return false;
     }
@@ -528,3 +525,10 @@ void display_system_info(nfc_device *pnd, const st_data *stdata)
   }
 }
 
+void print_hex(const uint8_t *pbtData, const size_t szBytes)
+{
+  size_t szPos;
+  for (szPos = 0; szPos < szBytes; szPos++) {
+    printf("%02hhx ", pbtData[szPos]);
+  }
+}

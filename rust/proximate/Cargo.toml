@@ -1,0 +1,28 @@
+[package]
+name = "proximate"
+version = "0.1.0"
+edition = "2024"
+description = "High-level Rust facade for the experimental libnfc core."
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+name = "proximate"
+
+[dependencies]
+proximate-driver = { path = "../proximate-driver", default-features = false }
+proximate-native = { path = "../proximate-native", default-features = false }
+proximate-types = { path = "../proximate-types" }
+
+[features]
+default = ["lifecycle", "orchestration", "usb_helper"]
+lifecycle = ["proximate-driver/lifecycle"]
+orchestration = ["lifecycle", "proximate-driver/orchestration", "proximate-native/orchestration"]
+usb_helper = ["proximate-driver/usb_helper", "proximate-native/usb_helper"]
+pcsc_helper = ["proximate-driver/pcsc_helper", "proximate-native/pcsc_helper"]
+nci_helper = ["orchestration", "proximate-driver/nci_helper", "proximate-native/nci_helper"]
+# Feature used by the nightly ASan job to compile sanitizer-only tests cleanly.
+asan_tests = []

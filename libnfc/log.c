@@ -9,6 +9,7 @@
  * Copyright (C) 2012-2013 Ludovic Rousseau
  * See AUTHORS file for a more comprehensive list of contributors.
  * Additional contributors of this file:
+ * Copyright (C) 2025-2026 jungamer-64
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published by the
@@ -25,49 +26,88 @@
  */
 
 #include "log.h"
-#include <string.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <stdio.h>
+
 #include <stdarg.h>
-#include <fcntl.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#ifndef va_copy
+#define va_copy(dst, src) ((dst) = (src))
+#endif
+
+#ifdef DEBUG
+#define NFC_LOG_DEFAULT_LEVEL 3u
+#else
+#define NFC_LOG_DEFAULT_LEVEL 1u
+#endif
+
+static const char LOG_FORMATTING_FAILED[] = "<log formatting failed>";
+static uint32_t current_log_level = NFC_LOG_DEFAULT_LEVEL;
+
+static uint32_t
+log_group_level(uint32_t log_level, uint8_t group)
+{
+  const uint32_t shift = (uint32_t) group * 2u;
+
+  if (shift >= 32u) {
+    return 0u;
+  }
+
+  return (log_level >> shift) & 0x00000003u;
+}
+
+static int
+log_should_emit(uint32_t log_level, uint8_t group, uint8_t priority)
+{
+  if (log_level == 0u) {
+    return 0;
+  }
+
+  return ((log_level & 0x00000003u) >= (uint32_t) priority)
+      || (log_group_level(log_level, group) >= (uint32_t) priority);
+}
+
+static void
+log_dispatch_message(uint8_t group, const char *category, uint8_t priority, const char *message)
+{
+  const char *rendered_category = (category != NULL) ? category : "";
+  const char *rendered_message = (message != NULL) ? message : "";
+
+  if (!log_should_emit(current_log_level, group, priority)) {
+    return;
+  }
+
+  fprintf(stderr, "%s\t%s\t%s\n",
+      log_priority_to_str(priority),
+      rendered_category,
+      rendered_message);
+  fflush(stderr);
+}
 
 const char *
 log_priority_to_str(const int priority)
 {
   switch (priority) {
     case NFC_LOG_PRIORITY_ERROR:
-      return  "error";
+      return "error";
     case NFC_LOG_PRIORITY_INFO:
-      return  "info";
+      return "info";
     case NFC_LOG_PRIORITY_DEBUG:
-      return  "debug";
+      return "debug";
     default:
       break;
   }
   return "unknown";
 }
 
-
 #ifdef LOG
-
-#include "log-internal.h"
 
 void
 log_init(const nfc_context *context)
 {
-#ifdef ENVVARS
-  char str[32];
-  /* Use snprintf to ensure we don't overflow the buffer */
-  if (snprintf(str, sizeof(str), "%"PRIu32, context->log_level) < 0) {
-    /* Fallback in case of formatting error */
-    str[0] = '\0';
-  }
-  setenv("LIBNFC_LOG_LEVEL", str, 1);
-#else
-  (void)context;
-#endif
+  (void) context;
+  current_log_level = NFC_LOG_DEFAULT_LEVEL;
 }
 
 void
@@ -78,35 +118,60 @@ log_exit(void)
 void
 log_put(const uint8_t group, const char *category, const uint8_t priority, const char *format, ...)
 {
-  char *env_log_level = NULL;
-#ifdef ENVVARS
-  env_log_level = getenv("LIBNFC_LOG_LEVEL");
-#endif
-  uint32_t log_level;
-  if (NULL == env_log_level) {
-    // LIBNFC_LOG_LEVEL is not set
-#ifdef DEBUG
-    log_level = 3;
+  va_list args;
+  va_list args_copy;
+  int rendered_length;
+  size_t buffer_size;
+  char *buffer;
+
+  if (format == NULL) {
+    log_dispatch_message(group, category, priority, LOG_FORMATTING_FAILED);
+    return;
+  }
+
+  va_start(args, format);
+  va_copy(args_copy, args);
+
+#if defined(_WIN32)
+  rendered_length = _vscprintf(format, args_copy);
 #else
-    log_level = 1;
+  rendered_length = vsnprintf(NULL, 0, format, args_copy);
 #endif
-  } else {
-    log_level = atoi(env_log_level);
+  va_end(args_copy);
+
+  if (rendered_length < 0) {
+    va_end(args);
+    log_dispatch_message(group, category, priority, LOG_FORMATTING_FAILED);
+    return;
   }
 
-  //  printf("log_level = %"PRIu32" group = %"PRIu8" priority = %"PRIu8"\n", log_level, group, priority);
-  if (log_level) { // If log is not disabled by log_level=none
-    if (((log_level & 0x00000003) >= priority) ||   // Global log level
-        (((log_level >> (group * 2)) & 0x00000003) >= priority)) { // Group log level
-
-      va_list va;
-      va_start(va, format);
-      log_put_internal("%s\t%s\t", log_priority_to_str(priority), category);
-      log_vput_internal(format, va);
-      log_put_internal("\n");
-      va_end(va);
-    }
+  buffer_size = (size_t) rendered_length + 1u;
+  buffer = (char *) malloc(buffer_size);
+  if (buffer == NULL) {
+    va_end(args);
+    log_dispatch_message(group, category, priority, LOG_FORMATTING_FAILED);
+    return;
   }
+
+  if (vsnprintf(buffer, buffer_size, format, args) < 0) {
+    free(buffer);
+    va_end(args);
+    log_dispatch_message(group, category, priority, LOG_FORMATTING_FAILED);
+    return;
+  }
+
+  va_end(args);
+  log_dispatch_message(group, category, priority, buffer);
+  free(buffer);
+}
+
+void
+log_put_message(uint8_t group, const char *category, uint8_t priority, const char *message)
+{
+  if (message == NULL) {
+    message = "";
+  }
+  log_dispatch_message(group, category, priority, message);
 }
 
 #endif // LOG

@@ -19,6 +19,7 @@ compile
 config.guess
 config.h
 config.h.in
+!cmake/config.h.in
 config.log
 config.status
 config.sub
@@ -63,11 +64,19 @@ utils/nfc-read-forum-tag3
 utils/nfc-relay-picc
 utils/nfc-scan-device
 
-lib/
-
+rust/target/
+rust/proximate-sys/target/
+rust/proximate-sys/include/proximate_sys.generated.h
+rust/proximate-sys/rust/
+*/target
 #Ignore insiders AI rules
 .github/instructions/codacy.instructions.md
-
-
-#Ignore vscode AI rules
-.github\instructions\codacy.instructions.md
+.codacy/
+/libnfc_orig
+build-*
+.serena
+cargo.lock
+/tmp
+.codex
+/Testing
+.vscode

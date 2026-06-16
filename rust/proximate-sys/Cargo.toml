@@ -1,0 +1,39 @@
+[package]
+name = "proximate-sys"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+description = "Internal Rust implementation of libnfc's public C ABI."
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories = ["external-ffi-bindings", "hardware-support"]
+
+[lib]
+name = "proximate_sys"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+libc = "0.2"
+proximate-driver = { path = "../proximate-driver", default-features = false }
+proximate-native = { path = "../proximate-native", default-features = false }
+
+[features]
+default = ["secure", "lifecycle", "orchestration", "usb_helper"]
+secure = []
+lifecycle = ["proximate-driver/lifecycle"]
+orchestration = [
+    "lifecycle",
+    "proximate-driver/orchestration",
+    "proximate-driver/usb_helper",
+    "proximate-native/orchestration",
+]
+usb_helper = ["proximate-driver/usb_helper", "proximate-native/usb_helper"]
+pcsc_helper = ["proximate-driver/pcsc_helper", "proximate-native/pcsc_helper"]
+nci_helper = ["proximate-driver/nci_helper", "proximate-native/nci_helper"]
+c_ffi = ["secure", "lifecycle", "orchestration"]
+nfc_secure_debug = []
+asan_tests = []
+test_no_catch = []
+test_helpers = []

@@ -1,10 +1,7 @@
-# libnfc
-
-[![Build Status](https://github.com/jungamer-64/libnfc/actions/workflows/code-quality.yml/badge.svg)](https://github.com/jungamer-64/libnfc/actions/workflows/code-quality.yml)
-
-**Free/Libre Near Field Communication (NFC) library**
-
 ```
+*-
+* Free/Libre Near Field Communication (NFC) library
+*
 * Libnfc historical contributors:
 * Copyright (C) 2009      Roel Verdult
 * Copyright (C) 2009-2015 Romuald Conty
@@ -13,9 +10,11 @@
 * Copyright (C) 2012-2013 Ludovic Rousseau
 * Additional contributors:
 * See AUTHORS file
+-*
 ```
 
-## General Information
+General Information
+===================
 
 libnfc is a library which allows userspace application access to NFC devices.
 
@@ -24,7 +23,7 @@ The official web site is gone, browse a copy via the [WayBackMachine](https://we
 The official forum site is gone, browse a copy via the [WayBackMachine](https://web.archive.org/web/20210225042232/http://forums.nfc-tools.org/).
 
 The official development site is:
-  <https://github.com/nfc-tools/libnfc>
+  https://github.com/nfc-tools/libnfc
 
 Important note: this file covers POSIX systems, for Windows please read README-Windows.md
 
@@ -35,91 +34,72 @@ Some NFC drivers depend on third party software:
 
 * pn53x_usb & acr122_usb:
 
-  * libusb-0.1 <http://libusb.sf.net>
+  - No extra development package is required in this branch.
+  - Direct USB access is provided by the in-tree Rust `nusb` bridge and uses
+    the host OS USB stack.
+  - On Windows, install a WinUSB-compatible driver for USB readers.
 
 * acr122_pcsc:
 
-  * pcsc-lite <https://pcsclite.apdu.fr/>
+  - pcsc-lite https://pcsclite.apdu.fr/
 
 * pcsc:
 
-  * Support build with pcsc driver, which can be using all compatible readers, Feitian R502 and bR500 already passed the test.
+  - Support build with pcsc driver, which can be using all compatible readers,
+    Feitian R502 and bR500 already passed the test.
 
 The regression test suite depends on the cutter framework:
-<http://cutter.sf.net>
+http://cutter.sf.net
 
-## Code Quality
+Public ABI
+==========
 
-The project includes the following quality measures:
-
-* **Coverage**: Test suite development in progress
-* **Security**: Memory-safe operations via [nfc-secure](SECURITY.md)
-* **Build System**: Automated compilation checks
-
-**Recent Changes**:
-
-* Driver refactoring with unified error handling
-* Memory safety improvements (nfc-secure layer)
-* Code duplication reduction
-* Automated build verification
-
-For security information, see [SECURITY.md](SECURITY.md).
-
-## Memory Safety (`nfc-secure`)
-
-libnfc includes a memory safety layer (`libnfc/nfc-secure.h/c`):
-
-**Features**:
-
-* Buffer overflow prevention (size checking)
-* Compiler optimization-resistant secure memory erasure
-* Platform-optimized implementations (C23/C11/POSIX/Windows)
-* Compile-time type safety (C11+ array vs pointer detection)
-* Debug mode overlap detection
-
-**Example**:
-
-```c
-#include <nfc/nfc-secure.h>
-
-// Safe copy with overflow prevention
-uint8_t buffer[64];
-uint8_t data[16] = {...};
-NFC_SAFE_MEMCPY(buffer, data, sizeof(data));  // Automatic size check
-
-// Secure erase (won't be optimized away)
-uint8_t password[256];
-NFC_SECURE_MEMSET(password, 0x00);  // Guaranteed execution
-```
-
-**Documentation**:
-
-* **Usage Guide**: `libnfc/NFC_SECURE_USAGE_GUIDE.md` - Reference with examples
-* **API Reference**: `libnfc/nfc-secure.h` - API documentation
-* **Best Practices**: `libnfc/NFC_SECURE_BEST_PRACTICES_V4.md`
-
-**Standards Support**: C89/C99/C11/C23
+The supported C ABI surface in this repository is the installed header set
+under `include/nfc/`.
 
 Building
 ========
 
-Note: If working directly from a git clone of the repository, some of the files need to be generated first. To do this run
-`autoreconf -vis`
+The supported build system is CMake.
 
-Alternatively use a .tar.bz2 version of a packaged release (which already contains ./configure):
-<https://github.com/nfc-tools/libnfc/releases/>
+A Rust toolchain with `cargo` is required because this branch builds the public
+C ABI on top of the Rust-backed core.
 
-The build should be as simple as running these commands:
+Typical development build:
 
-    ./configure
-    make
+    cmake -S . -B build -DBUILD_EXAMPLES=ON -DBUILD_UTILS=ON -DBUILD_TESTING=ON
+    cmake --build build -j"$(nproc)"
 
-To build with specific driver(s), see option `--with-drivers=...` detailed in `./configure --help`.
+Useful options:
+
+* `-DBUILD_SHARED_LIBS=OFF` for a static library build
+* `-DLIBNFC_DRIVER_PCSC=ON` to enable the PC/SC driver
+* `-DLIBNFC_CONFDIR=/etc/nfc` to override the installed configuration directory
+* `-DPROXIMATE_SECURE=...`, `-DPROXIMATE_LIFECYCLE=...`, and
+  `-DPROXIMATE_ORCHESTRATION=...` are accepted as deprecated no-op
+  compatibility flags retained for older build scripts
+
+Recommended validation build:
+
+    cmake -S . -B build-rust-core -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON
+    cmake --build build-rust-core -j"$(nproc)"
+    ctest --test-dir build-rust-core --output-on-failure
+
+Downstream CMake consumers should use the exported package target:
+
+```cmake
+find_package(LibNFC CONFIG REQUIRED)
+target_link_libraries(your_app PRIVATE LibNFC::nfc)
+```
+
+For non-CMake consumers, the install still provides `pkg-config` metadata:
+
+    pkg-config --cflags --libs libnfc
 
 Installation
 ============
 
-    make install
+    cmake --install build
 
 You may need to grant permissions to your user to drive your device.
 Under GNU/Linux systems, if you use udev, you could use the provided udev rules.
@@ -133,13 +113,16 @@ Configuration
 =============
 
 In order to change the default behavior of the library, the libnfc uses a
-configuration file located in sysconfdir (as provided to ./configure).
+configuration file located in `LIBNFC_CONFDIR` as chosen when CMake configured
+the build.
 
 A sample commented file is available in sources: libnfc.conf.sample
 
-If you have compiled using:
+If you configure the project like this:
 
-    ./configure --prefix=/usr --sysconfdir=/etc
+    cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DLIBNFC_CONFDIR=/etc/nfc
+    cmake --build build
+    sudo cmake --install build
 
 you can make configuration directory and copy the sample file:
 
@@ -158,7 +141,7 @@ Environment Variables
 
 You can override certain configuration options at runtime using the following environment variables:
 
-* `LIBNFC_DEFAULT_DEVICE=<connstring>`:  `LIBNFC_DEFAULT_DEVICE=pn532_uart:/dev/ttyACM0` will use pn532 on /dev/ttyACM0 as default device
+* `LIBNFC_DEFAULT_DEVICE=<connstring>`: `LIBNFC_DEFAULT_DEVICE=pn532_uart:/dev/ttyACM0` will use pn532 on /dev/ttyACM0 as default device
 * `LIBNFC_DEVICE=<connstring>` will ignore all devices in the config files and use only the one defined in the variable
 * `LIBNFC_AUTO_SCAN=<true|false>` overrides `allow_autoscan` option in the config file
 * `LIBNFC_INTRUSIVE_SCAN=<true|false>` overrides `allow_intrusive_scan` option in the config file
@@ -169,12 +152,10 @@ To obtain the connstring of a recognized device, you can use `nfc-scan-device`: 
 How to report bugs
 ==================
 
-To report a bug, visit <https://github.com/nfc-tools/libnfc/issues> and fill
-out a bug report form.
+To report a bug in this experimental repository, visit https://github.com/jungamer-64/libnfc-experimental/issues and open an issue.
 
-If you have questions, remarks, we encourage you to post this in the developers
-community:
-<http://www.libnfc.org/community>
+For upstream libnfc issues outside this repository's branch-specific work, use:
+https://github.com/nfc-tools/libnfc/issues
 
 Please make sure to include:
 
@@ -182,8 +163,8 @@ Please make sure to include:
 
 * Information about your system. For instance:
 
-  * What operating system and version
-  * For Linux, what version of the C library
+  - What operating system and version
+  - For Linux, what version of the C library
 
   And anything else you think is relevant.
 
@@ -191,11 +172,11 @@ Please make sure to include:
 
   Reproduce the bug with debug, e.g. if it was:
 
-        nfc-list -v
+        $ nfc-list -v
 
   run it as:
 
-        LIBNFC_LOG_LEVEL=3 nfc-list -v
+        $ LIBNFC_LOG_LEVEL=3 nfc-list -v
 
 * How to reproduce the bug.
 
@@ -216,7 +197,7 @@ Please make sure to include:
 Patches
 =======
 
-Patches can be posted to <https://github.com/nfc-tools/libnfc/issues>
+Patches for this repository can be posted to https://github.com/jungamer-64/libnfc-experimental/issues
 
 If the patch fixes a bug, it is usually a good idea to include
 all the information described in "How to Report Bugs".
@@ -224,7 +205,7 @@ all the information described in "How to Report Bugs".
 Troubleshooting
 ===============
 
-Touchatag/ACR122
+Touchatag/ACR122:
 -----------------
 
 If your Touchatag or ACR122 device fails being detected by libnfc, make sure
@@ -237,12 +218,12 @@ of libccid: edit libccid_Info.plist configuration file (usually
 `<string>0x0000</string>` value into `0x0004` to allow bogus devices and restart
 pcscd daemon.
 
-ACR122
+ACR122:
 -------
 
 Using an ACR122 device with libnfc and without tag (e.g. to use NFCIP modes or
 card emulation) needs yet another PCSC-lite tweak: You need to allow usage of
-CCID Exchange command.  To do this, edit `libccid_Info.plist` configuration file
+CCID Exchange command. To do this, edit `libccid_Info.plist` configuration file
 (usually `/etc/libccid_Info.plist`) and locate `<key>ifdDriverOptions</key>`,
 turn `<string>0x0000</string>` value into `0x0001` to allow CCID exchange or
 `0x0005` to allow CCID exchange and bogus devices (cf previous remark) and
@@ -251,7 +232,7 @@ restart pcscd daemon.
 Warning: if you use ACS CCID drivers (acsccid), configuration file is located
 in something like: `/usr/lib/pcsc/drivers/ifd-acsccid.bundle/Contents/Info.plist`
 
-SCL3711
+SCL3711:
 --------
 
 Libnfc cannot be used concurrently with the PCSC proprietary driver of SCL3711.
@@ -260,21 +241,21 @@ Two possible solutions:
 * Either you don't install SCL3711 driver at all
 * Or you stop the PCSC daemon when you want to use libnfc-based tools
 
-PN533 USB device on Linux >= 3.1
+PN533 USB device on Linux >= 3.1:
 ---------------------------------
 
 Since Linux kernel version 3.1, a few kernel-modules must not be loaded in order
-to use libnfc : "nfc", "pn533" and "pn533_usb".
+to use libnfc: "nfc", "pn533" and "pn533_usb".
 To prevent kernel from loading automatically these modules, you can blacklist
 them in a modprobe conf file. This file is provided within libnfc archive:
 
     sudo cp contrib/linux/blacklist-libnfc.conf /etc/modprobe.d/blacklist-libnfc.conf
 
-FEITIAN bR500 and R502
+FEITIAN bR500 and R502:
 -----------------------
 
 Libnfc can work with PCSC proprietary driver of bR500 and R502, which is already available on most Linux setups.
-To activate the PCSC support: `./configure --with-drivers=pcsc`.
+To activate the PCSC support: `cmake -S . -B build -DLIBNFC_DRIVER_PCSC=ON`.
 Readers known to work:
 
 * Feitian bR500

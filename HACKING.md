@@ -7,62 +7,48 @@ Contributions to the libnfc are welcome!
 Here are some directions to get you started:
 
   1. Follow style conventions
-     The source code of the library trend to follow some conventions so that it
+     The source code of the library tends to follow some conventions so that it
      is consistent in style and thus easier to read.
      Look around and respect the same style.
      Don't use tabs. Increment unit is two spaces.
-     Don't leave dandling spaces or tabs at EOL.
-     Helper script to get some uniformity in the style:
-     $ make style
-
-     If you use vim see the [Vim: How to prevent trailing whitespaces](http://www.carbon-project.org/Vim__How_to_prevent_trailing_whitespaces.html).
+     Don't leave trailing spaces or tabs at EOL.
 
   2. Chase warnings: no warning should be introduced by your changes
-  Depending what you touch, you can check with:
+     Depending on what you touch, you can check with:
 
-    2.1 When using autotools
+    2.1 When configuring and building with CMake
 
-            $ autoreconf -Wall -vis
+            cmake -S . -B build -DBUILD_EXAMPLES=ON -DBUILD_UTILS=ON -DBUILD_TESTING=ON
+            cmake --build build -j"$(nproc)"
+            ctest --test-dir build --output-on-failure
 
-    2.2 When compiling
+    2.2 When validating a static build
 
-      2.2.1 Using extra flags:
+            cmake -S . -B build-static -DBUILD_SHARED_LIBS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON
+            cmake --build build-static -j"$(nproc)"
+            ctest --test-dir build-static --output-on-failure
 
-            $ export CFLAGS="-Wall -g -O2 -Wextra -pipe -funsigned-char -fstrict-aliasing \
-              -Wchar-subscripts -Wundef -Wshadow -Wcast-align -Wwrite-strings -Wunused \
-              -Wuninitialized -Wpointer-arith -Wredundant-decls -Winline -Wformat \
-              -Wformat-security -Wswitch-enum -Winit-self -Wmissing-include-dirs \
-              -Wmissing-prototypes -Wstrict-prototypes -Wold-style-definition \
-              -Wbad-function-cast -Wnested-externs -Wmissing-declarations"
-         $ ./configure
-         $ make clean
-         $ make
+    2.3 When touching the Rust bridge
 
-      2.2.2 Using clang:
+            cargo test --manifest-path rust/Cargo.toml -p proximate-sys --no-default-features --features c_ffi
+            bash scripts/check_callerfree_usage.sh
+            cargo test --manifest-path rust/Cargo.toml -p proximate -- --nocapture
+            cargo test --manifest-path rust/Cargo.toml -p proximate-sys --no-default-features --features "c_ffi,secure,lifecycle,orchestration" -- --nocapture
+            cmake -S . -B build-rust-core -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON
+            cmake --build build-rust-core -j"$(nproc)"
+            ctest --test-dir build-rust-core --output-on-failure
 
-        You can use same CFLAGS but also `-Wunreachable-code`
-
-            $ scan-build ./configure
-         $ make clean
-         $ scan-build make
-
-      2.2.3 Using `cppcheck` (v1.58 or higher):
-
-          $ make cppcheck
-
-    2.3 When Debianizing
-
-         $ lintian --info --display-info --display-experimental *deb
-        or (shorter version)
-         $ lintian -iIE *deb
+     `PROXIMATE_SECURE`, `PROXIMATE_LIFECYCLE`, and
+     `PROXIMATE_ORCHESTRATION` remain accepted only as deprecated no-op
+     compatibility flags retained for older build scripts.
 
   3. Preserve cross-platform compatibility
 
      The source code should remain compilable across various platforms,
-     including some you probably cannot test alone so keep it in mind.
+     including some you probably cannot test alone, so keep it in mind.
      Supported platforms:
 
      - Linux
      - FreeBSD
-     - Mac OS X
+     - macOS
      - Windows with MinGW

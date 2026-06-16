@@ -54,9 +54,6 @@
 #include <string.h>
 #include <ctype.h>
 
-#include <nfc/nfc.h>
-#include "../libnfc/nfc-secure.h"
-
 #include "nfc-utils.h"
 #include "mifare.h"
 
@@ -129,9 +126,9 @@ read_card(void)
     if (nfc_initiator_mifare_cmd(pnd, MC_READ, page, &mp)) {
       // Safe copy of read pages data (max 16 bytes for 4 pages, or remaining bytes)
       size_t copy_size = uiBlocks - page < 4 ? (uiBlocks - page) * 4 : 16;
-      if (nfc_safe_memcpy(mtDump.ul[page / 4].mbd.abtData,
-                          sizeof(mtDump.ul[page / 4].mbd.abtData),
-                          mp.mpd.abtData, copy_size) < 0) {
+      if (!nfc_util_copy_bytes(mtDump.ul[page / 4].mbd.abtData,
+                               sizeof(mtDump.ul[page / 4].mbd.abtData),
+                               mp.mpd.abtData, copy_size)) {
         bFailure = true;
       }
     } else {
@@ -148,19 +145,19 @@ read_card(void)
   // copy EV1 secrets to dump data (4-byte PWD + 2-byte PACK authentication)
   switch (iEV1Type) {
     case EV1_UL11:
-      if (nfc_safe_memcpy(mtDump.ul[4].mbc11.pwd, sizeof(mtDump.ul[4].mbc11.pwd),
-                          iPWD, 4) < 0)
+      if (!nfc_util_copy_bytes(mtDump.ul[4].mbc11.pwd, sizeof(mtDump.ul[4].mbc11.pwd),
+                               iPWD, 4))
         return false;
-      if (nfc_safe_memcpy(mtDump.ul[4].mbc11.pack, sizeof(mtDump.ul[4].mbc11.pack),
-                          iPACK, 2) < 0)
+      if (!nfc_util_copy_bytes(mtDump.ul[4].mbc11.pack, sizeof(mtDump.ul[4].mbc11.pack),
+                               iPACK, 2))
         return false;
       break;
     case EV1_UL21:
-      if (nfc_safe_memcpy(mtDump.ul[9].mbc21a.pwd, sizeof(mtDump.ul[9].mbc21a.pwd),
-                          iPWD, 4) < 0)
+      if (!nfc_util_copy_bytes(mtDump.ul[9].mbc21a.pwd, sizeof(mtDump.ul[9].mbc21a.pwd),
+                               iPWD, 4))
         return false;
-      if (nfc_safe_memcpy(mtDump.ul[9].mbc21b.pack, sizeof(mtDump.ul[9].mbc21b.pack),
-                          iPACK, 2) < 0)
+      if (!nfc_util_copy_bytes(mtDump.ul[9].mbc21b.pack, sizeof(mtDump.ul[9].mbc21b.pack),
+                               iPACK, 2))
         return false;
       break;
     case EV1_NONE:
@@ -170,27 +167,27 @@ read_card(void)
   // copy NTAG secrets to dump data (NTAG21x password/PACK authentication)
   switch (iNTAGType) {
     case NTAG_213:
-      if (nfc_safe_memcpy(mtDump.nt[43].mbc21356d.pwd, sizeof(mtDump.nt[43].mbc21356d.pwd),
-                          iPWD, 4) < 0)
+      if (!nfc_util_copy_bytes(mtDump.nt[43].mbc21356d.pwd, sizeof(mtDump.nt[43].mbc21356d.pwd),
+                               iPWD, 4))
         return false;
-      if (nfc_safe_memcpy(mtDump.nt[44].mbc21356e.pack, sizeof(mtDump.nt[44].mbc21356e.pack),
-                          iPACK, 2) < 0)
+      if (!nfc_util_copy_bytes(mtDump.nt[44].mbc21356e.pack, sizeof(mtDump.nt[44].mbc21356e.pack),
+                               iPACK, 2))
         return false;
       break;
     case NTAG_215:
-      if (nfc_safe_memcpy(mtDump.nt[133].mbc21356d.pwd, sizeof(mtDump.nt[133].mbc21356d.pwd),
-                          iPWD, 4) < 0)
+      if (!nfc_util_copy_bytes(mtDump.nt[133].mbc21356d.pwd, sizeof(mtDump.nt[133].mbc21356d.pwd),
+                               iPWD, 4))
         return false;
-      if (nfc_safe_memcpy(mtDump.nt[134].mbc21356e.pack, sizeof(mtDump.nt[134].mbc21356e.pack),
-                          iPACK, 2) < 0)
+      if (!nfc_util_copy_bytes(mtDump.nt[134].mbc21356e.pack, sizeof(mtDump.nt[134].mbc21356e.pack),
+                               iPACK, 2))
         return false;
       break;
     case NTAG_216:
-      if (nfc_safe_memcpy(mtDump.nt[229].mbc21356d.pwd, sizeof(mtDump.nt[229].mbc21356d.pwd),
-                          iPWD, 4) < 0)
+      if (!nfc_util_copy_bytes(mtDump.nt[229].mbc21356d.pwd, sizeof(mtDump.nt[229].mbc21356d.pwd),
+                               iPWD, 4))
         return false;
-      if (nfc_safe_memcpy(mtDump.nt[230].mbc21356e.pack, sizeof(mtDump.nt[230].mbc21356e.pack),
-                          iPACK, 2) < 0)
+      if (!nfc_util_copy_bytes(mtDump.nt[230].mbc21356e.pack, sizeof(mtDump.nt[230].mbc21356e.pack),
+                               iPACK, 2))
         return false;
       break;
     case NTAG_NONE:
@@ -289,7 +286,7 @@ ev1_pwd_auth(uint8_t *pwd)
   if (!raw_mode_start())
     return false;
   // Safe copy of 4-byte password to authentication frame (abtPWAuth[0] is command byte)
-  if (nfc_safe_memcpy(&abtPWAuth[1], sizeof(abtPWAuth) - 1, pwd, 4) < 0)
+  if (!nfc_util_copy_bytes(&abtPWAuth[1], sizeof(abtPWAuth) - 1, pwd, 4))
     return false;
   iso14443a_crc_append(abtPWAuth, 5);
   if (!transmit_bytes(abtPWAuth, 7))
@@ -327,7 +324,7 @@ static bool check_magic(void)
   printf("Checking if UL badge is DirectWrite...\n");
   if (nfc_initiator_mifare_cmd(pnd, MC_READ, 0, &mp)) {
     // Safe copy of Block 0 data (pages 0-2, total 12 bytes including UID)
-    if (nfc_safe_memcpy(original_b0, sizeof(original_b0), mp.mpd.abtData, 12) < 0) {
+    if (!nfc_util_copy_bytes(original_b0, sizeof(original_b0), mp.mpd.abtData, 12)) {
       printf("!\nError: failed to copy block 0 data\n");
       return false;
     }
@@ -348,8 +345,8 @@ static bool check_magic(void)
     // Safe copy of 4-byte page data with arithmetic offset validation
     if (page > 2)
       break; // Extra bounds check (page <= 2 already enforced by loop)
-    if (nfc_safe_memcpy(mp.mpd.abtData, sizeof(mp.mpd.abtData),
-                        original_b0 + page * 4, 4) < 0) {
+    if (!nfc_util_copy_bytes(mp.mpd.abtData, sizeof(mp.mpd.abtData),
+                             original_b0 + page * 4, 4)) {
       printf("  Failure copying page %i data\n", page);
       directWrite = false;
       break;
@@ -469,13 +466,11 @@ write_card(bool write_otp, bool write_lock, bool write_dyn_lock, bool write_uid)
     // writes one page at a time.
     uiBlock = page / 4;
     // Safe copy of 4-byte page data with modulo offset (page % 4 gives 0-3 range)
-    if (nfc_safe_memcpy(mp.mpd.abtData, sizeof(mp.mpd.abtData),
-                        mtDump.ul[uiBlock].mbd.abtData + ((page % 4) * 4), 4) < 0) {
+    if (!nfc_util_copy_bytes(mp.mpd.abtData, sizeof(mp.mpd.abtData),
+                             mtDump.ul[uiBlock].mbd.abtData + ((page % 4) * 4), 4)) {
       bFailure = true;
     } else {
-      // Clear remaining bytes (Ultralight compatibility mode uses 16-byte buffer)
-      if (nfc_secure_memset(mp.mpd.abtData + 4, 0, 12) < 0)
-        bFailure = true;
+      memset(mp.mpd.abtData + 4, 0, 12);
     }
     if (!bFailure && !nfc_initiator_mifare_cmd(pnd, MC_WRITE, page, &mp))
       bFailure = true;
@@ -522,8 +517,7 @@ static size_t str_to_uid(const char *str, uint8_t *uid)
   uint8_t i;
 
   // Securely clear UID buffer before parsing (MAX_UID_LEN = 10 bytes)
-  if (nfc_secure_memset(uid, 0x0, MAX_UID_LEN) < 0)
-    return 0;
+  memset(uid, 0x0, MAX_UID_LEN);
   i = 0;
   while ((*str != '\0') && ((i >> 1) < MAX_UID_LEN)) {
     char nibble[2] = {0x00, '\n'}; /* for strtol */
@@ -617,11 +611,11 @@ int main(int argc, const char *argv[])
       }
       ++arg;
       /* Safely determine password length with bounds check (CWE-126) */
-      if (!nfc_is_null_terminated(argv[arg], 256)) {
+      if (!nfc_util_string_fits(argv[arg], 256)) {
         ERR("Password argument not properly null-terminated");
         exit(EXIT_FAILURE);
       }
-      pwd_len = nfc_safe_strlen(argv[arg], 256);
+      pwd_len = nfc_util_bounded_strlen(argv[arg], 256);
       if (pwd_len != 8 || !ev1_load_pwd(iPWD, argv[arg])) {
         ERR("Please supply a PASSWORD of 8 HEX digits");
         exit(EXIT_FAILURE);
@@ -756,7 +750,7 @@ int main(int argc, const char *argv[])
     } else {
       printf("Success - PACK: %02x%02x\n", abtRx[0], abtRx[1]);
       // Safe copy of 2-byte PACK response from authentication
-      if (nfc_safe_memcpy(iPACK, sizeof(iPACK), abtRx, 2) < 0) {
+      if (!nfc_util_copy_bytes(iPACK, sizeof(iPACK), abtRx, 2)) {
         ERR("Failed to copy PACK response");
         exit(EXIT_FAILURE);
       }
@@ -765,10 +759,7 @@ int main(int argc, const char *argv[])
 
   if (iAction == 1) {
     // Securely clear dump structure before read (contains PWD/PACK authentication secrets)
-    if (nfc_secure_memset(&mtDump, 0x00, sizeof(mtDump)) < 0) {
-      ERR("Failed to securely clear dump structure");
-      exit(EXIT_FAILURE);
-    }
+    memset(&mtDump, 0x00, sizeof(mtDump));
   } else if (iAction == 2) {
     pfDump = fopen(argv[2], "rb");
 

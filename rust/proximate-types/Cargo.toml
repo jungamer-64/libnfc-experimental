@@ -1,0 +1,15 @@
+[package]
+name = "proximate-types"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+description = "Shared types and connection-string utilities for the experimental libnfc Rust core."
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+bitflags = "2.9.4"
+thiserror = "2.0.17"

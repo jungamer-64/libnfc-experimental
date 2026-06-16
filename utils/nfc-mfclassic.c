@@ -60,11 +60,8 @@
 #include <unistd.h>
 #endif
 
-#include <nfc/nfc.h>
-
 #include "mifare.h"
 #include "nfc-utils.h"
-#include "../libnfc/nfc-secure.h"
 
 static nfc_context *context;
 static nfc_device *pnd;
@@ -198,8 +195,8 @@ authenticate(uint32_t uiBlock)
     ERR("UID too short for authentication");
     return false;
   }
-  if (nfc_safe_memcpy(mp.mpa.abtAuthUid, sizeof(mp.mpa.abtAuthUid),
-                      nt.nti.nai.abtUid + nt.nti.nai.szUidLen - 4, 4) < 0) {
+  if (!nfc_util_copy_bytes(mp.mpa.abtAuthUid, sizeof(mp.mpa.abtAuthUid),
+                           nt.nti.nai.abtUid + nt.nti.nai.szUidLen - 4, 4)) {
     ERR("Failed to copy UID for authentication");
     return false;
   }
@@ -216,14 +213,14 @@ authenticate(uint32_t uiBlock)
 
     // Extract the right key from dump file (secure cryptographic key copy)
     if (bUseKeyA) {
-      if (nfc_safe_memcpy(mp.mpa.abtKey, sizeof(mp.mpa.abtKey),
-                          mtKeys.amb[uiTrailerBlock].mbt.abtKeyA, sizeof(mp.mpa.abtKey)) < 0) {
+      if (!nfc_util_copy_bytes(mp.mpa.abtKey, sizeof(mp.mpa.abtKey),
+                               mtKeys.amb[uiTrailerBlock].mbt.abtKeyA, sizeof(mp.mpa.abtKey))) {
         ERR("Failed to copy key A");
         return false;
       }
     } else {
-      if (nfc_safe_memcpy(mp.mpa.abtKey, sizeof(mp.mpa.abtKey),
-                          mtKeys.amb[uiTrailerBlock].mbt.abtKeyB, sizeof(mp.mpa.abtKey)) < 0) {
+      if (!nfc_util_copy_bytes(mp.mpa.abtKey, sizeof(mp.mpa.abtKey),
+                               mtKeys.amb[uiTrailerBlock].mbt.abtKeyB, sizeof(mp.mpa.abtKey))) {
         ERR("Failed to copy key B");
         return false;
       }
@@ -237,22 +234,22 @@ authenticate(uint32_t uiBlock)
   } else if (bFormatCard || !bUseKeyFile) {
     for (size_t key_index = 0; key_index < num_keys; key_index++) {
       // Safe copy cryptographic key from key array (6 bytes)
-      if (nfc_safe_memcpy(mp.mpa.abtKey, sizeof(mp.mpa.abtKey),
-                          keys + (key_index * 6), 6) < 0) {
+      if (!nfc_util_copy_bytes(mp.mpa.abtKey, sizeof(mp.mpa.abtKey),
+                               keys + (key_index * 6), 6)) {
         ERR("Failed to copy key from array");
         return false;
       }
       if (nfc_initiator_mifare_cmd(pnd, mc, uiBlock, &mp)) {
         // Store successful key for future use (secure copy)
         if (bUseKeyA) {
-          if (nfc_safe_memcpy(mtKeys.amb[uiBlock].mbt.abtKeyA, sizeof(mtKeys.amb[uiBlock].mbt.abtKeyA),
-                              &mp.mpa.abtKey, sizeof(mtKeys.amb[uiBlock].mbt.abtKeyA)) < 0) {
+          if (!nfc_util_copy_bytes(mtKeys.amb[uiBlock].mbt.abtKeyA, sizeof(mtKeys.amb[uiBlock].mbt.abtKeyA),
+                                   &mp.mpa.abtKey, sizeof(mtKeys.amb[uiBlock].mbt.abtKeyA))) {
             ERR("Failed to store key A");
             return false;
           }
         } else {
-          if (nfc_safe_memcpy(mtKeys.amb[uiBlock].mbt.abtKeyB, sizeof(mtKeys.amb[uiBlock].mbt.abtKeyB),
-                              &mp.mpa.abtKey, sizeof(mtKeys.amb[uiBlock].mbt.abtKeyB)) < 0) {
+          if (!nfc_util_copy_bytes(mtKeys.amb[uiBlock].mbt.abtKeyB, sizeof(mtKeys.amb[uiBlock].mbt.abtKeyB),
+                                   &mp.mpa.abtKey, sizeof(mtKeys.amb[uiBlock].mbt.abtKeyB))) {
             ERR("Failed to store key B");
             return false;
           }
@@ -398,25 +395,25 @@ read_card(bool read_unlocked)
       if (nfc_initiator_mifare_cmd(pnd, MC_READ, iBlock, &mp)) {
         if (read_unlocked) {
           // Safe copy trailer data (unlocked read mode)
-          if (nfc_safe_memcpy(mtDump.amb[iBlock].mbd.abtData, sizeof(mtDump.amb[iBlock].mbd.abtData),
-                              mp.mpd.abtData, sizeof(mtDump.amb[iBlock].mbd.abtData)) < 0) {
+          if (!nfc_util_copy_bytes(mtDump.amb[iBlock].mbd.abtData, sizeof(mtDump.amb[iBlock].mbd.abtData),
+                                   mp.mpd.abtData, sizeof(mtDump.amb[iBlock].mbd.abtData))) {
             printf("!\nError: failed to copy trailer data\n");
             return false;
           }
         } else {
           // Copy the keys over from our key dump and store the retrieved access bits (secure key handling)
-          if (nfc_safe_memcpy(mtDump.amb[iBlock].mbt.abtKeyA, sizeof(mtDump.amb[iBlock].mbt.abtKeyA),
-                              mtKeys.amb[iBlock].mbt.abtKeyA, sizeof(mtDump.amb[iBlock].mbt.abtKeyA)) < 0) {
+          if (!nfc_util_copy_bytes(mtDump.amb[iBlock].mbt.abtKeyA, sizeof(mtDump.amb[iBlock].mbt.abtKeyA),
+                                   mtKeys.amb[iBlock].mbt.abtKeyA, sizeof(mtDump.amb[iBlock].mbt.abtKeyA))) {
             printf("!\nError: failed to copy key A\n");
             return false;
           }
-          if (nfc_safe_memcpy(mtDump.amb[iBlock].mbt.abtAccessBits, sizeof(mtDump.amb[iBlock].mbt.abtAccessBits),
-                              mp.mpt.abtAccessBits, sizeof(mtDump.amb[iBlock].mbt.abtAccessBits)) < 0) {
+          if (!nfc_util_copy_bytes(mtDump.amb[iBlock].mbt.abtAccessBits, sizeof(mtDump.amb[iBlock].mbt.abtAccessBits),
+                                   mp.mpt.abtAccessBits, sizeof(mtDump.amb[iBlock].mbt.abtAccessBits))) {
             printf("!\nError: failed to copy access bits\n");
             return false;
           }
-          if (nfc_safe_memcpy(mtDump.amb[iBlock].mbt.abtKeyB, sizeof(mtDump.amb[iBlock].mbt.abtKeyB),
-                              mtKeys.amb[iBlock].mbt.abtKeyB, sizeof(mtDump.amb[iBlock].mbt.abtKeyB)) < 0) {
+          if (!nfc_util_copy_bytes(mtDump.amb[iBlock].mbt.abtKeyB, sizeof(mtDump.amb[iBlock].mbt.abtKeyB),
+                                   mtKeys.amb[iBlock].mbt.abtKeyB, sizeof(mtDump.amb[iBlock].mbt.abtKeyB))) {
             printf("!\nError: failed to copy key B\n");
             return false;
           }
@@ -431,8 +428,8 @@ read_card(bool read_unlocked)
         // Try to read out the data block
         if (nfc_initiator_mifare_cmd(pnd, MC_READ, iBlock, &mp)) {
           // Safe copy block data
-          if (nfc_safe_memcpy(mtDump.amb[iBlock].mbd.abtData, sizeof(mtDump.amb[iBlock].mbd.abtData),
-                              mp.mpd.abtData, sizeof(mtDump.amb[iBlock].mbd.abtData)) < 0) {
+          if (!nfc_util_copy_bytes(mtDump.amb[iBlock].mbd.abtData, sizeof(mtDump.amb[iBlock].mbd.abtData),
+                                   mp.mpd.abtData, sizeof(mtDump.amb[iBlock].mbd.abtData))) {
             printf("!\nError: failed to copy block data\n");
             return false;
           }
@@ -501,33 +498,33 @@ write_card(bool write_block_zero)
     if (is_trailer_block(uiBlock)) {
       if (bFormatCard) {
         // Copy the default key and reset the access bits (secure key copy for write)
-        if (nfc_safe_memcpy(mp.mpt.abtKeyA, sizeof(mp.mpt.abtKeyA), default_key, sizeof(mp.mpt.abtKeyA)) < 0) {
+        if (!nfc_util_copy_bytes(mp.mpt.abtKeyA, sizeof(mp.mpt.abtKeyA), default_key, sizeof(mp.mpt.abtKeyA))) {
           printf("!\nError: failed to copy default key A\n");
           return false;
         }
-        if (nfc_safe_memcpy(mp.mpt.abtAccessBits, sizeof(mp.mpt.abtAccessBits),
-                            default_acl, sizeof(mp.mpt.abtAccessBits)) < 0) {
+        if (!nfc_util_copy_bytes(mp.mpt.abtAccessBits, sizeof(mp.mpt.abtAccessBits),
+                                 default_acl, sizeof(mp.mpt.abtAccessBits))) {
           printf("!\nError: failed to copy default ACL\n");
           return false;
         }
-        if (nfc_safe_memcpy(mp.mpt.abtKeyB, sizeof(mp.mpt.abtKeyB), default_key, sizeof(mp.mpt.abtKeyB)) < 0) {
+        if (!nfc_util_copy_bytes(mp.mpt.abtKeyB, sizeof(mp.mpt.abtKeyB), default_key, sizeof(mp.mpt.abtKeyB))) {
           printf("!\nError: failed to copy default key B\n");
           return false;
         }
       } else {
         // Copy the keys over from our key dump and store the retrieved access bits (secure key handling)
-        if (nfc_safe_memcpy(mp.mpt.abtKeyA, sizeof(mp.mpt.abtKeyA),
-                            mtDump.amb[uiBlock].mbt.abtKeyA, sizeof(mp.mpt.abtKeyA)) < 0) {
+        if (!nfc_util_copy_bytes(mp.mpt.abtKeyA, sizeof(mp.mpt.abtKeyA),
+                                 mtDump.amb[uiBlock].mbt.abtKeyA, sizeof(mp.mpt.abtKeyA))) {
           printf("!\nError: failed to copy key A for write\n");
           return false;
         }
-        if (nfc_safe_memcpy(mp.mpt.abtAccessBits, sizeof(mp.mpt.abtAccessBits),
-                            mtDump.amb[uiBlock].mbt.abtAccessBits, sizeof(mp.mpt.abtAccessBits)) < 0) {
+        if (!nfc_util_copy_bytes(mp.mpt.abtAccessBits, sizeof(mp.mpt.abtAccessBits),
+                                 mtDump.amb[uiBlock].mbt.abtAccessBits, sizeof(mp.mpt.abtAccessBits))) {
           printf("!\nError: failed to copy access bits for write\n");
           return false;
         }
-        if (nfc_safe_memcpy(mp.mpt.abtKeyB, sizeof(mp.mpt.abtKeyB),
-                            mtDump.amb[uiBlock].mbt.abtKeyB, sizeof(mp.mpt.abtKeyB)) < 0) {
+        if (!nfc_util_copy_bytes(mp.mpt.abtKeyB, sizeof(mp.mpt.abtKeyB),
+                                 mtDump.amb[uiBlock].mbt.abtKeyB, sizeof(mp.mpt.abtKeyB))) {
           printf("!\nError: failed to copy key B for write\n");
           return false;
         }
@@ -544,14 +541,11 @@ write_card(bool write_block_zero)
         // Try to write the data block
         if (bFormatCard && uiBlock) {
           // Safe clear data block for formatting
-          if (nfc_secure_memset(mp.mpd.abtData, 0x00, sizeof(mp.mpd.abtData)) < 0) {
-            printf("!\nError: failed to clear data block\n");
-            return false;
-          }
+          memset(mp.mpd.abtData, 0x00, sizeof(mp.mpd.abtData));
         } else {
           // Safe copy data block from dump
-          if (nfc_safe_memcpy(mp.mpd.abtData, sizeof(mp.mpd.abtData),
-                              mtDump.amb[uiBlock].mbd.abtData, sizeof(mp.mpd.abtData)) < 0) {
+          if (!nfc_util_copy_bytes(mp.mpd.abtData, sizeof(mp.mpd.abtData),
+                                   mtDump.amb[uiBlock].mbd.abtData, sizeof(mp.mpd.abtData))) {
             printf("!\nError: failed to copy data block\n");
             return false;
           }
@@ -682,12 +676,12 @@ int main(int argc, const char *argv[])
     size_t arg3_len;
 
     /* Safely determine argument length with bounds check (CWE-126) */
-    if (!nfc_is_null_terminated(argv[3], 256)) {
+    if (!nfc_util_string_fits(argv[3], 256)) {
       printf("Error, argument not properly null-terminated.\n");
       print_usage(argv[0]);
       exit(EXIT_FAILURE);
     }
-    arg3_len = nfc_safe_strlen(argv[3], 256);
+    arg3_len = nfc_util_bounded_strlen(argv[3], 256);
 
     if (arg3_len != 9) {
       printf("Error, illegal tag specification, use U01ab23cd for example.\n");
@@ -821,7 +815,7 @@ int main(int argc, const char *argv[])
   if (bUseKeyFile) {
     uint8_t fileUid[4];
     // Safe copy UID from key file (4 bytes)
-    if (nfc_safe_memcpy(fileUid, sizeof(fileUid), mtKeys.amb[0].mbm.abtUID, 4) < 0) {
+    if (!nfc_util_copy_bytes(fileUid, sizeof(fileUid), mtKeys.amb[0].mbm.abtUID, 4)) {
       ERR("Failed to copy UID from key file");
       nfc_close(pnd);
       nfc_exit(context);
@@ -882,12 +876,7 @@ int main(int argc, const char *argv[])
 
   if (atAction == ACTION_READ) {
     // Secure clear mtDump (contains sensitive MIFARE keys) - uses volatile pointer to prevent optimization
-    if (nfc_secure_memset(&mtDump, 0x00, sizeof(mtDump)) < 0) {
-      ERR("Failed to clear dump structure");
-      nfc_close(pnd);
-      nfc_exit(context);
-      exit(EXIT_FAILURE);
-    }
+    memset(&mtDump, 0x00, sizeof(mtDump));
   } else {
     FILE *pfDump = fopen(argv[4], "rb");
 
