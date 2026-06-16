@@ -1,0 +1,88 @@
+name: Sanitizers
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  address-sanitizer:
+    name: AddressSanitizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            cmake \
+            lld \
+            ninja-build \
+            pkg-config
+
+      - name: Install nightly Rust
+        run: |
+          rustup toolchain install nightly --profile minimal --component rust-src
+          rustup target add x86_64-unknown-linux-gnu --toolchain nightly
+          rustup show
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-asan-${{ hashFiles('rust/Cargo.lock', 'rust-toolchain.toml', 'rust/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-asan-
+            ${{ runner.os }}-cargo-
+
+      - name: Run Rust tests with AddressSanitizer
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:symbolize=1
+          RUSTFLAGS: -Zsanitizer=address
+        run: |
+          cargo +nightly test -Z build-std \
+            --manifest-path rust/Cargo.toml \
+            --workspace \
+            --target x86_64-unknown-linux-gnu \
+            --features proximate/asan_tests,proximate-driver/asan_tests,proximate-sys/asan_tests
+
+      - name: Configure C build with AddressSanitizer
+        run: |
+          cmake -S . -B build-asan -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DBUILD_EXAMPLES=ON \
+            -DBUILD_UTILS=ON \
+            -DBUILD_TESTING=ON \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_C_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g -O1" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address"
+
+      - name: Build C AddressSanitizer configuration
+        run: cmake --build build-asan --parallel
+
+      - name: Run C AddressSanitizer tests
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:symbolize=1
+        run: ctest --test-dir build-asan --output-on-failure

@@ -1,0 +1,327 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_MANIFEST: rust/Cargo.toml
+
+jobs:
+  rust-green:
+    name: Rust green path (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup default stable
+          rustup show
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-green-${{ hashFiles('rust/Cargo.lock', 'rust-toolchain.toml', 'rust/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-green-
+            ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path "$RUST_MANIFEST" --all -- --check
+
+      - name: Check workspace
+        run: cargo check --manifest-path "$RUST_MANIFEST" --workspace
+
+      - name: Run clippy
+        run: cargo clippy --manifest-path "$RUST_MANIFEST" --workspace -- -D warnings
+
+      - name: Build documentation
+        run: cargo doc --manifest-path "$RUST_MANIFEST" --workspace --no-deps
+
+  rust-boundary-surface:
+    name: Rust boundary surface (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: unit-tests
+            os: windows-latest
+            command: cargo test --manifest-path rust/Cargo.toml --workspace --lib
+          - name: all-targets
+            os: windows-latest
+            command: cargo check --manifest-path rust/Cargo.toml --workspace --all-targets
+          - name: no-default-features
+            os: windows-latest
+            command: cargo check --manifest-path rust/Cargo.toml --workspace --no-default-features
+          - name: all-features
+            os: windows-latest
+            command: cargo check --manifest-path rust/Cargo.toml --workspace --all-features
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup default stable
+          rustup show
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-boundary-${{ matrix.name }}-${{ hashFiles('rust/Cargo.lock', 'rust-toolchain.toml', 'rust/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-boundary-
+            ${{ runner.os }}-cargo-
+
+      - name: Run required boundary command
+        run: ${{ matrix.command }}
+
+  script-hygiene:
+    name: Script hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install script dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ripgrep
+
+      - name: Check Rust FFI free ownership
+        run: bash scripts/check_callerfree_usage.sh
+
+      - name: Check retired private headers
+        run: bash scripts/check-no-retired-private-header-includes.sh
+
+  cmake-shared:
+    name: CMake shared (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu-gcc
+            os: ubuntu-latest
+            generator: Ninja
+            platform: ""
+            cc: gcc
+            cxx: g++
+          - name: ubuntu-clang
+            os: ubuntu-latest
+            generator: Ninja
+            platform: ""
+            cc: clang
+            cxx: clang++
+          - name: macos-clang
+            os: macos-latest
+            generator: Ninja
+            platform: ""
+            cc: clang
+            cxx: clang++
+          - name: windows-msvc
+            os: windows-latest
+            generator: Visual Studio 17 2022
+            platform: x64
+            cc: ""
+            cxx: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Ubuntu packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config
+
+      - name: Install macOS packages
+        if: runner.os == 'macOS'
+        run: brew install ninja pkg-config
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup default stable
+          rustup show
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-cmake-shared-${{ matrix.name }}-${{ hashFiles('rust/Cargo.lock', 'rust-toolchain.toml', 'rust/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-cmake-shared-
+            ${{ runner.os }}-cargo-
+
+      - name: Configure shared build
+        env:
+          CC_VALUE: ${{ matrix.cc }}
+          CXX_VALUE: ${{ matrix.cxx }}
+          CMAKE_GENERATOR_NAME: ${{ matrix.generator }}
+          CMAKE_GENERATOR_PLATFORM: ${{ matrix.platform }}
+        run: |
+          if [ -n "$CC_VALUE" ]; then
+            export CC="$CC_VALUE"
+          fi
+          if [ -n "$CXX_VALUE" ]; then
+            export CXX="$CXX_VALUE"
+          fi
+
+          cmake_args=(
+            -S .
+            -B build
+            -G "$CMAKE_GENERATOR_NAME"
+            -DCMAKE_BUILD_TYPE=Release
+            -DBUILD_EXAMPLES=ON
+            -DBUILD_UTILS=ON
+            -DBUILD_TESTING=ON
+          )
+          if [ -n "$CMAKE_GENERATOR_PLATFORM" ]; then
+            cmake_args+=(-A "$CMAKE_GENERATOR_PLATFORM")
+          fi
+          cmake "${cmake_args[@]}"
+
+      - name: Build shared configuration
+        run: cmake --build build --parallel --config Release
+
+      - name: Run shared tests
+        run: ctest --test-dir build --output-on-failure -C Release
+
+      - name: Install shared build
+        run: cmake --install build --prefix "$RUNNER_TEMP/libnfc-install-shared" --config Release
+
+  cmake-package-smoke:
+    name: CMake install package smoke (Ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup default stable
+          rustup show
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-cmake-package-${{ hashFiles('rust/Cargo.lock', 'rust-toolchain.toml', 'rust/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-cmake-package-
+            ${{ runner.os }}-cargo-
+
+      - name: Build and install shared package
+        run: |
+          cmake -S . -B build-package-shared -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_EXAMPLES=ON \
+            -DBUILD_UTILS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build-package-shared --parallel
+          ctest --test-dir build-package-shared --output-on-failure
+          cmake --install build-package-shared --prefix "$RUNNER_TEMP/libnfc-install-shared"
+
+      - name: Build and install static package
+        run: |
+          cmake -S . -B build-package-static -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_UTILS=OFF \
+            -DBUILD_TESTING=ON
+          cmake --build build-package-static --parallel
+          ctest --test-dir build-package-static --output-on-failure
+          cmake --install build-package-static --prefix "$RUNNER_TEMP/libnfc-install-static"
+
+      - name: Verify pkg-config metadata
+        run: |
+          PKG_CONFIG_PATH="$RUNNER_TEMP/libnfc-install-shared/lib/pkgconfig" pkg-config --cflags --libs libnfc
+          PKG_CONFIG_PATH="$RUNNER_TEMP/libnfc-install-static/lib/pkgconfig" pkg-config --static --libs libnfc
+
+      - name: Verify installed CMake packages
+        run: |
+          create_consumer() {
+            local source_dir="$1"
+            local install_prefix="$2"
+
+            mkdir -p "$source_dir"
+            cat > "$source_dir/CMakeLists.txt" <<EOF
+          cmake_minimum_required(VERSION 3.16)
+          project(libnfc_consumer C)
+          find_package(LibNFC CONFIG REQUIRED PATHS "$install_prefix/lib/cmake/LibNFC" NO_DEFAULT_PATH)
+          add_executable(consumer main.c)
+          target_link_libraries(consumer PRIVATE LibNFC::nfc)
+          EOF
+
+            cat > "$source_dir/main.c" <<'EOF'
+          #include <nfc/nfc.h>
+          int main(void) { return nfc_version() == 0; }
+          EOF
+
+            cmake -S "$source_dir" -B "$source_dir/build" -G Ninja -DCMAKE_BUILD_TYPE=Release
+            cmake --build "$source_dir/build" --parallel
+          }
+
+          create_consumer "$RUNNER_TEMP/libnfc-consumer-shared" "$RUNNER_TEMP/libnfc-install-shared"
+          create_consumer "$RUNNER_TEMP/libnfc-consumer-static" "$RUNNER_TEMP/libnfc-install-static"
