@@ -38,10 +38,6 @@ endif()
 option(BUILD_SHARED_LIBS "Build libnfc as a shared library" ON)
 option(BUILD_EXAMPLES "Build examples" ON)
 option(BUILD_UTILS "Build utilities" ON)
-option(PROXIMATE_C_FFI "Build the Rust-backed C ABI layer" ON)
-option(PROXIMATE_SECURE "Deprecated no-op compatibility flag retained for older build scripts" ON)
-option(PROXIMATE_LIFECYCLE "Deprecated no-op: Rust lifecycle/core helpers are always enabled in this branch" ON)
-option(PROXIMATE_ORCHESTRATION "Deprecated no-op: Rust orchestration entrypoints are always enabled in this branch" ON)
 option(LIBNFC_LOG "Enable log facility (errors, warning, info and debug messages)" ON)
 option(LIBNFC_ENVVARS "Enable envvars facility" ON)
 option(LIBNFC_CONFFILES_MODE "Enable configuration files" ON)
@@ -52,18 +48,6 @@ if(MSVC)
   option(BUILD_MANUAL "Install man pages" OFF)
 else()
   option(BUILD_MANUAL "Install man pages" ON)
-endif()
-
-if(NOT PROXIMATE_SECURE OR NOT PROXIMATE_LIFECYCLE OR NOT PROXIMATE_ORCHESTRATION)
-  message(DEPRECATION
-    "PROXIMATE_SECURE, PROXIMATE_LIFECYCLE, and PROXIMATE_ORCHESTRATION are ignored in this branch; "
-    "the Rust core is always enabled.")
-endif()
-
-if(NOT PROXIMATE_C_FFI)
-  message(FATAL_ERROR
-    "PROXIMATE_C_FFI=OFF is no longer supported in this branch. "
-    "Only the Rust-backed build is supported.")
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/modules")

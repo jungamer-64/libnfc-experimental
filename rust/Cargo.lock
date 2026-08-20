@@ -137,7 +137,7 @@ dependencies = [
 
 [[package]]
 name = "proximate"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "proximate-driver",
  "proximate-native",
@@ -146,14 +146,14 @@ dependencies = [
 
 [[package]]
 name = "proximate-driver"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "proximate-types",
 ]
 
 [[package]]
 name = "proximate-native"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nusb",
  "pcsc",
@@ -163,7 +163,7 @@ dependencies = [
 
 [[package]]
 name = "proximate-sys"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "proximate-driver",
@@ -172,7 +172,7 @@ dependencies = [
 
 [[package]]
 name = "proximate-types"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bitflags",
  "thiserror",

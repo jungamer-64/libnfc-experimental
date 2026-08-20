@@ -1,8 +1,7 @@
 [package]
 name = "proximate-sys"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
-build = "build.rs"
 description = "Internal Rust implementation of libnfc's public C ABI."
 license.workspace = true
 repository.workspace = true
@@ -20,19 +19,20 @@ proximate-driver = { path = "../proximate-driver", default-features = false }
 proximate-native = { path = "../proximate-native", default-features = false }
 
 [features]
-default = ["secure", "lifecycle", "orchestration", "usb_helper"]
-secure = []
-lifecycle = ["proximate-driver/lifecycle"]
-orchestration = [
-    "lifecycle",
-    "proximate-driver/orchestration",
-    "proximate-driver/usb_helper",
-    "proximate-native/orchestration",
+default = [
+    "driver-pn53x-usb",
+    "driver-acr122-usb",
+    "driver-acr122s",
+    "driver-arygon",
+    "driver-pn532-uart",
 ]
-usb_helper = ["proximate-driver/usb_helper", "proximate-native/usb_helper"]
-pcsc_helper = ["proximate-driver/pcsc_helper", "proximate-native/pcsc_helper"]
-nci_helper = ["proximate-driver/nci_helper", "proximate-native/nci_helper"]
-c_ffi = ["secure", "lifecycle", "orchestration"]
-nfc_secure_debug = []
-asan_tests = []
-test_helpers = []
+driver-pn53x-usb = ["proximate-native/driver-pn53x-usb"]
+driver-acr122-usb = ["proximate-native/driver-acr122-usb"]
+driver-acr122s = ["proximate-native/driver-acr122s"]
+driver-arygon = ["proximate-native/driver-arygon"]
+driver-pn532-uart = ["proximate-native/driver-pn532-uart"]
+driver-pn532-spi = ["proximate-native/driver-pn532-spi"]
+driver-pn532-i2c = ["proximate-native/driver-pn532-i2c"]
+driver-pcsc = ["proximate-native/driver-pcsc"]
+driver-acr122-pcsc = ["proximate-native/driver-acr122-pcsc"]
+driver-pn71xx = ["proximate-native/driver-pn71xx"]

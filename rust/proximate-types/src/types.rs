@@ -49,14 +49,12 @@ impl Property {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DepMode {
-    Undefined,
     Passive,
     Active,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BaudRate {
-    Undefined,
     Br106,
     Br212,
     Br424,
@@ -66,7 +64,6 @@ pub enum BaudRate {
 impl BaudRate {
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Undefined => "undefined baud rate",
             Self::Br106 => "106 kbps",
             Self::Br212 => "212 kbps",
             Self::Br424 => "424 kbps",
@@ -77,7 +74,6 @@ impl BaudRate {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ModulationType {
-    Undefined,
     Iso14443A,
     Jewel,
     Iso14443B,
@@ -93,7 +89,6 @@ pub enum ModulationType {
 impl ModulationType {
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Undefined => "???",
             Self::Iso14443A => "ISO/IEC 14443A",
             Self::Jewel => "Innovision Jewel",
             Self::Iso14443B => "ISO/IEC 14443-4B",
@@ -116,8 +111,8 @@ pub enum Mode {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Modulation {
-    pub modulation_type: ModulationType,
-    pub baud_rate: BaudRate,
+    modulation_type: ModulationType,
+    baud_rate: BaudRate,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -134,7 +129,6 @@ pub struct DepInfo {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TargetInfo {
-    None,
     Iso14443A {
         atqa: [u8; 2],
         sak: u8,
@@ -183,15 +177,6 @@ pub enum TargetInfo {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Target {
-    pub modulation: Modulation,
-    pub info: TargetInfo,
-}
-
-impl Target {
-    pub fn new(modulation: Modulation) -> Self {
-        Self {
-            modulation,
-            info: TargetInfo::None,
-        }
-    }
+    modulation: Modulation,
+    info: TargetInfo,
 }

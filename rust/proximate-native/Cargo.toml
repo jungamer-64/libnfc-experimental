@@ -1,8 +1,7 @@
 [package]
 name = "proximate-native"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
-build = "build.rs"
 description = "Builtin drivers and native transport adapters for the experimental libnfc Rust core."
 license.workspace = true
 repository.workspace = true
@@ -17,8 +16,20 @@ pcsc = { version = "2.9.0", optional = true }
 rustix = { version = "1.1", default-features = false, features = ["std", "fs", "event", "termios", "time"] }
 
 [features]
-default = ["usb_helper"]
-orchestration = []
-usb_helper = ["dep:nusb", "proximate-driver/usb_helper"]
-pcsc_helper = ["dep:pcsc", "proximate-driver/pcsc_helper"]
-nci_helper = ["orchestration", "proximate-driver/nci_helper"]
+default = [
+    "driver-pn53x-usb",
+    "driver-acr122-usb",
+    "driver-acr122s",
+    "driver-arygon",
+    "driver-pn532-uart",
+]
+driver-pn53x-usb = ["dep:nusb"]
+driver-acr122-usb = ["dep:nusb"]
+driver-acr122s = []
+driver-arygon = []
+driver-pn532-uart = []
+driver-pn532-spi = []
+driver-pn532-i2c = []
+driver-pcsc = ["dep:pcsc"]
+driver-acr122-pcsc = ["dep:pcsc"]
+driver-pn71xx = []

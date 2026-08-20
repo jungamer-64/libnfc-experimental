@@ -11,90 +11,6 @@ fn missing_capability(operation: &'static str) -> Error {
     Error::MissingCapability(operation)
 }
 
-fn ensure_device_caps<D>(
-    device: &mut D,
-    required: DeviceCaps,
-    operation: &'static str,
-) -> Result<(), Error>
-where
-    D: DeviceMeta + ?Sized,
-{
-    if device.caps().contains(required) {
-        Ok(())
-    } else {
-        Err(device.missing_capability(operation))
-    }
-}
-
-fn ensure_any_device_caps<D>(
-    device: &mut D,
-    supported: DeviceCaps,
-    operation: &'static str,
-) -> Result<(), Error>
-where
-    D: DeviceMeta + ?Sized,
-{
-    if device.caps().intersects(supported) {
-        Ok(())
-    } else {
-        Err(device.missing_capability(operation))
-    }
-}
-
-fn pn53x_view_caps() -> DeviceCaps {
-    DeviceCaps::PN53X_TRANSCEIVE
-        | DeviceCaps::PN53X_READ_REGISTER
-        | DeviceCaps::PN53X_WRITE_REGISTER
-        | DeviceCaps::PN532_SAM_CONFIGURATION
-}
-
-fn property_view_caps() -> DeviceCaps {
-    DeviceCaps::SET_PROPERTY_BOOL
-        | DeviceCaps::SET_PROPERTY_INT
-        | DeviceCaps::SUPPORTED_MODULATIONS
-        | DeviceCaps::SUPPORTED_BAUD_RATES
-}
-
-fn passive_scan_view_caps() -> DeviceCaps {
-    DeviceCaps::SET_PROPERTY_BOOL
-        | DeviceCaps::SUPPORTED_MODULATIONS
-        | DeviceCaps::SUPPORTED_BAUD_RATES
-        | DeviceCaps::INITIATOR_INIT
-        | DeviceCaps::SELECT_PASSIVE_TARGET
-        | DeviceCaps::POLL_TARGET
-        | DeviceCaps::DESELECT_TARGET
-}
-
-fn dep_view_caps() -> DeviceCaps {
-    DeviceCaps::SET_PROPERTY_BOOL
-        | DeviceCaps::INITIATOR_INIT_SECURE_ELEMENT
-        | DeviceCaps::SELECT_DEP_TARGET
-}
-
-fn session_view_caps() -> DeviceCaps {
-    DeviceCaps::DESELECT_TARGET
-        | DeviceCaps::TARGET_IS_PRESENT
-        | DeviceCaps::ABORT_COMMAND
-        | DeviceCaps::IDLE
-        | DeviceCaps::POWERDOWN
-}
-
-fn initiator_io_view_caps() -> DeviceCaps {
-    DeviceCaps::TRANSCEIVE_BYTES
-        | DeviceCaps::TRANSCEIVE_BITS
-        | DeviceCaps::TRANSCEIVE_BYTES_TIMED
-        | DeviceCaps::TRANSCEIVE_BITS_TIMED
-}
-
-fn target_io_view_caps() -> DeviceCaps {
-    DeviceCaps::SET_PROPERTY_BOOL
-        | DeviceCaps::TARGET_INIT
-        | DeviceCaps::TARGET_SEND_BYTES
-        | DeviceCaps::TARGET_RECEIVE_BYTES
-        | DeviceCaps::TARGET_SEND_BITS
-        | DeviceCaps::TARGET_RECEIVE_BITS
-}
-
 pub trait Logger: Send + Sync {
     fn log(&self, _priority: u8, _message: &str) {}
 }
@@ -338,11 +254,6 @@ impl Device {
         }
     }
 
-    #[doc(hidden)]
-    pub fn from_handle(handle: Box<dyn DeviceHandle>) -> Self {
-        Self::new(handle, None)
-    }
-
     pub fn name(&self) -> &str {
         self.display_name
             .as_deref()
@@ -351,10 +262,6 @@ impl Device {
 
     pub fn connstring(&self) -> &ConnectionString {
         self.handle.connstring()
-    }
-
-    pub fn caps(&self) -> DeviceCaps {
-        self.handle.caps()
     }
 
     pub fn last_error(&self) -> i32 {
@@ -429,8 +336,7 @@ impl Device {
         })
     }
 
-    #[doc(hidden)]
-    pub fn into_handle(self) -> Box<dyn DeviceHandle> {
+    pub(crate) fn into_handle(self) -> Box<dyn DeviceHandle> {
         self.handle
     }
 }

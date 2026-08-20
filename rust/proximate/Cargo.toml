@@ -1,6 +1,6 @@
 [package]
 name = "proximate"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "High-level Rust facade for the experimental libnfc core."
 license.workspace = true
@@ -18,11 +18,20 @@ proximate-native = { path = "../proximate-native", default-features = false }
 proximate-types = { path = "../proximate-types" }
 
 [features]
-default = ["lifecycle", "orchestration", "usb_helper"]
-lifecycle = ["proximate-driver/lifecycle"]
-orchestration = ["lifecycle", "proximate-driver/orchestration", "proximate-native/orchestration"]
-usb_helper = ["proximate-driver/usb_helper", "proximate-native/usb_helper"]
-pcsc_helper = ["proximate-driver/pcsc_helper", "proximate-native/pcsc_helper"]
-nci_helper = ["orchestration", "proximate-driver/nci_helper", "proximate-native/nci_helper"]
-# Feature used by the nightly ASan job to compile sanitizer-only tests cleanly.
-asan_tests = []
+default = [
+    "driver-pn53x-usb",
+    "driver-acr122-usb",
+    "driver-acr122s",
+    "driver-arygon",
+    "driver-pn532-uart",
+]
+driver-pn53x-usb = ["proximate-native/driver-pn53x-usb"]
+driver-acr122-usb = ["proximate-native/driver-acr122-usb"]
+driver-acr122s = ["proximate-native/driver-acr122s"]
+driver-arygon = ["proximate-native/driver-arygon"]
+driver-pn532-uart = ["proximate-native/driver-pn532-uart"]
+driver-pn532-spi = ["proximate-native/driver-pn532-spi"]
+driver-pn532-i2c = ["proximate-native/driver-pn532-i2c"]
+driver-pcsc = ["proximate-native/driver-pcsc"]
+driver-acr122-pcsc = ["proximate-native/driver-acr122-pcsc"]
+driver-pn71xx = ["proximate-native/driver-pn71xx"]
