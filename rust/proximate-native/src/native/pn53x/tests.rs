@@ -1404,3 +1404,128 @@ fn target_is_present_for_mifare_classic_reselects_saved_uid() {
 
     assert!(device.target_is_present(Some(&target)).unwrap());
 }
+
+#[test]
+fn specialized_iso14443b_presence_uses_protocol_specific_transcripts() {
+    let cases = [
+        (
+            Target::try_new(
+                Modulation::try_new(ModulationType::Iso14443Bi, BaudRate::Br106).unwrap(),
+                TargetInfo::Iso14443Bi {
+                    div: [0x11, 0x22, 0x33, 0x44],
+                    version_log: 0x55,
+                    config: 0x66,
+                    atr: vec![0x77],
+                },
+            )
+            .unwrap(),
+            vec![
+                PN53X_IN_COMMUNICATE_THRU,
+                0x01,
+                0x0f,
+                0x11,
+                0x22,
+                0x33,
+                0x44,
+            ],
+        ),
+        (
+            Target::try_new(
+                Modulation::try_new(ModulationType::Iso14443B2Sr, BaudRate::Br106).unwrap(),
+                TargetInfo::Iso14443B2Sr { uid: [0x22; 8] },
+            )
+            .unwrap(),
+            vec![PN53X_IN_COMMUNICATE_THRU, 0x0b],
+        ),
+        (
+            Target::try_new(
+                Modulation::try_new(ModulationType::Iso14443B2Ct, BaudRate::Br106).unwrap(),
+                TargetInfo::Iso14443B2Ct {
+                    uid: [0x12, 0x34, 0x56, 0x78],
+                    product_code: 0x9a,
+                    fabrication_code: 0xbc,
+                },
+            )
+            .unwrap(),
+            vec![PN53X_IN_COMMUNICATE_THRU, 0x9f, 0x12, 0x34],
+        ),
+    ];
+
+    for (target, expected_command) in cases {
+        let mut device = probed_device();
+        device.core.remember_target(target.clone());
+        queue_command_response(
+            &mut device.transport,
+            PN53X_IN_COMMUNICATE_THRU,
+            &[0x00, 0xaa],
+        );
+        let sent_before = device.transport.sent.len();
+
+        assert!(device.target_is_present(Some(&target)).unwrap());
+        assert_eq!(
+            sent_payload(&device.transport, sent_before),
+            expected_command
+        );
+    }
+}
+
+#[test]
+fn iclass_presence_reconfigures_receiver_then_activates_and_selects() {
+    let mut device = probed_device();
+    let target = Target::try_new(
+        Modulation::try_new(ModulationType::Iso14443BiClass, BaudRate::Br106).unwrap(),
+        TargetInfo::Iso14443BiClass {
+            uid: [1, 2, 3, 4, 5, 6, 7, 8],
+        },
+    )
+    .unwrap();
+    device.core.remember_target(target.clone());
+    queue_command_response(&mut device.transport, PN53X_WRITE_REGISTER, &[]);
+    queue_command_response(
+        &mut device.transport,
+        PN53X_IN_COMMUNICATE_THRU,
+        &[PN53X_STATUS_TIMEOUT],
+    );
+    queue_command_response(
+        &mut device.transport,
+        PN53X_IN_COMMUNICATE_THRU,
+        &[0x00, 0xaa],
+    );
+    let sent_before = device.transport.sent.len();
+
+    assert!(device.target_is_present(Some(&target)).unwrap());
+    assert_eq!(
+        sent_payload(&device.transport, sent_before)[0],
+        PN53X_WRITE_REGISTER
+    );
+    assert_eq!(
+        sent_payload(&device.transport, sent_before + 1),
+        vec![PN53X_IN_COMMUNICATE_THRU, 0x0a]
+    );
+    assert_eq!(
+        sent_payload(&device.transport, sent_before + 2),
+        vec![PN53X_IN_COMMUNICATE_THRU, 0x0c]
+    );
+}
+
+#[test]
+fn presence_timeout_reports_target_release_and_forgets_target() {
+    let mut device = probed_device();
+    let target = Target::try_new(
+        Modulation::try_new(ModulationType::Iso14443B2Sr, BaudRate::Br106).unwrap(),
+        TargetInfo::Iso14443B2Sr { uid: [0x22; 8] },
+    )
+    .unwrap();
+    device.core.remember_target(target.clone());
+    queue_command_response(
+        &mut device.transport,
+        PN53X_IN_COMMUNICATE_THRU,
+        &[PN53X_STATUS_TIMEOUT],
+    );
+
+    assert_eq!(
+        device.target_is_present(Some(&target)),
+        Err(Error::TargetReleased("target_is_present"))
+    );
+    assert!(device.core.current_target().is_none());
+}

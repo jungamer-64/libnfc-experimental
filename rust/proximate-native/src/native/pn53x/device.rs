@@ -1014,22 +1014,69 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         tx: &[u8],
         timeout_ms: i32,
         easy_framing: bool,
+        attempts: usize,
     ) -> Result<bool, Error> {
         self.with_temporary_bool_property(Property::EasyFraming, easy_framing, |device| {
-            let mut rx = [0u8; PN53X_EXTENDED_FRAME_DATA_MAX_LEN];
-            let timeout = OperationTimeout::try_milliseconds(timeout_ms as u32)?;
-            let len = device.transceive_bytes_driver(tx, &mut rx, timeout)?;
-            Ok(len > 0)
+            let timeout = OperationTimeout::from_libnfc_millis(timeout_ms)?;
+            for _ in 0..attempts {
+                let mut rx = [0u8; PN53X_EXTENDED_FRAME_DATA_MAX_LEN];
+                match device.transceive_bytes_driver(tx, &mut rx, timeout) {
+                    Ok(len) if len > 0 => return Ok(true),
+                    Ok(_) => {}
+                    Err(Error::RfTransmission(_))
+                        if device.core.last_status_byte == PN53X_STATUS_TIMEOUT =>
+                    {
+                        return Err(status_error("target_is_present", NFC_ETGRELEASED));
+                    }
+                    Err(Error::RfTransmission(_) | Error::Chip(_)) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            Err(status_error("target_is_present", NFC_ETGRELEASED))
         })
     }
 
-    fn presence_transceive_bits(&mut self, _timeout_ms: i32) -> Result<bool, Error> {
-        self.with_temporary_bool_property(Property::HandleParity, false, |device| {
+    fn presence_transceive_bits(&mut self, attempts: usize) -> Result<bool, Error> {
+        self.apply_property_bool(Property::ActivateField, false)?;
+        self.with_temporary_bool_property(Property::HandleCrc, false, |device| {
+            device.with_temporary_bool_property(Property::HandleParity, false, |device| {
+                for _ in 0..attempts {
+                    device.apply_property_bool(Property::ActivateField, false)?;
+                    let mut rx = [0u8; PN53X_EXTENDED_FRAME_DATA_MAX_LEN];
+                    let mut parity = [0u8; PN53X_EXTENDED_FRAME_DATA_MAX_LEN];
+                    let empty = BitFrame::try_new(&[], 0, None)?;
+                    match device.transceive_bits_driver(empty, &mut rx, Some(&mut parity)) {
+                        Ok(len) if len > 0 => return Ok(true),
+                        Ok(_) | Err(Error::RfTransmission(_) | Error::Chip(_)) => {}
+                        Err(error) => return Err(error),
+                    }
+                }
+                Err(status_error("target_is_present", NFC_ETGRELEASED))
+            })
+        })
+    }
+
+    fn check_iclass_presence(&mut self) -> Result<bool, Error> {
+        self.configure_iclass()?;
+        self.with_temporary_bool_property(Property::EasyFraming, false, |device| {
+            let timeout = OperationTimeout::try_milliseconds(300)?;
             let mut rx = [0u8; PN53X_EXTENDED_FRAME_DATA_MAX_LEN];
-            let mut parity = [0u8; PN53X_EXTENDED_FRAME_DATA_MAX_LEN];
-            let empty = BitFrame::try_new(&[], 0, None)?;
-            let len = device.transceive_bits_driver(empty, &mut rx, Some(&mut parity))?;
-            Ok(len > 0)
+            match device.transceive_bytes_driver(&[0x0a], &mut rx, timeout) {
+                Ok(_) => {}
+                Err(Error::RfTransmission(_))
+                    if device.core.last_status_byte == PN53X_STATUS_TIMEOUT => {}
+                Err(error) => return Err(error),
+            }
+
+            for _ in 0..2 {
+                let mut rx = [0u8; PN53X_EXTENDED_FRAME_DATA_MAX_LEN];
+                match device.transceive_bytes_driver(&[0x0c], &mut rx, timeout) {
+                    Ok(len) if len > 0 => return Ok(true),
+                    Ok(_) | Err(Error::RfTransmission(_) | Error::Chip(_)) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            Err(status_error("target_is_present", NFC_ETGRELEASED))
         })
     }
 
@@ -1050,10 +1097,14 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
     fn check_iso14443a_presence(&mut self, target: &Target) -> Result<bool, Error> {
         match target.info() {
             TargetInfo::Iso14443A { atqa, sak, uid, .. } if sak & SAK_ISO14443_4_COMPLIANT != 0 => {
-                self.presence_transceive_bytes(&[0xb2], 300, false)
+                self.presence_transceive_bytes(&[0xb2], 300, false, 2)
             }
             TargetInfo::Iso14443A { atqa, sak, .. } if *sak == 0x00 && *atqa == [0x00, 0x44] => {
-                self.presence_transceive_bytes(&[0x30, 0x00], 300, true)
+                if self.core.chip_type() == Pn53xType::Pn533 {
+                    self.diagnose_card_presence()
+                } else {
+                    self.presence_transceive_bytes(&[0x30, 0x00], 300, true, 2)
+                }
             }
             TargetInfo::Iso14443A { sak, uid, .. } if *sak & SAK_MIFARE_CLASSIC_MASK != 0 => {
                 let init_data = cascade_iso14443a_uid(uid);
@@ -1070,19 +1121,36 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
     fn check_current_target_presence(&mut self, target: &Target) -> Result<bool, Error> {
         match target.modulation().modulation_type() {
             ModulationType::Iso14443A => self.check_iso14443a_presence(target),
-            ModulationType::Iso14443B => self.presence_transceive_bytes(&[0xba, 0x01], 300, false),
-            ModulationType::Jewel => self.presence_transceive_bytes(&[0x78], -1, true),
+            ModulationType::Iso14443B => {
+                self.presence_transceive_bytes(&[0xba, 0x01], 300, false, 2)
+            }
+            ModulationType::Iso14443Bi => match target.info() {
+                TargetInfo::Iso14443Bi { div, .. } => {
+                    let mut command = vec![0x01, 0x0f];
+                    command.extend_from_slice(div);
+                    self.presence_transceive_bytes(&command, 300, false, 2)
+                }
+                _ => Err(status_error("target_is_present", NFC_EDEVNOTSUPP)),
+            },
+            ModulationType::Iso14443B2Sr => self.presence_transceive_bytes(&[0x0b], 300, false, 2),
+            ModulationType::Iso14443B2Ct => match target.info() {
+                TargetInfo::Iso14443B2Ct { uid, .. } => {
+                    self.presence_transceive_bytes(&[0x9f, uid[0], uid[1]], 300, false, 2)
+                }
+                _ => Err(status_error("target_is_present", NFC_EDEVNOTSUPP)),
+            },
+            ModulationType::Iso14443BiClass => self.check_iclass_presence(),
+            ModulationType::Jewel => self.presence_transceive_bytes(&[0x78], -1, true, 2),
             ModulationType::Felica => match target.info() {
                 TargetInfo::Felica { id, .. } => {
                     let mut command = vec![0x0a, 0x04];
                     command.extend_from_slice(id);
-                    self.presence_transceive_bytes(&command, 300, true)
+                    self.presence_transceive_bytes(&command, 300, true, 3)
                 }
                 _ => Err(status_error("target_is_present", NFC_EDEVNOTSUPP)),
             },
             ModulationType::Dep => self.diagnose_card_presence(),
-            ModulationType::Barcode => self.presence_transceive_bits(300),
-            _ => Err(status_error("target_is_present", NFC_EDEVNOTSUPP)),
+            ModulationType::Barcode => self.presence_transceive_bits(3),
         }
     }
 
