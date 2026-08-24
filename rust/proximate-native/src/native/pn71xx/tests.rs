@@ -479,6 +479,12 @@ fn communication_timeout_is_applied_and_unimplemented_properties_are_rejected() 
     let mut rx = [0; 1];
     assert_eq!(device.transceive_bytes(&[0x00], &mut rx, -1).unwrap(), 1);
     assert_eq!(backend_state_snapshot().last_transceive_timeout, Some(777));
+
+    assert_eq!(device.transceive_bytes(&[0x00], &mut rx, 0).unwrap(), 1);
+    assert_eq!(backend_state_snapshot().last_transceive_timeout, Some(0));
+
+    assert_eq!(device.transceive_bytes(&[0x00], &mut rx, -1).unwrap(), 1);
+    assert_eq!(backend_state_snapshot().last_transceive_timeout, Some(777));
 }
 
 #[test]

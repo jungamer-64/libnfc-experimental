@@ -170,9 +170,8 @@ impl PropertyBackend for Pn71xxDevice {
         if property != TimeoutProperty::Communication {
             return Err(Error::UnsupportedOperation("pn71xx_timeout"));
         }
-        let value = u32::try_from(timeout.configured_millis()?)
-            .map_err(|_| Error::InvalidArgument("timeout"))?;
-        self.timeout_communication_ms = value;
+        timeout.configured_millis()?;
+        self.communication_timeout = timeout;
         self.succeed(())
     }
 
@@ -384,7 +383,9 @@ impl Pn71xxDevice {
             return self.fail("pn71xx_transceive_bytes", NFC_EINVARG);
         };
 
-        let timeout = timeout.resolve_libnfc_millis(self.timeout_communication_ms)?;
+        let timeout = timeout
+            .resolve(self.communication_timeout)?
+            .configured_millis()?;
         let received = backend().transceive(tag.handle, tx, rx, timeout);
         if self.command_abort.take_requested() {
             return Err(self.aborted("pn71xx_transceive_bytes"));
