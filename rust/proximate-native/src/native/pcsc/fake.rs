@@ -9,6 +9,7 @@ pub(super) struct FakeCardState {
     pub(super) transmit_responses: VecDeque<Result<Vec<u8>, i32>>,
     pub(super) control_responses: VecDeque<Result<Vec<u8>, i32>>,
     pub(super) reconnect_calls: Vec<(PcscShareMode, PcscProtocols, PcscDisposition)>,
+    pub(super) transmit_calls: Vec<(Vec<u8>, usize)>,
 }
 
 #[derive(Clone)]
@@ -54,10 +55,12 @@ impl PcscCard for FakePcscCard {
             .unwrap_or(Ok(Vec::new()))
     }
 
-    fn transmit(&self, _send_buffer: &[u8], _receive_capacity: usize) -> Result<Vec<u8>, i32> {
-        self.state
-            .lock()
-            .unwrap()
+    fn transmit(&self, send_buffer: &[u8], receive_capacity: usize) -> Result<Vec<u8>, i32> {
+        let mut state = self.state.lock().unwrap();
+        state
+            .transmit_calls
+            .push((send_buffer.to_vec(), receive_capacity));
+        state
             .transmit_responses
             .pop_front()
             .unwrap_or(Ok(Vec::new()))

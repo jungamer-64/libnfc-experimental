@@ -53,12 +53,18 @@ fn select_passive_target_builds_iso14443a_target() {
     state
         .transmit_responses
         .push_back(Ok(vec![0x01, 0x02, 0x03, 0x04, 0x90, 0x00]));
-    let backend = Arc::new(FakePcscBackend::default().with_reader("Reader A", state));
-    let driver = PcscDriver::with_backend(backend);
-    let context = Context::new();
-    let connstring = ConnectionString::new("pcsc:Reader A").unwrap();
-    let mut device =
-        proximate_driver::Device::from_backend(driver.open(&context, &connstring).unwrap());
+    let state = Arc::new(Mutex::new(state));
+    let card = Box::new(FakePcscCard {
+        state: Arc::clone(&state),
+    });
+    let device = PcscDevice::new(
+        "Reader A".into(),
+        ConnectionString::new("pcsc:Reader A").unwrap(),
+        card,
+        PcscShareMode::Direct,
+        PcscProtocols::T0,
+    );
+    let mut device = proximate_driver::Device::from_backend(Box::new(device));
 
     let target = device
         .passive_scan_ops()
@@ -79,14 +85,19 @@ fn select_passive_target_builds_iso14443a_target() {
         }
         _ => panic!("unexpected target info"),
     }
+    assert_eq!(
+        state.lock().unwrap().transmit_calls,
+        vec![(vec![0xFF, 0xCA, 0x00, 0x00, 0x00], 258)]
+    );
 }
 
 #[test]
 fn feitian_transceive_routes_through_apdu_translation() {
     let mut state = FakeCardState::default();
     state.transmit_responses.push_back(Ok(vec![0x90, 0x00]));
+    let state = Arc::new(Mutex::new(state));
     let card = Box::new(FakePcscCard {
-        state: Arc::new(Mutex::new(state)),
+        state: Arc::clone(&state),
     });
     let device = PcscDevice::new(
         "Feitian Reader".into(),
@@ -108,6 +119,10 @@ fn feitian_transceive_routes_through_apdu_translation() {
         .unwrap();
     assert_eq!(size, 2);
     assert_eq!(&rx[..size], &[0x90, 0x00]);
+    assert_eq!(
+        state.lock().unwrap().transmit_calls,
+        vec![(vec![0xFF, 0xB0, 0x00, 0x04, 0x10], 10)]
+    );
 }
 
 #[test]
