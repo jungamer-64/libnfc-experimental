@@ -92,14 +92,7 @@ pub trait Backend: Send + Sync {
 }
 
 pub const fn ctl_code(code: u32) -> u64 {
-    #[cfg(windows)]
-    {
-        pcsc::ctl_code(code) as u64
-    }
-    #[cfg(not(windows))]
-    {
-        pcsc::ctl_code(code as u64) as u64
-    }
+    pcsc::ctl_code(code as pcsc::ffi::DWORD) as u64
 }
 
 pub fn error_message(code: i32) -> Option<&'static str> {
@@ -261,8 +254,7 @@ impl Card for SystemCard {
         receive_capacity: usize,
     ) -> Result<Vec<u8>, i32> {
         let mut buffer = vec![0u8; receive_capacity.max(2)];
-        #[cfg(windows)]
-        let control_code = u32::try_from(control_code).map_err(|_| -2)?;
+        let control_code: pcsc::ffi::DWORD = control_code.try_into().map_err(|_| -2)?;
         self.card
             .control(control_code, send_buffer, &mut buffer)
             .map(|payload| payload.to_vec())
