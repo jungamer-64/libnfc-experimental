@@ -238,6 +238,7 @@ impl<T> TestPn53xOps for Pn53xDevice<T> where T: Pn53xTransport + Send + 'static
 #[derive(Default)]
 struct FakeTransport {
     sent: Vec<Vec<u8>>,
+    send_failures: VecDeque<TransportSendError>,
     received: VecDeque<Vec<u8>>,
     receive_calls: usize,
     receive_failures: VecDeque<(usize, Error)>,
@@ -246,7 +247,17 @@ struct FakeTransport {
 }
 
 impl Pn53xTransport for FakeTransport {
-    fn send(&mut self, payload: &[u8], _timeout: OperationTimeout) -> Result<(), Error> {
+    fn send(
+        &mut self,
+        payload: &[u8],
+        _timeout: OperationTimeout,
+    ) -> Result<(), TransportSendError> {
+        if let Some(failure) = self.send_failures.pop_front() {
+            if matches!(failure, TransportSendError::OutcomeUnknown(_)) {
+                self.sent.push(payload.to_vec());
+            }
+            return Err(failure);
+        }
         self.sent.push(payload.to_vec());
         Ok(())
     }
@@ -786,7 +797,67 @@ fn timeout_after_send_requires_reinitialization() {
         error,
         Error::OutcomeUnknown {
             operation: "pn53x_wait_for_response",
+            cause: Box::new(Error::Timeout("receive")),
         }
+    );
+}
+
+#[test]
+fn protocol_stable_send_failure_does_not_require_reinitialization() {
+    let mut transport = FakeTransport::default();
+    transport
+        .send_failures
+        .push_back(TransportSendError::ProtocolStable(Error::Io("fake_send")));
+    let mut core = Pn53xCore::default();
+
+    assert_eq!(
+        core.get_firmware_version(
+            Pn53xProfile::pn532("pn532_uart"),
+            &mut transport,
+            timeout(25),
+        ),
+        Err(Error::Io("fake_send"))
+    );
+    assert_eq!(core.protocol_state, Pn53xProtocolState::Ready);
+    assert!(transport.sent.is_empty());
+
+    transport.received.push_back(PN53X_ACK_FRAME.to_vec());
+    transport
+        .received
+        .push_back(response_frame(0x02, &[0x32, 0x01, 0x06, 0x07]));
+    let firmware = core
+        .get_firmware_version(
+            Pn53xProfile::pn532("pn532_uart"),
+            &mut transport,
+            timeout(25),
+        )
+        .unwrap();
+    assert_eq!(firmware.chip_type(), Pn53xType::Pn532);
+}
+
+#[test]
+fn failed_transport_send_recovery_preserves_both_failures_and_requires_reinitialization() {
+    let failure = Error::RecoveryFailed {
+        operation: Box::new(Error::Aborted("fake_send")),
+        recovery: Box::new(Error::Io("fake_cancel")),
+    };
+    let mut transport = FakeTransport::default();
+    transport
+        .send_failures
+        .push_back(TransportSendError::OutcomeUnknown(failure.clone()));
+    let mut core = Pn53xCore::default();
+
+    assert_eq!(
+        core.get_firmware_version(
+            Pn53xProfile::pn532("pn532_uart"),
+            &mut transport,
+            timeout(25),
+        ),
+        Err(failure.clone())
+    );
+    assert_eq!(
+        core.protocol_state,
+        Pn53xProtocolState::NeedsReinitialization { cause: failure }
     );
 }
 
@@ -795,13 +866,18 @@ fn next_command_recovers_after_unknown_outcome() {
     let mut device = probed_device();
     device
         .transport
-        .received
-        .push_back(PN53X_ACK_FRAME.to_vec());
+        .send_failures
+        .push_back(TransportSendError::OutcomeUnknown(Error::Timeout(
+            "fake_send",
+        )));
     let mut rx = [0u8; 8];
-    assert!(matches!(
+    assert_eq!(
         device.pn53x_transceive(&[PN53X_GET_FIRMWARE_VERSION], &mut rx, 25),
-        Err(Error::OutcomeUnknown { .. })
-    ));
+        Err(Error::OutcomeUnknown {
+            operation: "pn53x_send",
+            cause: Box::new(Error::Timeout("fake_send")),
+        })
+    );
     let recovery_start = device.transport.sent.len();
 
     queue_command_response(

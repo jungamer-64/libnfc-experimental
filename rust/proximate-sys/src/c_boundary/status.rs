@@ -135,7 +135,10 @@ mod tests {
         assert_eq!(error_to_status(&rt::Error::Io("x")), NFC_EIO);
         assert_eq!(error_to_status(&rt::Error::Chip("x")), NFC_ECHIP);
         assert_eq!(
-            error_to_status(&rt::Error::OutcomeUnknown { operation: "x" }),
+            error_to_status(&rt::Error::OutcomeUnknown {
+                operation: "x",
+                cause: Box::new(rt::Error::Timeout("x")),
+            }),
             NFC_ESOFT
         );
         assert_eq!(

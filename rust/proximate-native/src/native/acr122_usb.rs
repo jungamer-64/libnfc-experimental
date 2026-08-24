@@ -29,8 +29,8 @@
 use super::acr122;
 use super::connstring::{UsbSelector, build_usb_connstring_for, decode_usb_selector_for};
 use super::pn53x::{
-    PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, build_response_frame,
-    payload_from_host_frame, probe_timeout,
+    PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, TransportSendError,
+    build_response_frame, payload_from_host_frame, probe_timeout,
 };
 use crate::command_abort::AtomicCommandAbort;
 use crate::usb::{UsbDeviceInfo, UsbError, UsbHandle, list_devices, strerror};
@@ -290,20 +290,16 @@ trait Acr122UsbIo: Send {
     fn direct_transmit(
         &mut self,
         command: u8,
-        host_payload: &[u8],
+        apdu: &[u8],
         timeout: OperationTimeout,
     ) -> Result<Vec<u8>, Error> {
-        let apdu = acr122::build_direct_transmit_apdu(host_payload)?;
-        let response = self.send_apdu(&apdu, timeout)?;
+        let response = self.send_apdu(apdu, timeout)?;
         self.complete_direct_transmit(command, response, timeout)
     }
 
     fn cancel_pending_command(&mut self) -> Result<(), Error> {
-        let _ = self.direct_transmit(
-            PN53X_GET_FIRMWARE_VERSION,
-            &[PN53X_GET_FIRMWARE_VERSION],
-            control_timeout(),
-        )?;
+        let apdu = acr122::build_direct_transmit_apdu(&[PN53X_GET_FIRMWARE_VERSION])?;
+        let _ = self.direct_transmit(PN53X_GET_FIRMWARE_VERSION, &apdu, control_timeout())?;
         Ok(())
     }
 
@@ -487,26 +483,39 @@ impl<IO> Acr122UsbTransport<IO> {
 }
 
 impl<IO: Acr122UsbIo> Pn53xTransport for Acr122UsbTransport<IO> {
-    fn send(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
+    fn send(
+        &mut self,
+        payload: &[u8],
+        timeout: OperationTimeout,
+    ) -> Result<(), TransportSendError> {
+        timeout
+            .configured_millis()
+            .map_err(TransportSendError::ProtocolStable)?;
         self.io.begin_command();
-        let host_payload = payload_from_host_frame(payload)?;
-        let command = *host_payload
-            .first()
-            .ok_or_else(|| device_error("acr122_usb_send", NFC_EIO))?;
-        let response = match self.io.direct_transmit(command, &host_payload, timeout) {
+        let host_payload =
+            payload_from_host_frame(payload).map_err(TransportSendError::ProtocolStable)?;
+        let command = *host_payload.first().ok_or_else(|| {
+            TransportSendError::ProtocolStable(device_error("acr122_usb_send", NFC_EIO))
+        })?;
+        let apdu = acr122::build_direct_transmit_apdu(&host_payload)
+            .map_err(TransportSendError::ProtocolStable)?;
+        let response = match self.io.direct_transmit(command, &apdu, timeout) {
             Ok(response) => response,
             Err(operation @ Error::Aborted(_)) => {
                 return match self.io.cancel_pending_command() {
-                    Ok(()) => Err(operation),
-                    Err(recovery) => Err(Error::RecoveryFailed {
-                        operation: Box::new(operation),
-                        recovery: Box::new(recovery),
-                    }),
+                    Ok(()) => Err(TransportSendError::ProtocolStable(operation)),
+                    Err(recovery) => {
+                        Err(TransportSendError::OutcomeUnknown(Error::RecoveryFailed {
+                            operation: Box::new(operation),
+                            recovery: Box::new(recovery),
+                        }))
+                    }
                 };
             }
-            Err(error) => return Err(error),
+            Err(error) => return Err(TransportSendError::OutcomeUnknown(error)),
         };
-        let frame = build_response_frame(command, &response)?;
+        let frame =
+            build_response_frame(command, &response).map_err(TransportSendError::ProtocolStable)?;
         self.pending.clear();
         self.pending.push_back(PN53X_ACK_FRAME.to_vec());
         self.pending.push_back(frame);
@@ -692,7 +701,9 @@ mod tests {
         let frame = crate::native::pn53x::build_frame(&[0x4A, 0x01, 0x00]).unwrap();
         assert_eq!(
             transport.send(&frame, test_timeout()),
-            Err(Error::Aborted("fake_bulk_read"))
+            Err(TransportSendError::ProtocolStable(Error::Aborted(
+                "fake_bulk_read"
+            )))
         );
 
         let writes = writes.writes();
@@ -717,10 +728,10 @@ mod tests {
         let frame = crate::native::pn53x::build_frame(&[0x4A, 0x01, 0x00]).unwrap();
         assert_eq!(
             transport.send(&frame, test_timeout()),
-            Err(Error::RecoveryFailed {
+            Err(TransportSendError::OutcomeUnknown(Error::RecoveryFailed {
                 operation: Box::new(Error::Aborted("fake_bulk_read")),
                 recovery: Box::new(Error::Io("fake_cancel_read")),
-            })
+            }))
         );
         assert_eq!(writes.writes().len(), 2);
     }

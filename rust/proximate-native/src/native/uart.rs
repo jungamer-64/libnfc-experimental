@@ -26,7 +26,8 @@
 
 use super::connstring::{build_path_speed_connstring, decode_path_speed_descriptor};
 use super::pn53x::{
-    PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, is_ack_frame, probe_timeout,
+    PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, TransportSendError, is_ack_frame,
+    probe_timeout,
 };
 #[cfg(all(test, unix))]
 use crate::serial::serial_name_prefixes;
@@ -200,9 +201,18 @@ impl UartPort {
 }
 
 impl Pn53xTransport for UartPort {
-    fn send(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
-        self.flush_input()?;
+    fn send(
+        &mut self,
+        payload: &[u8],
+        timeout: OperationTimeout,
+    ) -> Result<(), TransportSendError> {
+        timeout
+            .configured_millis()
+            .map_err(TransportSendError::ProtocolStable)?;
+        self.flush_input()
+            .map_err(TransportSendError::ProtocolStable)?;
         self.write_all(payload, timeout)
+            .map_err(TransportSendError::OutcomeUnknown)
     }
 
     fn receive(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error> {

@@ -31,8 +31,8 @@
 use super::acr122;
 use super::connstring::{build_path_speed_connstring, decode_path_speed_descriptor};
 use super::pn53x::{
-    PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, build_response_frame,
-    payload_from_host_frame, probe_timeout,
+    PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, TransportSendError,
+    build_response_frame, payload_from_host_frame, probe_timeout,
 };
 use super::uart::{UartPort, list_candidate_paths};
 use proximate_driver::{
@@ -217,15 +217,28 @@ impl<IO: Acr122sIo> Drop for Acr122sTransport<IO> {
 }
 
 impl<IO: Acr122sIo> Pn53xTransport for Acr122sTransport<IO> {
-    fn send(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
-        self.io.flush_input()?;
-        let host_payload = payload_from_host_frame(payload)?;
-        let command = *host_payload
-            .first()
-            .ok_or_else(|| device_error("acr122s_send", NFC_EIO))?;
-        let response =
-            direct_transmit(&mut self.io, &mut self.seq, command, &host_payload, timeout)?;
-        let frame = build_response_frame(command, &response)?;
+    fn send(
+        &mut self,
+        payload: &[u8],
+        timeout: OperationTimeout,
+    ) -> Result<(), TransportSendError> {
+        timeout
+            .configured_millis()
+            .map_err(TransportSendError::ProtocolStable)?;
+        self.io
+            .flush_input()
+            .map_err(TransportSendError::ProtocolStable)?;
+        let host_payload =
+            payload_from_host_frame(payload).map_err(TransportSendError::ProtocolStable)?;
+        let command = *host_payload.first().ok_or_else(|| {
+            TransportSendError::ProtocolStable(device_error("acr122s_send", NFC_EIO))
+        })?;
+        let apdu = acr122::build_direct_transmit_apdu(&host_payload)
+            .map_err(TransportSendError::ProtocolStable)?;
+        let response = direct_transmit(&mut self.io, &mut self.seq, command, &apdu, timeout)
+            .map_err(TransportSendError::OutcomeUnknown)?;
+        let frame =
+            build_response_frame(command, &response).map_err(TransportSendError::ProtocolStable)?;
         self.pending.clear();
         self.pending.push_back(PN53X_ACK_FRAME.to_vec());
         self.pending.push_back(frame);
@@ -382,16 +395,15 @@ fn direct_transmit<IO: Acr122sIo>(
     io: &mut IO,
     seq: &mut u8,
     command: u8,
-    host_payload: &[u8],
+    apdu: &[u8],
     timeout: OperationTimeout,
 ) -> Result<Vec<u8>, Error> {
-    let apdu = acr122::build_direct_transmit_apdu(host_payload)?;
     let response = transact(
         io,
         seq,
         XFR_BLOCK_REQ_MSG,
         [0x00, 0x00, 0x00],
-        &apdu,
+        apdu,
         timeout,
     )?;
     complete_direct_transmit(io, seq, command, response, timeout)

@@ -194,11 +194,11 @@ use self::target_decode::{
     decode_activation_mode, decode_target_data, default_initiator_payload, is_iso14443_4_target,
     nm_to_pm, nm_to_ptt, parse_dep_target, ptt_to_nm,
 };
-pub(crate) use self::transport::Pn53xTransport;
 use self::transport::{
     BitTransceiveRequest, TimedBitTransceiveRequest, pn53x_translate_status, status_code,
     status_error,
 };
+pub(crate) use self::transport::{Pn53xTransport, TransportSendError};
 use self::types::{
     ChipCapabilities, Pn53xFirmwareVersion, Pn53xOperatingMode, Pn53xPowerMode, Pn53xProtocolState,
     Pn53xType, Pn532SamMode, PropertyState,

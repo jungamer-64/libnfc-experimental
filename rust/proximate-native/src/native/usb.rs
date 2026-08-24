@@ -26,7 +26,8 @@
 
 use super::connstring::{UsbSelector, build_usb_connstring, decode_usb_selector};
 use super::pn53x::{
-    PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, Pn53xUsbModel, probe_timeout,
+    PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, Pn53xUsbModel, TransportSendError,
+    probe_timeout,
 };
 use crate::command_abort::AtomicCommandAbort;
 use crate::usb::{UsbDeviceInfo, UsbError, UsbHandle, bulk_endpoints, list_devices, strerror};
@@ -273,15 +274,25 @@ impl UsbTransport {
 }
 
 impl Pn53xTransport for UsbTransport {
-    fn send(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
-        let timeout_ms = timeout.configured_millis()?;
+    fn send(
+        &mut self,
+        payload: &[u8],
+        timeout: OperationTimeout,
+    ) -> Result<(), TransportSendError> {
+        let timeout_ms = timeout
+            .configured_millis()
+            .map_err(TransportSendError::ProtocolStable)?;
         self.command_abort.begin_command();
         let sent = self
             .handle
             .bulk_write(self.endpoint_out, payload, timeout_ms)
-            .map_err(|error| map_usb_error("usb_send", error))?;
+            .map_err(|error| {
+                TransportSendError::OutcomeUnknown(map_usb_error("usb_send", error))
+            })?;
         if sent != payload.len() {
-            return Err(device_error("usb_send", NFC_EIO));
+            return Err(TransportSendError::OutcomeUnknown(device_error(
+                "usb_send", NFC_EIO,
+            )));
         }
         Ok(())
     }

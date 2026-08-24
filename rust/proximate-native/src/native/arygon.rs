@@ -28,13 +28,17 @@
 // implemented here in Rust.
 
 use super::connstring::{build_path_speed_connstring, decode_path_speed_descriptor};
-use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport, is_ack_frame, probe_timeout};
+use super::pn53x::{
+    PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, TransportSendError, is_ack_frame,
+    probe_timeout,
+};
 use super::uart::{UartPort, list_candidate_paths};
 use proximate_driver::{
     CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error, OperationTimeout,
     ScanType,
 };
 use std::borrow::Cow;
+use std::collections::VecDeque;
 
 const DRIVER_NAME: &str = "arygon";
 const DEFAULT_SPEED: u32 = 9_600;
@@ -123,40 +127,114 @@ impl Driver for ArygonDriver {
     }
 }
 
-struct ArygonTransport {
-    port: UartPort,
+trait ArygonIo: Send {
+    fn flush_input(&mut self) -> Result<(), Error>;
+    fn write_all(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error>;
+    fn read_exact(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<(), Error>;
+    fn read_frame_into(
+        &mut self,
+        buffer: &mut [u8],
+        timeout: OperationTimeout,
+    ) -> Result<usize, Error>;
+    fn abort_command(&mut self) -> Result<(), Error>;
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle>;
 }
 
-impl ArygonTransport {
-    fn new(port: UartPort) -> Self {
-        Self { port }
+impl ArygonIo for UartPort {
+    fn flush_input(&mut self) -> Result<(), Error> {
+        UartPort::flush_input(self)
+    }
+
+    fn write_all(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
+        UartPort::write_all(self, payload, timeout)
+    }
+
+    fn read_exact(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<(), Error> {
+        UartPort::read_exact(self, buffer, timeout)
+    }
+
+    fn read_frame_into(
+        &mut self,
+        buffer: &mut [u8],
+        timeout: OperationTimeout,
+    ) -> Result<usize, Error> {
+        UartPort::read_frame_into(self, buffer, timeout)
+    }
+
+    fn abort_command(&mut self) -> Result<(), Error> {
+        UartPort::abort_command(self)
+    }
+
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        Some(UartPort::command_abort_handle(self))
     }
 }
 
-impl Pn53xTransport for ArygonTransport {
-    fn send(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
-        self.port.flush_input()?;
+struct ArygonTransport<IO = UartPort> {
+    port: IO,
+    pending: VecDeque<Vec<u8>>,
+}
+
+impl<IO> ArygonTransport<IO> {
+    fn new(port: IO) -> Self {
+        Self {
+            port,
+            pending: VecDeque::new(),
+        }
+    }
+}
+
+impl<IO: ArygonIo> Pn53xTransport for ArygonTransport<IO> {
+    fn send(
+        &mut self,
+        payload: &[u8],
+        timeout: OperationTimeout,
+    ) -> Result<(), TransportSendError> {
+        timeout
+            .configured_millis()
+            .map_err(TransportSendError::ProtocolStable)?;
+        self.port
+            .flush_input()
+            .map_err(TransportSendError::ProtocolStable)?;
 
         let mut prefixed = Vec::with_capacity(payload.len() + 1);
         prefixed.push(PROTOCOL_TAMA);
         prefixed.extend_from_slice(payload);
-        self.port.write_all(&prefixed, timeout)?;
+        self.port
+            .write_all(&prefixed, timeout)
+            .map_err(TransportSendError::OutcomeUnknown)?;
 
-        let mut ack = [0u8; 16];
-        let ack_len = self.port.read_frame_into(&mut ack, timeout)?;
-        if is_ack_frame(&ack[..ack_len]) {
+        let mut ack = [0u8; PN53X_ACK_FRAME.len()];
+        self.port
+            .read_exact(&mut ack, timeout)
+            .map_err(TransportSendError::OutcomeUnknown)?;
+        if is_ack_frame(&ack) {
+            self.pending.push_back(ack.to_vec());
             return Ok(());
         }
 
-        if ack[..ack_len].starts_with(ERROR_UNKNOWN_MODE_PREFIX) {
+        if ack.starts_with(ERROR_UNKNOWN_MODE_PREFIX) {
             let mut rest = [0u8; 4];
             let _ = self.port.read_exact(&mut rest, timeout);
         }
 
-        Err(device_error("arygon_send", NFC_EIO))
+        Err(TransportSendError::OutcomeUnknown(device_error(
+            "arygon_send",
+            NFC_EIO,
+        )))
     }
 
     fn receive(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error> {
+        if let Some(frame) = self.pending.pop_front() {
+            if frame.len() > buffer.len() {
+                return Err(Error::BufferTooSmall {
+                    needed: frame.len(),
+                    available: buffer.len(),
+                });
+            }
+            buffer[..frame.len()].copy_from_slice(&frame);
+            return Ok(frame.len());
+        }
         match self.port.read_frame_into(buffer, timeout) {
             Err(operation @ Error::Aborted(_)) => {
                 if let Err(recovery) = self
@@ -175,11 +253,12 @@ impl Pn53xTransport for ArygonTransport {
     }
 
     fn abort_command(&mut self) -> Result<(), Error> {
+        self.pending.clear();
         self.port.abort_command()
     }
 
     fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
-        Some(self.port.command_abort_handle())
+        self.port.command_abort_handle()
     }
 }
 
@@ -247,6 +326,70 @@ mod tests {
     use super::*;
     use proximate_driver::Context;
 
+    #[derive(Default)]
+    struct FakeArygonIo {
+        reads: VecDeque<Vec<u8>>,
+        writes: Vec<Vec<u8>>,
+    }
+
+    impl ArygonIo for FakeArygonIo {
+        fn flush_input(&mut self) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn write_all(&mut self, payload: &[u8], _timeout: OperationTimeout) -> Result<(), Error> {
+            self.writes.push(payload.to_vec());
+            Ok(())
+        }
+
+        fn read_exact(
+            &mut self,
+            buffer: &mut [u8],
+            _timeout: OperationTimeout,
+        ) -> Result<(), Error> {
+            let payload = self
+                .reads
+                .pop_front()
+                .ok_or(Error::Io("fake_arygon_read"))?;
+            if payload.len() != buffer.len() {
+                return Err(Error::InvalidEncoding("fake ARYGON read length"));
+            }
+            buffer.copy_from_slice(&payload);
+            Ok(())
+        }
+
+        fn read_frame_into(
+            &mut self,
+            buffer: &mut [u8],
+            _timeout: OperationTimeout,
+        ) -> Result<usize, Error> {
+            let payload = self
+                .reads
+                .pop_front()
+                .ok_or(Error::Io("fake_arygon_frame"))?;
+            if payload.len() > buffer.len() {
+                return Err(Error::BufferTooSmall {
+                    needed: payload.len(),
+                    available: buffer.len(),
+                });
+            }
+            buffer[..payload.len()].copy_from_slice(&payload);
+            Ok(payload.len())
+        }
+
+        fn abort_command(&mut self) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+            None
+        }
+    }
+
+    fn test_timeout() -> OperationTimeout {
+        OperationTimeout::try_milliseconds(25).expect("test timeout is representable")
+    }
+
     #[test]
     fn reset_response_matches_existing_c_behavior() {
         assert_eq!(ERROR_NONE, b"FF000000\r\n");
@@ -275,5 +418,48 @@ mod tests {
     #[test]
     fn transport_constants_match_expected_sizes() {
         assert_eq!(RESET_BUFFER_LEN, ERROR_NONE.len());
+    }
+
+    #[test]
+    fn tama_transport_replays_consumed_ack_before_the_response() {
+        let response =
+            super::super::pn53x::build_response_frame(0x02, &[0x32, 0x01, 0x06, 0x07]).unwrap();
+        let io = FakeArygonIo {
+            reads: [PN53X_ACK_FRAME.to_vec(), response.clone()].into(),
+            ..FakeArygonIo::default()
+        };
+        let mut transport = ArygonTransport::new(io);
+        let frame = super::super::pn53x::build_frame(&[0x02]).unwrap();
+
+        transport.send(&frame, test_timeout()).unwrap();
+        assert_eq!(
+            transport.port.writes,
+            [[vec![PROTOCOL_TAMA], frame.clone()].concat()]
+        );
+
+        let mut buffer = [0u8; 32];
+        assert_eq!(transport.receive(&mut buffer, test_timeout()).unwrap(), 6);
+        assert_eq!(&buffer[..6], &PN53X_ACK_FRAME);
+        let response_len = transport.receive(&mut buffer, test_timeout()).unwrap();
+        assert_eq!(&buffer[..response_len], response.as_slice());
+    }
+
+    #[test]
+    fn tama_unknown_mode_response_is_drained_and_marks_the_send_uncertain() {
+        let io = FakeArygonIo {
+            reads: [ERROR_UNKNOWN_MODE_PREFIX.to_vec(), vec![b'0'; 4]].into(),
+            ..FakeArygonIo::default()
+        };
+        let mut transport = ArygonTransport::new(io);
+        let frame = super::super::pn53x::build_frame(&[0x02]).unwrap();
+
+        assert_eq!(
+            transport.send(&frame, test_timeout()),
+            Err(TransportSendError::OutcomeUnknown(device_error(
+                "arygon_send",
+                NFC_EIO,
+            )))
+        );
+        assert!(transport.port.reads.is_empty());
     }
 }

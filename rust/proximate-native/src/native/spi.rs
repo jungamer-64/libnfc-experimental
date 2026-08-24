@@ -30,7 +30,8 @@
 
 use super::connstring::{build_path_speed_connstring, decode_path_speed_descriptor};
 use super::pn53x::{
-    Pn53xDevice, Pn53xProfile, Pn53xTransport, command_from_host_frame, is_ack_frame, probe_timeout,
+    Pn53xDevice, Pn53xProfile, Pn53xTransport, TransportSendError, command_from_host_frame,
+    is_ack_frame, probe_timeout,
 };
 use crate::command_abort::AtomicCommandAbort;
 use crate::spi::{SpiHandle, SpiOpenError};
@@ -175,15 +176,22 @@ impl SpiTransport {
 }
 
 impl Pn53xTransport for SpiTransport {
-    fn send(&mut self, payload: &[u8], _timeout: OperationTimeout) -> Result<(), Error> {
+    fn send(
+        &mut self,
+        payload: &[u8],
+        timeout: OperationTimeout,
+    ) -> Result<(), TransportSendError> {
+        timeout
+            .configured_millis()
+            .map_err(TransportSendError::ProtocolStable)?;
+        command_from_host_frame(payload).map_err(TransportSendError::ProtocolStable)?;
         self.command_abort.begin_command();
-        let _ = command_from_host_frame(payload);
         let mut tx = Vec::with_capacity(payload.len() + 1);
         tx.push(DATAWRITE);
         tx.extend_from_slice(payload);
         self.handle
             .send(&tx, true)
-            .map_err(|_| device_error("spi_transfer", NFC_EIO))
+            .map_err(|_| TransportSendError::OutcomeUnknown(device_error("spi_transfer", NFC_EIO)))
     }
 
     fn receive(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error> {

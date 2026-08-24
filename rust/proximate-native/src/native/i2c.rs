@@ -29,7 +29,7 @@
 // here in Rust.
 
 use super::connstring::{build_path_connstring, decode_path_descriptor};
-use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport, probe_timeout};
+use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport, TransportSendError, probe_timeout};
 use crate::command_abort::AtomicCommandAbort;
 use proximate_driver::{
     CommandAbort, CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error,
@@ -178,7 +178,14 @@ impl I2cTransport {
 
 #[cfg(target_os = "linux")]
 impl Pn53xTransport for I2cTransport {
-    fn send(&mut self, payload: &[u8], _timeout: OperationTimeout) -> Result<(), Error> {
+    fn send(
+        &mut self,
+        payload: &[u8],
+        timeout: OperationTimeout,
+    ) -> Result<(), TransportSendError> {
+        timeout
+            .configured_millis()
+            .map_err(TransportSendError::ProtocolStable)?;
         self.command_abort.begin_command();
         let mut last_error = None;
 
@@ -196,7 +203,9 @@ impl Pn53xTransport for I2cTransport {
             self.note_transaction_stop();
         }
 
-        Err(last_error.unwrap_or_else(|| device_error("i2c_send", NFC_EIO)))
+        Err(TransportSendError::OutcomeUnknown(
+            last_error.unwrap_or_else(|| device_error("i2c_send", NFC_EIO)),
+        ))
     }
 
     fn receive(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error> {

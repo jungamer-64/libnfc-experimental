@@ -33,8 +33,8 @@ use super::pcsc::{
     resolve_reader,
 };
 use super::pn53x::{
-    PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, build_response_frame,
-    payload_from_host_frame, probe_timeout,
+    PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, TransportSendError,
+    build_response_frame, payload_from_host_frame, probe_timeout,
 };
 #[cfg(any(target_os = "linux", windows))]
 use crate::pcsc::ctl_code as platform_pcsc_ctl_code;
@@ -218,20 +218,19 @@ impl Acr122PcscTransport {
         }
     }
 
-    fn exchange_direct_transmit(&self, payload: &[u8]) -> Result<Vec<u8>, Error> {
-        let apdu = acr122::build_direct_transmit_apdu(payload)?;
+    fn exchange_direct_transmit(&self, apdu: &[u8]) -> Result<Vec<u8>, Error> {
         let mut response = match self.protocol {
             None => self
                 .card
                 .control(
                     IOCTL_CCID_ESCAPE_SCARD_CTL_CODE,
-                    &apdu,
+                    apdu,
                     ACR122_PCSC_RESPONSE_LEN,
                 )
                 .map_err(|status| device_error("acr122_pcsc_control", status))?,
             Some(_) => self
                 .card
-                .transmit(&apdu, ACR122_PCSC_RESPONSE_LEN)
+                .transmit(apdu, ACR122_PCSC_RESPONSE_LEN)
                 .map_err(|status| device_error("acr122_pcsc_transmit", status))?,
         };
 
@@ -251,23 +250,44 @@ impl Acr122PcscTransport {
 }
 
 impl Pn53xTransport for Acr122PcscTransport {
-    fn send(&mut self, payload: &[u8], _timeout: OperationTimeout) -> Result<(), Error> {
-        let host_payload = payload_from_host_frame(payload)?;
-        let command = *host_payload
-            .first()
-            .ok_or_else(|| device_error("acr122_pcsc_send", NFC_EIO))?;
-        let response = self.exchange_direct_transmit(&host_payload)?;
+    fn send(
+        &mut self,
+        payload: &[u8],
+        timeout: OperationTimeout,
+    ) -> Result<(), TransportSendError> {
+        timeout
+            .configured_millis()
+            .map_err(TransportSendError::ProtocolStable)?;
+        let host_payload =
+            payload_from_host_frame(payload).map_err(TransportSendError::ProtocolStable)?;
+        let command = *host_payload.first().ok_or_else(|| {
+            TransportSendError::ProtocolStable(device_error("acr122_pcsc_send", NFC_EIO))
+        })?;
+        let apdu = acr122::build_direct_transmit_apdu(&host_payload)
+            .map_err(TransportSendError::ProtocolStable)?;
+        let response = self
+            .exchange_direct_transmit(&apdu)
+            .map_err(TransportSendError::OutcomeUnknown)?;
         if response.len() < 4 {
-            return Err(device_error("acr122_pcsc_receive", NFC_EIO));
+            return Err(TransportSendError::ProtocolStable(device_error(
+                "acr122_pcsc_receive",
+                NFC_EIO,
+            )));
         }
 
-        let status = acr122::parse_status_words(&response[response.len() - 2..])
-            .ok_or_else(|| device_error("acr122_pcsc_receive", NFC_EIO))?;
+        let status =
+            acr122::parse_status_words(&response[response.len() - 2..]).ok_or_else(|| {
+                TransportSendError::ProtocolStable(device_error("acr122_pcsc_receive", NFC_EIO))
+            })?;
         if !status.ok {
-            return Err(device_error("acr122_pcsc_receive", NFC_EIO));
+            return Err(TransportSendError::ProtocolStable(device_error(
+                "acr122_pcsc_receive",
+                NFC_EIO,
+            )));
         }
 
-        let frame = build_response_frame(command, &response[2..response.len() - 2])?;
+        let frame = build_response_frame(command, &response[2..response.len() - 2])
+            .map_err(TransportSendError::ProtocolStable)?;
         self.pending.clear();
         self.pending.push_back(PN53X_ACK_FRAME.to_vec());
         self.pending.push_back(frame);

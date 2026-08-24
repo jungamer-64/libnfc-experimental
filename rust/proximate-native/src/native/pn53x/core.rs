@@ -81,38 +81,59 @@ impl Pn53xCore {
         command_payload.extend_from_slice(payload);
 
         let frame = build_frame(&command_payload)?;
-        transport.send(&frame, timeout)?;
+        match transport.send(&frame, timeout) {
+            Ok(()) => {}
+            Err(TransportSendError::ProtocolStable(error)) => return Err(error),
+            Err(TransportSendError::OutcomeUnknown(error @ Error::RecoveryFailed { .. })) => {
+                return Err(self.require_reinitialization(error));
+            }
+            Err(TransportSendError::OutcomeUnknown(cause)) => {
+                return Err(self.require_recovery("pn53x_send", cause));
+            }
+        }
         self.last_command = Some(command);
 
         let mut ack = [0u8; PN53X_ACK_FRAME.len()];
         let ack_len = match transport.receive(&mut ack, timeout) {
             Ok(length) => length,
-            Err(error @ Error::Aborted(_)) | Err(error @ Error::RecoveryFailed { .. }) => {
-                return Err(error);
+            Err(error @ Error::Aborted(_)) => return Err(error),
+            Err(error @ Error::RecoveryFailed { .. }) => {
+                return Err(self.require_reinitialization(error));
             }
-            Err(_) => return Err(self.require_recovery("pn53x_wait_for_ack")),
+            Err(error) => return Err(self.require_recovery("pn53x_wait_for_ack", error)),
         };
         if !is_ack_frame(&ack[..ack_len]) {
-            return Err(self.require_recovery("pn53x_wait_for_ack"));
+            return Err(self.require_recovery(
+                "pn53x_wait_for_ack",
+                Error::InvalidEncoding("PN53x ACK frame"),
+            ));
         }
 
         let mut response = [0u8; PN532_BUFFER_LEN];
         let response_len = match transport.receive(&mut response, timeout) {
             Ok(length) => length,
-            Err(error @ Error::Aborted(_)) | Err(error @ Error::RecoveryFailed { .. }) => {
-                return Err(error);
+            Err(error @ Error::Aborted(_)) => return Err(error),
+            Err(error @ Error::RecoveryFailed { .. }) => {
+                return Err(self.require_reinitialization(error));
             }
-            Err(_) => return Err(self.require_recovery("pn53x_wait_for_response")),
+            Err(error) => return Err(self.require_recovery("pn53x_wait_for_response", error)),
         };
         let payload = match parse_response_frame(&response[..response_len], command) {
             Ok(payload) => payload,
-            Err(_) => return Err(self.require_recovery("pn53x_parse_response")),
+            Err(error) => return Err(self.require_recovery("pn53x_parse_response", error)),
         };
         Ok(payload)
     }
 
-    fn require_recovery(&mut self, operation: &'static str) -> Error {
-        let error = Error::OutcomeUnknown { operation };
+    fn require_recovery(&mut self, operation: &'static str, cause: Error) -> Error {
+        let error = Error::OutcomeUnknown {
+            operation,
+            cause: Box::new(cause),
+        };
+        self.require_reinitialization(error)
+    }
+
+    fn require_reinitialization(&mut self, error: Error) -> Error {
         self.protocol_state = Pn53xProtocolState::NeedsReinitialization {
             cause: error.clone(),
         };
