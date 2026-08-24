@@ -9,9 +9,9 @@ use crate::c_boundary::status::{
 use crate::domain_bridge::c_driver::{is_rust_shim_device, rust_command_abort_handle};
 use crate::domain_bridge::decode::OutputBytes;
 use crate::domain_bridge::decode::{
-    InputBytes, ParityMarker, ParityMarkerMut, baud_rate_from_c, decode_modulations,
-    decode_optional_dep_info, decode_optional_target, dep_mode_from_c, modulation_from_c,
-    property_from_c,
+    InputBytes, ParityMarker, ParityMarkerMut, baud_rate_from_c, bool_property_from_c,
+    decode_modulations, decode_optional_dep_info, decode_optional_target, dep_mode_from_c,
+    modulation_from_c, timeout_property_from_c,
 };
 use crate::domain_bridge::encode::{CyclesInOut, TargetInOut, TargetOut, TargetSliceOut};
 use crate::ffi_catch_unwind_int;
@@ -21,9 +21,26 @@ use crate::initiator::driver_dispatch::{
 use crate::initiator::runtime;
 use crate::lifecycle::nfc_device;
 use libc::{c_int, size_t};
+use proximate_driver as rt;
 
 fn property_name(property: nfc_property) -> &'static str {
-    property_from_c(property).name()
+    match property {
+        nfc_property::NP_TIMEOUT_COMMAND => "NP_TIMEOUT_COMMAND",
+        nfc_property::NP_TIMEOUT_ATR => "NP_TIMEOUT_ATR",
+        nfc_property::NP_TIMEOUT_COM => "NP_TIMEOUT_COM",
+        nfc_property::NP_HANDLE_CRC => "NP_HANDLE_CRC",
+        nfc_property::NP_HANDLE_PARITY => "NP_HANDLE_PARITY",
+        nfc_property::NP_ACTIVATE_FIELD => "NP_ACTIVATE_FIELD",
+        nfc_property::NP_ACTIVATE_CRYPTO1 => "NP_ACTIVATE_CRYPTO1",
+        nfc_property::NP_INFINITE_SELECT => "NP_INFINITE_SELECT",
+        nfc_property::NP_ACCEPT_INVALID_FRAMES => "NP_ACCEPT_INVALID_FRAMES",
+        nfc_property::NP_ACCEPT_MULTIPLE_FRAMES => "NP_ACCEPT_MULTIPLE_FRAMES",
+        nfc_property::NP_AUTO_ISO14443_4 => "NP_AUTO_ISO14443_4",
+        nfc_property::NP_EASY_FRAMING => "NP_EASY_FRAMING",
+        nfc_property::NP_FORCE_ISO14443_A => "NP_FORCE_ISO14443_A",
+        nfc_property::NP_FORCE_ISO14443_B => "NP_FORCE_ISO14443_B",
+        nfc_property::NP_FORCE_SPEED_106 => "NP_FORCE_SPEED_106",
+    }
 }
 
 pub(crate) unsafe fn nfc_device_set_property_int(
@@ -37,7 +54,11 @@ pub(crate) unsafe fn nfc_device_set_property_int(
             property_name(property),
             if value != 0 { "True" } else { "False" }
         ));
-        match runtime::set_property_int(device, property_from_c(property), value) {
+        let timeout = rt::OperationTimeout::from_configured_millis(value);
+        let result = timeout_property_from_c(property)
+            .and_then(|property| timeout.map(|timeout| (property, timeout)))
+            .and_then(|(property, timeout)| runtime::set_timeout(device, property, timeout));
+        match result {
             Ok(()) => 0,
             Err(error) => runtime_result_status(device, &error, true),
         }
@@ -55,7 +76,9 @@ pub(crate) unsafe fn nfc_device_set_property_bool(
             property_name(property),
             if enable { "True" } else { "False" }
         ));
-        match runtime::set_property_bool(device, property_from_c(property), enable) {
+        let result = bool_property_from_c(property)
+            .and_then(|property| runtime::set_property_bool(device, property, enable));
+        match result {
             Ok(()) => 0,
             Err(error) => runtime_result_status(device, &error, true),
         }

@@ -31,7 +31,7 @@ use proximate_driver::{
     BaudRate, BitFrame, ConnectionString, DepInfo, DepMode, DeviceMeta, Error, InfoBackend,
     InitiatorBackend, Mode, Modulation, ModulationType, OperationTimeout, Pn53xBackend,
     PollIterations, PollPeriod, Property, PropertyBackend, Target, TargetBackend, TargetInfo,
-    TimerCycles,
+    TimeoutProperty, TimerCycles,
 };
 
 mod core;

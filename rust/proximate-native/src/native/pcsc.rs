@@ -29,7 +29,7 @@ use proximate_driver::{
     BaudRate, ConnectionString, Context, DeviceHandle, DeviceMeta, Driver, InfoBackend,
     InitiatorBackend, Mode, Modulation, ModulationType, OperationTimeout, Pn53xBackend,
     PollIterations, PollPeriod, Property, PropertyBackend, ScanType, Target, TargetBackend,
-    TargetInfo, device_error_message,
+    TargetInfo, TimeoutProperty, device_error_message,
 };
 #[cfg(feature = "driver-pcsc")]
 use std::fmt;

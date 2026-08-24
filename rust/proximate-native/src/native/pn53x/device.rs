@@ -374,24 +374,26 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
                 }
                 return Ok(());
             }
-            Property::TimeoutCommand | Property::TimeoutAtr | Property::TimeoutCom => {
-                return Err(Error::InvalidArgument("property"));
-            }
         }
 
         self.core.set_property_bool(property, enable)
     }
 
-    fn apply_property_int(&mut self, property: Property, value: i32) -> Result<(), Error> {
+    fn apply_timeout(
+        &mut self,
+        property: TimeoutProperty,
+        timeout: OperationTimeout,
+    ) -> Result<(), Error> {
+        let value = timeout.configured_millis()?;
         match property {
-            Property::TimeoutCommand => self.core.timeout_command_ms = value,
-            Property::TimeoutAtr | Property::TimeoutCom => {
-                let atr = if property == Property::TimeoutAtr {
+            TimeoutProperty::Command => self.core.timeout_command_ms = value,
+            TimeoutProperty::Atr | TimeoutProperty::Communication => {
+                let atr = if property == TimeoutProperty::Atr {
                     value
                 } else {
                     self.core.timeout_atr_ms
                 };
-                let communication = if property == Property::TimeoutCom {
+                let communication = if property == TimeoutProperty::Communication {
                     value
                 } else {
                     self.core.timeout_communication_ms
@@ -405,7 +407,6 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
                 self.core.timeout_atr_ms = atr;
                 self.core.timeout_communication_ms = communication;
             }
-            _ => return Err(Error::InvalidArgument("property")),
         }
         Ok(())
     }
@@ -1203,8 +1204,12 @@ impl<T: Pn53xTransport + Send + 'static> PropertyBackend for Pn53xDevice<T> {
         self.remember(result)
     }
 
-    fn set_property_int(&mut self, property: Property, value: i32) -> Result<(), Error> {
-        let result = self.apply_property_int(property, value);
+    fn set_timeout(
+        &mut self,
+        property: TimeoutProperty,
+        timeout: OperationTimeout,
+    ) -> Result<(), Error> {
+        let result = self.apply_timeout(property, timeout);
         self.remember(result)
     }
 

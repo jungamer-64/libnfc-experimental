@@ -127,11 +127,11 @@ pub(crate) fn target_from_c(target: *const nfc_target) -> Result<rt::Target, rt:
     rt::Target::try_new(modulation, info)
 }
 
-pub(crate) fn property_from_c(property: nfc_property) -> rt::Property {
-    match property {
-        nfc_property::NP_TIMEOUT_COMMAND => rt::Property::TimeoutCommand,
-        nfc_property::NP_TIMEOUT_ATR => rt::Property::TimeoutAtr,
-        nfc_property::NP_TIMEOUT_COM => rt::Property::TimeoutCom,
+pub(crate) fn bool_property_from_c(property: nfc_property) -> Result<rt::Property, rt::Error> {
+    Ok(match property {
+        nfc_property::NP_TIMEOUT_COMMAND
+        | nfc_property::NP_TIMEOUT_ATR
+        | nfc_property::NP_TIMEOUT_COM => return Err(rt::Error::InvalidArgument("property")),
         nfc_property::NP_HANDLE_CRC => rt::Property::HandleCrc,
         nfc_property::NP_HANDLE_PARITY => rt::Property::HandleParity,
         nfc_property::NP_ACTIVATE_FIELD => rt::Property::ActivateField,
@@ -144,6 +144,17 @@ pub(crate) fn property_from_c(property: nfc_property) -> rt::Property {
         nfc_property::NP_FORCE_ISO14443_A => rt::Property::ForceIso14443A,
         nfc_property::NP_FORCE_ISO14443_B => rt::Property::ForceIso14443B,
         nfc_property::NP_FORCE_SPEED_106 => rt::Property::ForceSpeed106,
+    })
+}
+
+pub(crate) fn timeout_property_from_c(
+    property: nfc_property,
+) -> Result<rt::TimeoutProperty, rt::Error> {
+    match property {
+        nfc_property::NP_TIMEOUT_COMMAND => Ok(rt::TimeoutProperty::Command),
+        nfc_property::NP_TIMEOUT_ATR => Ok(rt::TimeoutProperty::Atr),
+        nfc_property::NP_TIMEOUT_COM => Ok(rt::TimeoutProperty::Communication),
+        _ => Err(rt::Error::InvalidArgument("property")),
     }
 }
 

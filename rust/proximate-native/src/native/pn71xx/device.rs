@@ -9,7 +9,7 @@ use crate::command_abort::AtomicCommandAbort;
 use proximate_driver::{
     BaudRate, CommandAbort, CommandAbortHandle, ConnectionString, DeviceMeta, Error, InfoBackend,
     InitiatorBackend, Mode, Modulation, ModulationType, OperationTimeout, Pn53xBackend,
-    PollIterations, PollPeriod, Property, PropertyBackend, Target, TargetBackend,
+    PollIterations, PollPeriod, Property, PropertyBackend, Target, TargetBackend, TimeoutProperty,
 };
 
 use super::backend::backend;
@@ -161,11 +161,16 @@ impl PropertyBackend for Pn71xxDevice {
         self.succeed(())
     }
 
-    fn set_property_int(&mut self, property: Property, value: i32) -> Result<(), Error> {
-        if property != Property::TimeoutCom {
-            return Err(Error::UnsupportedOperation("pn71xx_property_int"));
+    fn set_timeout(
+        &mut self,
+        property: TimeoutProperty,
+        timeout: OperationTimeout,
+    ) -> Result<(), Error> {
+        if property != TimeoutProperty::Communication {
+            return Err(Error::UnsupportedOperation("pn71xx_timeout"));
         }
-        let value = u32::try_from(value).map_err(|_| Error::InvalidArgument("timeout"))?;
+        let value = u32::try_from(timeout.configured_millis()?)
+            .map_err(|_| Error::InvalidArgument("timeout"))?;
         self.timeout_communication_ms = value;
         self.succeed(())
     }

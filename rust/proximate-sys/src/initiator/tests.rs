@@ -693,6 +693,27 @@ fn property_int_wrapper_logs_and_dispatches() {
         vec![(nfc_property::NP_TIMEOUT_COMMAND, 42)]
     );
 
+    assert_eq!(
+        unsafe { nfc_device_set_property_int(device, nfc_property::NP_HANDLE_CRC, 42) },
+        NFC_EINVARG,
+    );
+    assert_eq!(
+        unsafe { nfc_device_set_property_bool(device, nfc_property::NP_TIMEOUT_COM, true) },
+        NFC_EINVARG,
+    );
+    assert_eq!(
+        unsafe { nfc_device_set_property_int(device, nfc_property::NP_TIMEOUT_COM, -1) },
+        NFC_EINVARG,
+    );
+    assert_eq!(
+        unsafe { nfc_device_set_property_int(device, nfc_property::NP_TIMEOUT_COM, -2) },
+        NFC_EINVARG,
+    );
+    assert_eq!(
+        snapshot_test_state().property_int_calls,
+        vec![(nfc_property::NP_TIMEOUT_COMMAND, 42)]
+    );
+
     unsafe { destroy_device(device) };
 }
 

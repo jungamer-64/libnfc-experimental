@@ -296,10 +296,10 @@ mod tests {
             Ok(())
         }
 
-        fn set_property_int(
+        fn set_timeout(
             &mut self,
-            _property: rt::Property,
-            _value: i32,
+            _property: rt::TimeoutProperty,
+            _timeout: rt::OperationTimeout,
         ) -> Result<(), rt::Error> {
             Ok(())
         }

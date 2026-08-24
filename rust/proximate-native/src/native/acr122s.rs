@@ -36,8 +36,8 @@ use super::pn53x::{
 };
 use super::uart::{UartPort, list_candidate_paths};
 use proximate_driver::{
-    CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error, Property,
-    PropertyBackend, ScanType,
+    CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error, OperationTimeout,
+    PropertyBackend, ScanType, TimeoutProperty,
 };
 use std::collections::VecDeque;
 #[cfg(test)]
@@ -130,7 +130,10 @@ impl Driver for Acr122sDriver {
             transport,
             PROBE_TIMEOUT_MS,
         )?;
-        device.set_property_int(Property::TimeoutCommand, CONTROL_TIMEOUT_MS)?;
+        device.set_timeout(
+            TimeoutProperty::Command,
+            OperationTimeout::from_libnfc_millis(CONTROL_TIMEOUT_MS)?,
+        )?;
         Ok(Box::new(device))
     }
 }

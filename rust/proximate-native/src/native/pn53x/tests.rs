@@ -612,7 +612,10 @@ fn device_property_state_follows_confirmed_chip_commands() {
         .set_property_bool(Property::EasyFraming, false)
         .unwrap();
     device
-        .set_property_int(Property::TimeoutCommand, 900)
+        .set_timeout(
+            TimeoutProperty::Command,
+            OperationTimeout::try_milliseconds(900).unwrap(),
+        )
         .unwrap();
     queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
     queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
@@ -633,6 +636,72 @@ fn device_property_state_follows_confirmed_chip_commands() {
     );
     assert_eq!(device.property_bool_state(Property::ForceSpeed106), None);
     assert_eq!(device.last_error(), 0);
+}
+
+#[test]
+fn timeout_properties_emit_timing_configuration_and_commit_after_confirmation() {
+    let mut device = probed_device();
+
+    let sent_before = device.transport.sent.len();
+    assert_eq!(
+        device.set_timeout(TimeoutProperty::Command, OperationTimeout::DEFAULT),
+        Err(Error::InvalidArgument("timeout")),
+    );
+    assert_eq!(device.transport.sent.len(), sent_before);
+    assert_eq!(device.core().timeout_command_ms, 500);
+
+    device
+        .set_timeout(
+            TimeoutProperty::Command,
+            OperationTimeout::try_milliseconds(900).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(device.transport.sent.len(), sent_before);
+    assert_eq!(device.core().timeout_command_ms, 900);
+
+    queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
+    device
+        .set_timeout(
+            TimeoutProperty::Atr,
+            OperationTimeout::try_milliseconds(200).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        sent_payload(&device.transport, sent_before),
+        vec![PN53X_RF_CONFIGURATION, RFCI_TIMING, 0x00, 0x0b, 0x0a]
+    );
+    assert_eq!(device.core().timeout_atr_ms, 200);
+    assert_eq!(device.core().timeout_communication_ms, 52);
+
+    queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
+    device
+        .set_timeout(TimeoutProperty::Communication, OperationTimeout::INFINITE)
+        .unwrap();
+    assert_eq!(
+        sent_payload(&device.transport, sent_before + 1),
+        vec![PN53X_RF_CONFIGURATION, RFCI_TIMING, 0x00, 0x0b, 0x00]
+    );
+    assert_eq!(device.core().timeout_atr_ms, 200);
+    assert_eq!(device.core().timeout_communication_ms, 0);
+
+    let mut failed = probed_device();
+    failed
+        .transport
+        .received
+        .push_back(PN53X_ACK_FRAME.to_vec());
+    failed.transport.receive_failures.push_back((
+        failed.transport.receive_calls + 2,
+        Error::Timeout("pn53x_timeout_test"),
+    ));
+    assert!(matches!(
+        failed.set_timeout(
+            TimeoutProperty::Atr,
+            OperationTimeout::try_milliseconds(200).unwrap(),
+        ),
+        Err(Error::OutcomeUnknown { .. })
+    ));
+    assert_eq!(failed.core().timeout_atr_ms, 103);
+    assert_eq!(failed.core().timeout_communication_ms, 52);
 }
 
 #[test]

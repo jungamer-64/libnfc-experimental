@@ -263,20 +263,25 @@ impl rt::PropertyBackend for ExternalDevice {
         self.normalize("device_set_property_bool", result)
     }
 
-    fn set_property_int(&mut self, property: rt::Property, value: i32) -> Result<(), rt::Error> {
+    fn set_timeout(
+        &mut self,
+        property: rt::TimeoutProperty,
+        timeout: rt::OperationTimeout,
+    ) -> Result<(), rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
-                return Err(rt::Error::UnsupportedOperation("device_set_property_int"));
+                return Err(rt::Error::UnsupportedOperation("device_set_timeout"));
             };
             let Some(callback) = driver.device_set_property_int else {
-                return Err(rt::Error::UnsupportedOperation("device_set_property_int"));
+                return Err(rt::Error::UnsupportedOperation("device_set_timeout"));
             };
+            let timeout = timeout.configured_millis()?;
             Self::status_to_result("device_set_property_int", unsafe {
-                callback(self.raw, property_to_c(property), value)
+                callback(self.raw, timeout_property_to_c(property), timeout)
             })?;
             Ok(())
         })();
-        self.normalize("device_set_property_int", result)
+        self.normalize("device_set_timeout", result)
     }
 
     fn supported_modulations(

@@ -115,9 +115,13 @@ impl rt::PropertyBackend for RustBorrowedDevice {
         self.normalize("device_set_property_bool", result)
     }
 
-    fn set_property_int(&mut self, property: rt::Property, value: i32) -> Result<(), rt::Error> {
-        let result = self.with_handle(|handle| handle.set_property_int(property, value));
-        self.normalize("device_set_property_int", result)
+    fn set_timeout(
+        &mut self,
+        property: rt::TimeoutProperty,
+        timeout: rt::OperationTimeout,
+    ) -> Result<(), rt::Error> {
+        let result = self.with_handle(|handle| handle.set_timeout(property, timeout));
+        self.normalize("device_set_timeout", result)
     }
 
     fn supported_modulations(

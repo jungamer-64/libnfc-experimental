@@ -256,7 +256,11 @@ impl rt::PropertyBackend for FakeRustHandle {
         Ok(())
     }
 
-    fn set_property_int(&mut self, _property: rt::Property, _value: i32) -> Result<(), rt::Error> {
+    fn set_timeout(
+        &mut self,
+        _property: rt::TimeoutProperty,
+        _timeout: rt::OperationTimeout,
+    ) -> Result<(), rt::Error> {
         Ok(())
     }
 

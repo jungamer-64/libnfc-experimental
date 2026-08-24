@@ -389,12 +389,9 @@ impl PropertyState {
             Property::AcceptMultipleFrames => self.accept_multiple_frames,
             Property::AutoIso14443_4 => self.auto_iso14443_4,
             Property::EasyFraming => self.easy_framing,
-            Property::ForceIso14443A
-            | Property::ForceIso14443B
-            | Property::ForceSpeed106
-            | Property::TimeoutCommand
-            | Property::TimeoutAtr
-            | Property::TimeoutCom => return None,
+            Property::ForceIso14443A | Property::ForceIso14443B | Property::ForceSpeed106 => {
+                return None;
+            }
         })
     }
 
@@ -409,12 +406,7 @@ impl PropertyState {
             Property::AcceptMultipleFrames => self.accept_multiple_frames = value,
             Property::AutoIso14443_4 => self.auto_iso14443_4 = value,
             Property::EasyFraming => self.easy_framing = value,
-            Property::ForceIso14443A
-            | Property::ForceIso14443B
-            | Property::ForceSpeed106
-            | Property::TimeoutCommand
-            | Property::TimeoutAtr
-            | Property::TimeoutCom => {
+            Property::ForceIso14443A | Property::ForceIso14443B | Property::ForceSpeed106 => {
                 return Err(Error::InvalidArgument("property"));
             }
         }

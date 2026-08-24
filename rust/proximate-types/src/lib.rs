@@ -13,5 +13,6 @@ pub use error::{Error, PublicError};
 pub use metadata::{device_error_message, version};
 pub use types::{
     BaudRate, BitFrame, DepInfo, DepMode, Mode, Modulation, ModulationType, OperationTimeout,
-    PollIterations, PollPeriod, Property, ScanType, Target, TargetInfo, TimerCycles,
+    PollIterations, PollPeriod, Property, ScanType, Target, TargetInfo, TimeoutProperty,
+    TimerCycles,
 };

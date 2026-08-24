@@ -25,24 +25,15 @@ pub enum Property {
     ForceSpeed106,
 }
 
-impl Property {
-    #[doc(hidden)]
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::HandleCrc => "NP_HANDLE_CRC",
-            Self::HandleParity => "NP_HANDLE_PARITY",
-            Self::ActivateField => "NP_ACTIVATE_FIELD",
-            Self::ActivateCrypto1 => "NP_ACTIVATE_CRYPTO1",
-            Self::InfiniteSelect => "NP_INFINITE_SELECT",
-            Self::AcceptInvalidFrames => "NP_ACCEPT_INVALID_FRAMES",
-            Self::AcceptMultipleFrames => "NP_ACCEPT_MULTIPLE_FRAMES",
-            Self::AutoIso14443_4 => "NP_AUTO_ISO14443_4",
-            Self::EasyFraming => "NP_EASY_FRAMING",
-            Self::ForceIso14443A => "NP_FORCE_ISO14443_A",
-            Self::ForceIso14443B => "NP_FORCE_ISO14443_B",
-            Self::ForceSpeed106 => "NP_FORCE_SPEED_106",
-        }
-    }
+/// Selects which configured timeout a device operation changes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TimeoutProperty {
+    /// Timeout for commands that do not exchange data with a target.
+    Command,
+    /// Timeout for target activation and DEP ATR exchanges.
+    Atr,
+    /// Timeout for data exchanges with an activated target.
+    Communication,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -186,6 +177,23 @@ impl OperationTimeout {
         }
     }
 
+    /// Decodes a configured timeout in milliseconds.
+    ///
+    /// Configured timeouts accept zero for an infinite wait or a positive
+    /// finite duration. [`Self::DEFAULT`] is meaningful only at an operation
+    /// call site, where it selects an already-configured timeout.
+    ///
+    /// # Errors
+    ///
+    /// Negative values are rejected.
+    pub fn from_configured_millis(value: i32) -> Result<Self, Error> {
+        if value < 0 {
+            Err(Error::InvalidArgument("timeout"))
+        } else {
+            Ok(Self(value))
+        }
+    }
+
     /// Constructs a finite timeout.
     ///
     /// # Errors
@@ -202,6 +210,20 @@ impl OperationTimeout {
     /// Returns libnfc's canonical signed millisecond representation.
     pub const fn to_libnfc_millis(self) -> i32 {
         self.0
+    }
+
+    /// Returns the non-negative representation required when configuring a
+    /// device timeout.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidArgument`] for [`Self::DEFAULT`].
+    pub fn configured_millis(self) -> Result<i32, Error> {
+        if self == Self::DEFAULT {
+            Err(Error::InvalidArgument("timeout"))
+        } else {
+            Ok(self.0)
+        }
     }
 
     /// Returns a finite millisecond budget, if this operation has one.
@@ -565,6 +587,22 @@ mod tests {
             Ok(750),
         );
         assert_eq!(OperationTimeout::INFINITE.resolve_libnfc_millis(750), Ok(0),);
+    }
+
+    #[test]
+    fn configured_timeout_rejects_operation_default() {
+        assert_eq!(
+            OperationTimeout::from_configured_millis(-1),
+            Err(Error::InvalidArgument("timeout")),
+        );
+        assert_eq!(
+            OperationTimeout::DEFAULT.configured_millis(),
+            Err(Error::InvalidArgument("timeout")),
+        );
+        for value in [0, 1, i32::MAX] {
+            let timeout = OperationTimeout::from_configured_millis(value).unwrap();
+            assert_eq!(timeout.configured_millis(), Ok(value));
+        }
     }
 
     #[test]

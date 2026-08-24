@@ -446,18 +446,27 @@ fn communication_timeout_is_applied_and_unimplemented_properties_are_rejected() 
     {
         let mut properties = device.property_ops().unwrap();
         properties
-            .set_property_int(proximate_driver::Property::TimeoutCom, 777)
+            .set_timeout(
+                proximate_driver::TimeoutProperty::Communication,
+                OperationTimeout::try_milliseconds(777).unwrap(),
+            )
             .unwrap();
         assert_eq!(
-            properties.set_property_int(proximate_driver::Property::TimeoutAtr, 12),
-            Err(Error::UnsupportedOperation("pn71xx_property_int"))
+            properties.set_timeout(
+                proximate_driver::TimeoutProperty::Atr,
+                OperationTimeout::try_milliseconds(12).unwrap(),
+            ),
+            Err(Error::UnsupportedOperation("pn71xx_timeout"))
         );
         assert_eq!(
             properties.set_property_bool(proximate_driver::Property::HandleCrc, false),
             Err(Error::UnsupportedOperation("pn71xx_property_bool"))
         );
         assert_eq!(
-            properties.set_property_int(proximate_driver::Property::TimeoutCom, -1),
+            properties.set_timeout(
+                proximate_driver::TimeoutProperty::Communication,
+                OperationTimeout::DEFAULT,
+            ),
             Err(Error::InvalidArgument("timeout"))
         );
     }

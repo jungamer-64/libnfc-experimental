@@ -81,13 +81,13 @@ pub(super) fn with_target_io_ops<R>(
     })
 }
 
-pub(super) fn set_property_int(
+pub(super) fn set_timeout(
     raw: *mut nfc_device,
-    property: rt::Property,
-    value: c_int,
+    property: rt::TimeoutProperty,
+    timeout: rt::OperationTimeout,
 ) -> Result<(), rt::Error> {
     with_property_ops(raw, |property_ops| {
-        property_ops.set_property_int(property, value)
+        property_ops.set_timeout(property, timeout)
     })
 }
 

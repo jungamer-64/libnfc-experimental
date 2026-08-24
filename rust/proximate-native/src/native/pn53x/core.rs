@@ -392,16 +392,6 @@ impl Pn53xCore {
         self.properties.set(property, enable)
     }
 
-    pub(crate) fn set_property_int(&mut self, property: Property, value: i32) -> Result<(), Error> {
-        match property {
-            Property::TimeoutCommand => self.timeout_command_ms = value,
-            Property::TimeoutAtr => self.timeout_atr_ms = value,
-            Property::TimeoutCom => self.timeout_communication_ms = value,
-            _ => return Err(Error::InvalidArgument("property")),
-        }
-        Ok(())
-    }
-
     pub(crate) fn exchange_command<T: Pn53xTransport>(
         &mut self,
         profile: Pn53xProfile,

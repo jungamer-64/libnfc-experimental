@@ -461,8 +461,12 @@ impl PropertyBackend for PcscDevice {
         }
     }
 
-    fn set_property_int(&mut self, _property: Property, _value: i32) -> Result<(), Error> {
-        self.fail("pcsc_set_property_int", NFC_EDEVNOTSUPP)
+    fn set_timeout(
+        &mut self,
+        _property: TimeoutProperty,
+        _timeout: OperationTimeout,
+    ) -> Result<(), Error> {
+        self.fail("pcsc_set_timeout", NFC_EDEVNOTSUPP)
     }
 
     fn supported_modulations(&mut self, mode: Mode) -> Result<Vec<ModulationType>, Error> {

@@ -120,9 +120,6 @@ pub(crate) fn dep_info_to_c(info: &rt::DepInfo) -> nfc_dep_info {
 
 pub(crate) fn property_to_c(property: rt::Property) -> nfc_property {
     match property {
-        rt::Property::TimeoutCommand => nfc_property::NP_TIMEOUT_COMMAND,
-        rt::Property::TimeoutAtr => nfc_property::NP_TIMEOUT_ATR,
-        rt::Property::TimeoutCom => nfc_property::NP_TIMEOUT_COM,
         rt::Property::HandleCrc => nfc_property::NP_HANDLE_CRC,
         rt::Property::HandleParity => nfc_property::NP_HANDLE_PARITY,
         rt::Property::ActivateField => nfc_property::NP_ACTIVATE_FIELD,
@@ -135,6 +132,14 @@ pub(crate) fn property_to_c(property: rt::Property) -> nfc_property {
         rt::Property::ForceIso14443A => nfc_property::NP_FORCE_ISO14443_A,
         rt::Property::ForceIso14443B => nfc_property::NP_FORCE_ISO14443_B,
         rt::Property::ForceSpeed106 => nfc_property::NP_FORCE_SPEED_106,
+    }
+}
+
+pub(crate) fn timeout_property_to_c(property: rt::TimeoutProperty) -> nfc_property {
+    match property {
+        rt::TimeoutProperty::Command => nfc_property::NP_TIMEOUT_COMMAND,
+        rt::TimeoutProperty::Atr => nfc_property::NP_TIMEOUT_ATR,
+        rt::TimeoutProperty::Communication => nfc_property::NP_TIMEOUT_COM,
     }
 }
 
@@ -596,12 +601,6 @@ mod tests {
         }
 
         let properties = [
-            (
-                rt::Property::TimeoutCommand,
-                nfc_property::NP_TIMEOUT_COMMAND,
-            ),
-            (rt::Property::TimeoutAtr, nfc_property::NP_TIMEOUT_ATR),
-            (rt::Property::TimeoutCom, nfc_property::NP_TIMEOUT_COM),
             (rt::Property::HandleCrc, nfc_property::NP_HANDLE_CRC),
             (rt::Property::HandleParity, nfc_property::NP_HANDLE_PARITY),
             (rt::Property::ActivateField, nfc_property::NP_ACTIVATE_FIELD),
@@ -641,7 +640,25 @@ mod tests {
         ];
         for (runtime, raw) in properties {
             assert_eq!(property_to_c(runtime), raw);
-            assert_eq!(decode::property_from_c(raw), runtime);
+            assert_eq!(decode::bool_property_from_c(raw), Ok(runtime));
+            assert!(decode::timeout_property_from_c(raw).is_err());
+        }
+
+        let timeout_properties = [
+            (
+                rt::TimeoutProperty::Command,
+                nfc_property::NP_TIMEOUT_COMMAND,
+            ),
+            (rt::TimeoutProperty::Atr, nfc_property::NP_TIMEOUT_ATR),
+            (
+                rt::TimeoutProperty::Communication,
+                nfc_property::NP_TIMEOUT_COM,
+            ),
+        ];
+        for (runtime, raw) in timeout_properties {
+            assert_eq!(timeout_property_to_c(runtime), raw);
+            assert_eq!(decode::timeout_property_from_c(raw), Ok(runtime));
+            assert!(decode::bool_property_from_c(raw).is_err());
         }
     }
 

@@ -90,7 +90,11 @@ impl PropertyBackend for FakeDevice {
         Ok(())
     }
 
-    fn set_property_int(&mut self, _property: Property, _value: i32) -> Result<(), Error> {
+    fn set_timeout(
+        &mut self,
+        _property: TimeoutProperty,
+        _timeout: OperationTimeout,
+    ) -> Result<(), Error> {
         Ok(())
     }
 
@@ -587,6 +591,18 @@ fn initiator_init_applies_expected_property_sequence() {
             (Property::AcceptInvalidFrames, false),
             (Property::AcceptMultipleFrames, false),
         ]
+    );
+}
+
+#[test]
+fn configured_timeout_rejects_operation_default_before_backend_dispatch() {
+    let mut device = Device::from_backend(Box::new(FakeDevice::new("pn53x_usb")));
+    assert_eq!(
+        device
+            .property_ops()
+            .unwrap()
+            .set_timeout(TimeoutProperty::Command, OperationTimeout::DEFAULT),
+        Err(Error::InvalidArgument("timeout")),
     );
 }
 

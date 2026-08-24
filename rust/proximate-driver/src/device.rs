@@ -55,6 +55,13 @@ pub trait InfoBackend: DeviceMeta {
 pub trait PropertyBackend: DeviceMeta {
     fn set_property_bool(&mut self, property: Property, enable: bool) -> Result<(), Error>;
 
+    /// Changes one of the device's configured timeouts.
+    ///
+    /// # Errors
+    ///
+    /// Implementations reject [`OperationTimeout::DEFAULT`], because that
+    /// sentinel selects a configured value at operation call sites rather than
+    /// representing a value that can itself be configured.
     fn set_timeout(
         &mut self,
         property: crate::TimeoutProperty,
@@ -384,6 +391,13 @@ impl<'a> PropertyOps<'a> {
         ops::property::set_property_bool(self.device, property, enable)
     }
 
+    /// Changes one of the device's configured timeouts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidArgument`] for [`OperationTimeout::DEFAULT`]
+    /// before invoking the backend. Backend-specific unsupported-property and
+    /// device failures are otherwise preserved.
     pub fn set_timeout(
         &mut self,
         property: crate::TimeoutProperty,
@@ -729,6 +743,7 @@ mod ops {
         where
             D: PropertyBackend + ?Sized,
         {
+            timeout.configured_millis()?;
             device.set_timeout(property, timeout)
         }
 

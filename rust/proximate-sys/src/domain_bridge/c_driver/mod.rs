@@ -8,7 +8,7 @@ use crate::c_boundary::status::{NFC_EDEVNOTSUPP, set_device_last_error};
 use crate::domain_bridge::decode::{baud_rate_from_c, modulation_type_from_c, target_from_c};
 use crate::domain_bridge::encode::{
     baud_rate_to_c, dep_info_to_c, dep_mode_to_c, mode_to_c, modulation_to_c, modulation_type_to_c,
-    property_to_c, target_to_c, write_context_to_c,
+    property_to_c, target_to_c, timeout_property_to_c, write_context_to_c,
 };
 use crate::lifecycle::{
     DEVICE_NAME_LENGTH, NFC_DRIVER_NAME_MAX, nfc_context, nfc_device, nfc_device_new, nfc_driver,
