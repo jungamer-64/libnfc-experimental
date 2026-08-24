@@ -3,12 +3,18 @@ use std::sync::{Mutex, OnceLock};
 
 use super::backend::backend;
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum Pn71xxSession {
+    #[default]
+    Inactive,
+    Discovering { device_id: u64 },
+    Idle { device_id: u64 },
+    PoweredDown { device_id: u64 },
+}
+
 #[derive(Clone, Debug, Default)]
 pub(super) struct Pn71xxRuntime {
-    pub(super) initialized: bool,
-    pub(super) callbacks_registered: bool,
-    pub(super) discovery_enabled: bool,
-    pub(super) active_device: Option<u64>,
+    pub(super) session: Pn71xxSession,
     pub(super) next_device_id: u64,
 }
 
