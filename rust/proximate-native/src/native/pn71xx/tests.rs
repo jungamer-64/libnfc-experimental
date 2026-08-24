@@ -349,9 +349,19 @@ fn target_is_present_follows_tag_cache() {
 
     emit_tag_arrival_for_tests(make_tag(TARGET_TYPE_ISO14443_3A, &[0x01], 0));
     assert!(device.target_is_present(None).unwrap());
+    let original = device
+        .select_passive_target(modulation(ModulationType::Iso14443A, BaudRate::Br106), None)
+        .unwrap()
+        .expect("target should be present");
+    assert!(device.target_is_present(Some(&original)).unwrap());
+
+    emit_tag_arrival_for_tests(make_tag(TARGET_TYPE_ISO14443_3A, &[0x02], 0));
+    assert!(device.target_is_present(None).unwrap());
+    assert!(!device.target_is_present(Some(&original)).unwrap());
 
     emit_tag_departure_for_tests();
     assert!(!device.target_is_present(None).unwrap());
+    assert!(!device.target_is_present(Some(&original)).unwrap());
 }
 
 #[test]

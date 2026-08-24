@@ -272,9 +272,16 @@ impl InitiatorBackend for Pn71xxDevice {
         result
     }
 
-    fn target_is_present_driver(&mut self, _target: Option<&Target>) -> Result<bool, Error> {
+    fn target_is_present_driver(&mut self, target: Option<&Target>) -> Result<bool, Error> {
         ensure_discovery(self.device_id)?;
-        self.succeed(current_tag_snapshot().is_some())
+        let Some(tag) = current_tag_snapshot() else {
+            return self.succeed(false);
+        };
+        let Some(expected) = target else {
+            return self.succeed(true);
+        };
+        let current = build_target(&tag, expected.modulation())?;
+        self.succeed(current.as_ref() == Some(expected))
     }
 
     fn abort_command_driver(&mut self) -> Result<(), Error> {
