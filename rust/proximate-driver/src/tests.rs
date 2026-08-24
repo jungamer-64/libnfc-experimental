@@ -18,7 +18,6 @@ use crate::diagnostics::{self, ContextDiagnosticCategory};
 struct FakeDevice {
     name: String,
     connstring: ConnectionString,
-    caps: DeviceCaps,
     property_calls: Vec<(Property, bool)>,
     property_state: Vec<(Property, bool)>,
     supported_modulations: Vec<ModulationType>,
@@ -35,15 +34,6 @@ impl Default for FakeDevice {
         Self {
             name: String::new(),
             connstring: ConnectionString::new("test").unwrap(),
-            caps: DeviceCaps::SET_PROPERTY_BOOL
-                | DeviceCaps::SET_PROPERTY_INT
-                | DeviceCaps::SUPPORTED_MODULATIONS
-                | DeviceCaps::SUPPORTED_BAUD_RATES
-                | DeviceCaps::INITIATOR_INIT
-                | DeviceCaps::SELECT_PASSIVE_TARGET
-                | DeviceCaps::SELECT_DEP_TARGET
-                | DeviceCaps::DESELECT_TARGET
-                | DeviceCaps::TARGET_INIT,
             property_calls: Vec::new(),
             property_state: Vec::new(),
             supported_modulations: Vec::new(),
@@ -81,10 +71,6 @@ impl DeviceMeta for FakeDevice {
 
     fn connstring(&self) -> &ConnectionString {
         &self.connstring
-    }
-
-    fn caps(&self) -> DeviceCaps {
-        self.caps
     }
 }
 
@@ -152,7 +138,7 @@ impl InitiatorBackend for FakeDevice {
         _ndm: DepMode,
         _nbr: BaudRate,
         _initiator: Option<&DepInfo>,
-        _timeout: i32,
+        _timeout: OperationTimeout,
     ) -> Result<Option<Target>, Error> {
         self.dep_results.pop_front().unwrap_or(Ok(None))
     }
@@ -163,7 +149,7 @@ impl TargetBackend for FakeDevice {
         &mut self,
         _target: &mut Target,
         _rx: &mut [u8],
-        _timeout: i32,
+        _timeout: OperationTimeout,
     ) -> Result<usize, Error> {
         self.target_init_calls += 1;
         Ok(0)
@@ -193,9 +179,7 @@ impl Driver for FakeDriver {
             .scan_results
             .iter()
             .cloned()
-            .map(|connstring| {
-                self.describe_discovered(connstring.as_str().to_string(), connstring, None)
-            })
+            .map(|connstring| self.describe_discovered(connstring.as_str().to_string(), connstring))
             .collect())
     }
 
@@ -215,29 +199,8 @@ impl Driver for FakeDriver {
     }
 }
 
-fn missing_capability_for_test(operation: &'static str) -> Error {
-    Error::MissingCapability(operation)
-}
-
-fn ensure_device_caps_for_test(
-    caps: DeviceCaps,
-    required: DeviceCaps,
-    operation: &'static str,
-) -> Result<(), Error> {
-    if caps.contains(required) {
-        Ok(())
-    } else {
-        Err(missing_capability_for_test(operation))
-    }
-}
-
 trait TestDeviceOps: DeviceMeta + PropertyBackend + InitiatorBackend + TargetBackend {
     fn initiator_init(&mut self) -> Result<i32, Error> {
-        ensure_device_caps_for_test(
-            self.caps(),
-            DeviceCaps::SET_PROPERTY_BOOL | DeviceCaps::INITIATOR_INIT,
-            "initiator_init",
-        )?;
         apply_bool_property_sequence(
             self,
             &[
@@ -259,17 +222,10 @@ trait TestDeviceOps: DeviceMeta + PropertyBackend + InitiatorBackend + TargetBac
         modulation: Modulation,
         init_data: Option<&[u8]>,
     ) -> Result<Option<Target>, Error> {
-        ensure_device_caps_for_test(
-            self.caps(),
-            DeviceCaps::SUPPORTED_MODULATIONS
-                | DeviceCaps::SUPPORTED_BAUD_RATES
-                | DeviceCaps::SELECT_PASSIVE_TARGET,
-            "initiator_select_passive_target",
-        )?;
         validate_modulation(self, Mode::Initiator, modulation)?;
 
         let payload = if init_data.is_some_and(|value| !value.is_empty()) {
-            if modulation.modulation_type == ModulationType::Iso14443A {
+            if modulation.modulation_type() == ModulationType::Iso14443A {
                 cascade_iso14443a_uid(init_data.expect("checked above"))
             } else {
                 init_data.expect("checked above").to_vec()
@@ -289,15 +245,6 @@ trait TestDeviceOps: DeviceMeta + PropertyBackend + InitiatorBackend + TargetBac
         if max_targets == 0 {
             return Ok(Vec::new());
         }
-
-        let mut required = DeviceCaps::SUPPORTED_MODULATIONS
-            | DeviceCaps::SUPPORTED_BAUD_RATES
-            | DeviceCaps::SELECT_PASSIVE_TARGET
-            | DeviceCaps::SET_PROPERTY_BOOL;
-        if max_targets > 1 && !modulation_requires_single_attempt(modulation) {
-            required |= DeviceCaps::DESELECT_TARGET;
-        }
-        ensure_device_caps_for_test(self.caps(), required, "list_passive_targets")?;
 
         let previous = self.property_bool_state(Property::InfiniteSelect);
         self.set_property_bool(Property::InfiniteSelect, false)?;
@@ -328,25 +275,21 @@ trait TestDeviceOps: DeviceMeta + PropertyBackend + InitiatorBackend + TargetBac
         mode: DepMode,
         baud_rate: BaudRate,
         initiator: Option<&DepInfo>,
-        timeout: i32,
+        timeout: OperationTimeout,
     ) -> Result<Option<Target>, Error> {
-        ensure_device_caps_for_test(
-            self.caps(),
-            DeviceCaps::SET_PROPERTY_BOOL | DeviceCaps::SELECT_DEP_TARGET,
-            "poll_dep_target",
-        )?;
         let previous = self.property_bool_state(Property::InfiniteSelect);
         self.set_property_bool(Property::InfiniteSelect, true)?;
 
         let result = (|| {
-            let mut remaining = timeout;
+            let mut remaining = timeout.finite_millis().unwrap_or(0);
             while remaining > 0 {
-                match self.select_dep_target_driver(mode, baud_rate, initiator, POLL_DEP_PERIOD_MS)
-                {
+                let period = OperationTimeout::try_milliseconds(POLL_DEP_PERIOD_MS as u32)
+                    .expect("valid test poll period");
+                match self.select_dep_target_driver(mode, baud_rate, initiator, period) {
                     Ok(Some(target)) => return Ok(Some(target)),
-                    Ok(None) => remaining -= POLL_DEP_PERIOD_MS,
+                    Ok(None) => remaining = remaining.saturating_sub(POLL_DEP_PERIOD_MS as u32),
                     Err(error) if error.device_code() == Some(-6) => {
-                        remaining -= POLL_DEP_PERIOD_MS;
+                        remaining = remaining.saturating_sub(POLL_DEP_PERIOD_MS as u32);
                     }
                     Err(error) => return Err(error),
                 }
@@ -362,13 +305,8 @@ trait TestDeviceOps: DeviceMeta + PropertyBackend + InitiatorBackend + TargetBac
         &mut self,
         target: &mut Target,
         rx: &mut [u8],
-        timeout: i32,
+        timeout: OperationTimeout,
     ) -> Result<usize, Error> {
-        ensure_device_caps_for_test(
-            self.caps(),
-            DeviceCaps::SET_PROPERTY_BOOL | DeviceCaps::TARGET_INIT,
-            "target_init",
-        )?;
         apply_bool_property_sequence(
             self,
             &[
@@ -389,16 +327,13 @@ trait TestDeviceOps: DeviceMeta + PropertyBackend + InitiatorBackend + TargetBac
 impl<T> TestDeviceOps for T where T: DeviceMeta + PropertyBackend + InitiatorBackend + TargetBackend {}
 
 fn modulation(modulation_type: ModulationType, baud_rate: BaudRate) -> Modulation {
-    Modulation {
-        modulation_type,
-        baud_rate,
-    }
+    Modulation::try_new(modulation_type, baud_rate).unwrap()
 }
 
 fn dep_target() -> Target {
-    Target {
-        modulation: modulation(ModulationType::Dep, BaudRate::Br106),
-        info: TargetInfo::Dep(DepInfo {
+    Target::try_new(
+        modulation(ModulationType::Dep, BaudRate::Br106),
+        TargetInfo::Dep(DepInfo {
             nfcid3: [0x11; 10],
             did: 0x22,
             bs: 0x33,
@@ -408,7 +343,21 @@ fn dep_target() -> Target {
             general_bytes: vec![0xaa, 0xbb],
             mode: DepMode::Passive,
         }),
-    }
+    )
+    .unwrap()
+}
+
+fn iso14443a_target() -> Target {
+    Target::try_new(
+        modulation(ModulationType::Iso14443A, BaudRate::Br106),
+        TargetInfo::Iso14443A {
+            atqa: [0; 2],
+            sak: 0,
+            uid: Vec::new(),
+            ats: Vec::new(),
+        },
+    )
+    .unwrap()
 }
 
 fn env_lock() -> &'static Mutex<()> {
@@ -622,81 +571,6 @@ fn driver_registry_prefers_user_defined_name_override() {
 }
 
 #[test]
-fn device_caps_propagate_through_wrappers() {
-    let device = FakeDevice::new("alpha:001");
-    let caps = device.caps;
-    let handle = Box::new(device) as Box<dyn DeviceHandle>;
-    let device = Device::new(handle, Some("named".into()));
-    assert_eq!(device.caps(), caps);
-}
-
-#[test]
-fn initiator_init_requires_caps_before_property_sequence() {
-    let mut device = FakeDevice::new("pn53x_usb");
-    device.caps = DeviceCaps::INITIATOR_INIT;
-
-    let error = device.initiator_init().unwrap_err();
-    assert_eq!(error, Error::MissingCapability("initiator_init"));
-    assert!(device.property_calls.is_empty());
-}
-
-#[test]
-fn target_init_requires_caps_before_property_sequence() {
-    let mut device = FakeDevice::new("pn53x_usb");
-    device.caps = DeviceCaps::TARGET_INIT;
-    let mut target = Target::new(modulation(ModulationType::Iso14443A, BaudRate::Br106));
-    let mut rx = [0u8; 8];
-
-    let error = device.target_init(&mut target, &mut rx, 25).unwrap_err();
-    assert_eq!(error, Error::MissingCapability("target_init"));
-    assert!(device.property_calls.is_empty());
-    assert_eq!(device.target_init_calls, 0);
-}
-
-#[test]
-fn select_passive_target_requires_validation_caps_before_dispatch() {
-    let mut device = FakeDevice::new("pn53x_usb");
-    device.caps = DeviceCaps::SELECT_PASSIVE_TARGET;
-
-    let error = device
-        .select_passive_target(modulation(ModulationType::Iso14443A, BaudRate::Br106), None)
-        .unwrap_err();
-    assert_eq!(
-        error,
-        Error::MissingCapability("initiator_select_passive_target")
-    );
-    assert!(device.select_passive_payloads.is_empty());
-}
-
-#[test]
-fn list_passive_targets_requires_deselect_cap_before_mutation() {
-    let mut device = FakeDevice::new("pn53x_usb");
-    device.caps = DeviceCaps::SUPPORTED_MODULATIONS
-        | DeviceCaps::SUPPORTED_BAUD_RATES
-        | DeviceCaps::SELECT_PASSIVE_TARGET
-        | DeviceCaps::SET_PROPERTY_BOOL;
-
-    let error = device
-        .list_passive_targets(modulation(ModulationType::Iso14443A, BaudRate::Br106), 2)
-        .unwrap_err();
-    assert_eq!(error, Error::MissingCapability("list_passive_targets"));
-    assert!(device.property_calls.is_empty());
-    assert_eq!(device.deselect_calls, 0);
-}
-
-#[test]
-fn poll_dep_target_requires_caps_before_property_sequence() {
-    let mut device = FakeDevice::new("pn53x_usb");
-    device.caps = DeviceCaps::SELECT_DEP_TARGET;
-
-    let error = device
-        .poll_dep_target(DepMode::Passive, BaudRate::Br106, None, 1000)
-        .unwrap_err();
-    assert_eq!(error, Error::MissingCapability("poll_dep_target"));
-    assert!(device.property_calls.is_empty());
-}
-
-#[test]
 fn initiator_init_applies_expected_property_sequence() {
     let mut device = FakeDevice::new("pn53x_usb");
     device.initiator_init().unwrap();
@@ -740,7 +614,7 @@ fn select_passive_target_uses_default_payload_and_validates_modulation() {
 fn list_passive_targets_dedupes_and_restores_infinite_select() {
     let mut device = FakeDevice::new("pn53x_usb");
     device.property_state.push((Property::InfiniteSelect, true));
-    let target = Target::new(modulation(ModulationType::Iso14443A, BaudRate::Br106));
+    let target = iso14443a_target();
     device.passive_targets.push_back(Ok(Some(target.clone())));
     device.passive_targets.push_back(Ok(Some(target.clone())));
 
@@ -777,7 +651,12 @@ fn poll_dep_target_retries_timeout_and_restores_infinite_select() {
     device.dep_results.push_back(Ok(Some(dep_target())));
 
     let target = device
-        .poll_dep_target(DepMode::Passive, BaudRate::Br106, None, 1000)
+        .poll_dep_target(
+            DepMode::Passive,
+            BaudRate::Br106,
+            None,
+            OperationTimeout::try_milliseconds(1000).unwrap(),
+        )
         .unwrap();
 
     assert_eq!(target, Some(dep_target()));
@@ -790,10 +669,16 @@ fn poll_dep_target_retries_timeout_and_restores_infinite_select() {
 #[test]
 fn target_init_applies_target_property_sequence() {
     let mut device = FakeDevice::new("pn53x_usb");
-    let mut target = Target::new(modulation(ModulationType::Iso14443A, BaudRate::Br106));
+    let mut target = iso14443a_target();
     let mut rx = [0u8; 4];
 
-    device.target_init(&mut target, &mut rx, 250).unwrap();
+    device
+        .target_init(
+            &mut target,
+            &mut rx,
+            OperationTimeout::try_milliseconds(250).unwrap(),
+        )
+        .unwrap();
 
     assert_eq!(device.target_init_calls, 1);
     assert_eq!(
@@ -879,7 +764,7 @@ fn open_without_connstring_uses_first_listed_device() {
                 .iter()
                 .cloned()
                 .map(|connstring| {
-                    self.describe_discovered(connstring.as_str().to_string(), connstring, None)
+                    self.describe_discovered(connstring.as_str().to_string(), connstring)
                 })
                 .collect())
         }
@@ -1217,7 +1102,7 @@ fn load_with_diagnostics_rejects_oversized_default_device_env() {
 
 #[test]
 fn public_version_labels_and_error_messages_are_stable() {
-    assert!(!version().is_empty());
+    assert_eq!(version(), "1.8.0");
     assert_eq!(BaudRate::Br106.label(), "106 kbps");
     assert_eq!(ModulationType::Dep.label(), "D.E.P.");
     assert_eq!(device_error_message(-6), "Timeout");

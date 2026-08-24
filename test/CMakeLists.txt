@@ -18,6 +18,13 @@ add_executable(ffi-sanity
 target_link_libraries(ffi-sanity nfc)
 add_test(NAME ffi_sanity COMMAND ffi-sanity)
 
+if(WIN32 AND BUILD_SHARED_LIBS)
+  # Windows does not search the linked DLL's build directory when CTest starts
+  # an executable from another target directory.
+  set_tests_properties(public_compat_smoke ffi_sanity PROPERTIES
+    ENVIRONMENT "PATH=$<TARGET_FILE_DIR:nfc>")
+endif()
+
 find_package(LIBNFC_NCI QUIET)
 set(PN71XX_SMOKE_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/pn71xx-smoke")
 set(PN71XX_SMOKE_CONFIGURE_ARGS
@@ -62,6 +69,3 @@ else()
   )
   set_tests_properties(pn71xx_requires_libnfc_nci PROPERTIES WILL_FAIL TRUE)
 endif()
-
-add_test(NAME no_retired_private_headers
-  COMMAND bash "${CMAKE_SOURCE_DIR}/scripts/check-no-retired-private-header-includes.sh")

@@ -32,18 +32,24 @@ use super::pn53x::{
     PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, build_response_frame,
     payload_from_host_frame,
 };
+use crate::command_abort::AtomicCommandAbort;
 use crate::usb::{UsbDeviceInfo, UsbError, UsbHandle, list_devices, strerror};
 use proximate_driver::{
-    ConnectionString, Context, DeviceHandle, Driver, Error, Property, PropertyBackend, ScanType,
+    CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error, Property,
+    PropertyBackend, ScanType,
 };
 use std::collections::VecDeque;
+use std::sync::Arc;
 #[cfg(test)]
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 const DRIVER_NAME: &str = "acr122_usb";
 const PROBE_TIMEOUT_MS: i32 = 250;
 const CONTROL_TIMEOUT_MS: i32 = 1_000;
 const RESPONSE_BUFFER_LEN: usize = 255 + 10;
+const USB_ABORT_POLL_INTERVAL: Duration = Duration::from_millis(200);
+const PN53X_GET_FIRMWARE_VERSION: u8 = 0x02;
 
 const NFC_EIO: i32 = -1;
 const NFC_ETIMEOUT: i32 = -6;
@@ -81,7 +87,6 @@ impl Driver for Acr122UsbDriver {
             found.push(self.describe_discovered(
                 usb_display_name(&info),
                 build_usb_connstring_for(DRIVER_NAME, info.bus_number, info.device_address)?,
-                Some(super::pn53x::scan_caps(Pn53xProfile::acr122_usb())),
             ));
         }
 
@@ -228,6 +233,12 @@ trait Acr122UsbIo: Send {
     fn bulk_read(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error>;
     fn bulk_write(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error>;
 
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        None
+    }
+
+    fn begin_command(&self) {}
+
     fn write_ccid_message(
         &mut self,
         message_type: u8,
@@ -285,6 +296,15 @@ trait Acr122UsbIo: Send {
         self.complete_direct_transmit(command, response, timeout_ms)
     }
 
+    fn cancel_pending_command(&mut self) -> Result<(), Error> {
+        let _ = self.direct_transmit(
+            PN53X_GET_FIRMWARE_VERSION,
+            &[PN53X_GET_FIRMWARE_VERSION],
+            CONTROL_TIMEOUT_MS,
+        )?;
+        Ok(())
+    }
+
     fn complete_direct_transmit(
         &mut self,
         command: u8,
@@ -313,6 +333,7 @@ struct UsbCcidHandle {
     endpoint_in: u8,
     endpoint_out: u8,
     max_packet_size: u16,
+    command_abort: Arc<AtomicCommandAbort>,
 }
 
 impl UsbCcidHandle {
@@ -339,15 +360,47 @@ impl UsbCcidHandle {
             endpoint_in: selection.endpoint_in,
             endpoint_out: selection.endpoint_out,
             max_packet_size: selection.max_packet_size,
+            command_abort: AtomicCommandAbort::new(),
         })
     }
 }
 
 impl Acr122UsbIo for UsbCcidHandle {
     fn bulk_read(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
-        self.handle
-            .bulk_read(self.endpoint_in, buffer, timeout_ms)
-            .map_err(|error| map_usb_error("acr122_usb_bulk_read", error))
+        let started = Instant::now();
+        loop {
+            if self.command_abort.take_requested() {
+                return Err(Error::Aborted("acr122_usb_receive"));
+            }
+
+            let pass_timeout = if timeout_ms <= 0 {
+                USB_ABORT_POLL_INTERVAL.as_millis() as i32
+            } else {
+                let total = Duration::from_millis(timeout_ms as u64);
+                let Some(remaining) = total.checked_sub(started.elapsed()) else {
+                    return Err(Error::Timeout("acr122_usb_receive"));
+                };
+                remaining.min(USB_ABORT_POLL_INTERVAL).as_millis().max(1) as i32
+            };
+
+            match self
+                .handle
+                .bulk_read(self.endpoint_in, buffer, pass_timeout)
+            {
+                Ok(received) => return Ok(received),
+                Err(UsbError::Timeout) => {
+                    if self.command_abort.take_requested() {
+                        return Err(Error::Aborted("acr122_usb_receive"));
+                    }
+                    if timeout_ms > 0
+                        && started.elapsed() >= Duration::from_millis(timeout_ms as u64)
+                    {
+                        return Err(Error::Timeout("acr122_usb_receive"));
+                    }
+                }
+                Err(error) => return Err(map_usb_error("acr122_usb_bulk_read", error)),
+            }
+        }
     }
 
     fn bulk_write(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
@@ -367,6 +420,20 @@ impl Acr122UsbIo for UsbCcidHandle {
                 .map_err(|error| map_usb_error("acr122_usb_bulk_write", error))?;
         }
         Ok(())
+    }
+
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        Some(self.command_abort.handle())
+    }
+
+    fn begin_command(&self) {
+        self.command_abort.begin_command();
+    }
+}
+
+impl Drop for UsbCcidHandle {
+    fn drop(&mut self) {
+        self.command_abort.revoke();
     }
 }
 
@@ -417,13 +484,24 @@ impl<IO> Acr122UsbTransport<IO> {
 
 impl<IO: Acr122UsbIo> Pn53xTransport for Acr122UsbTransport<IO> {
     fn send(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
+        self.io.begin_command();
         let host_payload = payload_from_host_frame(payload)?;
         let command = *host_payload
             .first()
             .ok_or_else(|| device_error("acr122_usb_send", NFC_EIO))?;
-        let response = self
-            .io
-            .direct_transmit(command, &host_payload, timeout_ms)?;
+        let response = match self.io.direct_transmit(command, &host_payload, timeout_ms) {
+            Ok(response) => response,
+            Err(operation @ Error::Aborted(_)) => {
+                return match self.io.cancel_pending_command() {
+                    Ok(()) => Err(operation),
+                    Err(recovery) => Err(Error::RecoveryFailed {
+                        operation: Box::new(operation),
+                        recovery: Box::new(recovery),
+                    }),
+                };
+            }
+            Err(error) => return Err(error),
+        };
         let frame = build_response_frame(command, &response)?;
         self.pending.clear();
         self.pending.push_back(PN53X_ACK_FRAME.to_vec());
@@ -448,7 +526,14 @@ impl<IO: Acr122UsbIo> Pn53xTransport for Acr122UsbTransport<IO> {
 
     fn abort_command(&mut self) -> Result<(), Error> {
         self.pending.clear();
-        Ok(())
+        self.io
+            .command_abort_handle()
+            .ok_or(Error::UnsupportedOperation("abort_command"))?
+            .abort()
+    }
+
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        self.io.command_abort_handle()
     }
 }
 
@@ -459,6 +544,18 @@ impl Acr122UsbIo for Box<dyn Acr122UsbIo> {
 
     fn bulk_write(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
         self.as_mut().bulk_write(payload, timeout_ms)
+    }
+
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        self.as_ref().command_abort_handle()
+    }
+
+    fn begin_command(&self) {
+        self.as_ref().begin_command();
+    }
+
+    fn cancel_pending_command(&mut self) -> Result<(), Error> {
+        self.as_mut().cancel_pending_command()
     }
 }
 

@@ -48,7 +48,11 @@ impl Default for ContextConfig {
         Self {
             allow_autoscan: true,
             allow_intrusive_scan: false,
-            log_level: if cfg!(libnfc_debug) { 3 } else { 1 },
+            log_level: if cfg!(feature = "debug-logging") {
+                3
+            } else {
+                1
+            },
             user_defined_devices: Vec::new(),
         }
     }
@@ -388,14 +392,20 @@ impl ConfigFileKind {
 
 #[doc(hidden)]
 pub fn load_context_with_diagnostics() -> Result<ContextLoadOutcome, ContextLoadFailure> {
-    load_context_internal(compiled_conf_root_if_enabled(), cfg!(libnfc_envvars))
+    load_context_internal(
+        compiled_conf_root_if_enabled(),
+        cfg!(feature = "environment-config"),
+    )
 }
 
 #[doc(hidden)]
 pub fn load_context_from_dir_with_diagnostics(
     path: &Path,
 ) -> Result<ContextLoadOutcome, ContextLoadFailure> {
-    load_context_internal(Some(path.to_path_buf()), cfg!(libnfc_envvars))
+    load_context_internal(
+        Some(path.to_path_buf()),
+        cfg!(feature = "environment-config"),
+    )
 }
 
 fn load_context_internal(
@@ -444,7 +454,7 @@ fn load_context_internal(
 }
 
 fn compiled_conf_root_if_enabled() -> Option<PathBuf> {
-    if cfg!(libnfc_conffiles) {
+    if cfg!(feature = "config-files") {
         configured_conf_root()
     } else {
         None

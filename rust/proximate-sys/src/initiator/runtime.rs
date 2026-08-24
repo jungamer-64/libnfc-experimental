@@ -156,8 +156,10 @@ pub(super) fn poll_target(
     poll_nr: u8,
     period: u8,
 ) -> Result<Option<rt::Target>, rt::Error> {
+    let iterations = rt::PollIterations::from_libnfc(poll_nr)?;
+    let period = rt::PollPeriod::try_new(period)?;
     with_passive_scan_ops(raw, |passive_scan_ops| {
-        passive_scan_ops.poll_target(modulations, poll_nr, period)
+        passive_scan_ops.poll_target(modulations, iterations, period)
     })
 }
 
@@ -168,6 +170,7 @@ pub(super) fn select_dep_target(
     initiator: Option<&rt::DepInfo>,
     timeout: c_int,
 ) -> Result<Option<rt::Target>, rt::Error> {
+    let timeout = rt::OperationTimeout::from_libnfc_millis(timeout)?;
     with_dep_ops(raw, |dep_ops| {
         dep_ops.select_dep_target(mode, baud_rate, initiator, timeout)
     })
@@ -180,6 +183,7 @@ pub(super) fn poll_dep_target(
     initiator: Option<&rt::DepInfo>,
     timeout: c_int,
 ) -> Result<Option<rt::Target>, rt::Error> {
+    let timeout = rt::OperationTimeout::from_libnfc_millis(timeout)?;
     with_dep_ops(raw, |dep_ops| {
         dep_ops.poll_dep_target(mode, baud_rate, initiator, timeout)
     })
@@ -202,6 +206,7 @@ pub(super) fn target_init(
     rx: &mut [u8],
     timeout: c_int,
 ) -> Result<usize, rt::Error> {
+    let timeout = rt::OperationTimeout::from_libnfc_millis(timeout)?;
     with_target_io_ops(raw, |target_io_ops| target_io_ops.init(target, rx, timeout))
 }
 
@@ -211,6 +216,7 @@ pub(super) fn transceive_bytes(
     rx: &mut [u8],
     timeout: c_int,
 ) -> Result<usize, rt::Error> {
+    let timeout = rt::OperationTimeout::from_libnfc_millis(timeout)?;
     with_initiator_io_ops(raw, |initiator_io_ops| {
         initiator_io_ops.transceive_bytes(tx, rx, timeout)
     })
@@ -224,8 +230,9 @@ pub(super) fn transceive_bits(
     rx: &mut [u8],
     rx_parity: Option<&mut [u8]>,
 ) -> Result<usize, rt::Error> {
+    let tx = rt::BitFrame::try_new(tx, tx_bits_len, tx_parity)?;
     with_initiator_io_ops(raw, |initiator_io_ops| {
-        initiator_io_ops.transceive_bits(tx, tx_bits_len, tx_parity, rx, rx_parity)
+        initiator_io_ops.transceive_bits(tx, rx, rx_parity)
     })
 }
 
@@ -247,8 +254,9 @@ pub(super) fn transceive_bits_timed(
     rx: &mut [u8],
     rx_parity: Option<&mut [u8]>,
 ) -> Result<(usize, u32), rt::Error> {
+    let tx = rt::BitFrame::try_new(tx, tx_bits_len, tx_parity)?;
     with_initiator_io_ops(raw, |initiator_io_ops| {
-        initiator_io_ops.transceive_bits_timed(tx, tx_bits_len, tx_parity, rx, rx_parity)
+        initiator_io_ops.transceive_bits_timed(tx, rx, rx_parity)
     })
 }
 
@@ -257,6 +265,7 @@ pub(super) fn target_send_bytes(
     tx: &[u8],
     timeout: c_int,
 ) -> Result<usize, rt::Error> {
+    let timeout = rt::OperationTimeout::from_libnfc_millis(timeout)?;
     with_target_io_ops(raw, |target_io_ops| target_io_ops.send_bytes(tx, timeout))
 }
 
@@ -265,6 +274,7 @@ pub(super) fn target_receive_bytes(
     rx: &mut [u8],
     timeout: c_int,
 ) -> Result<usize, rt::Error> {
+    let timeout = rt::OperationTimeout::from_libnfc_millis(timeout)?;
     with_target_io_ops(raw, |target_io_ops| {
         target_io_ops.receive_bytes(rx, timeout)
     })
@@ -276,9 +286,8 @@ pub(super) fn target_send_bits(
     tx_bits_len: usize,
     tx_parity: Option<&[u8]>,
 ) -> Result<usize, rt::Error> {
-    with_target_io_ops(raw, |target_io_ops| {
-        target_io_ops.send_bits(tx, tx_bits_len, tx_parity)
-    })
+    let tx = rt::BitFrame::try_new(tx, tx_bits_len, tx_parity)?;
+    with_target_io_ops(raw, |target_io_ops| target_io_ops.send_bits(tx))
 }
 
 pub(super) fn target_receive_bits(
@@ -289,10 +298,6 @@ pub(super) fn target_receive_bits(
     with_target_io_ops(raw, |target_io_ops| {
         target_io_ops.receive_bits(rx, rx_parity)
     })
-}
-
-pub(super) fn abort_command(raw: *mut nfc_device) -> Result<(), rt::Error> {
-    with_session_ops(raw, |session_ops| session_ops.abort_command())
 }
 
 pub(super) fn idle(raw: *mut nfc_device) -> Result<(), rt::Error> {

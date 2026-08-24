@@ -32,7 +32,11 @@ use std::io::{self, Write};
 #[cfg(not(test))]
 use std::sync::atomic::{AtomicU32, Ordering};
 
-const DEFAULT_LOG_LEVEL: u32 = if cfg!(libnfc_debug) { 3 } else { 1 };
+const DEFAULT_LOG_LEVEL: u32 = if cfg!(feature = "debug-logging") {
+    3
+} else {
+    1
+};
 
 #[cfg(not(test))]
 static CURRENT_LOG_LEVEL: AtomicU32 = AtomicU32::new(DEFAULT_LOG_LEVEL);

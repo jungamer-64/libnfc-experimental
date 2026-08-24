@@ -1,3 +1,30 @@
+/*-
+ * Free/Libre Near Field Communication (NFC) library
+ *
+ * Libnfc historical contributors:
+ * Copyright (C) 2009      Roel Verdult
+ * Copyright (C) 2009-2013 Romuald Conty
+ * Copyright (C) 2010-2012 Romain Tartière
+ * Copyright (C) 2010-2013 Philippe Teuwen
+ * Copyright (C) 2012-2013 Ludovic Rousseau
+ * See AUTHORS file for a more comprehensive list of contributors.
+ * Additional contributors of this file:
+ * Copyright (C) 2020      Adam Laurie
+ *
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by the
+ * Free Software Foundation, either version 3 of the License, or (at your
+ * option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>
+ */
+
 use super::*;
 
 pub(super) fn cascade_iso14443a_uid(uid: &[u8]) -> Vec<u8> {
@@ -21,15 +48,16 @@ pub(super) fn cascade_iso14443a_uid(uid: &[u8]) -> Vec<u8> {
 }
 
 pub(super) fn default_initiator_payload(modulation: Modulation) -> &'static [u8] {
-    match modulation.modulation_type {
+    match modulation.modulation_type() {
         ModulationType::Iso14443B => &[0x00],
+        ModulationType::Iso14443Bi => &[0x01, 0x0b, 0x3f, 0x80],
         ModulationType::Felica => &[0x00, 0xff, 0xff, 0x01, 0x00],
         _ => &[],
     }
 }
 
 pub(super) fn nm_to_pm(modulation: Modulation) -> Option<u8> {
-    match (modulation.modulation_type, modulation.baud_rate) {
+    match (modulation.modulation_type(), modulation.baud_rate()) {
         (ModulationType::Iso14443A, _) => Some(0x00),
         (ModulationType::Felica, BaudRate::Br212) => Some(0x01),
         (ModulationType::Felica, BaudRate::Br424) => Some(0x02),
@@ -40,7 +68,7 @@ pub(super) fn nm_to_pm(modulation: Modulation) -> Option<u8> {
 }
 
 pub(super) fn nm_to_ptt(modulation: Modulation) -> Option<u8> {
-    match (modulation.modulation_type, modulation.baud_rate) {
+    match (modulation.modulation_type(), modulation.baud_rate()) {
         (ModulationType::Iso14443A, _) => Some(0x10),
         (ModulationType::Iso14443B, BaudRate::Br106) => Some(0x03),
         (ModulationType::Jewel, _) => Some(0x04),
@@ -50,42 +78,19 @@ pub(super) fn nm_to_ptt(modulation: Modulation) -> Option<u8> {
     }
 }
 
-#[allow(dead_code)]
-fn ptt_to_modulation(value: u8) -> Modulation {
-    match value {
-        0x03 | 0x23 => Modulation {
-            modulation_type: ModulationType::Iso14443B,
-            baud_rate: BaudRate::Br106,
-        },
-        0x04 => Modulation {
-            modulation_type: ModulationType::Jewel,
-            baud_rate: BaudRate::Br106,
-        },
-        0x11 => Modulation {
-            modulation_type: ModulationType::Felica,
-            baud_rate: BaudRate::Br212,
-        },
-        0x12 => Modulation {
-            modulation_type: ModulationType::Felica,
-            baud_rate: BaudRate::Br424,
-        },
-        0x40 | 0x80 => Modulation {
-            modulation_type: ModulationType::Dep,
-            baud_rate: BaudRate::Br106,
-        },
-        0x41 | 0x81 => Modulation {
-            modulation_type: ModulationType::Dep,
-            baud_rate: BaudRate::Br212,
-        },
-        0x42 | 0x82 => Modulation {
-            modulation_type: ModulationType::Dep,
-            baud_rate: BaudRate::Br424,
-        },
-        _ => Modulation {
-            modulation_type: ModulationType::Iso14443A,
-            baud_rate: BaudRate::Br106,
-        },
-    }
+pub(super) fn ptt_to_nm(target_type: u8) -> Result<Modulation, Error> {
+    let (modulation_type, baud_rate) = match target_type {
+        0x10 | 0x20 => (ModulationType::Iso14443A, BaudRate::Br106),
+        0x03 | 0x23 => (ModulationType::Iso14443B, BaudRate::Br106),
+        0x04 => (ModulationType::Jewel, BaudRate::Br106),
+        0x11 => (ModulationType::Felica, BaudRate::Br212),
+        0x12 => (ModulationType::Felica, BaudRate::Br424),
+        0x40 | 0x80 => (ModulationType::Dep, BaudRate::Br106),
+        0x41 | 0x81 => (ModulationType::Dep, BaudRate::Br212),
+        0x42 | 0x82 => (ModulationType::Dep, BaudRate::Br424),
+        _ => return Err(Error::InvalidEncoding("PN532 AutoPoll target type")),
+    };
+    Modulation::try_new(modulation_type, baud_rate)
 }
 
 fn process_cascade_uid(uid: &[u8]) -> Vec<u8> {
@@ -109,14 +114,79 @@ pub(super) fn decode_target_data(
     modulation: Modulation,
     raw: &[u8],
 ) -> Result<Target, Error> {
-    let info = match modulation.modulation_type {
+    let info = match modulation.modulation_type() {
         ModulationType::Iso14443A => decode_iso14443a_target(chip_type, raw)?,
         ModulationType::Iso14443B => decode_iso14443b_target(raw)?,
+        ModulationType::Iso14443Bi => decode_iso14443bi_target(raw)?,
+        ModulationType::Iso14443B2Sr => decode_iso14443b2sr_target(raw)?,
+        ModulationType::Iso14443B2Ct => decode_iso14443b2ct_target(raw)?,
+        ModulationType::Iso14443BiClass => decode_iclass_target(raw)?,
         ModulationType::Felica => decode_felica_target(raw)?,
         ModulationType::Jewel => decode_jewel_target(raw)?,
+        ModulationType::Barcode => TargetInfo::Barcode { data: raw.to_vec() },
         _ => return Err(Error::UnsupportedOperation("decode_target_data")),
     };
-    Ok(Target { modulation, info })
+    Target::try_new(modulation, info)
+}
+
+fn decode_iso14443bi_target(raw: &[u8]) -> Result<TargetInfo, Error> {
+    if raw.len() < 7 || raw[1] != 0x07 {
+        return Err(Error::InvalidEncoding("ISO14443BI target"));
+    }
+    let div = raw[2..6]
+        .try_into()
+        .map_err(|_| Error::InvalidEncoding("ISO14443BI DIV"))?;
+    let version_log = raw[6];
+    let (config, atr) = if version_log & 0x80 != 0 {
+        let config = *raw
+            .get(7)
+            .ok_or(Error::InvalidEncoding("ISO14443BI config"))?;
+        let atr = if config & 0x40 != 0 {
+            raw.get(8..)
+                .ok_or(Error::InvalidEncoding("ISO14443BI ATR"))?
+                .to_vec()
+        } else {
+            Vec::new()
+        };
+        (config, atr)
+    } else {
+        (0, Vec::new())
+    };
+    Ok(TargetInfo::Iso14443Bi {
+        div,
+        version_log,
+        config,
+        atr,
+    })
+}
+
+fn decode_iso14443b2sr_target(raw: &[u8]) -> Result<TargetInfo, Error> {
+    let uid = raw
+        .get(..8)
+        .ok_or(Error::InvalidEncoding("ISO14443B2SR UID"))?
+        .try_into()
+        .map_err(|_| Error::InvalidEncoding("ISO14443B2SR UID"))?;
+    Ok(TargetInfo::Iso14443B2Sr { uid })
+}
+
+fn decode_iso14443b2ct_target(raw: &[u8]) -> Result<TargetInfo, Error> {
+    if raw.len() < 6 {
+        return Err(Error::InvalidEncoding("ISO14443B2CT target"));
+    }
+    Ok(TargetInfo::Iso14443B2Ct {
+        uid: [raw[0], raw[1], raw[4], raw[5]],
+        product_code: raw[2],
+        fabrication_code: raw[3],
+    })
+}
+
+fn decode_iclass_target(raw: &[u8]) -> Result<TargetInfo, Error> {
+    let source = raw.get(..8).ok_or(Error::InvalidEncoding("iClass UID"))?;
+    let mut uid = [0u8; 8];
+    for (destination, source) in uid.iter_mut().rev().zip(source) {
+        *destination = *source;
+    }
+    Ok(TargetInfo::Iso14443BiClass { uid })
 }
 
 fn decode_iso14443a_target(chip_type: Pn53xType, raw: &[u8]) -> Result<TargetInfo, Error> {
@@ -283,12 +353,9 @@ pub(super) fn parse_dep_target(
     } else {
         Vec::new()
     };
-    Ok(Some(Target {
-        modulation: Modulation {
-            modulation_type: ModulationType::Dep,
-            baud_rate,
-        },
-        info: TargetInfo::Dep(DepInfo {
+    Ok(Some(Target::try_new(
+        Modulation::try_new(ModulationType::Dep, baud_rate)?,
+        TargetInfo::Dep(DepInfo {
             nfcid3,
             did: payload[11],
             bs: payload[12],
@@ -298,12 +365,12 @@ pub(super) fn parse_dep_target(
             general_bytes,
             mode,
         }),
-    }))
+    )?))
 }
 
 pub(super) fn is_iso14443_4_target(target: &Target) -> bool {
     matches!(
-        target.info,
+        target.info(),
         TargetInfo::Iso14443A { sak, .. } if sak & SAK_ISO14443_4_COMPLIANT != 0
     )
 }
@@ -316,9 +383,7 @@ pub(super) fn build_target_init_command(
     let mut command = vec![0u8; 39 + 47 + 48];
     command[0] = PN53X_TG_INIT_AS_TARGET;
     let mut target_mode = PN53X_TARGET_MODE_NORMAL;
-    let optional_bytes;
-
-    match &target.info {
+    let optional_bytes = match target.info() {
         TargetInfo::Iso14443A { atqa, sak, uid, .. } => {
             if uid.len() != 4 || uid[0] != 0x08 {
                 return Err(Error::InvalidArgument("target.uid"));
@@ -337,7 +402,7 @@ pub(super) fn build_target_init_command(
             command[6] = uid[3];
             command[7] = *sak;
             command[36] = 0;
-            optional_bytes = 2;
+            2
         }
         TargetInfo::Felica {
             id,
@@ -350,7 +415,7 @@ pub(super) fn build_target_init_command(
             command[16..24].copy_from_slice(pad);
             command[24..26].copy_from_slice(system_code);
             command[36] = 0;
-            optional_bytes = 2;
+            2
         }
         TargetInfo::Dep(dep) => {
             target_mode |= PN53X_TARGET_MODE_DEP_ONLY;
@@ -371,17 +436,17 @@ pub(super) fn build_target_init_command(
             command[36] = gb_len as u8;
             command[37..37 + gb_len].copy_from_slice(&dep.general_bytes[..gb_len]);
             command[37 + gb_len] = 0;
-            optional_bytes = gb_len + 2;
+            gb_len + 2
         }
         _ => return Err(Error::UnsupportedOperation("target_init")),
-    }
+    };
 
     command[1] = target_mode;
     command.truncate(36 + optional_bytes);
     Ok(command)
 }
 
-pub(super) fn decode_activation_mode(mode: u8) -> (Modulation, DepMode) {
+pub(super) fn decode_activation_mode(mode: u8) -> Result<(Modulation, Option<DepMode>), Error> {
     let baud_rate = match mode & 0x70 {
         0x10 => BaudRate::Br212,
         0x20 => BaudRate::Br424,
@@ -393,25 +458,16 @@ pub(super) fn decode_activation_mode(mode: u8) -> (Modulation, DepMode) {
         } else {
             DepMode::Passive
         };
-        (
-            Modulation {
-                modulation_type: ModulationType::Dep,
-                baud_rate,
-            },
-            dep_mode,
-        )
+        Ok((
+            Modulation::try_new(ModulationType::Dep, baud_rate)?,
+            Some(dep_mode),
+        ))
     } else {
         let modulation_type = if mode & 0x03 == 0x02 {
             ModulationType::Felica
         } else {
             ModulationType::Iso14443A
         };
-        (
-            Modulation {
-                modulation_type,
-                baud_rate,
-            },
-            DepMode::Undefined,
-        )
+        Ok((Modulation::try_new(modulation_type, baud_rate)?, None))
     }
 }

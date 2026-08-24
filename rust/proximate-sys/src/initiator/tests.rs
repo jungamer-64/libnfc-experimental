@@ -274,17 +274,23 @@ unsafe extern "C" fn test_select_dep_target(
     _ndm: nfc_dep_mode,
     _nbr: nfc_baud_rate,
     _initiator: *const nfc_dep_info,
-    _target: *mut nfc_target,
+    target: *mut nfc_target,
     _timeout: c_int,
 ) -> c_int {
-    with_test_state(|state| {
+    let response = with_test_state(|state| {
         state.select_dep_calls += 1;
         if state.select_dep_responses.is_empty() {
             0
         } else {
             state.select_dep_responses.remove(0)
         }
-    })
+    });
+    if response > 0 && !target.is_null() {
+        unsafe {
+            *target = zeroed_target_with_marker(0x42);
+        }
+    }
+    response
 }
 
 unsafe extern "C" fn test_target_is_present(

@@ -1,9 +1,9 @@
 use super::connstring::{build_path_connstring, decode_path_descriptor};
 use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport};
-use proximate_driver::{ConnectionString, Context, DeviceHandle, Driver, Error, ScanType};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use crate::command_abort::AtomicCommandAbort;
+use proximate_driver::{
+    CommandAbort, CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error,
+    ScanType,
 };
 use std::time::{Duration, Instant};
 
@@ -17,7 +17,6 @@ const PN532_BUS_FREE_TIME_MS: u64 = 5;
 const PROBE_TIMEOUT_MS: i32 = 250;
 const NFC_EIO: i32 = -1;
 const NFC_ETIMEOUT: i32 = -6;
-const NFC_EOPABORTED: i32 = -7;
 
 pub(crate) struct Pn532I2cDriver;
 
@@ -57,21 +56,14 @@ impl Driver for Pn532I2cDriver {
                 )
                 .is_ok()
                 {
-                    devices.push(self.describe_discovered(
-                        format!("PN532 I2C ({path})"),
-                        connstring,
-                        Some(super::pn53x::scan_caps(Pn53xProfile::pn532(DRIVER_NAME))),
-                    ));
+                    devices
+                        .push(self.describe_discovered(format!("PN532 I2C ({path})"), connstring));
                 }
             }
 
             #[cfg(not(target_os = "linux"))]
             {
-                devices.push(self.describe_discovered(
-                    format!("PN532 I2C ({path})"),
-                    connstring,
-                    Some(super::pn53x::scan_caps(Pn53xProfile::pn532(DRIVER_NAME))),
-                ));
+                devices.push(self.describe_discovered(format!("PN532 I2C ({path})"), connstring));
             }
         }
         Ok(devices)
@@ -114,7 +106,7 @@ fn list_candidate_paths() -> Vec<String> {
 #[cfg(target_os = "linux")]
 pub struct I2cTransport {
     handle: I2cHandle,
-    abort_requested: Arc<AtomicBool>,
+    command_abort: std::sync::Arc<AtomicCommandAbort>,
     last_transaction_stop: Option<Instant>,
 }
 
@@ -135,7 +127,7 @@ impl I2cTransport {
 
         Ok(Self {
             handle,
-            abort_requested: Arc::new(AtomicBool::new(false)),
+            command_abort: AtomicCommandAbort::new(),
             last_transaction_stop: None,
         })
     }
@@ -158,7 +150,7 @@ impl I2cTransport {
 #[cfg(target_os = "linux")]
 impl Pn53xTransport for I2cTransport {
     fn send(&mut self, payload: &[u8], _timeout_ms: i32) -> Result<(), Error> {
-        self.abort_requested.store(false, Ordering::SeqCst);
+        self.command_abort.begin_command();
         let mut last_error = None;
 
         for _ in 0..PN532_SEND_RETRIES {
@@ -181,8 +173,8 @@ impl Pn53xTransport for I2cTransport {
     fn receive(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
         let start = Instant::now();
         loop {
-            if self.abort_requested.swap(false, Ordering::SeqCst) {
-                return Err(device_error("i2c_abort", NFC_EOPABORTED));
+            if self.command_abort.take_requested() {
+                return Err(Error::Aborted("i2c_receive"));
             }
 
             self.respect_bus_free_time();
@@ -218,8 +210,18 @@ impl Pn53xTransport for I2cTransport {
     }
 
     fn abort_command(&mut self) -> Result<(), Error> {
-        self.abort_requested.store(true, Ordering::SeqCst);
-        Ok(())
+        self.command_abort.abort()
+    }
+
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        Some(self.command_abort.handle())
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for I2cTransport {
+    fn drop(&mut self) {
+        self.command_abort.revoke();
     }
 }
 

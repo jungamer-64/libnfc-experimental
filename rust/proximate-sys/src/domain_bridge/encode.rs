@@ -62,8 +62,8 @@ pub(crate) fn write_target_to_c(target: &rt::Target, destination: *mut nfc_targe
     };
 
     let mut raw_target = unsafe { std::mem::zeroed::<nfc_target>() };
-    raw_target.nm = modulation_to_c(target.modulation);
-    raw_target.nti = target_info_to_c(&target.info);
+    raw_target.nm = modulation_to_c(target.modulation());
+    raw_target.nti = target_info_to_c(target.info());
     unsafe { ptr::write_unaligned(destination, raw_target) };
 }
 
@@ -76,14 +76,13 @@ pub(crate) fn mode_to_c(mode: rt::Mode) -> nfc_mode {
 
 pub(crate) fn modulation_to_c(modulation: rt::Modulation) -> nfc_modulation {
     nfc_modulation {
-        nmt: modulation_type_to_c(modulation.modulation_type),
-        nbr: baud_rate_to_c(modulation.baud_rate),
+        nmt: modulation_type_to_c(modulation.modulation_type()),
+        nbr: baud_rate_to_c(modulation.baud_rate()),
     }
 }
 
 pub(crate) fn dep_mode_to_c(mode: rt::DepMode) -> nfc_dep_mode {
     match mode {
-        rt::DepMode::Undefined => nfc_dep_mode::NDM_UNDEFINED,
         rt::DepMode::Passive => nfc_dep_mode::NDM_PASSIVE,
         rt::DepMode::Active => nfc_dep_mode::NDM_ACTIVE,
     }
@@ -91,7 +90,6 @@ pub(crate) fn dep_mode_to_c(mode: rt::DepMode) -> nfc_dep_mode {
 
 pub(crate) fn baud_rate_to_c(rate: rt::BaudRate) -> nfc_baud_rate {
     match rate {
-        rt::BaudRate::Undefined => nfc_baud_rate::NBR_UNDEFINED,
         rt::BaudRate::Br106 => nfc_baud_rate::NBR_106,
         rt::BaudRate::Br212 => nfc_baud_rate::NBR_212,
         rt::BaudRate::Br424 => nfc_baud_rate::NBR_424,
@@ -101,8 +99,8 @@ pub(crate) fn baud_rate_to_c(rate: rt::BaudRate) -> nfc_baud_rate {
 
 pub(crate) fn target_to_c(target: &rt::Target) -> nfc_target {
     nfc_target {
-        nti: target_info_to_c(&target.info),
-        nm: modulation_to_c(target.modulation),
+        nti: target_info_to_c(target.info()),
+        nm: modulation_to_c(target.modulation()),
     }
 }
 
@@ -142,7 +140,6 @@ pub(crate) fn property_to_c(property: rt::Property) -> nfc_property {
 
 pub(crate) fn modulation_type_to_c(value: rt::ModulationType) -> nfc_modulation_type {
     match value {
-        rt::ModulationType::Undefined => nfc_modulation_type::NMT_UNDEFINED,
         rt::ModulationType::Iso14443A => nfc_modulation_type::NMT_ISO14443A,
         rt::ModulationType::Jewel => nfc_modulation_type::NMT_JEWEL,
         rt::ModulationType::Iso14443B => nfc_modulation_type::NMT_ISO14443B,
@@ -158,7 +155,6 @@ pub(crate) fn modulation_type_to_c(value: rt::ModulationType) -> nfc_modulation_
 
 fn target_info_to_c(info: &rt::TargetInfo) -> nfc_target_info {
     match info {
-        rt::TargetInfo::None => unsafe { std::mem::zeroed() },
         rt::TargetInfo::Iso14443A {
             atqa,
             sak,
@@ -307,10 +303,9 @@ impl TargetInOut {
         if raw.is_null() {
             return Err(crate::c_boundary::status::invalid_argument_status(device));
         }
-        Ok(Self {
-            raw,
-            value: crate::domain_bridge::decode::target_from_c(raw.cast_const()),
-        })
+        let value = crate::domain_bridge::decode::target_from_c(raw.cast_const())
+            .map_err(|_| crate::c_boundary::status::invalid_argument_status(device))?;
+        Ok(Self { raw, value })
     }
 
     pub(crate) fn as_mut(&mut self) -> &mut rt::Target {
@@ -489,19 +484,29 @@ mod tests {
     use std::ffi::CStr;
     use std::ptr;
 
+    fn target(
+        modulation_type: rt::ModulationType,
+        baud_rate: rt::BaudRate,
+        info: rt::TargetInfo,
+    ) -> rt::Target {
+        rt::Target::try_new(
+            rt::Modulation::try_new(modulation_type, baud_rate).unwrap(),
+            info,
+        )
+        .unwrap()
+    }
+
     fn sample_target() -> rt::Target {
-        rt::Target {
-            modulation: rt::Modulation {
-                modulation_type: rt::ModulationType::Iso14443A,
-                baud_rate: rt::BaudRate::Br106,
-            },
-            info: rt::TargetInfo::Iso14443A {
+        target(
+            rt::ModulationType::Iso14443A,
+            rt::BaudRate::Br106,
+            rt::TargetInfo::Iso14443A {
                 atqa: [0x04, 0x00],
                 sak: 0x08,
                 uid: vec![0x01, 0x02, 0x03, 0x04],
                 ats: vec![0x75, 0x77],
             },
-        }
+        )
     }
 
     #[test]
@@ -510,16 +515,12 @@ mod tests {
         let mut raw = unsafe { std::mem::zeroed::<nfc_target>() };
         let out = unsafe { TargetOut::from_raw(&mut raw) };
         out.write_back(&target);
-        assert_eq!(decode::target_from_c(ptr::addr_of!(raw)), target);
+        assert_eq!(decode::target_from_c(ptr::addr_of!(raw)), Ok(target));
     }
 
     #[test]
     fn scalar_c_mappings_round_trip_all_values() {
         let modulation_types = [
-            (
-                rt::ModulationType::Undefined,
-                nfc_modulation_type::NMT_UNDEFINED,
-            ),
             (
                 rt::ModulationType::Iso14443A,
                 nfc_modulation_type::NMT_ISO14443A,
@@ -554,11 +555,11 @@ mod tests {
         ];
         for (runtime, raw) in modulation_types {
             assert_eq!(modulation_type_to_c(runtime), raw);
-            assert_eq!(decode::modulation_type_from_c(raw), runtime);
+            assert_eq!(decode::modulation_type_from_c(raw), Ok(runtime));
         }
+        assert!(decode::modulation_type_from_c(nfc_modulation_type::NMT_UNDEFINED).is_err());
 
         let baud_rates = [
-            (rt::BaudRate::Undefined, nfc_baud_rate::NBR_UNDEFINED),
             (rt::BaudRate::Br106, nfc_baud_rate::NBR_106),
             (rt::BaudRate::Br212, nfc_baud_rate::NBR_212),
             (rt::BaudRate::Br424, nfc_baud_rate::NBR_424),
@@ -566,18 +567,19 @@ mod tests {
         ];
         for (runtime, raw) in baud_rates {
             assert_eq!(baud_rate_to_c(runtime), raw);
-            assert_eq!(decode::baud_rate_from_c(raw), runtime);
+            assert_eq!(decode::baud_rate_from_c(raw), Ok(runtime));
         }
+        assert!(decode::baud_rate_from_c(nfc_baud_rate::NBR_UNDEFINED).is_err());
 
         let dep_modes = [
-            (rt::DepMode::Undefined, nfc_dep_mode::NDM_UNDEFINED),
             (rt::DepMode::Passive, nfc_dep_mode::NDM_PASSIVE),
             (rt::DepMode::Active, nfc_dep_mode::NDM_ACTIVE),
         ];
         for (runtime, raw) in dep_modes {
             assert_eq!(dep_mode_to_c(runtime), raw);
-            assert_eq!(decode::dep_mode_from_c(raw), runtime);
+            assert_eq!(decode::dep_mode_from_c(raw), Ok(runtime));
         }
+        assert!(decode::dep_mode_from_c(nfc_dep_mode::NDM_UNDEFINED).is_err());
 
         let modes = [
             (rt::Mode::Target, nfc_mode::N_TARGET),
@@ -647,28 +649,16 @@ mod tests {
 
         let cases = [
             (
-                rt::Target {
-                    modulation: rt::Modulation {
-                        modulation_type: rt::ModulationType::Undefined,
-                        baud_rate: rt::BaudRate::Undefined,
-                    },
-                    info: rt::TargetInfo::None,
-                },
-                rt::TargetInfo::None,
-            ),
-            (
-                rt::Target {
-                    modulation: rt::Modulation {
-                        modulation_type: rt::ModulationType::Iso14443A,
-                        baud_rate: rt::BaudRate::Br106,
-                    },
-                    info: rt::TargetInfo::Iso14443A {
+                target(
+                    rt::ModulationType::Iso14443A,
+                    rt::BaudRate::Br106,
+                    rt::TargetInfo::Iso14443A {
                         atqa: [1, 2],
                         sak: 3,
                         uid: long_uid.clone(),
                         ats: long_ats.clone(),
                     },
-                },
+                ),
                 rt::TargetInfo::Iso14443A {
                     atqa: [1, 2],
                     sak: 3,
@@ -677,19 +667,17 @@ mod tests {
                 },
             ),
             (
-                rt::Target {
-                    modulation: rt::Modulation {
-                        modulation_type: rt::ModulationType::Felica,
-                        baud_rate: rt::BaudRate::Br212,
-                    },
-                    info: rt::TargetInfo::Felica {
+                target(
+                    rt::ModulationType::Felica,
+                    rt::BaudRate::Br212,
+                    rt::TargetInfo::Felica {
                         len: 18,
                         response_code: 1,
                         id: [2; 8],
                         pad: [3; 8],
                         system_code: [4; 2],
                     },
-                },
+                ),
                 rt::TargetInfo::Felica {
                     len: 18,
                     response_code: 1,
@@ -699,18 +687,16 @@ mod tests {
                 },
             ),
             (
-                rt::Target {
-                    modulation: rt::Modulation {
-                        modulation_type: rt::ModulationType::Iso14443B,
-                        baud_rate: rt::BaudRate::Br106,
-                    },
-                    info: rt::TargetInfo::Iso14443B {
+                target(
+                    rt::ModulationType::Iso14443B,
+                    rt::BaudRate::Br106,
+                    rt::TargetInfo::Iso14443B {
                         pupi: [1, 2, 3, 4],
                         application_data: [5, 6, 7, 8],
                         protocol_info: [9, 10, 11],
                         card_identifier: 12,
                     },
-                },
+                ),
                 rt::TargetInfo::Iso14443B {
                     pupi: [1, 2, 3, 4],
                     application_data: [5, 6, 7, 8],
@@ -719,18 +705,16 @@ mod tests {
                 },
             ),
             (
-                rt::Target {
-                    modulation: rt::Modulation {
-                        modulation_type: rt::ModulationType::Iso14443Bi,
-                        baud_rate: rt::BaudRate::Br106,
-                    },
-                    info: rt::TargetInfo::Iso14443Bi {
+                target(
+                    rt::ModulationType::Iso14443Bi,
+                    rt::BaudRate::Br106,
+                    rt::TargetInfo::Iso14443Bi {
                         div: [1, 2, 3, 4],
                         version_log: 5,
                         config: 6,
                         atr: long_atr.clone(),
                     },
-                },
+                ),
                 rt::TargetInfo::Iso14443Bi {
                     div: [1, 2, 3, 4],
                     version_log: 5,
@@ -739,37 +723,31 @@ mod tests {
                 },
             ),
             (
-                rt::Target {
-                    modulation: rt::Modulation {
-                        modulation_type: rt::ModulationType::Iso14443BiClass,
-                        baud_rate: rt::BaudRate::Br106,
-                    },
-                    info: rt::TargetInfo::Iso14443BiClass { uid: [7; 8] },
-                },
+                target(
+                    rt::ModulationType::Iso14443BiClass,
+                    rt::BaudRate::Br106,
+                    rt::TargetInfo::Iso14443BiClass { uid: [7; 8] },
+                ),
                 rt::TargetInfo::Iso14443BiClass { uid: [7; 8] },
             ),
             (
-                rt::Target {
-                    modulation: rt::Modulation {
-                        modulation_type: rt::ModulationType::Iso14443B2Sr,
-                        baud_rate: rt::BaudRate::Br106,
-                    },
-                    info: rt::TargetInfo::Iso14443B2Sr { uid: [8; 8] },
-                },
+                target(
+                    rt::ModulationType::Iso14443B2Sr,
+                    rt::BaudRate::Br106,
+                    rt::TargetInfo::Iso14443B2Sr { uid: [8; 8] },
+                ),
                 rt::TargetInfo::Iso14443B2Sr { uid: [8; 8] },
             ),
             (
-                rt::Target {
-                    modulation: rt::Modulation {
-                        modulation_type: rt::ModulationType::Iso14443B2Ct,
-                        baud_rate: rt::BaudRate::Br106,
-                    },
-                    info: rt::TargetInfo::Iso14443B2Ct {
+                target(
+                    rt::ModulationType::Iso14443B2Ct,
+                    rt::BaudRate::Br106,
+                    rt::TargetInfo::Iso14443B2Ct {
                         uid: [9; 4],
                         product_code: 10,
                         fabrication_code: 11,
                     },
-                },
+                ),
                 rt::TargetInfo::Iso14443B2Ct {
                     uid: [9; 4],
                     product_code: 10,
@@ -777,28 +755,24 @@ mod tests {
                 },
             ),
             (
-                rt::Target {
-                    modulation: rt::Modulation {
-                        modulation_type: rt::ModulationType::Jewel,
-                        baud_rate: rt::BaudRate::Br106,
-                    },
-                    info: rt::TargetInfo::Jewel {
+                target(
+                    rt::ModulationType::Jewel,
+                    rt::BaudRate::Br106,
+                    rt::TargetInfo::Jewel {
                         sens_res: [12, 13],
                         id: [14, 15, 16, 17],
                     },
-                },
+                ),
                 rt::TargetInfo::Jewel {
                     sens_res: [12, 13],
                     id: [14, 15, 16, 17],
                 },
             ),
             (
-                rt::Target {
-                    modulation: rt::Modulation {
-                        modulation_type: rt::ModulationType::Dep,
-                        baud_rate: rt::BaudRate::Br424,
-                    },
-                    info: rt::TargetInfo::Dep(rt::DepInfo {
+                target(
+                    rt::ModulationType::Dep,
+                    rt::BaudRate::Br424,
+                    rt::TargetInfo::Dep(rt::DepInfo {
                         nfcid3: [18; 10],
                         did: 19,
                         bs: 20,
@@ -808,7 +782,7 @@ mod tests {
                         general_bytes: long_general_bytes.clone(),
                         mode: rt::DepMode::Active,
                     }),
-                },
+                ),
                 rt::TargetInfo::Dep(rt::DepInfo {
                     nfcid3: [18; 10],
                     did: 19,
@@ -821,15 +795,13 @@ mod tests {
                 }),
             ),
             (
-                rt::Target {
-                    modulation: rt::Modulation {
-                        modulation_type: rt::ModulationType::Barcode,
-                        baud_rate: rt::BaudRate::Undefined,
-                    },
-                    info: rt::TargetInfo::Barcode {
+                target(
+                    rt::ModulationType::Barcode,
+                    rt::BaudRate::Br106,
+                    rt::TargetInfo::Barcode {
                         data: long_barcode.clone(),
                     },
-                },
+                ),
                 rt::TargetInfo::Barcode {
                     data: long_barcode[..32].to_vec(),
                 },
@@ -838,9 +810,9 @@ mod tests {
 
         for (target, expected_info) in cases {
             let raw = target_to_c(&target);
-            let decoded = decode::target_from_c(ptr::addr_of!(raw));
-            assert_eq!(decoded.modulation, target.modulation);
-            assert_eq!(decoded.info, expected_info);
+            let decoded = decode::target_from_c(ptr::addr_of!(raw)).unwrap();
+            assert_eq!(decoded.modulation(), target.modulation());
+            assert_eq!(decoded.info(), &expected_info);
         }
     }
 

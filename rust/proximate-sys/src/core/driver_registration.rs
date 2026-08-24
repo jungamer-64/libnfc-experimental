@@ -1,6 +1,5 @@
 use super::log_general_debug;
 use crate::c_boundary::external_registry::push_driver as bridge_push_driver;
-use crate::c_boundary::raw::optional_ref;
 use crate::c_boundary::status::NFC_ESOFT;
 use crate::ffi_catch_unwind_int;
 use crate::lifecycle::{nfc_device, nfc_driver};
@@ -10,6 +9,8 @@ use libc::c_int;
 use super::log_general_error;
 #[cfg(test)]
 use crate::c_boundary::NFC_BUFSIZE_CONNSTRING;
+#[cfg(any(test, not(feature = "external-drivers")))]
+use crate::c_boundary::raw::optional_ref;
 #[cfg(test)]
 use crate::c_boundary::raw::{bounded_strlen, copy_bytes_to_c_buffer, copy_c_string_to_c_buffer};
 #[cfg(test)]
@@ -84,12 +85,12 @@ unsafe fn push_driver(driver: *const nfc_driver) -> c_int {
     unsafe { bridge_push_driver(driver) }
 }
 
-#[cfg(all(not(test), libnfc_external_bridges))]
+#[cfg(all(not(test), feature = "external-drivers"))]
 unsafe extern "C" {
     fn nfc_close(device: *mut nfc_device);
 }
 
-#[cfg(any(test, not(libnfc_external_bridges)))]
+#[cfg(any(test, not(feature = "external-drivers")))]
 pub(super) unsafe fn invoke_driver_close(device: *mut nfc_device) {
     let Some(device_ref) = (unsafe { optional_ref(device) }) else {
         return;
@@ -104,12 +105,12 @@ pub(super) unsafe fn invoke_driver_close(device: *mut nfc_device) {
     }
 }
 
-#[cfg(all(not(test), libnfc_external_bridges))]
+#[cfg(all(not(test), feature = "external-drivers"))]
 pub(crate) unsafe fn bridge_close_device(device: *mut nfc_device) {
     unsafe { nfc_close(device) };
 }
 
-#[cfg(any(test, not(libnfc_external_bridges)))]
+#[cfg(any(test, not(feature = "external-drivers")))]
 pub(crate) unsafe fn bridge_close_device(device: *mut nfc_device) {
     #[cfg(test)]
     unsafe {

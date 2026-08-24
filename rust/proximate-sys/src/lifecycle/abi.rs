@@ -215,6 +215,7 @@ pub struct nfc_device {
     pub(crate) driver: *const nfc_driver,
     pub(crate) driver_data: *mut c_void,
     pub(crate) chip_data: *mut c_void,
+    pub(crate) command_abort: *mut c_void,
     pub(crate) name: [c_char; DEVICE_NAME_LENGTH],
     pub(crate) connstring: [c_char; NFC_BUFSIZE_CONNSTRING],
     pub(crate) bCrc: bool,

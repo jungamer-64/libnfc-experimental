@@ -1,18 +1,9 @@
-use std::sync::OnceLock;
-
-static VERSION: OnceLock<Box<str>> = OnceLock::new();
-
-pub fn version() -> &'static str {
-    VERSION
-        .get_or_init(|| {
-            option_env!("PROXIMATE_GIT_REVISION")
-                .filter(|value| !value.is_empty())
-                .unwrap_or(
-                    option_env!("PROXIMATE_PACKAGE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
-                )
-                .into()
-        })
-        .as_ref()
+/// Returns the libnfc compatibility version exposed by the public C ABI.
+///
+/// This value deliberately does not follow the Rust crate release version:
+/// the crate and the emulated libnfc ABI have independent version authorities.
+pub const fn version() -> &'static str {
+    "1.8.0"
 }
 
 #[doc(hidden)]

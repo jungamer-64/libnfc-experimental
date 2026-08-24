@@ -2,8 +2,8 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use proximate_driver::{
-    BaudRate, ConnectionString, Context, Driver, Error, Modulation, ModulationType, Target,
-    TargetInfo,
+    BaudRate, ConnectionString, Context, Driver, Error, Modulation, ModulationType,
+    OperationTimeout, PollIterations, PollPeriod, Target, TargetInfo,
 };
 
 use super::Pn71xxDriver;
@@ -17,6 +17,10 @@ use super::fake::{
 };
 use super::runtime::{current_tag_snapshot, runtime_snapshot};
 use crate::nci::TagInfo;
+
+fn modulation(modulation_type: ModulationType, baud_rate: BaudRate) -> Modulation {
+    Modulation::try_new(modulation_type, baud_rate).unwrap()
+}
 
 trait TestDeviceOps {
     fn select_passive_target(
@@ -54,12 +58,16 @@ impl TestDeviceOps for proximate_driver::Device {
         period: u8,
     ) -> Result<Option<Target>, Error> {
         let mut passive_scan = self.passive_scan_ops()?;
-        passive_scan.poll_target(modulations, poll_nr, period)
+        passive_scan.poll_target(
+            modulations,
+            PollIterations::from_libnfc(poll_nr)?,
+            PollPeriod::try_new(period)?,
+        )
     }
 
     fn transceive_bytes(&mut self, tx: &[u8], rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
         let mut initiator_io = self.initiator_io_ops()?;
-        initiator_io.transceive_bytes(tx, rx, timeout)
+        initiator_io.transceive_bytes(tx, rx, OperationTimeout::from_libnfc_millis(timeout)?)
     }
 
     fn target_is_present(&mut self, target: Option<&Target>) -> Result<bool, Error> {
@@ -88,7 +96,7 @@ fn make_tag(technology: u32, uid: &[u8], protocol: u8) -> TagInfo {
 
 fn open_device(connstring: &ConnectionString) -> proximate_driver::Device {
     let driver = Pn71xxDriver::new();
-    proximate_driver::Device::from_handle(driver.open(&Context::new(), connstring).unwrap())
+    proximate_driver::Device::from_backend(driver.open(&Context::new(), connstring).unwrap())
 }
 
 #[test]
@@ -203,31 +211,19 @@ fn select_passive_target_maps_supported_technology_families() {
     let cases = [
         (
             make_tag(TARGET_TYPE_MIFARE_CLASSIC, &[0x01, 0x02, 0x03, 0x04], 0),
-            Modulation {
-                modulation_type: ModulationType::Iso14443A,
-                baud_rate: BaudRate::Br106,
-            },
+            modulation(ModulationType::Iso14443A, BaudRate::Br106),
         ),
         (
             make_tag(TARGET_TYPE_ISO14443_3A, &[0x10, 0x11, 0x12, 0x13], 0),
-            Modulation {
-                modulation_type: ModulationType::Iso14443A,
-                baud_rate: BaudRate::Br106,
-            },
+            modulation(ModulationType::Iso14443A, BaudRate::Br106),
         ),
         (
             make_tag(TARGET_TYPE_ISO14443_3B, &[0x21, 0x22, 0x23, 0x24], 0),
-            Modulation {
-                modulation_type: ModulationType::Iso14443B,
-                baud_rate: BaudRate::Br106,
-            },
+            modulation(ModulationType::Iso14443B, BaudRate::Br106),
         ),
         (
             make_tag(TARGET_TYPE_ISO14443_3B, &[0x31, 0x32, 0x33, 0x34], 0),
-            Modulation {
-                modulation_type: ModulationType::Iso14443Bi,
-                baud_rate: BaudRate::Br106,
-            },
+            modulation(ModulationType::Iso14443Bi, BaudRate::Br106),
         ),
         (
             make_tag(
@@ -235,17 +231,11 @@ fn select_passive_target_maps_supported_technology_families() {
                 &[0x41, 0x42, 0x43, 0x44, 0x45, 0x46],
                 0,
             ),
-            Modulation {
-                modulation_type: ModulationType::Iso14443B2Sr,
-                baud_rate: BaudRate::Br106,
-            },
+            modulation(ModulationType::Iso14443B2Sr, BaudRate::Br106),
         ),
         (
             make_tag(TARGET_TYPE_ISO14443_3B, &[0x51, 0x52, 0x53, 0x54], 0),
-            Modulation {
-                modulation_type: ModulationType::Iso14443B2Ct,
-                baud_rate: BaudRate::Br106,
-            },
+            modulation(ModulationType::Iso14443B2Ct, BaudRate::Br106),
         ),
         (
             make_tag(
@@ -253,10 +243,7 @@ fn select_passive_target_maps_supported_technology_families() {
                 &[0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68],
                 0,
             ),
-            Modulation {
-                modulation_type: ModulationType::Felica,
-                baud_rate: BaudRate::Br212,
-            },
+            modulation(ModulationType::Felica, BaudRate::Br212),
         ),
         (
             make_tag(
@@ -264,10 +251,7 @@ fn select_passive_target_maps_supported_technology_families() {
                 &[0x71, 0x72, 0x73, 0x74],
                 NFA_PROTOCOL_T1T,
             ),
-            Modulation {
-                modulation_type: ModulationType::Jewel,
-                baud_rate: BaudRate::Br106,
-            },
+            modulation(ModulationType::Jewel, BaudRate::Br106),
         ),
     ];
 
@@ -278,27 +262,27 @@ fn select_passive_target_maps_supported_technology_families() {
             .unwrap()
             .expect("target should be present");
 
-        match target.info {
+        match target.info() {
             TargetInfo::Iso14443A { uid, sak, ats, .. } => {
-                assert_eq!(uid, tag.uid[..tag.uid_length as usize].to_vec());
+                assert_eq!(uid.as_slice(), &tag.uid[..tag.uid_length as usize]);
                 if tag.technology == TARGET_TYPE_MIFARE_CLASSIC {
-                    assert_eq!(sak, 0x08);
+                    assert_eq!(*sak, 0x08);
                     assert!(ats.is_empty());
                 } else {
-                    assert_eq!(sak, 0x20);
-                    assert_eq!(ats, DESFIRE_ATS.to_vec());
+                    assert_eq!(*sak, 0x20);
+                    assert_eq!(ats.as_slice(), DESFIRE_ATS);
                 }
             }
-            TargetInfo::Iso14443B { pupi, .. } => assert_eq!(pupi, [0x21, 0x22, 0x23, 0x24]),
-            TargetInfo::Iso14443Bi { div, .. } => assert_eq!(div, [0x31, 0x32, 0x33, 0x34]),
+            TargetInfo::Iso14443B { pupi, .. } => assert_eq!(*pupi, [0x21, 0x22, 0x23, 0x24]),
+            TargetInfo::Iso14443Bi { div, .. } => assert_eq!(*div, [0x31, 0x32, 0x33, 0x34]),
             TargetInfo::Iso14443B2Sr { uid } => {
                 assert_eq!(&uid[..6], &[0x41, 0x42, 0x43, 0x44, 0x45, 0x46])
             }
-            TargetInfo::Iso14443B2Ct { uid, .. } => assert_eq!(uid, [0x51, 0x52, 0x53, 0x54]),
+            TargetInfo::Iso14443B2Ct { uid, .. } => assert_eq!(*uid, [0x51, 0x52, 0x53, 0x54]),
             TargetInfo::Felica { id, .. } => {
-                assert_eq!(id, [0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68])
+                assert_eq!(*id, [0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68])
             }
-            TargetInfo::Jewel { id, .. } => assert_eq!(id, [0x71, 0x72, 0x73, 0x74]),
+            TargetInfo::Jewel { id, .. } => assert_eq!(*id, [0x71, 0x72, 0x73, 0x74]),
             _ => panic!("unexpected target kind"),
         }
     }
@@ -316,17 +300,14 @@ fn poll_target_retries_until_tag_appears() {
         emit_tag_arrival_for_tests(make_tag(TARGET_TYPE_ISO14443_3A, &[0xAA, 0xBB], 0));
     });
 
-    let modulations = [Modulation {
-        modulation_type: ModulationType::Iso14443A,
-        baud_rate: BaudRate::Br106,
-    }];
+    let modulations = [modulation(ModulationType::Iso14443A, BaudRate::Br106)];
     let target = device
         .poll_target(&modulations, 2, 1)
         .unwrap()
         .expect("target should appear");
     worker.join().unwrap();
-    match target.info {
-        TargetInfo::Iso14443A { uid, .. } => assert_eq!(uid, vec![0xAA, 0xBB]),
+    match target.info() {
+        TargetInfo::Iso14443A { uid, .. } => assert_eq!(uid.as_slice(), &[0xAA, 0xBB]),
         _ => panic!("unexpected target kind"),
     }
 }
@@ -357,7 +338,7 @@ fn transceive_bytes_handles_missing_and_present_tags() {
     let state = backend_state_snapshot();
     assert_eq!(state.last_transceive_handle, Some(0x1234));
     assert_eq!(state.last_transceive_tx, tx);
-    assert_eq!(state.last_transceive_timeout, Some(500));
+    assert_eq!(state.last_transceive_timeout, Some(250));
 }
 
 #[test]

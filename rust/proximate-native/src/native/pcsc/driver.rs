@@ -1,13 +1,13 @@
 use super::*;
 
-pub(super) struct PcscDriver {
+pub(crate) struct PcscDriver {
     driver_name: &'static str,
     filter: ReaderFilter,
     backend: Arc<dyn PcscBackend>,
 }
 
 impl PcscDriver {
-    pub(super) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             driver_name: PCSC_DRIVER_NAME,
             filter: ReaderFilter::Generic,
@@ -40,11 +40,7 @@ impl Driver for PcscDriver {
                 .into_iter()
                 .map(|connstring| {
                     let display_name = connstring.as_str().to_string();
-                    self.describe_discovered(
-                        display_name,
-                        connstring,
-                        Some(PcscDevice::scan_caps()),
-                    )
+                    self.describe_discovered(display_name, connstring)
                 })
                 .collect(),
         )

@@ -1,8 +1,9 @@
 use std::any::Any;
+use std::sync::Arc;
 
 use crate::{
-    BaudRate, ConnectionString, DepInfo, DepMode, DeviceCaps, Error, Mode, Modulation,
-    ModulationType, Property, Target,
+    BaudRate, BitFrame, ConnectionString, DepInfo, DepMode, Error, Mode, Modulation,
+    ModulationType, OperationTimeout, PollIterations, PollPeriod, Property, Target,
 };
 
 pub(crate) const POLL_DEP_PERIOD_MS: i32 = 300;
@@ -15,13 +16,22 @@ pub trait Logger: Send + Sync {
     fn log(&self, _priority: u8, _message: &str) {}
 }
 
+/// Authority to interrupt the currently running command without borrowing the
+/// device backend that owns that command.
+///
+/// Implementations must be safe to invoke concurrently with any blocking I/O
+/// operation performed by the associated device. The authority becomes
+/// revoked when that device is finalized.
+pub trait CommandAbort: Send + Sync {
+    fn abort(&self) -> Result<(), Error>;
+}
+
+/// A shareable, operation-limited authority for interrupting a device command.
+pub type CommandAbortHandle = Arc<dyn CommandAbort>;
+
 pub trait DeviceMeta: Send + Any {
     fn name(&self) -> &str;
     fn connstring(&self) -> &ConnectionString;
-
-    fn caps(&self) -> DeviceCaps {
-        DeviceCaps::NONE
-    }
 
     fn last_error(&self) -> i32 {
         0
@@ -61,6 +71,10 @@ pub trait PropertyBackend: DeviceMeta {
 }
 
 pub trait InitiatorBackend: DeviceMeta {
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        None
+    }
+
     fn initiator_init_driver(&mut self) -> Result<i32, Error> {
         Err(Error::UnsupportedOperation("initiator_init"))
     }
@@ -80,8 +94,8 @@ pub trait InitiatorBackend: DeviceMeta {
     fn poll_target_driver(
         &mut self,
         _modulations: &[Modulation],
-        _poll_nr: u8,
-        _period: u8,
+        _iterations: PollIterations,
+        _period: PollPeriod,
     ) -> Result<Option<Target>, Error> {
         Err(Error::UnsupportedOperation("poll_target"))
     }
@@ -91,7 +105,7 @@ pub trait InitiatorBackend: DeviceMeta {
         _ndm: DepMode,
         _nbr: BaudRate,
         _initiator: Option<&DepInfo>,
-        _timeout: i32,
+        _timeout: OperationTimeout,
     ) -> Result<Option<Target>, Error> {
         Err(Error::UnsupportedOperation("select_dep_target"))
     }
@@ -108,16 +122,14 @@ pub trait InitiatorBackend: DeviceMeta {
         &mut self,
         _tx: &[u8],
         _rx: &mut [u8],
-        _timeout: i32,
+        _timeout: OperationTimeout,
     ) -> Result<usize, Error> {
         Err(Error::UnsupportedOperation("transceive_bytes"))
     }
 
     fn transceive_bits_driver(
         &mut self,
-        _tx: &[u8],
-        _tx_bits_len: usize,
-        _tx_parity: Option<&[u8]>,
+        _tx: BitFrame<'_>,
         _rx: &mut [u8],
         _rx_parity: Option<&mut [u8]>,
     ) -> Result<usize, Error> {
@@ -134,9 +146,7 @@ pub trait InitiatorBackend: DeviceMeta {
 
     fn transceive_bits_timed_driver(
         &mut self,
-        _tx: &[u8],
-        _tx_bits_len: usize,
-        _tx_parity: Option<&[u8]>,
+        _tx: BitFrame<'_>,
         _rx: &mut [u8],
         _rx_parity: Option<&mut [u8]>,
     ) -> Result<(usize, u32), Error> {
@@ -144,7 +154,9 @@ pub trait InitiatorBackend: DeviceMeta {
     }
 
     fn abort_command_driver(&mut self) -> Result<(), Error> {
-        Err(Error::UnsupportedOperation("abort_command"))
+        self.command_abort_handle()
+            .ok_or(Error::UnsupportedOperation("abort_command"))?
+            .abort()
     }
 
     fn idle_driver(&mut self) -> Result<(), Error> {
@@ -161,29 +173,28 @@ pub trait TargetBackend: DeviceMeta {
         &mut self,
         _target: &mut Target,
         _rx: &mut [u8],
-        _timeout: i32,
+        _timeout: OperationTimeout,
     ) -> Result<usize, Error> {
         Err(Error::UnsupportedOperation("target_init"))
     }
 
-    fn target_send_bytes_driver(&mut self, _tx: &[u8], _timeout: i32) -> Result<usize, Error> {
+    fn target_send_bytes_driver(
+        &mut self,
+        _tx: &[u8],
+        _timeout: OperationTimeout,
+    ) -> Result<usize, Error> {
         Err(Error::UnsupportedOperation("target_send_bytes"))
     }
 
     fn target_receive_bytes_driver(
         &mut self,
         _rx: &mut [u8],
-        _timeout: i32,
+        _timeout: OperationTimeout,
     ) -> Result<usize, Error> {
         Err(Error::UnsupportedOperation("target_receive_bytes"))
     }
 
-    fn target_send_bits_driver(
-        &mut self,
-        _tx: &[u8],
-        _tx_bits_len: usize,
-        _tx_parity: Option<&[u8]>,
-    ) -> Result<usize, Error> {
+    fn target_send_bits_driver(&mut self, _tx: BitFrame<'_>) -> Result<usize, Error> {
         Err(Error::UnsupportedOperation("target_send_bits"))
     }
 
@@ -201,7 +212,7 @@ pub trait Pn53xBackend: DeviceMeta {
         &mut self,
         _tx: &[u8],
         _rx: &mut [u8],
-        _timeout: i32,
+        _timeout: OperationTimeout,
     ) -> Result<usize, Error> {
         Err(Error::UnsupportedOperation("pn53x_transceive"))
     }
@@ -219,7 +230,11 @@ pub trait Pn53xBackend: DeviceMeta {
         Err(Error::UnsupportedOperation("pn53x_write_register"))
     }
 
-    fn pn532_sam_configuration_driver(&mut self, _mode: u8, _timeout: i32) -> Result<i32, Error> {
+    fn pn532_sam_configuration_driver(
+        &mut self,
+        _mode: u8,
+        _timeout: OperationTimeout,
+    ) -> Result<i32, Error> {
         Err(Error::UnsupportedOperation("pn532_SAMConfiguration"))
     }
 }
@@ -268,75 +283,78 @@ impl Device {
         self.handle.last_error()
     }
 
+    /// Returns the authority used to interrupt a command running on this
+    /// device, when the backend can provide concurrent abort semantics.
+    pub fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        self.handle.command_abort_handle()
+    }
+
     pub fn strerror(&self) -> String {
         self.handle.strerror()
     }
 
     pub fn info_ops(&mut self) -> Result<InfoOps<'_>, Error> {
-        ensure_device_caps(self.handle.as_mut(), DeviceCaps::INFO, "info_ops")?;
         Ok(InfoOps {
             device: self.handle.as_mut(),
         })
     }
 
+    /// Transfers an opened driver backend into the device lifecycle.
+    ///
+    /// This is the production ownership boundary used by driver and C-ABI
+    /// integration crates. Callers surrender exclusive finalization authority
+    /// to the returned [`Device`].
+    #[doc(hidden)]
+    pub fn from_backend(handle: Box<dyn DeviceHandle>) -> Self {
+        Self::new(handle, None)
+    }
+
     pub fn property_ops(&mut self) -> Result<PropertyOps<'_>, Error> {
-        ensure_any_device_caps(self.handle.as_mut(), property_view_caps(), "property_ops")?;
         Ok(PropertyOps {
             device: self.handle.as_mut(),
         })
     }
 
     pub fn passive_scan_ops(&mut self) -> Result<PassiveScanOps<'_>, Error> {
-        ensure_any_device_caps(
-            self.handle.as_mut(),
-            passive_scan_view_caps(),
-            "passive_scan_ops",
-        )?;
         Ok(PassiveScanOps {
             device: self.handle.as_mut(),
         })
     }
 
     pub fn dep_ops(&mut self) -> Result<DepOps<'_>, Error> {
-        ensure_any_device_caps(self.handle.as_mut(), dep_view_caps(), "dep_ops")?;
         Ok(DepOps {
             device: self.handle.as_mut(),
         })
     }
 
     pub fn session_ops(&mut self) -> Result<SessionOps<'_>, Error> {
-        ensure_any_device_caps(self.handle.as_mut(), session_view_caps(), "session_ops")?;
         Ok(SessionOps {
             device: self.handle.as_mut(),
         })
     }
 
     pub fn initiator_io_ops(&mut self) -> Result<InitiatorIoOps<'_>, Error> {
-        ensure_any_device_caps(
-            self.handle.as_mut(),
-            initiator_io_view_caps(),
-            "initiator_io_ops",
-        )?;
         Ok(InitiatorIoOps {
             device: self.handle.as_mut(),
         })
     }
 
     pub fn target_io_ops(&mut self) -> Result<TargetIoOps<'_>, Error> {
-        ensure_any_device_caps(self.handle.as_mut(), target_io_view_caps(), "target_io_ops")?;
         Ok(TargetIoOps {
             device: self.handle.as_mut(),
         })
     }
 
     pub fn pn53x_ops(&mut self) -> Result<Pn53xOps<'_>, Error> {
-        ensure_any_device_caps(self.handle.as_mut(), pn53x_view_caps(), "pn53x_ops")?;
         Ok(Pn53xOps {
             device: self.handle.as_mut(),
         })
     }
 
-    pub(crate) fn into_handle(self) -> Box<dyn DeviceHandle> {
+    /// Transfers finalization authority from the Rust device wrapper to an
+    /// owning external ABI wrapper.
+    #[doc(hidden)]
+    pub fn into_backend(self) -> Box<dyn DeviceHandle> {
         self.handle
     }
 }
@@ -405,10 +423,10 @@ impl<'a> PassiveScanOps<'a> {
     pub fn poll_target(
         &mut self,
         modulations: &[Modulation],
-        poll_nr: u8,
-        period: u8,
+        iterations: PollIterations,
+        period: PollPeriod,
     ) -> Result<Option<Target>, Error> {
-        ops::initiator::poll_target(self.device, modulations, poll_nr, period)
+        ops::initiator::poll_target(self.device, modulations, iterations, period)
     }
 }
 
@@ -426,7 +444,7 @@ impl<'a> DepOps<'a> {
         mode: DepMode,
         baud_rate: BaudRate,
         initiator: Option<&DepInfo>,
-        timeout: i32,
+        timeout: OperationTimeout,
     ) -> Result<Option<Target>, Error> {
         ops::initiator::select_dep_target(self.device, mode, baud_rate, initiator, timeout)
     }
@@ -436,7 +454,7 @@ impl<'a> DepOps<'a> {
         mode: DepMode,
         baud_rate: BaudRate,
         initiator: Option<&DepInfo>,
-        timeout: i32,
+        timeout: OperationTimeout,
     ) -> Result<Option<Target>, Error> {
         ops::initiator::poll_dep_target(self.device, mode, baud_rate, initiator, timeout)
     }
@@ -477,20 +495,18 @@ impl<'a> InitiatorIoOps<'a> {
         &mut self,
         tx: &[u8],
         rx: &mut [u8],
-        timeout: i32,
+        timeout: OperationTimeout,
     ) -> Result<usize, Error> {
         ops::initiator::transceive_bytes(self.device, tx, rx, timeout)
     }
 
     pub fn transceive_bits(
         &mut self,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
+        tx: BitFrame<'_>,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<usize, Error> {
-        ops::initiator::transceive_bits(self.device, tx, tx_bits_len, tx_parity, rx, rx_parity)
+        ops::initiator::transceive_bits(self.device, tx, rx, rx_parity)
     }
 
     pub fn transceive_bytes_timed(
@@ -503,20 +519,11 @@ impl<'a> InitiatorIoOps<'a> {
 
     pub fn transceive_bits_timed(
         &mut self,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
+        tx: BitFrame<'_>,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<(usize, u32), Error> {
-        ops::initiator::transceive_bits_timed(
-            self.device,
-            tx,
-            tx_bits_len,
-            tx_parity,
-            rx,
-            rx_parity,
-        )
+        ops::initiator::transceive_bits_timed(self.device, tx, rx, rx_parity)
     }
 }
 
@@ -529,26 +536,25 @@ impl<'a> TargetIoOps<'a> {
         &mut self,
         target: &mut Target,
         rx: &mut [u8],
-        timeout: i32,
+        timeout: OperationTimeout,
     ) -> Result<usize, Error> {
         ops::target::init(self.device, target, rx, timeout)
     }
 
-    pub fn send_bytes(&mut self, tx: &[u8], timeout: i32) -> Result<usize, Error> {
+    pub fn send_bytes(&mut self, tx: &[u8], timeout: OperationTimeout) -> Result<usize, Error> {
         ops::target::send_bytes(self.device, tx, timeout)
     }
 
-    pub fn receive_bytes(&mut self, rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
+    pub fn receive_bytes(
+        &mut self,
+        rx: &mut [u8],
+        timeout: OperationTimeout,
+    ) -> Result<usize, Error> {
         ops::target::receive_bytes(self.device, rx, timeout)
     }
 
-    pub fn send_bits(
-        &mut self,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
-    ) -> Result<usize, Error> {
-        ops::target::send_bits(self.device, tx, tx_bits_len, tx_parity)
+    pub fn send_bits(&mut self, tx: BitFrame<'_>) -> Result<usize, Error> {
+        ops::target::send_bits(self.device, tx)
     }
 
     pub fn receive_bits(
@@ -565,7 +571,12 @@ pub struct Pn53xOps<'a> {
 }
 
 impl<'a> Pn53xOps<'a> {
-    pub fn transceive(&mut self, tx: &[u8], rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
+    pub fn transceive(
+        &mut self,
+        tx: &[u8],
+        rx: &mut [u8],
+        timeout: OperationTimeout,
+    ) -> Result<usize, Error> {
         ops::pn53x::transceive(self.device, tx, rx, timeout)
     }
 
@@ -582,7 +593,7 @@ impl<'a> Pn53xOps<'a> {
         ops::pn53x::write_register(self.device, register, symbol_mask, value)
     }
 
-    pub fn sam_configuration(&mut self, mode: u8, timeout: i32) -> Result<i32, Error> {
+    pub fn sam_configuration(&mut self, mode: u8, timeout: OperationTimeout) -> Result<i32, Error> {
         ops::pn53x::sam_configuration(self.device, mode, timeout)
     }
 }
@@ -617,12 +628,12 @@ pub(crate) fn validate_modulation<D: PropertyBackend + ?Sized>(
     modulation: Modulation,
 ) -> Result<(), Error> {
     let supported_modulations = device.supported_modulations(mode)?;
-    if !supported_modulations.contains(&modulation.modulation_type) {
+    if !supported_modulations.contains(&modulation.modulation_type()) {
         return Err(Error::InvalidArgument("modulation not supported"));
     }
 
-    let supported_baud_rates = device.supported_baud_rates(mode, modulation.modulation_type)?;
-    if !supported_baud_rates.contains(&modulation.baud_rate) {
+    let supported_baud_rates = device.supported_baud_rates(mode, modulation.modulation_type())?;
+    if !supported_baud_rates.contains(&modulation.baud_rate()) {
         return Err(Error::InvalidArgument("baud rate not supported"));
     }
 
@@ -630,7 +641,7 @@ pub(crate) fn validate_modulation<D: PropertyBackend + ?Sized>(
 }
 
 pub(crate) fn default_initiator_payload(modulation: Modulation) -> &'static [u8] {
-    match modulation.modulation_type {
+    match modulation.modulation_type() {
         ModulationType::Iso14443B => &[0x00],
         ModulationType::Iso14443Bi => &[0x01, 0x0b, 0x3f, 0x80],
         ModulationType::Felica => &[0x00, 0xff, 0xff, 0x01, 0x00],
@@ -660,7 +671,7 @@ pub(crate) fn cascade_iso14443a_uid(uid: &[u8]) -> Vec<u8> {
 
 pub(crate) fn modulation_requires_single_attempt(modulation: Modulation) -> bool {
     matches!(
-        modulation.modulation_type,
+        modulation.modulation_type(),
         ModulationType::Felica
             | ModulationType::Jewel
             | ModulationType::Barcode
@@ -680,7 +691,6 @@ mod ops {
         where
             D: InfoBackend + ?Sized,
         {
-            ensure_device_caps(device, DeviceCaps::INFO, "device_get_information_about")?;
             device.information_about()
         }
     }
@@ -696,11 +706,6 @@ mod ops {
         where
             D: PropertyBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::SET_PROPERTY_BOOL,
-                "device_set_property_bool",
-            )?;
             device.set_property_bool(property, enable)
         }
 
@@ -712,11 +717,6 @@ mod ops {
         where
             D: PropertyBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::SET_PROPERTY_INT,
-                "device_set_property_int",
-            )?;
             device.set_property_int(property, value)
         }
 
@@ -727,11 +727,6 @@ mod ops {
         where
             D: PropertyBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::SUPPORTED_MODULATIONS,
-                "get_supported_modulation",
-            )?;
             device.supported_modulations(mode)
         }
 
@@ -743,11 +738,6 @@ mod ops {
         where
             D: PropertyBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::SUPPORTED_BAUD_RATES,
-                "get_supported_baud_rate",
-            )?;
             device.supported_baud_rates(mode, modulation_type)
         }
     }
@@ -759,11 +749,6 @@ mod ops {
         where
             D: PropertyBackend + InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::SET_PROPERTY_BOOL | DeviceCaps::INITIATOR_INIT,
-                "initiator_init",
-            )?;
             apply_bool_property_sequence(
                 device,
                 &[
@@ -784,11 +769,6 @@ mod ops {
         where
             D: InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::INITIATOR_INIT_SECURE_ELEMENT,
-                "initiator_init_secure_element",
-            )?;
             device.initiator_init_secure_element_driver()
         }
 
@@ -800,17 +780,10 @@ mod ops {
         where
             D: PropertyBackend + InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::SUPPORTED_MODULATIONS
-                    | DeviceCaps::SUPPORTED_BAUD_RATES
-                    | DeviceCaps::SELECT_PASSIVE_TARGET,
-                "initiator_select_passive_target",
-            )?;
             validate_modulation(device, Mode::Initiator, nm)?;
 
             let payload = if init_data.is_some_and(|value| !value.is_empty()) {
-                if nm.modulation_type == ModulationType::Iso14443A {
+                if nm.modulation_type() == ModulationType::Iso14443A {
                     cascade_iso14443a_uid(init_data.expect("checked above"))
                 } else {
                     init_data.expect("checked above").to_vec()
@@ -833,15 +806,6 @@ mod ops {
             if max_targets == 0 {
                 return Ok(Vec::new());
             }
-
-            let mut required = DeviceCaps::SUPPORTED_MODULATIONS
-                | DeviceCaps::SUPPORTED_BAUD_RATES
-                | DeviceCaps::SELECT_PASSIVE_TARGET
-                | DeviceCaps::SET_PROPERTY_BOOL;
-            if max_targets > 1 && !modulation_requires_single_attempt(nm) {
-                required |= DeviceCaps::DESELECT_TARGET;
-            }
-            ensure_device_caps(device, required, "list_passive_targets")?;
 
             let previous = device.property_bool_state(Property::InfiniteSelect);
             device.set_property_bool(Property::InfiniteSelect, false)?;
@@ -870,14 +834,13 @@ mod ops {
         pub(crate) fn poll_target<D>(
             device: &mut D,
             modulations: &[Modulation],
-            poll_nr: u8,
-            period: u8,
+            iterations: PollIterations,
+            period: PollPeriod,
         ) -> Result<Option<Target>, Error>
         where
             D: InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(device, DeviceCaps::POLL_TARGET, "initiator_poll_target")?;
-            device.poll_target_driver(modulations, poll_nr, period)
+            device.poll_target_driver(modulations, iterations, period)
         }
 
         pub(crate) fn select_dep_target<D>(
@@ -885,16 +848,11 @@ mod ops {
             ndm: DepMode,
             nbr: BaudRate,
             initiator: Option<&DepInfo>,
-            timeout: i32,
+            timeout: OperationTimeout,
         ) -> Result<Option<Target>, Error>
         where
             D: InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::SELECT_DEP_TARGET,
-                "initiator_select_dep_target",
-            )?;
             device.select_dep_target_driver(ndm, nbr, initiator, timeout)
         }
 
@@ -903,27 +861,29 @@ mod ops {
             ndm: DepMode,
             nbr: BaudRate,
             initiator: Option<&DepInfo>,
-            timeout: i32,
+            timeout: OperationTimeout,
         ) -> Result<Option<Target>, Error>
         where
             D: PropertyBackend + InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::SET_PROPERTY_BOOL | DeviceCaps::SELECT_DEP_TARGET,
-                "poll_dep_target",
-            )?;
             let previous = device.property_bool_state(Property::InfiniteSelect);
             device.set_property_bool(Property::InfiniteSelect, true)?;
 
             let result = (|| {
-                let mut remaining = timeout;
+                let mut remaining = timeout.finite_millis().unwrap_or(0);
                 while remaining > 0 {
-                    match select_dep_target(device, ndm, nbr, initiator, POLL_DEP_PERIOD_MS) {
+                    match select_dep_target(
+                        device,
+                        ndm,
+                        nbr,
+                        initiator,
+                        OperationTimeout::try_milliseconds(POLL_DEP_PERIOD_MS as u32)
+                            .expect("poll period is a valid finite timeout"),
+                    ) {
                         Ok(Some(target)) => return Ok(Some(target)),
-                        Ok(None) => remaining -= POLL_DEP_PERIOD_MS,
+                        Ok(None) => remaining = remaining.saturating_sub(POLL_DEP_PERIOD_MS as u32),
                         Err(error) if error.device_code() == Some(-6) => {
-                            remaining -= POLL_DEP_PERIOD_MS;
+                            remaining = remaining.saturating_sub(POLL_DEP_PERIOD_MS as u32);
                         }
                         Err(error) => return Err(error),
                     }
@@ -939,11 +899,6 @@ mod ops {
         where
             D: InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::DESELECT_TARGET,
-                "initiator_deselect_target",
-            )?;
             device.deselect_target_driver()
         }
 
@@ -954,11 +909,6 @@ mod ops {
         where
             D: InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::TARGET_IS_PRESENT,
-                "initiator_target_is_present",
-            )?;
             device.target_is_present_driver(target)
         }
 
@@ -966,36 +916,24 @@ mod ops {
             device: &mut D,
             tx: &[u8],
             rx: &mut [u8],
-            timeout: i32,
+            timeout: OperationTimeout,
         ) -> Result<usize, Error>
         where
             D: InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::TRANSCEIVE_BYTES,
-                "initiator_transceive_bytes",
-            )?;
             device.transceive_bytes_driver(tx, rx, timeout)
         }
 
         pub(crate) fn transceive_bits<D>(
             device: &mut D,
-            tx: &[u8],
-            tx_bits_len: usize,
-            tx_parity: Option<&[u8]>,
+            tx: BitFrame<'_>,
             rx: &mut [u8],
             rx_parity: Option<&mut [u8]>,
         ) -> Result<usize, Error>
         where
             D: InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::TRANSCEIVE_BITS,
-                "initiator_transceive_bits",
-            )?;
-            device.transceive_bits_driver(tx, tx_bits_len, tx_parity, rx, rx_parity)
+            device.transceive_bits_driver(tx, rx, rx_parity)
         }
 
         pub(crate) fn transceive_bytes_timed<D>(
@@ -1006,38 +944,25 @@ mod ops {
         where
             D: InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::TRANSCEIVE_BYTES_TIMED,
-                "initiator_transceive_bytes_timed",
-            )?;
             device.transceive_bytes_timed_driver(tx, rx)
         }
 
         pub(crate) fn transceive_bits_timed<D>(
             device: &mut D,
-            tx: &[u8],
-            tx_bits_len: usize,
-            tx_parity: Option<&[u8]>,
+            tx: BitFrame<'_>,
             rx: &mut [u8],
             rx_parity: Option<&mut [u8]>,
         ) -> Result<(usize, u32), Error>
         where
             D: InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::TRANSCEIVE_BITS_TIMED,
-                "initiator_transceive_bits_timed",
-            )?;
-            device.transceive_bits_timed_driver(tx, tx_bits_len, tx_parity, rx, rx_parity)
+            device.transceive_bits_timed_driver(tx, rx, rx_parity)
         }
 
         pub(crate) fn abort_command<D>(device: &mut D) -> Result<(), Error>
         where
             D: InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(device, DeviceCaps::ABORT_COMMAND, "abort_command")?;
             device.abort_command_driver()
         }
 
@@ -1045,7 +970,6 @@ mod ops {
         where
             D: InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(device, DeviceCaps::IDLE, "idle")?;
             device.idle_driver()
         }
 
@@ -1053,7 +977,6 @@ mod ops {
         where
             D: InitiatorBackend + ?Sized,
         {
-            ensure_device_caps(device, DeviceCaps::POWERDOWN, "powerdown")?;
             device.powerdown_driver()
         }
     }
@@ -1065,16 +988,11 @@ mod ops {
             device: &mut D,
             target: &mut Target,
             rx: &mut [u8],
-            timeout: i32,
+            timeout: OperationTimeout,
         ) -> Result<usize, Error>
         where
             D: PropertyBackend + TargetBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::SET_PROPERTY_BOOL | DeviceCaps::TARGET_INIT,
-                "target_init",
-            )?;
             apply_bool_property_sequence(
                 device,
                 &[
@@ -1091,41 +1009,33 @@ mod ops {
             device.target_init_driver(target, rx, timeout)
         }
 
-        pub(crate) fn send_bytes<D>(device: &mut D, tx: &[u8], timeout: i32) -> Result<usize, Error>
+        pub(crate) fn send_bytes<D>(
+            device: &mut D,
+            tx: &[u8],
+            timeout: OperationTimeout,
+        ) -> Result<usize, Error>
         where
             D: TargetBackend + ?Sized,
         {
-            ensure_device_caps(device, DeviceCaps::TARGET_SEND_BYTES, "target_send_bytes")?;
             device.target_send_bytes_driver(tx, timeout)
         }
 
         pub(crate) fn receive_bytes<D>(
             device: &mut D,
             rx: &mut [u8],
-            timeout: i32,
+            timeout: OperationTimeout,
         ) -> Result<usize, Error>
         where
             D: TargetBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::TARGET_RECEIVE_BYTES,
-                "target_receive_bytes",
-            )?;
             device.target_receive_bytes_driver(rx, timeout)
         }
 
-        pub(crate) fn send_bits<D>(
-            device: &mut D,
-            tx: &[u8],
-            tx_bits_len: usize,
-            tx_parity: Option<&[u8]>,
-        ) -> Result<usize, Error>
+        pub(crate) fn send_bits<D>(device: &mut D, tx: BitFrame<'_>) -> Result<usize, Error>
         where
             D: TargetBackend + ?Sized,
         {
-            ensure_device_caps(device, DeviceCaps::TARGET_SEND_BITS, "target_send_bits")?;
-            device.target_send_bits_driver(tx, tx_bits_len, tx_parity)
+            device.target_send_bits_driver(tx)
         }
 
         pub(crate) fn receive_bits<D>(
@@ -1136,11 +1046,6 @@ mod ops {
         where
             D: TargetBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::TARGET_RECEIVE_BITS,
-                "target_receive_bits",
-            )?;
             device.target_receive_bits_driver(rx, rx_parity)
         }
     }
@@ -1152,12 +1057,11 @@ mod ops {
             device: &mut D,
             tx: &[u8],
             rx: &mut [u8],
-            timeout: i32,
+            timeout: OperationTimeout,
         ) -> Result<usize, Error>
         where
             D: Pn53xBackend + ?Sized,
         {
-            ensure_device_caps(device, DeviceCaps::PN53X_TRANSCEIVE, "pn53x_transceive")?;
             device.pn53x_transceive_driver(tx, rx, timeout)
         }
 
@@ -1165,11 +1069,6 @@ mod ops {
         where
             D: Pn53xBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::PN53X_READ_REGISTER,
-                "pn53x_read_register",
-            )?;
             device.pn53x_read_register_driver(register)
         }
 
@@ -1182,27 +1081,17 @@ mod ops {
         where
             D: Pn53xBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::PN53X_WRITE_REGISTER,
-                "pn53x_write_register",
-            )?;
             device.pn53x_write_register_driver(register, symbol_mask, value)
         }
 
         pub(crate) fn sam_configuration<D>(
             device: &mut D,
             mode: u8,
-            timeout: i32,
+            timeout: OperationTimeout,
         ) -> Result<i32, Error>
         where
             D: Pn53xBackend + ?Sized,
         {
-            ensure_device_caps(
-                device,
-                DeviceCaps::PN532_SAM_CONFIGURATION,
-                "pn532_SAMConfiguration",
-            )?;
             device.pn532_sam_configuration_driver(mode, timeout)
         }
     }

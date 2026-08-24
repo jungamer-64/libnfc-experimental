@@ -6,7 +6,8 @@ use super::pn53x::{
 };
 use super::uart::{UartPort, list_candidate_paths};
 use proximate_driver::{
-    ConnectionString, Context, DeviceHandle, Driver, Error, Property, PropertyBackend, ScanType,
+    CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error, Property,
+    PropertyBackend, ScanType,
 };
 use std::collections::VecDeque;
 #[cfg(test)]
@@ -56,28 +57,16 @@ impl Driver for Acr122sDriver {
                 continue;
             };
 
-            #[cfg(target_os = "linux")]
-            {
-                let Ok(mut port) = UartPort::open(&path, DEFAULT_SPEED) else {
-                    continue;
-                };
-                port.flush_input()?;
-                let mut seq = 0u8;
-                let Ok(firmware) = fetch_firmware_version(&mut port, &mut seq) else {
-                    continue;
-                };
-                if acr122::is_acr122s_firmware(&firmware) {
-                    devices.push(self.describe_discovered(
-                        firmware,
-                        connstring,
-                        Some(super::pn53x::scan_caps(Pn53xProfile::acr122s())),
-                    ));
-                }
-            }
-
-            #[cfg(not(target_os = "linux"))]
-            {
-                let _ = connstring;
+            let Ok(mut port) = UartPort::open(&path, DEFAULT_SPEED) else {
+                continue;
+            };
+            port.flush_input()?;
+            let mut seq = 0u8;
+            let Ok(firmware) = fetch_firmware_version(&mut port, &mut seq) else {
+                continue;
+            };
+            if acr122::is_acr122s_firmware(&firmware) {
+                devices.push(self.describe_discovered(firmware, connstring));
             }
         }
 
@@ -90,41 +79,29 @@ impl Driver for Acr122sDriver {
         connstring: &ConnectionString,
     ) -> Result<Box<dyn DeviceHandle>, Error> {
         let descriptor = decode_path_speed_descriptor(connstring, DRIVER_NAME, DEFAULT_SPEED)?;
+        let mut port = UartPort::open(&descriptor.path, descriptor.speed)?;
+        port.flush_input()?;
 
-        #[cfg(target_os = "linux")]
-        {
-            let mut port = UartPort::open(&descriptor.path, descriptor.speed)?;
-            port.flush_input()?;
-
-            let mut seq = 0u8;
-            let firmware = fetch_firmware_version(&mut port, &mut seq)?;
-            if !acr122::is_acr122s_firmware(&firmware) {
-                return Err(Error::DriverOpenFailed(format!(
-                    "invalid ACR122S firmware '{firmware}'"
-                )));
-            }
-
-            power_command(&mut port, &mut seq, ICC_POWER_ON_REQ_MSG, 0)?;
-
-            let transport = Acr122sTransport::new(port, seq);
-            let mut device = Pn53xDevice::probe_with_profile(
-                firmware,
-                connstring.clone(),
-                Pn53xProfile::acr122s(),
-                transport,
-                PROBE_TIMEOUT_MS,
-            )?;
-            device.set_property_int(Property::TimeoutCommand, CONTROL_TIMEOUT_MS)?;
-            Ok(Box::new(device))
+        let mut seq = 0u8;
+        let firmware = fetch_firmware_version(&mut port, &mut seq)?;
+        if !acr122::is_acr122s_firmware(&firmware) {
+            return Err(Error::DriverOpenFailed(format!(
+                "invalid ACR122S firmware '{firmware}'"
+            )));
         }
 
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = descriptor;
-            Err(Error::DriverOpenFailed(
-                "ACR122S is only available on Linux in this phase".into(),
-            ))
-        }
+        power_command(&mut port, &mut seq, ICC_POWER_ON_REQ_MSG, 0)?;
+
+        let transport = Acr122sTransport::new(port, seq);
+        let mut device = Pn53xDevice::probe_with_profile(
+            firmware,
+            connstring.clone(),
+            Pn53xProfile::acr122s(),
+            transport,
+            PROBE_TIMEOUT_MS,
+        )?;
+        device.set_property_int(Property::TimeoutCommand, CONTROL_TIMEOUT_MS)?;
+        Ok(Box::new(device))
     }
 }
 
@@ -133,9 +110,12 @@ trait Acr122sIo: Send {
     fn write_all(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error>;
     fn read_exact(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<(), Error>;
     fn abort_command(&mut self) -> Result<(), Error>;
+
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        None
+    }
 }
 
-#[cfg(target_os = "linux")]
 impl Acr122sIo for UartPort {
     fn flush_input(&mut self) -> Result<(), Error> {
         UartPort::flush_input(self)
@@ -152,26 +132,9 @@ impl Acr122sIo for UartPort {
     fn abort_command(&mut self) -> Result<(), Error> {
         <UartPort as Pn53xTransport>::abort_command(self)
     }
-}
 
-#[cfg(not(target_os = "linux"))]
-impl Acr122sIo for UartPort {
-    fn flush_input(&mut self) -> Result<(), Error> {
-        Err(Error::DriverOpenFailed(
-            "ACR122S is only available on Linux in this phase".into(),
-        ))
-    }
-
-    fn write_all(&mut self, _payload: &[u8], _timeout_ms: i32) -> Result<(), Error> {
-        self.flush_input()
-    }
-
-    fn read_exact(&mut self, _buffer: &mut [u8], _timeout_ms: i32) -> Result<(), Error> {
-        self.flush_input()
-    }
-
-    fn abort_command(&mut self) -> Result<(), Error> {
-        self.flush_input()
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        Some(UartPort::command_abort_handle(self))
     }
 }
 
@@ -250,6 +213,10 @@ impl<IO: Acr122sIo> Pn53xTransport for Acr122sTransport<IO> {
     fn abort_command(&mut self) -> Result<(), Error> {
         self.pending.clear();
         self.io.abort_command()
+    }
+
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        self.io.command_abort_handle()
     }
 }
 

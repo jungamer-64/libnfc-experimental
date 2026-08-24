@@ -5,7 +5,6 @@ pub(crate) struct ExternalDriver {
     raw: *const nfc_driver,
     name: String,
     scan_type: rt::ScanType,
-    caps: rt::DriverCaps,
 }
 
 unsafe impl Send for ExternalDriver {}
@@ -23,14 +22,10 @@ impl ExternalDriver {
                 scan_type_enum::NOT_AVAILABLE => rt::ScanType::NotAvailable,
             })
             .unwrap_or(rt::ScanType::NotAvailable);
-        let caps = unsafe { optional_ref(raw) }
-            .map(driver_caps_from_raw)
-            .unwrap_or(rt::DriverCaps::NONE);
         Self {
             raw,
             name,
             scan_type,
-            caps,
         }
     }
 }
@@ -44,15 +39,7 @@ impl rt::Driver for ExternalDriver {
         self.scan_type
     }
 
-    fn caps(&self) -> rt::DriverCaps {
-        self.caps
-    }
-
     fn scan(&self, context: &rt::Context) -> Result<Vec<rt::DiscoveredDevice>, rt::Error> {
-        if !self.caps.contains(rt::DriverCaps::SCAN) {
-            return Err(missing_capability("scan"));
-        }
-
         let Some(driver) = (unsafe { optional_ref(self.raw) }) else {
             return Ok(Vec::new());
         };
@@ -74,11 +61,7 @@ impl rt::Driver for ExternalDriver {
                     continue;
                 }
                 let connstring = rt::ConnectionString::new(value)?;
-                devices.push(self.describe_discovered(
-                    connstring.as_str().to_string(),
-                    connstring,
-                    None,
-                ));
+                devices.push(self.describe_discovered(connstring.as_str().to_string(), connstring));
             }
 
             if devices.len() < capacity || capacity >= MAX_SCAN_CAPACITY {
@@ -93,10 +76,6 @@ impl rt::Driver for ExternalDriver {
         context: &rt::Context,
         connstring: &rt::ConnectionString,
     ) -> Result<Box<dyn rt::DeviceHandle>, rt::Error> {
-        if !self.caps.contains(rt::DriverCaps::OPEN) {
-            return Err(missing_capability("open"));
-        }
-
         let Some(driver) = (unsafe { optional_ref(self.raw) }) else {
             return Err(rt::Error::DriverOpenFailed(connstring.as_str().to_string()));
         };
@@ -122,7 +101,6 @@ pub(super) struct ExternalDevice {
     raw: *mut nfc_device,
     name: String,
     connstring: rt::ConnectionString,
-    caps: rt::DeviceCaps,
     owned: bool,
 }
 
@@ -147,15 +125,10 @@ impl ExternalDevice {
             .unwrap_or_else(|| "unknown".to_string());
         let connstring = rt::ConnectionString::new(connstring_string)
             .unwrap_or_else(|_| rt::ConnectionString::new("unknown").expect("valid connstring"));
-        let caps = unsafe { optional_ref(raw) }
-            .and_then(|device| unsafe { optional_ref(device.driver) })
-            .map(device_caps_from_raw)
-            .unwrap_or(rt::DeviceCaps::NONE);
         Self {
             raw,
             name,
             connstring,
-            caps,
             owned,
         }
     }
@@ -182,15 +155,9 @@ impl ExternalDevice {
 
     fn normalize<T>(
         &mut self,
-        required: rt::DeviceCaps,
         operation: &'static str,
         result: Result<T, rt::Error>,
     ) -> Result<T, rt::Error> {
-        if !self.caps.contains(required) {
-            self.set_last_error_raw(NFC_EDEVNOTSUPP);
-            return Err(missing_capability(operation));
-        }
-
         match result {
             Ok(value) => {
                 self.set_last_error_raw(0);
@@ -224,10 +191,6 @@ impl rt::DeviceMeta for ExternalDevice {
 
     fn connstring(&self) -> &rt::ConnectionString {
         &self.connstring
-    }
-
-    fn caps(&self) -> rt::DeviceCaps {
-        self.caps
     }
 
     fn last_error(&self) -> i32 {
@@ -279,7 +242,7 @@ impl rt::InfoBackend for ExternalDevice {
             unsafe { release_allocated_ptr(buffer.cast()) };
             Ok(value)
         })();
-        self.normalize(rt::DeviceCaps::INFO, "device_get_information_about", result)
+        self.normalize("device_get_information_about", result)
     }
 }
 
@@ -297,11 +260,7 @@ impl rt::PropertyBackend for ExternalDevice {
             })?;
             Ok(())
         })();
-        self.normalize(
-            rt::DeviceCaps::SET_PROPERTY_BOOL,
-            "device_set_property_bool",
-            result,
-        )
+        self.normalize("device_set_property_bool", result)
     }
 
     fn set_property_int(&mut self, property: rt::Property, value: i32) -> Result<(), rt::Error> {
@@ -317,11 +276,7 @@ impl rt::PropertyBackend for ExternalDevice {
             })?;
             Ok(())
         })();
-        self.normalize(
-            rt::DeviceCaps::SET_PROPERTY_INT,
-            "device_set_property_int",
-            result,
-        )
+        self.normalize("device_set_property_int", result)
     }
 
     fn supported_modulations(
@@ -348,16 +303,12 @@ impl rt::PropertyBackend for ExternalDevice {
                 if matches!(value, nfc_modulation_type::NMT_UNDEFINED) {
                     break;
                 }
-                values.push(modulation_type_from_c(value));
+                values.push(modulation_type_from_c(value)?);
                 index += 1;
             }
             Ok(values)
         })();
-        self.normalize(
-            rt::DeviceCaps::SUPPORTED_MODULATIONS,
-            "get_supported_modulation",
-            result,
-        )
+        self.normalize("get_supported_modulation", result)
     }
 
     fn supported_baud_rates(
@@ -390,16 +341,12 @@ impl rt::PropertyBackend for ExternalDevice {
                 if matches!(value, nfc_baud_rate::NBR_UNDEFINED) {
                     break;
                 }
-                values.push(baud_rate_from_c(value));
+                values.push(baud_rate_from_c(value)?);
                 index += 1;
             }
             Ok(values)
         })();
-        self.normalize(
-            rt::DeviceCaps::SUPPORTED_BAUD_RATES,
-            "get_supported_baud_rate",
-            result,
-        )
+        self.normalize("get_supported_baud_rate", result)
     }
 
     fn property_bool_state(&self, property: rt::Property) -> Option<bool> {
@@ -426,7 +373,7 @@ impl rt::InitiatorBackend for ExternalDevice {
             };
             Self::status_to_result("initiator_init", unsafe { callback(self.raw) })
         })();
-        self.normalize(rt::DeviceCaps::INITIATOR_INIT, "initiator_init", result)
+        self.normalize("initiator_init", result)
     }
 
     fn initiator_init_secure_element_driver(&mut self) -> Result<i32, rt::Error> {
@@ -445,11 +392,7 @@ impl rt::InitiatorBackend for ExternalDevice {
                 callback(self.raw)
             })
         })();
-        self.normalize(
-            rt::DeviceCaps::INITIATOR_INIT_SECURE_ELEMENT,
-            "initiator_init_secure_element",
-            result,
-        )
+        self.normalize("initiator_init_secure_element", result)
     }
 
     fn select_passive_target_driver(
@@ -485,20 +428,16 @@ impl rt::InitiatorBackend for ExternalDevice {
             if status == 0 {
                 return Ok(None);
             }
-            Ok(Some(target_from_c(ptr::addr_of!(target))))
+            Ok(Some(target_from_c(ptr::addr_of!(target))?))
         })();
-        self.normalize(
-            rt::DeviceCaps::SELECT_PASSIVE_TARGET,
-            "initiator_select_passive_target",
-            result,
-        )
+        self.normalize("initiator_select_passive_target", result)
     }
 
     fn poll_target_driver(
         &mut self,
         modulations: &[rt::Modulation],
-        poll_nr: u8,
-        period: u8,
+        iterations: rt::PollIterations,
+        period: rt::PollPeriod,
     ) -> Result<Option<rt::Target>, rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
@@ -515,17 +454,17 @@ impl rt::InitiatorBackend for ExternalDevice {
                     self.raw,
                     raw_modulations.as_ptr(),
                     raw_modulations.len(),
-                    poll_nr,
-                    period,
+                    iterations.to_libnfc(),
+                    period.get(),
                     ptr::addr_of_mut!(target),
                 )
             })?;
             if status == 0 {
                 return Ok(None);
             }
-            Ok(Some(target_from_c(ptr::addr_of!(target))))
+            Ok(Some(target_from_c(ptr::addr_of!(target))?))
         })();
-        self.normalize(rt::DeviceCaps::POLL_TARGET, "initiator_poll_target", result)
+        self.normalize("initiator_poll_target", result)
     }
 
     fn select_dep_target_driver(
@@ -533,7 +472,7 @@ impl rt::InitiatorBackend for ExternalDevice {
         ndm: rt::DepMode,
         nbr: rt::BaudRate,
         initiator: Option<&rt::DepInfo>,
-        timeout: i32,
+        timeout: rt::OperationTimeout,
     ) -> Result<Option<rt::Target>, rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
@@ -557,19 +496,15 @@ impl rt::InitiatorBackend for ExternalDevice {
                         .as_ref()
                         .map_or(ptr::null(), |value| ptr::addr_of!(*value)),
                     ptr::addr_of_mut!(target),
-                    timeout,
+                    timeout.to_libnfc_millis(),
                 )
             })?;
             if status == 0 {
                 return Ok(None);
             }
-            Ok(Some(target_from_c(ptr::addr_of!(target))))
+            Ok(Some(target_from_c(ptr::addr_of!(target))?))
         })();
-        self.normalize(
-            rt::DeviceCaps::SELECT_DEP_TARGET,
-            "initiator_select_dep_target",
-            result,
-        )
+        self.normalize("initiator_select_dep_target", result)
     }
 
     fn deselect_target_driver(&mut self) -> Result<(), rt::Error> {
@@ -583,11 +518,7 @@ impl rt::InitiatorBackend for ExternalDevice {
             Self::status_to_result("initiator_deselect_target", unsafe { callback(self.raw) })?;
             Ok(())
         })();
-        self.normalize(
-            rt::DeviceCaps::DESELECT_TARGET,
-            "initiator_deselect_target",
-            result,
-        )
+        self.normalize("initiator_deselect_target", result)
     }
 
     fn target_is_present_driver(&mut self, target: Option<&rt::Target>) -> Result<bool, rt::Error> {
@@ -613,18 +544,14 @@ impl rt::InitiatorBackend for ExternalDevice {
             })?;
             Ok(status > 0)
         })();
-        self.normalize(
-            rt::DeviceCaps::TARGET_IS_PRESENT,
-            "initiator_target_is_present",
-            result,
-        )
+        self.normalize("initiator_target_is_present", result)
     }
 
     fn transceive_bytes_driver(
         &mut self,
         tx: &[u8],
         rx: &mut [u8],
-        timeout: i32,
+        timeout: rt::OperationTimeout,
     ) -> Result<usize, rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
@@ -644,23 +571,17 @@ impl rt::InitiatorBackend for ExternalDevice {
                     tx.len(),
                     bytes_mut_ptr(rx),
                     rx.len(),
-                    timeout,
+                    timeout.to_libnfc_millis(),
                 )
             })?;
             Ok(count as usize)
         })();
-        self.normalize(
-            rt::DeviceCaps::TRANSCEIVE_BYTES,
-            "initiator_transceive_bytes",
-            result,
-        )
+        self.normalize("initiator_transceive_bytes", result)
     }
 
     fn transceive_bits_driver(
         &mut self,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
+        tx: rt::BitFrame<'_>,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<usize, rt::Error> {
@@ -674,20 +595,16 @@ impl rt::InitiatorBackend for ExternalDevice {
             let count = Self::status_to_result("initiator_transceive_bits", unsafe {
                 callback(
                     self.raw,
-                    bytes_ptr(tx),
-                    tx_bits_len,
-                    optional_bytes_ptr(tx_parity),
+                    bytes_ptr(tx.bytes()),
+                    tx.bit_len(),
+                    optional_bytes_ptr(tx.parity()),
                     bytes_mut_ptr(rx),
                     optional_bytes_mut_ptr(rx_parity),
                 )
             })?;
             Ok(count as usize)
         })();
-        self.normalize(
-            rt::DeviceCaps::TRANSCEIVE_BITS,
-            "initiator_transceive_bits",
-            result,
-        )
+        self.normalize("initiator_transceive_bits", result)
     }
 
     fn transceive_bytes_timed_driver(
@@ -719,18 +636,12 @@ impl rt::InitiatorBackend for ExternalDevice {
             })?;
             Ok((count as usize, cycles))
         })();
-        self.normalize(
-            rt::DeviceCaps::TRANSCEIVE_BYTES_TIMED,
-            "initiator_transceive_bytes_timed",
-            result,
-        )
+        self.normalize("initiator_transceive_bytes_timed", result)
     }
 
     fn transceive_bits_timed_driver(
         &mut self,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
+        tx: rt::BitFrame<'_>,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<(usize, u32), rt::Error> {
@@ -749,9 +660,9 @@ impl rt::InitiatorBackend for ExternalDevice {
             let count = Self::status_to_result("initiator_transceive_bits_timed", unsafe {
                 callback(
                     self.raw,
-                    bytes_ptr(tx),
-                    tx_bits_len,
-                    optional_bytes_ptr(tx_parity),
+                    bytes_ptr(tx.bytes()),
+                    tx.bit_len(),
+                    optional_bytes_ptr(tx.parity()),
                     bytes_mut_ptr(rx),
                     optional_bytes_mut_ptr(rx_parity),
                     ptr::addr_of_mut!(cycles),
@@ -759,11 +670,7 @@ impl rt::InitiatorBackend for ExternalDevice {
             })?;
             Ok((count as usize, cycles))
         })();
-        self.normalize(
-            rt::DeviceCaps::TRANSCEIVE_BITS_TIMED,
-            "initiator_transceive_bits_timed",
-            result,
-        )
+        self.normalize("initiator_transceive_bits_timed", result)
     }
 
     fn abort_command_driver(&mut self) -> Result<(), rt::Error> {
@@ -777,7 +684,7 @@ impl rt::InitiatorBackend for ExternalDevice {
             Self::status_to_result("abort_command", unsafe { callback(self.raw) })?;
             Ok(())
         })();
-        self.normalize(rt::DeviceCaps::ABORT_COMMAND, "abort_command", result)
+        self.normalize("abort_command", result)
     }
 
     fn idle_driver(&mut self) -> Result<(), rt::Error> {
@@ -791,7 +698,7 @@ impl rt::InitiatorBackend for ExternalDevice {
             Self::status_to_result("idle", unsafe { callback(self.raw) })?;
             Ok(())
         })();
-        self.normalize(rt::DeviceCaps::IDLE, "idle", result)
+        self.normalize("idle", result)
     }
 
     fn powerdown_driver(&mut self) -> Result<(), rt::Error> {
@@ -805,7 +712,7 @@ impl rt::InitiatorBackend for ExternalDevice {
             Self::status_to_result("powerdown", unsafe { callback(self.raw) })?;
             Ok(())
         })();
-        self.normalize(rt::DeviceCaps::POWERDOWN, "powerdown", result)
+        self.normalize("powerdown", result)
     }
 }
 
@@ -814,7 +721,7 @@ impl rt::TargetBackend for ExternalDevice {
         &mut self,
         target: &mut rt::Target,
         rx: &mut [u8],
-        timeout: i32,
+        timeout: rt::OperationTimeout,
     ) -> Result<usize, rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
@@ -830,16 +737,20 @@ impl rt::TargetBackend for ExternalDevice {
                     ptr::addr_of_mut!(raw_target),
                     bytes_mut_ptr(rx),
                     rx.len(),
-                    timeout,
+                    timeout.to_libnfc_millis(),
                 )
             })?;
-            *target = target_from_c(ptr::addr_of!(raw_target));
+            *target = target_from_c(ptr::addr_of!(raw_target))?;
             Ok(count as usize)
         })();
-        self.normalize(rt::DeviceCaps::TARGET_INIT, "target_init", result)
+        self.normalize("target_init", result)
     }
 
-    fn target_send_bytes_driver(&mut self, tx: &[u8], timeout: i32) -> Result<usize, rt::Error> {
+    fn target_send_bytes_driver(
+        &mut self,
+        tx: &[u8],
+        timeout: rt::OperationTimeout,
+    ) -> Result<usize, rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
                 return Err(rt::Error::UnsupportedOperation("target_send_bytes"));
@@ -848,21 +759,22 @@ impl rt::TargetBackend for ExternalDevice {
                 return Err(rt::Error::UnsupportedOperation("target_send_bytes"));
             };
             let count = Self::status_to_result("target_send_bytes", unsafe {
-                callback(self.raw, bytes_ptr(tx), tx.len(), timeout)
+                callback(
+                    self.raw,
+                    bytes_ptr(tx),
+                    tx.len(),
+                    timeout.to_libnfc_millis(),
+                )
             })?;
             Ok(count as usize)
         })();
-        self.normalize(
-            rt::DeviceCaps::TARGET_SEND_BYTES,
-            "target_send_bytes",
-            result,
-        )
+        self.normalize("target_send_bytes", result)
     }
 
     fn target_receive_bytes_driver(
         &mut self,
         rx: &mut [u8],
-        timeout: i32,
+        timeout: rt::OperationTimeout,
     ) -> Result<usize, rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
@@ -872,23 +784,19 @@ impl rt::TargetBackend for ExternalDevice {
                 return Err(rt::Error::UnsupportedOperation("target_receive_bytes"));
             };
             let count = Self::status_to_result("target_receive_bytes", unsafe {
-                callback(self.raw, bytes_mut_ptr(rx), rx.len(), timeout)
+                callback(
+                    self.raw,
+                    bytes_mut_ptr(rx),
+                    rx.len(),
+                    timeout.to_libnfc_millis(),
+                )
             })?;
             Ok(count as usize)
         })();
-        self.normalize(
-            rt::DeviceCaps::TARGET_RECEIVE_BYTES,
-            "target_receive_bytes",
-            result,
-        )
+        self.normalize("target_receive_bytes", result)
     }
 
-    fn target_send_bits_driver(
-        &mut self,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
-    ) -> Result<usize, rt::Error> {
+    fn target_send_bits_driver(&mut self, tx: rt::BitFrame<'_>) -> Result<usize, rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
                 return Err(rt::Error::UnsupportedOperation("target_send_bits"));
@@ -899,14 +807,14 @@ impl rt::TargetBackend for ExternalDevice {
             let count = Self::status_to_result("target_send_bits", unsafe {
                 callback(
                     self.raw,
-                    bytes_ptr(tx),
-                    tx_bits_len,
-                    optional_bytes_ptr(tx_parity),
+                    bytes_ptr(tx.bytes()),
+                    tx.bit_len(),
+                    optional_bytes_ptr(tx.parity()),
                 )
             })?;
             Ok(count as usize)
         })();
-        self.normalize(rt::DeviceCaps::TARGET_SEND_BITS, "target_send_bits", result)
+        self.normalize("target_send_bits", result)
     }
 
     fn target_receive_bits_driver(
@@ -931,11 +839,7 @@ impl rt::TargetBackend for ExternalDevice {
             })?;
             Ok(count as usize)
         })();
-        self.normalize(
-            rt::DeviceCaps::TARGET_RECEIVE_BITS,
-            "target_receive_bits",
-            result,
-        )
+        self.normalize("target_receive_bits", result)
     }
 }
 

@@ -103,79 +103,85 @@ if(LIBNFC_DRIVER_PN71XX)
 endif()
 string(JOIN "," PROXIMATE_ENABLED_DRIVERS_ENV ${PROXIMATE_ENABLED_DRIVERS})
 
-if(PROXIMATE_C_FFI)
-  find_program(CARGO_EXECUTABLE cargo)
-  if(NOT CARGO_EXECUTABLE)
-    message(FATAL_ERROR "cargo executable is required to build the Rust core-backed C ABI layer")
-  endif()
-
-  set(RUST_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-target")
-  file(GLOB_RECURSE LIBNFC_RUST_SOURCES
-    "${CMAKE_SOURCE_DIR}/rust/proximate-driver/src/*.rs"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-native/src/*.rs"
-    "${CMAKE_SOURCE_DIR}/rust/proximate/src/*.rs"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/src/*.rs"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-types/src/*.rs")
-  list(APPEND LIBNFC_RUST_SOURCES
-    "${CMAKE_SOURCE_DIR}/rust/Cargo.toml"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-driver/Cargo.toml"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-driver/build.rs"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-native/Cargo.toml"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-native/build.rs"
-    "${CMAKE_SOURCE_DIR}/rust/proximate/Cargo.toml"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/Cargo.toml"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-sys/build.rs"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-types/Cargo.toml"
-    "${CMAKE_SOURCE_DIR}/rust/proximate-types/build.rs")
-
-  set(RUST_CRATE_NAME proximate_sys)
-  set(RUST_LIB_FILENAME "${CMAKE_STATIC_LIBRARY_PREFIX}${RUST_CRATE_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
-  set(RUST_LIB_PATH "${RUST_TARGET_DIR}/release/${RUST_LIB_FILENAME}" CACHE INTERNAL "Path to Rust support library")
-
-  set(RUST_CARGO_FEATURE_LIST c_ffi secure lifecycle orchestration)
-  if(USB_REQUIRED)
-    list(APPEND RUST_CARGO_FEATURE_LIST usb_helper)
-  endif()
-  if(LIBNFC_DRIVER_PCSC OR LIBNFC_DRIVER_ACR122_PCSC)
-    list(APPEND RUST_CARGO_FEATURE_LIST pcsc_helper)
-  endif()
-  if(LIBNFC_DRIVER_PN71XX)
-    list(APPEND RUST_CARGO_FEATURE_LIST nci_helper)
-  endif()
-  list(JOIN RUST_CARGO_FEATURE_LIST "," RUST_CARGO_FEATURES)
-  set(PROXIMATE_RUST_ENV
-    PROXIMATE_WITH_ENVVARS=${LIBNFC_ENVVARS}
-    PROXIMATE_WITH_CONFFILES=${LIBNFC_CONFFILES_MODE}
-    PROXIMATE_WITH_LOG=${LIBNFC_LOG}
-    PROXIMATE_WITH_DEBUG=${LIBNFC_DEBUG_MODE}
-    PROXIMATE_EXTERNAL_BRIDGES=1
-    PROXIMATE_CONFDIR=${LIBNFC_CONFDIR}
-    PROXIMATE_ENABLED_DRIVERS=${PROXIMATE_ENABLED_DRIVERS_ENV}
-    PROXIMATE_PACKAGE_VERSION=${PROJECT_VERSION})
-  if(GIT_REVISION)
-    list(APPEND PROXIMATE_RUST_ENV PROXIMATE_GIT_REVISION=${GIT_REVISION})
-  endif()
-
-  add_custom_command(
-    OUTPUT "${RUST_LIB_PATH}"
-    COMMAND
-      ${CMAKE_COMMAND} -E env
-        ${PROXIMATE_RUST_ENV}
-        ${CARGO_EXECUTABLE} build --release
-        --manifest-path "${CMAKE_SOURCE_DIR}/rust/Cargo.toml"
-        --package proximate-sys
-        --target-dir "${RUST_TARGET_DIR}"
-        --no-default-features
-        --features "${RUST_CARGO_FEATURES}"
-    DEPENDS ${LIBNFC_RUST_SOURCES}
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    COMMENT "Building Rust core-backed C ABI layer"
-    VERBATIM)
-
-  add_custom_target(proximate_sys_build ALL DEPENDS "${RUST_LIB_PATH}")
-else()
-  add_custom_target(proximate_sys_build)
+find_program(CARGO_EXECUTABLE cargo)
+if(NOT CARGO_EXECUTABLE)
+  message(FATAL_ERROR "cargo executable is required to build libnfc")
 endif()
+
+set(RUST_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-target")
+file(GLOB_RECURSE LIBNFC_RUST_SOURCES CONFIGURE_DEPENDS
+  "${CMAKE_SOURCE_DIR}/rust/proximate-driver/src/*.rs"
+  "${CMAKE_SOURCE_DIR}/rust/proximate-native/src/*.rs"
+  "${CMAKE_SOURCE_DIR}/rust/proximate/src/*.rs"
+  "${CMAKE_SOURCE_DIR}/rust/proximate-sys/src/*.rs"
+  "${CMAKE_SOURCE_DIR}/rust/proximate-types/src/*.rs")
+list(APPEND LIBNFC_RUST_SOURCES
+  "${CMAKE_SOURCE_DIR}/rust/Cargo.toml"
+  "${CMAKE_SOURCE_DIR}/rust/Cargo.lock"
+  "${CMAKE_SOURCE_DIR}/rust/proximate-driver/Cargo.toml"
+  "${CMAKE_SOURCE_DIR}/rust/proximate-native/Cargo.toml"
+  "${CMAKE_SOURCE_DIR}/rust/proximate/Cargo.toml"
+  "${CMAKE_SOURCE_DIR}/rust/proximate-sys/Cargo.toml"
+  "${CMAKE_SOURCE_DIR}/rust/proximate-sys/build.rs"
+  "${CMAKE_SOURCE_DIR}/rust/proximate-types/Cargo.toml")
+
+set(RUST_CRATE_NAME proximate_sys)
+set(RUST_LIB_FILENAME "${CMAKE_STATIC_LIBRARY_PREFIX}${RUST_CRATE_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
+set(RUST_LIB_PATH "${RUST_TARGET_DIR}/release/${RUST_LIB_FILENAME}" CACHE INTERNAL "Path to Rust libnfc implementation")
+
+set(RUST_CARGO_FEATURE_LIST external-drivers)
+if(LIBNFC_CONFFILES_MODE)
+  list(APPEND RUST_CARGO_FEATURE_LIST config-files)
+endif()
+if(LIBNFC_ENVVARS)
+  list(APPEND RUST_CARGO_FEATURE_LIST environment-config)
+endif()
+if(LIBNFC_LOG)
+  list(APPEND RUST_CARGO_FEATURE_LIST logging)
+endif()
+if(LIBNFC_DEBUG_MODE)
+  list(APPEND RUST_CARGO_FEATURE_LIST debug-logging)
+endif()
+foreach(driver_mapping IN ITEMS
+    "LIBNFC_DRIVER_PN53X_USB;driver-pn53x-usb"
+    "LIBNFC_DRIVER_ACR122_USB;driver-acr122-usb"
+    "LIBNFC_DRIVER_ACR122S;driver-acr122s"
+    "LIBNFC_DRIVER_ARYGON;driver-arygon"
+    "LIBNFC_DRIVER_PN532_UART;driver-pn532-uart"
+    "LIBNFC_DRIVER_PN532_SPI;driver-pn532-spi"
+    "LIBNFC_DRIVER_PN532_I2C;driver-pn532-i2c"
+    "LIBNFC_DRIVER_PCSC;driver-pcsc"
+    "LIBNFC_DRIVER_ACR122_PCSC;driver-acr122-pcsc"
+    "LIBNFC_DRIVER_PN71XX;driver-pn71xx")
+  list(GET driver_mapping 0 driver_option)
+  list(GET driver_mapping 1 cargo_feature)
+  if(${driver_option})
+    list(APPEND RUST_CARGO_FEATURE_LIST "${cargo_feature}")
+  endif()
+endforeach()
+list(JOIN RUST_CARGO_FEATURE_LIST "," RUST_CARGO_FEATURES)
+
+set(PROXIMATE_RUST_ENV
+  PROXIMATE_CONFDIR=${LIBNFC_CONFDIR}
+  PROXIMATE_PACKAGE_VERSION=${PROJECT_VERSION})
+
+add_custom_command(
+  OUTPUT "${RUST_LIB_PATH}"
+  COMMAND
+    ${CMAKE_COMMAND} -E env
+      ${PROXIMATE_RUST_ENV}
+      ${CARGO_EXECUTABLE} build --release --locked
+      --manifest-path "${CMAKE_SOURCE_DIR}/rust/Cargo.toml"
+      --package proximate-sys
+      --target-dir "${RUST_TARGET_DIR}"
+      --no-default-features
+      --features "${RUST_CARGO_FEATURES}"
+  DEPENDS ${LIBNFC_RUST_SOURCES}
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMENT "Building the Rust-owned libnfc C ABI"
+  VERBATIM)
+
+add_custom_target(proximate_sys_build ALL DEPENDS "${RUST_LIB_PATH}")
 
 if(WIN32)
   include_directories("${CMAKE_CURRENT_SOURCE_DIR}/contrib/win32")
@@ -267,20 +273,6 @@ if(LIBNFC_DRIVER_PN71XX)
   list(APPEND LIBNFC_PKGCONFIG_REQUIRES_PRIVATE libnfc-nci)
 endif()
 
-if(CMAKE_SYSTEM_NAME MATCHES "Linux" AND I2C_REQUIRED)
-  include(CheckFunctionExists)
-  include(CheckLibraryExists)
-  check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
-  if(NOT HAVE_CLOCK_GETTIME)
-    check_library_exists(rt clock_gettime "" HAVE_CLOCK_GETTIME_IN_RT)
-    if(HAVE_CLOCK_GETTIME_IN_RT)
-      set(LIBRT_FOUND TRUE)
-      set(LIBRT_LIBRARIES rt)
-      list(APPEND LIBNFC_PKGCONFIG_LIBS_PRIVATE -lrt)
-    endif()
-  endif()
-endif()
-
 if(PCSC_INCLUDE_DIRS)
   include_directories(${PCSC_INCLUDE_DIRS})
 endif()
@@ -311,7 +303,7 @@ if(NOT WIN32)
     set(PKG_CONFIG_LIBS_PRIVATE "")
   endif()
 
-  if(NOT BUILD_SHARED_LIBS AND PROXIMATE_C_FFI)
+  if(NOT BUILD_SHARED_LIBS)
     if(PKG_CONFIG_LIBS_PRIVATE)
       set(PKG_CONFIG_LIBS_PRIVATE "-lproximate_sys -lnfc ${PKG_CONFIG_LIBS_PRIVATE}")
     else()
@@ -345,7 +337,7 @@ if(NOT BUILD_SHARED_LIBS)
     list(APPEND LIBNFC_STATIC_PACKAGE_LIBRARIES ${LIBRT_LIBRARIES})
   endif()
   if(WIN32)
-    list(APPEND LIBNFC_STATIC_PACKAGE_LIBRARIES wsock32)
+    list(APPEND LIBNFC_STATIC_PACKAGE_LIBRARIES ntdll userenv ws2_32 bcrypt advapi32)
   endif()
   list(REMOVE_DUPLICATES LIBNFC_STATIC_PACKAGE_LIBRARIES)
 endif()

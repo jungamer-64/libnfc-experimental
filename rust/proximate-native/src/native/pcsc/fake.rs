@@ -16,14 +16,6 @@ pub(super) struct FakePcscCard {
     pub(super) state: Arc<Mutex<FakeCardState>>,
 }
 
-impl FakePcscCard {
-    pub(super) fn new(state: FakeCardState) -> Self {
-        Self {
-            state: Arc::new(Mutex::new(state)),
-        }
-    }
-}
-
 impl PcscCard for FakePcscCard {
     fn reconnect(
         &mut self,

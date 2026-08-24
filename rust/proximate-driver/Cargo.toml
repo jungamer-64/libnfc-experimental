@@ -11,3 +11,10 @@ categories.workspace = true
 
 [dependencies]
 proximate-types = { path = "../proximate-types" }
+
+[features]
+default = ["config-files", "environment-config", "logging"]
+config-files = []
+environment-config = []
+logging = []
+debug-logging = ["logging"]

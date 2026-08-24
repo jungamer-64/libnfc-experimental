@@ -75,9 +75,10 @@ Useful options:
 * `-DBUILD_SHARED_LIBS=OFF` for a static library build
 * `-DLIBNFC_DRIVER_PCSC=ON` to enable the PC/SC driver
 * `-DLIBNFC_CONFDIR=/etc/nfc` to override the installed configuration directory
-* `-DPROXIMATE_SECURE=...`, `-DPROXIMATE_LIFECYCLE=...`, and
-  `-DPROXIMATE_ORCHESTRATION=...` are accepted as deprecated no-op
-  compatibility flags retained for older build scripts
+
+Each `LIBNFC_DRIVER_*` option maps directly to the same driver capability in
+the Rust build. Linux-only I2C, SPI, and PN71xx configurations are rejected at
+configure time on other operating systems.
 
 Recommended validation build:
 

@@ -1,14 +1,41 @@
+/*-
+ * Free/Libre Near Field Communication (NFC) library
+ *
+ * Libnfc historical contributors:
+ * Copyright (C) 2009      Roel Verdult
+ * Copyright (C) 2009-2013 Romuald Conty
+ * Copyright (C) 2010-2012 Romain Tartière
+ * Copyright (C) 2010-2013 Philippe Teuwen
+ * Copyright (C) 2012-2013 Ludovic Rousseau
+ * See AUTHORS file for a more comprehensive list of contributors.
+ * Additional contributors of this file:
+ * Copyright (C) 2020      Adam Laurie
+ *
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by the
+ * Free Software Foundation, either version 3 of the License, or (at your
+ * option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>
+ */
+
 use super::{
-    NFC_EDEVNOTSUPP, NFC_EINVARG, NFC_EIO, NFC_ENOTIMPL, NFC_ERFTRANS, NFC_ETGRELEASED,
-    PN53X_STATUS_BCC, PN53X_STATUS_BITCOLL, PN53X_STATUS_BITCOUNT, PN53X_STATUS_BUFOVF,
-    PN53X_STATUS_CDISCARDED, PN53X_STATUS_CID, PN53X_STATUS_CMD, PN53X_STATUS_CRC,
-    PN53X_STATUS_DEPINVSTATE, PN53X_STATUS_DEPUNKCMD, PN53X_STATUS_FRAMING, PN53X_STATUS_INBUFOVF,
-    PN53X_STATUS_INVPARAM, PN53X_STATUS_INVRXFRAM, PN53X_STATUS_MFAUTH, PN53X_STATUS_NAD,
-    PN53X_STATUS_NFCID3, PN53X_STATUS_OPNOTALL, PN53X_STATUS_OVCURRENT, PN53X_STATUS_OVHEAT,
-    PN53X_STATUS_PARITY, PN53X_STATUS_RFPROTO, PN53X_STATUS_RFTIMEOUT, PN53X_STATUS_SECNOTSUPP,
-    PN53X_STATUS_SMALLBUF, PN53X_STATUS_TGREL, PN53X_STATUS_TIMEOUT,
+    NFC_EDEVNOTSUPP, NFC_EINVARG, NFC_EIO, NFC_ENOTIMPL, NFC_EOPABORTED, NFC_ERFTRANS,
+    NFC_ETGRELEASED, NFC_ETIMEOUT, PN53X_STATUS_BCC, PN53X_STATUS_BITCOLL, PN53X_STATUS_BITCOUNT,
+    PN53X_STATUS_BUFOVF, PN53X_STATUS_CDISCARDED, PN53X_STATUS_CID, PN53X_STATUS_CMD,
+    PN53X_STATUS_CRC, PN53X_STATUS_DEPINVSTATE, PN53X_STATUS_DEPUNKCMD, PN53X_STATUS_FRAMING,
+    PN53X_STATUS_INBUFOVF, PN53X_STATUS_INVPARAM, PN53X_STATUS_INVRXFRAM, PN53X_STATUS_MFAUTH,
+    PN53X_STATUS_NAD, PN53X_STATUS_NFCID3, PN53X_STATUS_OPNOTALL, PN53X_STATUS_OVCURRENT,
+    PN53X_STATUS_OVHEAT, PN53X_STATUS_PARITY, PN53X_STATUS_RFPROTO, PN53X_STATUS_RFTIMEOUT,
+    PN53X_STATUS_SECNOTSUPP, PN53X_STATUS_SMALLBUF, PN53X_STATUS_TGREL, PN53X_STATUS_TIMEOUT,
 };
-use proximate_driver::Error;
+use proximate_driver::{CommandAbortHandle, Error};
 
 pub(super) struct BitTransceiveRequest<'tx, 'rx, 'parity> {
     pub(super) operation: &'static str,
@@ -22,7 +49,19 @@ pub(super) struct BitTransceiveRequest<'tx, 'rx, 'parity> {
 }
 
 pub(super) fn status_error(operation: &'static str, code: i32) -> Error {
-    Error::DeviceOperationFailed { operation, code }
+    match code {
+        NFC_EINVARG => Error::InvalidArgument(operation),
+        NFC_EDEVNOTSUPP => Error::MissingCapability(operation),
+        NFC_ENOTIMPL => Error::UnsupportedOperation(operation),
+        NFC_ETIMEOUT => Error::Timeout(operation),
+        NFC_EOPABORTED => Error::Aborted(operation),
+        NFC_ETGRELEASED => Error::TargetReleased(operation),
+        NFC_ERFTRANS => Error::RfTransmission(operation),
+        -30 => Error::Authentication(operation),
+        NFC_EIO => Error::Io(operation),
+        -90 => Error::Chip(operation),
+        _ => Error::DeviceOperationFailed { operation, code },
+    }
 }
 
 pub(super) fn status_code(error: &Error) -> i32 {
@@ -35,6 +74,14 @@ pub(super) fn status_code(error: &Error) -> i32 {
         Error::DriverOpenFailed(_) => -80,
         Error::MissingCapability(_) => NFC_EDEVNOTSUPP,
         Error::UnsupportedOperation(_) => NFC_ENOTIMPL,
+        Error::Timeout(_) => NFC_ETIMEOUT,
+        Error::Aborted(_) => NFC_EOPABORTED,
+        Error::TargetReleased(_) => NFC_ETGRELEASED,
+        Error::RfTransmission(_) => NFC_ERFTRANS,
+        Error::Authentication(_) => -30,
+        Error::Io(_) => NFC_EIO,
+        Error::Chip(_) => -90,
+        Error::OutcomeUnknown { .. } | Error::RecoveryFailed { .. } => -80,
         Error::DeviceOperationFailed { code, .. } => *code,
     }
 }
@@ -43,6 +90,10 @@ pub(crate) trait Pn53xTransport {
     fn send(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error>;
     fn receive(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error>;
     fn abort_command(&mut self) -> Result<(), Error>;
+
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        None
+    }
 
     fn wake_up(&mut self) -> Result<(), Error> {
         Ok(())

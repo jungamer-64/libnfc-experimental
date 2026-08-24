@@ -1,3 +1,4 @@
+use super::fake::{FakeCardState, FakePcscBackend, FakePcscCard};
 use super::*;
 use std::sync::Mutex;
 
@@ -21,7 +22,10 @@ fn scan_filters_out_acr122_readers() {
 
     let devices = driver.scan(&context).unwrap();
     assert_eq!(devices.len(), 1);
-    assert_eq!(devices[0].as_str(), "pcsc:Feitian R502 CL Reader 0");
+    assert_eq!(
+        devices[0].connstring.as_str(),
+        "pcsc:Feitian R502 CL Reader 0"
+    );
 }
 
 #[test]
@@ -53,21 +57,26 @@ fn select_passive_target_builds_iso14443a_target() {
     let driver = PcscDriver::with_backend(backend);
     let context = Context::new();
     let connstring = ConnectionString::new("pcsc:Reader A").unwrap();
-    let mut device = driver.open(&context, &connstring).unwrap();
+    let mut device =
+        proximate_driver::Device::from_backend(driver.open(&context, &connstring).unwrap());
 
     let target = device
+        .passive_scan_ops()
+        .unwrap()
         .select_passive_target(
-            Modulation {
-                modulation_type: ModulationType::Iso14443A,
-                baud_rate: BaudRate::Br106,
-            },
+            Modulation::try_new(ModulationType::Iso14443A, BaudRate::Br106).unwrap(),
             None,
         )
         .unwrap()
         .unwrap();
-    assert_eq!(target.modulation.modulation_type, ModulationType::Iso14443A);
-    match target.info {
-        TargetInfo::Iso14443A { uid, .. } => assert_eq!(uid, vec![0x01, 0x02, 0x03, 0x04]),
+    assert_eq!(
+        target.modulation().modulation_type(),
+        ModulationType::Iso14443A
+    );
+    match target.info() {
+        TargetInfo::Iso14443A { uid, .. } => {
+            assert_eq!(uid.as_slice(), &[0x01, 0x02, 0x03, 0x04])
+        }
         _ => panic!("unexpected target info"),
     }
 }
@@ -79,15 +88,24 @@ fn feitian_transceive_routes_through_apdu_translation() {
     let card = Box::new(FakePcscCard {
         state: Arc::new(Mutex::new(state)),
     });
-    let mut device = PcscDevice::new(
+    let device = PcscDevice::new(
         "Feitian Reader".into(),
         ConnectionString::new("pcsc:Feitian Reader").unwrap(),
         card,
         PcscShareMode::Direct,
         PcscProtocols::T0,
     );
+    let mut device = proximate_driver::Device::from_backend(Box::new(device));
     let mut rx = [0u8; 8];
-    let size = device.transceive_bytes(&[0x30, 0x04], &mut rx, 75).unwrap();
+    let size = device
+        .initiator_io_ops()
+        .unwrap()
+        .transceive_bytes(
+            &[0x30, 0x04],
+            &mut rx,
+            OperationTimeout::try_milliseconds(75).unwrap(),
+        )
+        .unwrap();
     assert_eq!(size, 2);
     assert_eq!(&rx[..size], &[0x90, 0x00]);
 }

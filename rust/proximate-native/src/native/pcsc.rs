@@ -1,7 +1,8 @@
 use proximate_driver::{
-    BaudRate, ConnectionString, Context, DeviceCaps, DeviceHandle, DeviceMeta, Driver, Error,
-    InfoBackend, InitiatorBackend, Mode, Modulation, ModulationType, Pn53xBackend, Property,
-    PropertyBackend, ScanType, Target, TargetBackend, TargetInfo, device_error_message,
+    BaudRate, ConnectionString, Context, DeviceHandle, DeviceMeta, Driver, Error, InfoBackend,
+    InitiatorBackend, Mode, Modulation, ModulationType, OperationTimeout, Pn53xBackend,
+    PollIterations, PollPeriod, Property, PropertyBackend, ScanType, Target, TargetBackend,
+    TargetInfo, device_error_message,
 };
 use std::fmt;
 use std::sync::Arc;
@@ -28,12 +29,10 @@ pub(crate) use self::backend::SystemPcscBackend;
 use self::backend::stringify_pcsc_error;
 pub(crate) use self::device::PcscDevice;
 pub(crate) use self::driver::PcscDriver;
-#[cfg(test)]
-pub(crate) use self::fake::{FakeCardState, FakePcscBackend, FakePcscCard};
 pub(crate) use self::reader::{ReaderFilter, resolve_reader, scan_matching_readers};
-use self::types::{PcscAttribute, PcscDisposition};
 pub(crate) use self::types::{
-    PcscBackend, PcscCard, PcscCardStatus, PcscProtocol, PcscProtocols, PcscShareMode,
+    PcscAttribute, PcscBackend, PcscCard, PcscCardStatus, PcscDisposition, PcscProtocol,
+    PcscProtocols, PcscShareMode,
 };
 
 const NFC_SUCCESS: i32 = 0;

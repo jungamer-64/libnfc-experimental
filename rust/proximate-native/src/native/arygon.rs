@@ -1,7 +1,9 @@
 use super::connstring::{build_path_speed_connstring, decode_path_speed_descriptor};
 use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport, is_ack_frame};
 use super::uart::{UartPort, list_candidate_paths};
-use proximate_driver::{ConnectionString, Context, DeviceHandle, Driver, Error, ScanType};
+use proximate_driver::{
+    CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error, ScanType,
+};
 use std::borrow::Cow;
 
 const DRIVER_NAME: &str = "arygon";
@@ -18,6 +20,10 @@ const PROTOCOL_TAMA: u8 = b'2';
 
 const ERROR_NONE: &[u8] = b"FF000000\r\n";
 const ERROR_UNKNOWN_MODE_PREFIX: &[u8] = b"FF0600";
+const ABORT_FRAME: [u8; 17] = [
+    0x32, 0x00, 0x00, 0xff, 0x09, 0xf7, 0xd4, 0x00, 0x00, 0x6c, 0x69, 0x62, 0x6e, 0x66, 0x63, 0xbe,
+    0x00,
+];
 const RESET_TAMA_COMMAND: &[u8] = &[PROTOCOL_ARYGON_ASCII, b'a', b'r'];
 const FIRMWARE_COMMAND: &[u8] = &[PROTOCOL_ARYGON_ASCII, b'a', b'v'];
 
@@ -47,23 +53,11 @@ impl Driver for ArygonDriver {
                 continue;
             };
 
-            #[cfg(target_os = "linux")]
-            {
-                let Ok(mut port) = UartPort::open(&path, DEFAULT_SPEED) else {
-                    continue;
-                };
-                if reset_tama(&mut port).is_ok() {
-                    devices.push(self.describe_discovered(
-                        format!("{DRIVER_NAME}:{path}"),
-                        connstring,
-                        Some(super::pn53x::scan_caps(Pn53xProfile::arygon())),
-                    ));
-                }
-            }
-
-            #[cfg(not(target_os = "linux"))]
-            {
-                let _ = connstring;
+            let Ok(mut port) = UartPort::open(&path, DEFAULT_SPEED) else {
+                continue;
+            };
+            if reset_tama(&mut port).is_ok() {
+                devices.push(self.describe_discovered(format!("{DRIVER_NAME}:{path}"), connstring));
             }
         }
 
@@ -76,36 +70,24 @@ impl Driver for ArygonDriver {
         connstring: &ConnectionString,
     ) -> Result<Box<dyn DeviceHandle>, Error> {
         let descriptor = decode_path_speed_descriptor(connstring, DRIVER_NAME, DEFAULT_SPEED)?;
+        let mut port = UartPort::open(&descriptor.path, descriptor.speed)?;
+        reset_tama(&mut port)?;
+        let firmware = query_firmware(&mut port)?;
+        let display_name = if firmware.is_empty() {
+            format!("{DRIVER_NAME}:{}", descriptor.path)
+        } else {
+            format!("{DRIVER_NAME}:{} {}", descriptor.path, firmware)
+        };
 
-        #[cfg(target_os = "linux")]
-        {
-            let mut port = UartPort::open(&descriptor.path, descriptor.speed)?;
-            reset_tama(&mut port)?;
-            let firmware = query_firmware(&mut port)?;
-            let display_name = if firmware.is_empty() {
-                format!("{DRIVER_NAME}:{}", descriptor.path)
-            } else {
-                format!("{DRIVER_NAME}:{} {}", descriptor.path, firmware)
-            };
-
-            let transport = ArygonTransport::new(port);
-            let device = Pn53xDevice::probe_with_profile(
-                display_name,
-                connstring.clone(),
-                Pn53xProfile::arygon(),
-                transport,
-                PROBE_TIMEOUT_MS,
-            )?;
-            Ok(Box::new(device))
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = descriptor;
-            Err(Error::DriverOpenFailed(
-                "arygon is only available on Linux in this phase".into(),
-            ))
-        }
+        let transport = ArygonTransport::new(port);
+        let device = Pn53xDevice::probe_with_profile(
+            display_name,
+            connstring.clone(),
+            Pn53xProfile::arygon(),
+            transport,
+            PROBE_TIMEOUT_MS,
+        )?;
+        Ok(Box::new(device))
     }
 }
 
@@ -143,11 +125,26 @@ impl Pn53xTransport for ArygonTransport {
     }
 
     fn receive(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
-        self.port.read_frame_into(buffer, timeout_ms)
+        match self.port.read_frame_into(buffer, timeout_ms) {
+            Err(operation @ Error::Aborted(_)) => {
+                if let Err(recovery) = self.port.write_all(&ABORT_FRAME, 0) {
+                    return Err(Error::RecoveryFailed {
+                        operation: Box::new(operation),
+                        recovery: Box::new(recovery),
+                    });
+                }
+                Err(operation)
+            }
+            result => result,
+        }
     }
 
     fn abort_command(&mut self) -> Result<(), Error> {
         self.port.abort_command()
+    }
+
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        Some(self.port.command_abort_handle())
     }
 }
 

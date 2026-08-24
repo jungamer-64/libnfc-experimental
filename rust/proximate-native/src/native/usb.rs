@@ -1,12 +1,44 @@
+/*-
+ * Free/Libre Near Field Communication (NFC) library
+ *
+ * Libnfc historical contributors:
+ * Copyright (C) 2009      Roel Verdult
+ * Copyright (C) 2009-2013 Romuald Conty
+ * Copyright (C) 2010-2012 Romain Tartière
+ * Copyright (C) 2010-2017 Philippe Teuwen
+ * Copyright (C) 2012-2013 Ludovic Rousseau
+ * See AUTHORS file for a more comprehensive list of contributors.
+ * Additional contributors of this file:
+ *
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by the
+ * Free Software Foundation, either version 3 of the License, or (at your
+ * option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>
+ */
+
 use super::connstring::{UsbSelector, build_usb_connstring, decode_usb_selector};
-use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport, Pn53xUsbModel};
+use super::pn53x::{PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, Pn53xUsbModel};
+use crate::command_abort::AtomicCommandAbort;
 use crate::usb::{UsbDeviceInfo, UsbError, UsbHandle, bulk_endpoints, list_devices, strerror};
-use proximate_driver::{ConnectionString, Context, DeviceHandle, Driver, Error, ScanType};
+use proximate_driver::{
+    CommandAbort, CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error,
+    ScanType,
+};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 const DRIVER_NAME: &str = "pn53x_usb";
 const PROBE_TIMEOUT_MS: i32 = 250;
 const NFC_EIO: i32 = -1;
-const NFC_ETIMEOUT: i32 = -6;
+const USB_ABORT_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Copy)]
 struct SupportedUsbDevice {
@@ -103,13 +135,8 @@ impl Driver for Pn53xUsbDriver {
                 continue;
             };
             if let Ok(connstring) = build_usb_connstring(info.bus_number, info.device_address) {
-                found.push(self.describe_discovered(
-                    usb_display_name(&info, supported),
-                    connstring,
-                    Some(super::pn53x::scan_caps(Pn53xProfile::pn53x_usb(
-                        supported.model,
-                    ))),
-                ));
+                found
+                    .push(self.describe_discovered(usb_display_name(&info, supported), connstring));
             }
         }
 
@@ -188,6 +215,7 @@ pub struct UsbTransport {
     handle: UsbHandle,
     endpoint_in: u8,
     endpoint_out: u8,
+    command_abort: Arc<AtomicCommandAbort>,
 }
 
 impl UsbTransport {
@@ -216,12 +244,36 @@ impl UsbTransport {
             handle,
             endpoint_in: endpoint_selection.endpoint_in,
             endpoint_out: endpoint_selection.endpoint_out,
+            command_abort: AtomicCommandAbort::new(),
         })
+    }
+
+    fn aborted_receive_error(&mut self) -> Error {
+        let operation = Error::Aborted("usb_receive");
+        let recovery = self
+            .handle
+            .bulk_write(self.endpoint_out, &PN53X_ACK_FRAME, 1_000)
+            .map_err(|error| map_usb_error("usb_abort_ack", error))
+            .and_then(|written| {
+                if written == PN53X_ACK_FRAME.len() {
+                    Ok(())
+                } else {
+                    Err(Error::Io("usb_abort_ack"))
+                }
+            });
+        match recovery {
+            Ok(()) => operation,
+            Err(recovery) => Error::RecoveryFailed {
+                operation: Box::new(operation),
+                recovery: Box::new(recovery),
+            },
+        }
     }
 }
 
 impl Pn53xTransport for UsbTransport {
     fn send(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
+        self.command_abort.begin_command();
         let sent = self
             .handle
             .bulk_write(self.endpoint_out, payload, timeout_ms)
@@ -233,13 +285,55 @@ impl Pn53xTransport for UsbTransport {
     }
 
     fn receive(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
-        self.handle
-            .bulk_read(self.endpoint_in, buffer, timeout_ms)
-            .map_err(|error| map_usb_error("usb_receive", error))
+        let started = Instant::now();
+        loop {
+            if self.command_abort.take_requested() {
+                return Err(self.aborted_receive_error());
+            }
+
+            let pass_timeout = if timeout_ms <= 0 {
+                USB_ABORT_POLL_INTERVAL.as_millis() as i32
+            } else {
+                let elapsed = started.elapsed();
+                let total = Duration::from_millis(timeout_ms as u64);
+                let Some(remaining) = total.checked_sub(elapsed) else {
+                    return Err(Error::Timeout("usb_receive"));
+                };
+                remaining.min(USB_ABORT_POLL_INTERVAL).as_millis().max(1) as i32
+            };
+
+            match self
+                .handle
+                .bulk_read(self.endpoint_in, buffer, pass_timeout)
+            {
+                Ok(received) => return Ok(received),
+                Err(UsbError::Timeout) => {
+                    if self.command_abort.take_requested() {
+                        return Err(self.aborted_receive_error());
+                    }
+                    if timeout_ms > 0
+                        && started.elapsed() >= Duration::from_millis(timeout_ms as u64)
+                    {
+                        return Err(Error::Timeout("usb_receive"));
+                    }
+                }
+                Err(error) => return Err(map_usb_error("usb_receive", error)),
+            }
+        }
     }
 
     fn abort_command(&mut self) -> Result<(), Error> {
-        Ok(())
+        self.command_abort.abort()
+    }
+
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        Some(self.command_abort.handle())
+    }
+}
+
+impl Drop for UsbTransport {
+    fn drop(&mut self) {
+        self.command_abort.revoke();
     }
 }
 
@@ -279,8 +373,8 @@ fn device_error(operation: &'static str, code: i32) -> Error {
 }
 
 fn map_usb_error(operation: &'static str, error: UsbError) -> Error {
-    let code = match error {
-        UsbError::Timeout => NFC_ETIMEOUT,
+    match error {
+        UsbError::Timeout => Error::Timeout(operation),
         UsbError::NoDevice
         | UsbError::Io
         | UsbError::InvalidParam
@@ -292,9 +386,8 @@ fn map_usb_error(operation: &'static str, error: UsbError) -> Error {
         | UsbError::Interrupted
         | UsbError::NoMem
         | UsbError::NotSupported
-        | UsbError::Other => NFC_EIO,
-    };
-    device_error(operation, code)
+        | UsbError::Other => device_error(operation, NFC_EIO),
+    }
 }
 
 #[cfg(test)]
@@ -312,10 +405,7 @@ mod tests {
     fn usb_error_mapping_preserves_timeout_and_io_classes() {
         assert!(matches!(
             map_usb_error("usb_receive", UsbError::Timeout),
-            Error::DeviceOperationFailed {
-                operation: "usb_receive",
-                code: NFC_ETIMEOUT
-            }
+            Error::Timeout("usb_receive")
         ));
         assert!(matches!(
             map_usb_error("usb_send", UsbError::Pipe),

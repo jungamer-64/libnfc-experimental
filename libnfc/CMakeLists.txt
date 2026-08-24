@@ -1,6 +1,6 @@
 # Windows MinGW workarounds
 if(WIN32)
-  set(WINDOWS_SOURCES ../contrib/win32/stdlib.c)
+  set(WINDOWS_SOURCES)
   include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32")
 
   set(RC_COMMENT "${PACKAGE_NAME} library")
@@ -23,7 +23,12 @@ endif()
 set(CHIPS_SOURCES)
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 
+set(LIBNFC_RUST_ANCHOR "${CMAKE_CURRENT_BINARY_DIR}/libnfc_rust_anchor.c")
+file(GENERATE OUTPUT "${LIBNFC_RUST_ANCHOR}" CONTENT
+  "/* Generated linker anchor. All public libnfc behavior is implemented by Rust. */\n")
+
 set(LIBRARY_SOURCES
+  "${LIBNFC_RUST_ANCHOR}"
   ${DRIVERS_SOURCES}
   ${CHIPS_SOURCES}
   ${WINDOWS_SOURCES})
@@ -42,9 +47,7 @@ if(LIBNFC_NCI_FOUND)
 endif()
 
 add_library(nfc ${LIBRARY_SOURCES})
-if(PROXIMATE_C_FFI)
-  add_dependencies(nfc proximate_sys_build)
-endif()
+add_dependencies(nfc proximate_sys_build)
 
 target_include_directories(nfc
   PUBLIC
@@ -61,10 +64,15 @@ set(LIBNFC_STATIC_LINK_LIBRARIES)
 set(LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES)
 set(LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES)
 
-if(PROXIMATE_C_FFI)
+if(MSVC)
+  # The module-definition file makes every public ABI symbol a link root.
+  # /WHOLEARCHIVE cannot be used for a Rust staticlib because it also expands
+  # bundled Windows import-library members and creates duplicate descriptors.
+  list(APPEND LIBNFC_SHARED_LINK_LIBRARIES "${RUST_LIB_PATH}")
+else()
   list(APPEND LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES "${RUST_LIB_PATH}")
-  list(APPEND LIBNFC_STATIC_LINK_LIBRARIES "${RUST_LIB_PATH}")
 endif()
+list(APPEND LIBNFC_STATIC_LINK_LIBRARIES "${RUST_LIB_PATH}")
 
 if(PCSC_FOUND)
   list(APPEND LIBNFC_SHARED_LINK_LIBRARIES ${PCSC_LIBRARIES})
@@ -82,8 +90,9 @@ if(LIBRT_FOUND)
 endif()
 
 if(WIN32)
-  list(APPEND LIBNFC_SHARED_LINK_LIBRARIES wsock32)
-  list(APPEND LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES wsock32)
+  set(LIBNFC_RUST_WINDOWS_LIBRARIES ntdll userenv ws2_32 bcrypt advapi32)
+  list(APPEND LIBNFC_SHARED_LINK_LIBRARIES ${LIBNFC_RUST_WINDOWS_LIBRARIES})
+  list(APPEND LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES ${LIBNFC_RUST_WINDOWS_LIBRARIES})
 endif()
 
 if(BUILD_SHARED_LIBS)
@@ -156,6 +165,6 @@ if(WIN32 AND BUILD_SHARED_LIBS AND MINGW)
   install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libnfc.lib" DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libraries)
 endif()
 
-if(NOT BUILD_SHARED_LIBS AND PROXIMATE_C_FFI)
+if(NOT BUILD_SHARED_LIBS)
   install(FILES "${RUST_LIB_PATH}" DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libraries)
 endif()

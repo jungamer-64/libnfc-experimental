@@ -131,7 +131,6 @@ impl From<rt::ContextConfig> for Config {
 pub struct DeviceDescriptor {
     pub display_name: String,
     pub selector: Selector,
-    pub caps: Option<rt::DeviceCaps>,
     pub scan_type: rt::ScanType,
     pub exclusive: bool,
     pub origin: rt::DeviceOrigin,
@@ -233,7 +232,6 @@ impl Context {
             .map(|descriptor| DeviceDescriptor {
                 display_name: descriptor.display_name,
                 selector: descriptor.connstring.into(),
-                caps: descriptor.caps,
                 scan_type: descriptor.scan_type,
                 exclusive: descriptor.exclusive,
                 origin: descriptor.origin,
@@ -266,15 +264,13 @@ mod tests {
     struct FakeDevice {
         name: String,
         connstring: rt::ConnectionString,
-        caps: rt::DeviceCaps,
     }
 
     impl FakeDevice {
-        fn new(connstring: &str, caps: rt::DeviceCaps) -> Self {
+        fn new(connstring: &str) -> Self {
             Self {
                 name: "fake".into(),
                 connstring: rt::ConnectionString::new(connstring).unwrap(),
-                caps,
             }
         }
     }
@@ -286,10 +282,6 @@ mod tests {
 
         fn connstring(&self) -> &rt::ConnectionString {
             &self.connstring
-        }
-
-        fn caps(&self) -> rt::DeviceCaps {
-            self.caps
         }
     }
 
@@ -334,9 +326,7 @@ mod tests {
 
     impl rt::Pn53xBackend for FakeDevice {}
 
-    struct FakeDriver {
-        caps: rt::DeviceCaps,
-    }
+    struct FakeDriver;
 
     impl rt::Driver for FakeDriver {
         fn name(&self) -> &str {
@@ -351,7 +341,6 @@ mod tests {
             Ok(vec![self.describe_discovered(
                 "fake descriptor".to_string(),
                 rt::ConnectionString::new("fake:001").unwrap(),
-                Some(self.caps),
             )])
         }
 
@@ -360,7 +349,7 @@ mod tests {
             _context: &rt::Context,
             connstring: &rt::ConnectionString,
         ) -> Result<Box<dyn rt::DeviceHandle>, rt::Error> {
-            Ok(Box::new(FakeDevice::new(connstring.as_str(), self.caps)))
+            Ok(Box::new(FakeDevice::new(connstring.as_str())))
         }
     }
 
@@ -455,34 +444,31 @@ mod tests {
         assert_eq!(scanned.len(), 1);
         assert_eq!(scanned[0].display_name, "named");
         assert_eq!(scanned[0].selector.as_str(), "fake:001");
-        assert_eq!(scanned[0].caps, None);
         assert_eq!(scanned[0].scan_type, rt::ScanType::NotAvailable);
         assert!(!scanned[0].exclusive);
         assert_eq!(scanned[0].origin, rt::DeviceOrigin::UserDefined);
     }
 
     #[test]
-    fn device_accessors_fail_when_capability_is_missing() {
+    fn backend_results_are_the_operation_authority() {
         let context = Context::builder()
             .without_builtin_drivers()
-            .register_driver(FakeDriver {
-                caps: rt::DeviceCaps::SET_PROPERTY_BOOL,
-            })
+            .register_driver(FakeDriver)
             .build();
         let selector = Selector::new("fake:001").unwrap();
         let mut device: rt::Device = context.open(&selector).unwrap();
 
         assert!(matches!(
-            device.info_ops(),
-            Err(rt::Error::MissingCapability(_))
+            device.info_ops().unwrap().information_about(),
+            Err(rt::Error::UnsupportedOperation("information_about"))
         ));
         assert!(matches!(
-            device.session_ops(),
-            Err(rt::Error::MissingCapability(_))
+            device.session_ops().unwrap().abort_command(),
+            Err(rt::Error::UnsupportedOperation("abort_command"))
         ));
         assert!(matches!(
-            device.pn53x_ops(),
-            Err(rt::Error::MissingCapability(_))
+            device.pn53x_ops().unwrap().read_register(0),
+            Err(rt::Error::UnsupportedOperation("pn53x_read_register"))
         ));
     }
 
@@ -490,9 +476,7 @@ mod tests {
     fn open_default_returns_runtime_device() {
         let context = Context::builder()
             .without_builtin_drivers()
-            .register_driver(FakeDriver {
-                caps: rt::DeviceCaps::SET_PROPERTY_BOOL,
-            })
+            .register_driver(FakeDriver)
             .build();
 
         let device: rt::Device = context.open_default().unwrap();

@@ -1,3 +1,30 @@
+/*-
+ * Free/Libre Near Field Communication (NFC) library
+ *
+ * Libnfc historical contributors:
+ * Copyright (C) 2009      Roel Verdult
+ * Copyright (C) 2009-2013 Romuald Conty
+ * Copyright (C) 2010-2012 Romain Tartière
+ * Copyright (C) 2010-2013 Philippe Teuwen
+ * Copyright (C) 2012-2013 Ludovic Rousseau
+ * See AUTHORS file for a more comprehensive list of contributors.
+ * Additional contributors of this file:
+ * Copyright (C) 2020      Adam Laurie
+ *
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by the
+ * Free Software Foundation, either version 3 of the License, or (at your
+ * option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>
+ */
+
 use super::*;
 use std::collections::VecDeque;
 
@@ -22,7 +49,7 @@ fn cascade_iso14443a_uid(uid: &[u8]) -> Vec<u8> {
 }
 
 fn default_initiator_payload(modulation: Modulation) -> &'static [u8] {
-    match modulation.modulation_type {
+    match modulation.modulation_type() {
         ModulationType::Iso14443B => &[0x00],
         ModulationType::Iso14443Bi => &[0x01, 0x0b, 0x3f, 0x80],
         ModulationType::Felica => &[0x00, 0xff, 0xff, 0x01, 0x00],
@@ -47,11 +74,11 @@ trait TestPn53xOps:
     }
 
     fn pn53x_transceive(&mut self, tx: &[u8], rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
-        self.pn53x_transceive_driver(tx, rx, timeout)
+        self.pn53x_transceive_driver(tx, rx, OperationTimeout::from_libnfc_millis(timeout)?)
     }
 
     fn pn532_sam_configuration(&mut self, mode: u8, timeout: i32) -> Result<i32, Error> {
-        self.pn532_sam_configuration_driver(mode, timeout)
+        self.pn532_sam_configuration_driver(mode, OperationTimeout::from_libnfc_millis(timeout)?)
     }
 
     fn initiator_init(&mut self) -> Result<i32, Error> {
@@ -80,7 +107,7 @@ trait TestPn53xOps:
         init_data: Option<&[u8]>,
     ) -> Result<Option<Target>, Error> {
         let payload = if init_data.is_some_and(|value| !value.is_empty()) {
-            if modulation.modulation_type == ModulationType::Iso14443A {
+            if modulation.modulation_type() == ModulationType::Iso14443A {
                 cascade_iso14443a_uid(init_data.expect("checked above"))
             } else {
                 init_data.expect("checked above").to_vec()
@@ -98,7 +125,12 @@ trait TestPn53xOps:
         initiator: Option<&DepInfo>,
         timeout: i32,
     ) -> Result<Option<Target>, Error> {
-        self.select_dep_target_driver(mode, baud_rate, initiator, timeout)
+        self.select_dep_target_driver(
+            mode,
+            baud_rate,
+            initiator,
+            OperationTimeout::from_libnfc_millis(timeout)?,
+        )
     }
 
     fn deselect_target(&mut self) -> Result<(), Error> {
@@ -110,7 +142,7 @@ trait TestPn53xOps:
     }
 
     fn transceive_bytes(&mut self, tx: &[u8], rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
-        self.transceive_bytes_driver(tx, rx, timeout)
+        self.transceive_bytes_driver(tx, rx, OperationTimeout::from_libnfc_millis(timeout)?)
     }
 
     fn transceive_bytes_timed(&mut self, tx: &[u8], rx: &mut [u8]) -> Result<(usize, u32), Error> {
@@ -135,15 +167,15 @@ trait TestPn53xOps:
         ] {
             self.set_property_bool(property, value)?;
         }
-        self.target_init_driver(target, rx, timeout)
+        self.target_init_driver(target, rx, OperationTimeout::from_libnfc_millis(timeout)?)
     }
 
     fn target_send_bytes(&mut self, tx: &[u8], timeout: i32) -> Result<usize, Error> {
-        self.target_send_bytes_driver(tx, timeout)
+        self.target_send_bytes_driver(tx, OperationTimeout::from_libnfc_millis(timeout)?)
     }
 
     fn target_receive_bytes(&mut self, rx: &mut [u8], timeout: i32) -> Result<usize, Error> {
-        self.target_receive_bytes_driver(rx, timeout)
+        self.target_receive_bytes_driver(rx, OperationTimeout::from_libnfc_millis(timeout)?)
     }
 
     fn transceive_bits(
@@ -154,7 +186,8 @@ trait TestPn53xOps:
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<usize, Error> {
-        self.transceive_bits_driver(tx, tx_bits_len, tx_parity, rx, rx_parity)
+        let tx = BitFrame::try_new(tx, tx_bits_len, tx_parity)?;
+        self.transceive_bits_driver(tx, rx, rx_parity)
     }
 
     fn target_receive_bits(
@@ -173,7 +206,8 @@ trait TestPn53xOps:
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<(usize, u32), Error> {
-        self.transceive_bits_timed_driver(tx, tx_bits_len, tx_parity, rx, rx_parity)
+        let tx = BitFrame::try_new(tx, tx_bits_len, tx_parity)?;
+        self.transceive_bits_timed_driver(tx, rx, rx_parity)
     }
 
     fn target_send_bits(
@@ -182,7 +216,8 @@ trait TestPn53xOps:
         tx_bits_len: usize,
         tx_parity: Option<&[u8]>,
     ) -> Result<usize, Error> {
-        self.target_send_bits_driver(tx, tx_bits_len, tx_parity)
+        let tx = BitFrame::try_new(tx, tx_bits_len, tx_parity)?;
+        self.target_send_bits_driver(tx)
     }
 }
 
@@ -192,6 +227,8 @@ impl<T> TestPn53xOps for Pn53xDevice<T> where T: Pn53xTransport + Send + 'static
 struct FakeTransport {
     sent: Vec<Vec<u8>>,
     received: VecDeque<Vec<u8>>,
+    receive_calls: usize,
+    receive_failures: VecDeque<(usize, Error)>,
     wake_up_calls: usize,
     abort_calls: usize,
 }
@@ -203,6 +240,18 @@ impl Pn53xTransport for FakeTransport {
     }
 
     fn receive(&mut self, buffer: &mut [u8], _timeout_ms: i32) -> Result<usize, Error> {
+        self.receive_calls += 1;
+        if self
+            .receive_failures
+            .front()
+            .is_some_and(|(call, _)| *call == self.receive_calls)
+        {
+            return Err(self
+                .receive_failures
+                .pop_front()
+                .expect("failure was checked above")
+                .1);
+        }
         let payload = self
             .received
             .pop_front()
@@ -226,6 +275,31 @@ impl Pn53xTransport for FakeTransport {
         self.wake_up_calls += 1;
         Ok(())
     }
+}
+
+#[test]
+fn transport_confirmed_abort_does_not_force_protocol_reinitialization() {
+    let mut core = Pn53xCore::default();
+    let mut transport = FakeTransport::default();
+    transport.received.push_back(PN53X_ACK_FRAME.to_vec());
+    transport
+        .receive_failures
+        .push_back((2, Error::Aborted("transport_receive")));
+
+    assert_eq!(
+        core.get_firmware_version(Pn53xProfile::pn532("pn532_uart"), &mut transport, 25),
+        Err(Error::Aborted("transport_receive"))
+    );
+
+    transport.received.push_back(PN53X_ACK_FRAME.to_vec());
+    transport
+        .received
+        .push_back(response_frame(0x02, &[0x32, 0x01, 0x06, 0x07]));
+    let firmware = core
+        .get_firmware_version(Pn53xProfile::pn532("pn532_uart"), &mut transport, 25)
+        .unwrap();
+    assert_eq!(firmware.chip_type(), Pn53xType::Pn532);
+    assert_eq!(transport.sent.len(), 2);
 }
 
 fn response_frame(command: u8, payload: &[u8]) -> Vec<u8> {
@@ -259,6 +333,8 @@ fn queue_probe_responses(transport: &mut FakeTransport) {
     transport
         .received
         .push_back(response_frame(0x02, &[0x32, 0x01, 0x06, 0x07]));
+    queue_command_response(transport, PN53X_SET_PARAMETERS, &[]);
+    queue_masked_register_update(transport, &[0x00, 0x00, 0x00, 0x00, 0x00], true);
 }
 
 fn queue_command_response(transport: &mut FakeTransport, command: u8, payload: &[u8]) {
@@ -266,6 +342,21 @@ fn queue_command_response(transport: &mut FakeTransport, command: u8, payload: &
     transport
         .received
         .push_back(response_frame(command, payload));
+}
+
+fn queue_masked_register_update(
+    transport: &mut FakeTransport,
+    current_values: &[u8],
+    changes_registers: bool,
+) {
+    queue_command_response(transport, PN53X_READ_REGISTER, current_values);
+    if changes_registers {
+        queue_command_response(transport, PN53X_WRITE_REGISTER, &[]);
+    }
+}
+
+fn sent_payload(transport: &FakeTransport, index: usize) -> Vec<u8> {
+    payload_from_host_frame(&transport.sent[index]).unwrap()
 }
 
 fn probed_device() -> Pn53xDevice<FakeTransport> {
@@ -401,10 +492,97 @@ fn probe_builds_pure_rust_device_and_reports_information() {
         device.information_about().unwrap(),
         "PN532 firmware v1.6 support=0x07 via pn532_uart:/dev/ttyUSB0:115200"
     );
+    assert_eq!(device.core.protocol_state, Pn53xProtocolState::Ready);
+    assert_eq!(
+        sent_payload(&device.transport, 3),
+        vec![
+            PN53X_READ_REGISTER,
+            0x63,
+            0x02,
+            0x63,
+            0x03,
+            0x63,
+            0x0d,
+            0x63,
+            0x38,
+            0x63,
+            0x3d,
+        ]
+    );
+    assert_eq!(
+        sent_payload(&device.transport, 4),
+        vec![
+            PN53X_WRITE_REGISTER,
+            0x63,
+            0x02,
+            SYMBOL_TX_CRC_ENABLE,
+            0x63,
+            0x03,
+            SYMBOL_RX_CRC_ENABLE,
+        ]
+    );
 }
 
 #[test]
-fn device_property_state_and_initiator_defaults_are_pure_rust() {
+fn pn531_and_pn533_probe_transcripts_establish_the_same_frame_defaults() {
+    let mut pn531_transport = FakeTransport::default();
+    queue_command_response(
+        &mut pn531_transport,
+        PN53X_GET_FIRMWARE_VERSION,
+        &[0x01, 0x02],
+    );
+    queue_command_response(&mut pn531_transport, PN53X_SET_PARAMETERS, &[]);
+    queue_masked_register_update(&mut pn531_transport, &[0x00, 0x00, 0x00, 0x00, 0x00], true);
+    let pn531 = Pn53xDevice::probe_with_profile(
+        "PN531",
+        ConnectionString::new("pn53x_usb:pn531").unwrap(),
+        Pn53xProfile::pn53x_usb(Pn53xUsbModel::NxpPn531),
+        pn531_transport,
+        25,
+    )
+    .unwrap();
+    assert_eq!(pn531.core.chip_type(), Pn53xType::Pn531);
+    assert_eq!(pn531.transport.wake_up_calls, 0);
+    assert_eq!(
+        sent_payload(&pn531.transport, 0),
+        vec![PN53X_GET_FIRMWARE_VERSION]
+    );
+
+    let mut pn533_transport = FakeTransport::default();
+    queue_command_response(
+        &mut pn533_transport,
+        PN53X_GET_FIRMWARE_VERSION,
+        &[0x33, 0x02, 0x01, 0x07],
+    );
+    queue_command_response(&mut pn533_transport, PN53X_SET_PARAMETERS, &[]);
+    queue_command_response(
+        &mut pn533_transport,
+        PN53X_READ_REGISTER,
+        &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    );
+    queue_command_response(&mut pn533_transport, PN53X_WRITE_REGISTER, &[]);
+    let pn533 = Pn53xDevice::probe_with_profile(
+        "PN533",
+        ConnectionString::new("pn53x_usb:pn533").unwrap(),
+        Pn53xProfile::pn53x_usb(Pn53xUsbModel::NxpPn533),
+        pn533_transport,
+        25,
+    )
+    .unwrap();
+    assert_eq!(pn533.core.chip_type(), Pn53xType::Pn533);
+    assert_eq!(pn533.transport.wake_up_calls, 0);
+    assert_eq!(
+        sent_payload(&pn533.transport, 2),
+        sent_payload(&pn531.transport, 2)
+    );
+    assert_eq!(
+        sent_payload(&pn533.transport, 3),
+        sent_payload(&pn531.transport, 3)
+    );
+}
+
+#[test]
+fn device_property_state_follows_confirmed_chip_commands() {
     let mut transport = FakeTransport::default();
     queue_probe_responses(&mut transport);
 
@@ -428,11 +606,18 @@ fn device_property_state_and_initiator_defaults_are_pure_rust() {
     device
         .set_property_int(Property::TimeoutCommand, 900)
         .unwrap();
+    queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
+    queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
+    queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
+    queue_masked_register_update(&mut device.transport, &[0x00, 0x00, 0x00], true);
+    queue_masked_register_update(&mut device.transport, &[0x00, 0x00], false);
+    queue_masked_register_update(&mut device.transport, &[0x00, 0x00, 0x00, 0x00, 0x00], true);
+    queue_masked_register_update(&mut device.transport, &[0x00], true);
     device.initiator_init().unwrap();
 
     assert_eq!(
         device.property_bool_state(Property::EasyFraming),
-        Some(false)
+        Some(true)
     );
     assert_eq!(
         device.property_bool_state(Property::InfiniteSelect),
@@ -465,7 +650,7 @@ fn abort_command_delegates_to_transport() {
 }
 
 #[test]
-fn transport_timeout_is_preserved_as_device_error() {
+fn timeout_after_send_requires_reinitialization() {
     let mut transport = FakeTransport::default();
     transport.received.push_back(PN53X_ACK_FRAME.to_vec());
 
@@ -476,10 +661,190 @@ fn transport_timeout_is_preserved_as_device_error() {
 
     assert_eq!(
         error,
-        Error::DeviceOperationFailed {
-            operation: "receive",
-            code: NFC_ETIMEOUT,
+        Error::OutcomeUnknown {
+            operation: "pn53x_wait_for_response",
         }
+    );
+}
+
+#[test]
+fn next_command_recovers_after_unknown_outcome() {
+    let mut device = probed_device();
+    device
+        .transport
+        .received
+        .push_back(PN53X_ACK_FRAME.to_vec());
+    let mut rx = [0u8; 8];
+    assert!(matches!(
+        device.pn53x_transceive(&[PN53X_GET_FIRMWARE_VERSION], &mut rx, 25),
+        Err(Error::OutcomeUnknown { .. })
+    ));
+    let recovery_start = device.transport.sent.len();
+
+    queue_command_response(
+        &mut device.transport,
+        PN53X_GET_FIRMWARE_VERSION,
+        &[0x32, 0x01, 0x06, 0x07],
+    );
+    queue_command_response(&mut device.transport, PN53X_SET_PARAMETERS, &[]);
+    queue_masked_register_update(
+        &mut device.transport,
+        &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        true,
+    );
+    queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
+    queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
+    queue_command_response(&mut device.transport, PN53X_GET_FIRMWARE_VERSION, &[0xaa]);
+    assert_eq!(
+        device
+            .pn53x_transceive(&[PN53X_GET_FIRMWARE_VERSION], &mut rx, 25)
+            .unwrap(),
+        1
+    );
+    assert_eq!(rx[0], 0xaa);
+    assert_eq!(device.transport.wake_up_calls, 2);
+    assert_eq!(device.core.protocol_state, Pn53xProtocolState::Ready);
+    assert_eq!(
+        sent_payload(&device.transport, recovery_start),
+        vec![PN53X_GET_FIRMWARE_VERSION]
+    );
+    assert_eq!(
+        sent_payload(&device.transport, recovery_start + 1),
+        vec![PN53X_SET_PARAMETERS, PARAM_AUTO_ATR_RES | PARAM_AUTO_RATS]
+    );
+    assert_eq!(
+        sent_payload(&device.transport, recovery_start + 2),
+        vec![
+            PN53X_READ_REGISTER,
+            0x63,
+            0x02,
+            0x63,
+            0x03,
+            0x63,
+            0x05,
+            0x63,
+            0x0d,
+            0x63,
+            0x38,
+            0x63,
+            0x3d,
+        ]
+    );
+    assert_eq!(
+        sent_payload(&device.transport, recovery_start + 3),
+        vec![
+            PN53X_WRITE_REGISTER,
+            0x63,
+            0x02,
+            SYMBOL_TX_CRC_ENABLE,
+            0x63,
+            0x03,
+            SYMBOL_RX_CRC_ENABLE,
+            0x63,
+            0x05,
+            SYMBOL_FORCE_100_ASK,
+        ]
+    );
+    assert_eq!(
+        sent_payload(&device.transport, recovery_start + 4),
+        vec![PN53X_RF_CONFIGURATION, RFCI_FIELD, 0x01]
+    );
+    assert_eq!(
+        sent_payload(&device.transport, recovery_start + 5),
+        vec![PN53X_RF_CONFIGURATION, RFCI_RETRY_SELECT, 0x00, 0x01, 0x02]
+    );
+}
+
+#[test]
+fn recovery_failure_preserves_operation_and_recovery_errors() {
+    let mut device = probed_device();
+    device
+        .transport
+        .received
+        .push_back(PN53X_ACK_FRAME.to_vec());
+    let mut rx = [0u8; 8];
+    let _ = device
+        .pn53x_transceive(&[PN53X_GET_FIRMWARE_VERSION], &mut rx, 25)
+        .unwrap_err();
+
+    let error = device
+        .pn53x_transceive(&[PN53X_GET_FIRMWARE_VERSION], &mut rx, 25)
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        Error::RecoveryFailed {
+            operation,
+            recovery,
+        } if matches!(*operation, Error::OutcomeUnknown { .. })
+            && matches!(*recovery, Error::OutcomeUnknown { .. })
+    ));
+}
+
+#[test]
+fn firmware_capabilities_cover_pn531_pn532_and_pn533_differences() {
+    let pn531 = ChipCapabilities::from_firmware_response(&[0x01, 0x02]).unwrap();
+    assert_eq!(pn531.chip_type(), Pn53xType::Pn531);
+    assert_eq!(
+        pn531.supported_modulations(Mode::Initiator),
+        vec![
+            ModulationType::Iso14443A,
+            ModulationType::Felica,
+            ModulationType::Dep,
+        ]
+    );
+
+    let pn532 = ChipCapabilities::from_firmware_response(&[0x32, 0x01, 0x06, 0x07]).unwrap();
+    assert_eq!(pn532.chip_type(), Pn53xType::Pn532);
+    assert!(
+        pn532
+            .supported_modulations(Mode::Initiator)
+            .contains(&ModulationType::Iso14443BiClass)
+    );
+
+    let pn533 = ChipCapabilities::from_firmware_response(&[0x33, 0x02, 0x01, 0x07]).unwrap();
+    assert_eq!(pn533.chip_type(), Pn53xType::Pn533);
+    assert_eq!(
+        pn533.supported_baud_rates(Mode::Initiator, ModulationType::Iso14443A),
+        vec![
+            BaudRate::Br847,
+            BaudRate::Br424,
+            BaudRate::Br212,
+            BaudRate::Br106,
+        ]
+    );
+}
+
+#[test]
+fn property_state_changes_only_after_register_command_confirmation() {
+    let mut device = probed_device();
+    queue_command_response(
+        &mut device.transport,
+        PN53X_READ_REGISTER,
+        &[SYMBOL_TX_CRC_ENABLE, SYMBOL_RX_CRC_ENABLE],
+    );
+    device
+        .transport
+        .received
+        .push_back(PN53X_ACK_FRAME.to_vec());
+
+    assert!(matches!(
+        device.set_property_bool(Property::HandleCrc, false),
+        Err(Error::OutcomeUnknown { .. })
+    ));
+    assert_eq!(device.property_bool_state(Property::HandleCrc), Some(true));
+}
+
+#[test]
+fn activate_field_uses_rf_configuration_transcript() {
+    let mut device = probed_device();
+    let sent_before = device.transport.sent.len();
+    queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
+    device
+        .set_property_bool(Property::ActivateField, false)
+        .unwrap();
+    assert_eq!(
+        sent_payload(&device.transport, sent_before),
+        vec![PN53X_RF_CONFIGURATION, RFCI_FIELD, 0x00]
     );
 }
 
@@ -505,18 +870,15 @@ fn select_passive_target_decodes_iso14443a_and_tracks_current_target() {
 
     let target = device
         .select_passive_target(
-            Modulation {
-                modulation_type: ModulationType::Iso14443A,
-                baud_rate: BaudRate::Br106,
-            },
+            Modulation::try_new(ModulationType::Iso14443A, BaudRate::Br106).unwrap(),
             None,
         )
         .unwrap()
         .unwrap();
 
     assert_eq!(
-        target.info,
-        TargetInfo::Iso14443A {
+        target.info(),
+        &TargetInfo::Iso14443A {
             atqa: [0x04, 0x00],
             sak: 0x08,
             uid: vec![0xde, 0xad, 0xbe, 0xef],
@@ -524,6 +886,168 @@ fn select_passive_target_decodes_iso14443a_and_tracks_current_target() {
         }
     );
     assert_eq!(device.core.current_target(), Some(&target));
+}
+
+#[test]
+fn pn532_auto_poll_uses_fixed_command_transcript_and_decodes_target() {
+    let mut device = probed_device();
+    let target_data = [
+        0x01, 0x04, 0x00, 0x08, 0x04, 0xde, 0xad, 0xbe, 0xef, 0x05, 0x75, 0x77, 0x81, 0x02,
+    ];
+    let mut response = vec![0x01, 0x20, target_data.len() as u8];
+    response.extend_from_slice(&target_data);
+    queue_command_response(&mut device.transport, PN532_IN_AUTO_POLL, &response);
+    let sent_before = device.transport.sent.len();
+
+    let target = device
+        .poll_target_driver(
+            &[Modulation::try_new(ModulationType::Iso14443A, BaudRate::Br106).unwrap()],
+            PollIterations::from_libnfc(2).unwrap(),
+            PollPeriod::try_new(1).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+    assert!(matches!(target.info(), TargetInfo::Iso14443A { .. }));
+    assert_eq!(
+        sent_payload(&device.transport, sent_before),
+        vec![PN532_IN_AUTO_POLL, 0x02, 0x01, 0x20, 0x10]
+    );
+}
+
+#[test]
+fn pn532_auto_poll_rejects_malformed_target_lengths() {
+    let mut device = probed_device();
+    queue_command_response(
+        &mut device.transport,
+        PN532_IN_AUTO_POLL,
+        &[0x01, 0x10, 0x20, 0x01],
+    );
+    assert_eq!(
+        device.poll_target_driver(
+            &[Modulation::try_new(ModulationType::Iso14443A, BaudRate::Br106).unwrap()],
+            PollIterations::from_libnfc(1).unwrap(),
+            PollPeriod::try_new(1).unwrap(),
+        ),
+        Err(Error::InvalidEncoding("InAutoPoll target data"))
+    );
+}
+
+#[test]
+fn iso14443a_high_speed_selection_uses_in_psl() {
+    let mut device = probed_device();
+    queue_command_response(
+        &mut device.transport,
+        PN53X_IN_LIST_PASSIVE_TARGET,
+        &[
+            0x01, 0x01, 0x04, 0x00, 0x08, 0x04, 0xde, 0xad, 0xbe, 0xef, 0x05, 0x75, 0x77, 0x81,
+            0x02,
+        ],
+    );
+    queue_command_response(&mut device.transport, PN53X_IN_PSL, &[0x00]);
+    let sent_before = device.transport.sent.len();
+    device
+        .select_passive_target(
+            Modulation::try_new(ModulationType::Iso14443A, BaudRate::Br424).unwrap(),
+            None,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        sent_payload(&device.transport, sent_before + 1),
+        vec![PN53X_IN_PSL, 0x01, 0x02, 0x02]
+    );
+}
+
+#[test]
+fn specialized_target_decoders_validate_and_preserve_protocol_data() {
+    let bi = decode_target_data(
+        Pn53xType::Pn532,
+        Modulation::try_new(ModulationType::Iso14443Bi, BaudRate::Br106).unwrap(),
+        &[0x01, 0x07, 1, 2, 3, 4, 0xc0, 0x40, 0xaa, 0xbb],
+    )
+    .unwrap();
+    assert_eq!(
+        bi.info(),
+        &TargetInfo::Iso14443Bi {
+            div: [1, 2, 3, 4],
+            version_log: 0xc0,
+            config: 0x40,
+            atr: vec![0xaa, 0xbb],
+        }
+    );
+
+    let iclass = decode_target_data(
+        Pn53xType::Pn532,
+        Modulation::try_new(ModulationType::Iso14443BiClass, BaudRate::Br106).unwrap(),
+        &[1, 2, 3, 4, 5, 6, 7, 8],
+    )
+    .unwrap();
+    assert_eq!(
+        iclass.info(),
+        &TargetInfo::Iso14443BiClass {
+            uid: [8, 7, 6, 5, 4, 3, 2, 1],
+        }
+    );
+
+    assert_eq!(
+        decode_target_data(
+            Pn53xType::Pn532,
+            Modulation::try_new(ModulationType::Iso14443B2Sr, BaudRate::Br106).unwrap(),
+            &[0; 7],
+        ),
+        Err(Error::InvalidEncoding("ISO14443B2SR UID"))
+    );
+}
+
+#[test]
+fn b2ct_manual_discovery_uses_upstream_raw_command_sequence() {
+    let mut device = probed_device();
+    queue_masked_register_update(&mut device.transport, &[0x00, 0x00], true);
+    queue_masked_register_update(&mut device.transport, &[0x03, 0x03], false);
+    queue_command_response(
+        &mut device.transport,
+        PN53X_IN_COMMUNICATE_THRU,
+        &[0x00, 0x12, 0x34],
+    );
+    queue_command_response(
+        &mut device.transport,
+        PN53X_IN_COMMUNICATE_THRU,
+        &[0x00, 0xaa, 0xbb],
+    );
+    queue_command_response(
+        &mut device.transport,
+        PN53X_IN_COMMUNICATE_THRU,
+        &[0x00, 0xcc, 0xdd],
+    );
+    let sent_before = device.transport.sent.len();
+
+    let target = device
+        .select_passive_target(
+            Modulation::try_new(ModulationType::Iso14443B2Ct, BaudRate::Br106).unwrap(),
+            None,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        target.info(),
+        &TargetInfo::Iso14443B2Ct {
+            uid: [0xaa, 0xbb, 0xcc, 0xdd],
+            product_code: 0x12,
+            fabrication_code: 0x34,
+        }
+    );
+    assert_eq!(
+        sent_payload(&device.transport, sent_before + 3),
+        vec![PN53X_IN_COMMUNICATE_THRU, 0x10]
+    );
+    assert_eq!(
+        sent_payload(&device.transport, sent_before + 4),
+        vec![PN53X_IN_COMMUNICATE_THRU, 0x9f, 0xff, 0xff]
+    );
+    assert_eq!(
+        sent_payload(&device.transport, sent_before + 5),
+        vec![PN53X_IN_COMMUNICATE_THRU, 0xc4]
+    );
 }
 
 #[test]
@@ -545,8 +1069,8 @@ fn select_dep_target_and_deselect_share_runtime_logic() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        target.info,
-        TargetInfo::Dep(DepInfo {
+        target.info(),
+        &TargetInfo::Dep(DepInfo {
             nfcid3: [0x11; 10],
             did: 0x22,
             bs: 0x33,
@@ -585,6 +1109,11 @@ fn transceive_bytes_and_timed_variant_use_shared_timer_register_flow() {
     device
         .set_property_bool(Property::EasyFraming, false)
         .unwrap();
+    queue_masked_register_update(
+        &mut device.transport,
+        &[SYMBOL_TX_CRC_ENABLE, SYMBOL_RX_CRC_ENABLE],
+        true,
+    );
     device
         .set_property_bool(Property::HandleCrc, false)
         .unwrap();
@@ -603,6 +1132,13 @@ fn transceive_bytes_and_timed_variant_use_shared_timer_register_flow() {
 #[test]
 fn target_init_and_target_byte_io_are_shared() {
     let mut device = probed_device();
+    queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
+    queue_masked_register_update(
+        &mut device.transport,
+        &[SYMBOL_TX_CRC_ENABLE, SYMBOL_RX_CRC_ENABLE, 0x00, 0x00, 0x00],
+        false,
+    );
+    queue_masked_register_update(&mut device.transport, &[0x00], true);
     device
         .transport
         .received
@@ -628,12 +1164,9 @@ fn target_init_and_target_byte_io_are_shared() {
         .received
         .push_back(response_frame(PN53X_TG_GET_DATA, &[0x00, 0xbe, 0xef]));
 
-    let mut target = Target {
-        modulation: Modulation {
-            modulation_type: ModulationType::Dep,
-            baud_rate: BaudRate::Undefined,
-        },
-        info: TargetInfo::Dep(DepInfo {
+    let mut target = Target::try_new(
+        Modulation::try_new(ModulationType::Dep, BaudRate::Br106).unwrap(),
+        TargetInfo::Dep(DepInfo {
             nfcid3: [0x22; 10],
             did: 0x01,
             bs: 0x02,
@@ -643,12 +1176,13 @@ fn target_init_and_target_byte_io_are_shared() {
             general_bytes: vec![0xaa],
             mode: DepMode::Passive,
         }),
-    };
+    )
+    .unwrap();
     let mut rx = [0u8; 8];
     let init_len = device.target_init(&mut target, &mut rx, 250).unwrap();
     assert_eq!(init_len, 2);
     assert_eq!(&rx[..init_len], &[0xca, 0xfe]);
-    assert_eq!(target.modulation.baud_rate, BaudRate::Br106);
+    assert_eq!(target.modulation().baud_rate(), BaudRate::Br106);
 
     assert_eq!(device.target_send_bytes(&[0x90], 250).unwrap(), 1);
     let recv_len = device.target_receive_bytes(&mut rx, 250).unwrap();
@@ -698,6 +1232,7 @@ fn transceive_bits_supports_short_frames_with_register_backed_last_bits() {
 #[test]
 fn target_receive_bits_unwraps_raw_frame_and_parity() {
     let mut device = probed_device();
+    queue_masked_register_update(&mut device.transport, &[0x00], true);
     device
         .set_property_bool(Property::HandleParity, false)
         .unwrap();
@@ -728,9 +1263,15 @@ fn transceive_bits_timed_uses_shared_register_timer_flow() {
     device
         .set_property_bool(Property::EasyFraming, false)
         .unwrap();
+    queue_masked_register_update(&mut device.transport, &[0x00], true);
     device
         .set_property_bool(Property::HandleParity, false)
         .unwrap();
+    queue_masked_register_update(
+        &mut device.transport,
+        &[SYMBOL_TX_CRC_ENABLE, SYMBOL_RX_CRC_ENABLE],
+        true,
+    );
     device
         .set_property_bool(Property::HandleCrc, false)
         .unwrap();
@@ -762,6 +1303,7 @@ fn transceive_bits_timed_uses_shared_register_timer_flow() {
 #[test]
 fn target_send_bits_wraps_non_byte_aligned_frames() {
     let mut device = probed_device();
+    queue_masked_register_update(&mut device.transport, &[0x00], true);
     device
         .set_property_bool(Property::HandleParity, false)
         .unwrap();
@@ -820,12 +1362,9 @@ fn timed_bytes_reads_tx_mode_before_register_timed_exchange() {
 #[test]
 fn target_is_present_for_dep_uses_shared_diagnose_path() {
     let mut device = probed_device();
-    let target = Target {
-        modulation: Modulation {
-            modulation_type: ModulationType::Dep,
-            baud_rate: BaudRate::Br106,
-        },
-        info: TargetInfo::Dep(DepInfo {
+    let target = Target::try_new(
+        Modulation::try_new(ModulationType::Dep, BaudRate::Br106).unwrap(),
+        TargetInfo::Dep(DepInfo {
             nfcid3: [0x11; 10],
             did: 0x22,
             bs: 0x33,
@@ -835,7 +1374,8 @@ fn target_is_present_for_dep_uses_shared_diagnose_path() {
             general_bytes: vec![0xaa, 0xbb],
             mode: DepMode::Passive,
         }),
-    };
+    )
+    .unwrap();
     device.core.remember_target(target.clone());
     queue_command_response(&mut device.transport, 0x00, &[0x00]);
 
@@ -845,18 +1385,16 @@ fn target_is_present_for_dep_uses_shared_diagnose_path() {
 #[test]
 fn target_is_present_for_mifare_classic_reselects_saved_uid() {
     let mut device = probed_device();
-    let target = Target {
-        modulation: Modulation {
-            modulation_type: ModulationType::Iso14443A,
-            baud_rate: BaudRate::Br106,
-        },
-        info: TargetInfo::Iso14443A {
+    let target = Target::try_new(
+        Modulation::try_new(ModulationType::Iso14443A, BaudRate::Br106).unwrap(),
+        TargetInfo::Iso14443A {
             atqa: [0x00, 0x04],
             sak: 0x08,
             uid: vec![0xde, 0xad, 0xbe, 0xef],
             ats: Vec::new(),
         },
-    };
+    )
+    .unwrap();
     device.core.remember_target(target.clone());
     queue_command_response(
         &mut device.transport,

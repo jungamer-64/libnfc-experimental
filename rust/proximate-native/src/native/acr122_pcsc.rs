@@ -77,11 +77,7 @@ impl Driver for Acr122PcscDriver {
         .into_iter()
         .map(|connstring| {
             let display_name = connstring.as_str().to_string();
-            self.describe_discovered(
-                display_name,
-                connstring,
-                Some(super::pn53x::scan_caps(Pn53xProfile::acr122_pcsc())),
-            )
+            self.describe_discovered(display_name, connstring)
         })
         .collect())
     }
@@ -263,19 +259,118 @@ impl Pn53xTransport for Acr122PcscTransport {
     }
 
     fn abort_command(&mut self) -> Result<(), Error> {
-        self.pending.clear();
-        Ok(())
+        Err(Error::UnsupportedOperation("abort_command"))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::native::pcsc::{FakeCardState, FakePcscBackend, PcscCardStatus, PcscProtocol};
+    use crate::native::pcsc::{PcscAttribute, PcscCardStatus, PcscDisposition, PcscProtocol};
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct TestCardState {
+        status_responses: VecDeque<Result<PcscCardStatus, i32>>,
+        transmit_responses: VecDeque<Result<Vec<u8>, i32>>,
+    }
+
+    #[derive(Clone)]
+    struct TestCard {
+        state: Arc<Mutex<TestCardState>>,
+    }
+
+    impl TestCard {
+        fn new(state: TestCardState) -> Self {
+            Self {
+                state: Arc::new(Mutex::new(state)),
+            }
+        }
+    }
+
+    impl PcscCard for TestCard {
+        fn reconnect(
+            &mut self,
+            _share_mode: PcscShareMode,
+            _preferred_protocols: PcscProtocols,
+            _disposition: PcscDisposition,
+        ) -> Result<(), i32> {
+            Ok(())
+        }
+
+        fn status2_owned(&self) -> Result<PcscCardStatus, i32> {
+            self.state
+                .lock()
+                .unwrap()
+                .status_responses
+                .pop_front()
+                .unwrap_or(Ok(PcscCardStatus {
+                    present: true,
+                    atr: Vec::new(),
+                    protocol: Some(PcscProtocol::T1),
+                }))
+        }
+
+        fn get_attribute_owned(&self, _attribute: PcscAttribute) -> Result<Vec<u8>, i32> {
+            Ok(Vec::new())
+        }
+
+        fn transmit(&self, _send_buffer: &[u8], _receive_capacity: usize) -> Result<Vec<u8>, i32> {
+            self.state
+                .lock()
+                .unwrap()
+                .transmit_responses
+                .pop_front()
+                .unwrap_or(Ok(Vec::new()))
+        }
+
+        fn control(
+            &self,
+            _control_code: u64,
+            _send_buffer: &[u8],
+            _receive_capacity: usize,
+        ) -> Result<Vec<u8>, i32> {
+            Ok(Vec::new())
+        }
+    }
+
+    struct TestBackend {
+        reader: String,
+        state: Arc<Mutex<TestCardState>>,
+    }
+
+    impl TestBackend {
+        fn with_reader(reader: &str, state: TestCardState) -> Self {
+            Self {
+                reader: reader.to_string(),
+                state: Arc::new(Mutex::new(state)),
+            }
+        }
+    }
+
+    impl PcscBackend for TestBackend {
+        fn list_readers_owned(&self) -> Result<Vec<String>, i32> {
+            Ok(vec![self.reader.clone()])
+        }
+
+        fn connect(
+            &self,
+            reader: &str,
+            _share_mode: PcscShareMode,
+            _preferred_protocols: PcscProtocols,
+        ) -> Result<Box<dyn PcscCard>, i32> {
+            if reader != self.reader {
+                return Err(NFC_EIO);
+            }
+            Ok(Box::new(TestCard {
+                state: Arc::clone(&self.state),
+            }))
+        }
+    }
 
     #[test]
     fn firmware_probe_accepts_acr122u_responses() {
-        let mut state = FakeCardState::default();
+        let mut state = TestCardState::default();
         state.status_responses.push_back(Ok(PcscCardStatus {
             present: true,
             atr: Vec::new(),
@@ -287,9 +382,10 @@ mod tests {
         state
             .transmit_responses
             .push_back(Ok(vec![0x00, 0x00, 0x32, 0x01, 0x06, 0x07, 0x90, 0x00]));
-        let backend = Arc::new(
-            FakePcscBackend::default().with_reader("ACS ACR122U PICC Interface 00 00", state),
-        );
+        let backend = Arc::new(TestBackend::with_reader(
+            "ACS ACR122U PICC Interface 00 00",
+            state,
+        ));
         let driver = Acr122PcscDriver::with_backend(backend);
         let context = Context::new();
         let connstring =
@@ -301,11 +397,11 @@ mod tests {
 
     #[test]
     fn transport_builds_pending_ack_and_response_frames() {
-        let mut state = FakeCardState::default();
+        let mut state = TestCardState::default();
         state
             .transmit_responses
             .push_back(Ok(vec![0x00, 0x00, 0x90, 0x00]));
-        let card = Box::new(crate::native::pcsc::FakePcscCard::new(state));
+        let card = Box::new(TestCard::new(state));
         let mut transport = Acr122PcscTransport::new(card, Some(PcscProtocol::T1));
 
         let frame = crate::native::pn53x::build_frame(&[0x02]).unwrap();
@@ -322,7 +418,7 @@ mod tests {
 
     #[test]
     fn driver_routes_shared_pn53x_commands_through_direct_transmit() {
-        let mut state = FakeCardState::default();
+        let mut state = TestCardState::default();
         state.status_responses.push_back(Ok(PcscCardStatus {
             present: true,
             atr: Vec::new(),
@@ -349,53 +445,66 @@ mod tests {
             .transmit_responses
             .push_back(Ok(vec![0x00, 0x00, 0x00, 0x90, 0x00]));
 
-        let backend = Arc::new(
-            FakePcscBackend::default().with_reader("ACS ACR122U PICC Interface 00 00", state),
-        );
+        let backend = Arc::new(TestBackend::with_reader(
+            "ACS ACR122U PICC Interface 00 00",
+            state,
+        ));
         let driver = Acr122PcscDriver::with_backend(backend);
         let context = Context::new();
         let connstring =
             ConnectionString::new("acr122_pcsc:ACS ACR122U PICC Interface 00 00").unwrap();
 
-        let mut device = driver.open(&context, &connstring).unwrap();
+        let mut device =
+            proximate_driver::Device::from_backend(driver.open(&context, &connstring).unwrap());
         let target = device
+            .passive_scan_ops()
+            .unwrap()
             .select_passive_target(
-                proximate_driver::Modulation {
-                    modulation_type: proximate_driver::ModulationType::Iso14443A,
-                    baud_rate: proximate_driver::BaudRate::Br106,
-                },
+                proximate_driver::Modulation::try_new(
+                    proximate_driver::ModulationType::Iso14443A,
+                    proximate_driver::BaudRate::Br106,
+                )
+                .unwrap(),
                 None,
             )
             .unwrap()
             .unwrap();
         assert!(matches!(
-            target.info,
+            target.info(),
             proximate_driver::TargetInfo::Iso14443A { .. }
         ));
 
         let mut rx = [0u8; 8];
         let len = device
-            .transceive_bytes(&[0x30, 0x04], &mut rx, 250)
+            .initiator_io_ops()
+            .unwrap()
+            .transceive_bytes(
+                &[0x30, 0x04],
+                &mut rx,
+                proximate_driver::OperationTimeout::try_milliseconds(250).unwrap(),
+            )
             .unwrap();
         assert_eq!(len, 2);
         assert_eq!(&rx[..len], &[0x90, 0x00]);
 
         let dep = device
+            .dep_ops()
+            .unwrap()
             .select_dep_target(
                 proximate_driver::DepMode::Passive,
                 proximate_driver::BaudRate::Br106,
                 None,
-                250,
+                proximate_driver::OperationTimeout::try_milliseconds(250).unwrap(),
             )
             .unwrap()
             .unwrap();
-        assert!(matches!(dep.info, proximate_driver::TargetInfo::Dep(_)));
-        device.deselect_target().unwrap();
+        assert!(matches!(dep.info(), proximate_driver::TargetInfo::Dep(_)));
+        device.session_ops().unwrap().deselect_target().unwrap();
     }
 
     #[test]
     fn timed_bit_flow_uses_shared_runtime_over_t0_follow_up() {
-        let mut state = FakeCardState::default();
+        let mut state = TestCardState::default();
         state.status_responses.push_back(Ok(PcscCardStatus {
             present: true,
             atr: Vec::new(),
@@ -427,25 +536,37 @@ mod tests {
             .transmit_responses
             .push_back(Ok(vec![0x00, 0x00, 0xf0, 0x00, 0x90, 0x00]));
 
-        let backend = Arc::new(
-            FakePcscBackend::default().with_reader("ACS ACR122U PICC Interface 00 00", state),
-        );
+        let backend = Arc::new(TestBackend::with_reader(
+            "ACS ACR122U PICC Interface 00 00",
+            state,
+        ));
         let driver = Acr122PcscDriver::with_backend(backend);
         let context = Context::new();
         let connstring =
             ConnectionString::new("acr122_pcsc:ACS ACR122U PICC Interface 00 00").unwrap();
 
-        let mut device = driver.open(&context, &connstring).unwrap();
+        let mut device =
+            proximate_driver::Device::from_backend(driver.open(&context, &connstring).unwrap());
         device
+            .property_ops()
+            .unwrap()
             .set_property_bool(proximate_driver::Property::EasyFraming, false)
             .unwrap();
         device
+            .property_ops()
+            .unwrap()
             .set_property_bool(proximate_driver::Property::HandleCrc, false)
             .unwrap();
 
         let mut rx = [0u8; 8];
         let (bits, cycles) = device
-            .transceive_bits_timed(&[0x26], 7, None, &mut rx, None)
+            .initiator_io_ops()
+            .unwrap()
+            .transceive_bits_timed(
+                proximate_driver::BitFrame::try_new(&[0x26], 7, None).unwrap(),
+                &mut rx,
+                None,
+            )
             .unwrap();
         assert_eq!(bits, 16);
         assert_eq!(&rx[..2], &[0x04, 0x00]);

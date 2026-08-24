@@ -18,6 +18,27 @@ pub enum Error {
     MissingCapability(&'static str),
     #[error("unsupported operation: {0}")]
     UnsupportedOperation(&'static str),
+    #[error("operation timed out: {0}")]
+    Timeout(&'static str),
+    #[error("operation was aborted: {0}")]
+    Aborted(&'static str),
+    #[error("target was released during operation: {0}")]
+    TargetReleased(&'static str),
+    #[error("RF transmission failed during operation: {0}")]
+    RfTransmission(&'static str),
+    #[error("authentication failed during operation: {0}")]
+    Authentication(&'static str),
+    #[error("device I/O failed during operation: {0}")]
+    Io(&'static str),
+    #[error("device chip rejected operation: {0}")]
+    Chip(&'static str),
+    #[error("device state is unknown after operation: {operation}")]
+    OutcomeUnknown { operation: &'static str },
+    #[error("operation failed and recovery also failed")]
+    RecoveryFailed {
+        operation: Box<Error>,
+        recovery: Box<Error>,
+    },
     #[error("device operation {operation} failed with status {code}")]
     DeviceOperationFailed { operation: &'static str, code: i32 },
 }

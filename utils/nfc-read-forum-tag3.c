@@ -209,8 +209,7 @@ int main(int argc, char *argv[])
   FILE *message_stream = NULL;
   FILE *ndef_stream = NULL;
 
-  // ndef_output is from command line argument, use safe strlen with PATH_MAX bound
-  if ((nfc_util_bounded_strlen(ndef_output, PATH_MAX) == 1) && (ndef_output[0] == '-')) {
+  if ((ndef_output[0] == '-') && (ndef_output[1] == '\0')) {
     message_stream = stderr;
     ndef_stream = stdout;
   } else {

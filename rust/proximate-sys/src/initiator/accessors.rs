@@ -3,7 +3,7 @@ use crate::c_boundary::raw::{
     bounded_strlen, c_string_ptr_to_string, copy_bytes_to_c_buffer, optional_ref,
 };
 use crate::c_boundary::status::{
-    NFC_ESOFT, device_last_error, error_message_ptr, runtime_result_status,
+    NFC_ESOFT, device_last_error, error_message_ptr, invalid_argument_status, runtime_result_status,
 };
 use crate::domain_bridge::c_driver::is_rust_shim_device;
 use crate::domain_bridge::decode::modulation_type_from_c;
@@ -58,11 +58,11 @@ fn get_supported_baud_rate_direct_impl(
         Err(status) => return status,
     };
 
-    match runtime::supported_baud_rates(
-        device,
-        mode_from_c(mode),
-        modulation_type_from_c(modulation_type),
-    ) {
+    let modulation_type = match modulation_type_from_c(modulation_type) {
+        Ok(value) => value,
+        Err(_) => return invalid_argument_status(device),
+    };
+    match runtime::supported_baud_rates(device, mode_from_c(mode), modulation_type) {
         Ok(values) => supported.write_back(values),
         Err(error) => runtime_result_status(device, &error, true),
     }

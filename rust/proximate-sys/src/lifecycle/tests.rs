@@ -14,7 +14,11 @@ use std::ptr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-const DEFAULT_CONTEXT_LOG_LEVEL: u32 = if cfg!(libnfc_debug) { 3 } else { 1 };
+const DEFAULT_CONTEXT_LOG_LEVEL: u32 = if cfg!(feature = "debug-logging") {
+    3
+} else {
+    1
+};
 const USER_DEFINED_DEFAULT_DEVICE_NAME: &[u8] = b"user defined default device";
 const USER_DEFINED_DEVICE_NAME: &[u8] = b"user defined device";
 

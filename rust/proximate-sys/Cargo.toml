@@ -20,12 +20,21 @@ proximate-native = { path = "../proximate-native", default-features = false }
 
 [features]
 default = [
+    "config-files",
+    "environment-config",
+    "logging",
+    "external-drivers",
     "driver-pn53x-usb",
     "driver-acr122-usb",
     "driver-acr122s",
     "driver-arygon",
     "driver-pn532-uart",
 ]
+config-files = ["proximate-driver/config-files"]
+environment-config = ["proximate-driver/environment-config"]
+logging = ["proximate-driver/logging"]
+debug-logging = ["logging", "proximate-driver/debug-logging"]
+external-drivers = []
 driver-pn53x-usb = ["proximate-native/driver-pn53x-usb"]
 driver-acr122-usb = ["proximate-native/driver-acr122-usb"]
 driver-acr122s = ["proximate-native/driver-acr122s"]

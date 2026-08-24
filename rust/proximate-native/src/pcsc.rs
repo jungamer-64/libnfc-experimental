@@ -92,49 +92,57 @@ pub trait Backend: Send + Sync {
 }
 
 pub const fn ctl_code(code: u32) -> u64 {
-    pcsc::ctl_code(code as u64) as u64
+    #[cfg(windows)]
+    {
+        pcsc::ctl_code(code) as u64
+    }
+    #[cfg(not(windows))]
+    {
+        pcsc::ctl_code(code as u64) as u64
+    }
 }
 
 pub fn error_message(code: i32) -> Option<&'static str> {
-    let code = i64::from(code);
     Some(match code {
-        x if x == pcsc::ffi::SCARD_S_SUCCESS => "Command successful.",
-        x if x == pcsc::ffi::SCARD_F_INTERNAL_ERROR => "Internal error.",
-        x if x == pcsc::ffi::SCARD_E_CANCELLED => "Command cancelled.",
-        x if x == pcsc::ffi::SCARD_E_INVALID_HANDLE => "Invalid handle.",
-        x if x == pcsc::ffi::SCARD_E_INVALID_PARAMETER => "Invalid parameter given.",
-        x if x == pcsc::ffi::SCARD_E_INVALID_TARGET => "Invalid target given.",
-        x if x == pcsc::ffi::SCARD_E_NO_MEMORY => "Not enough memory.",
-        x if x == pcsc::ffi::SCARD_F_WAITED_TOO_LONG => "Waited too long.",
-        x if x == pcsc::ffi::SCARD_E_INSUFFICIENT_BUFFER => "Insufficient buffer.",
-        x if x == pcsc::ffi::SCARD_E_UNKNOWN_READER => "Unknown reader specified.",
-        x if x == pcsc::ffi::SCARD_E_TIMEOUT => "Command timeout.",
-        x if x == pcsc::ffi::SCARD_E_SHARING_VIOLATION => "Sharing violation.",
-        x if x == pcsc::ffi::SCARD_E_NO_SMARTCARD => "No smart card inserted.",
-        x if x == pcsc::ffi::SCARD_E_UNKNOWN_CARD => "Unknown card.",
-        x if x == pcsc::ffi::SCARD_E_CANT_DISPOSE => "Cannot dispose handle.",
-        x if x == pcsc::ffi::SCARD_E_PROTO_MISMATCH => "Card protocol mismatch.",
-        x if x == pcsc::ffi::SCARD_E_NOT_READY => "Subsystem not ready.",
-        x if x == pcsc::ffi::SCARD_E_INVALID_VALUE => "Invalid value given.",
-        x if x == pcsc::ffi::SCARD_E_SYSTEM_CANCELLED => "System cancelled.",
-        x if x == pcsc::ffi::SCARD_F_COMM_ERROR => "RPC transport error.",
-        x if x == pcsc::ffi::SCARD_F_UNKNOWN_ERROR => "Unknown error.",
-        x if x == pcsc::ffi::SCARD_E_INVALID_ATR => "Invalid ATR.",
-        x if x == pcsc::ffi::SCARD_E_NOT_TRANSACTED => "Transaction failed.",
-        x if x == pcsc::ffi::SCARD_E_READER_UNAVAILABLE => "Reader is unavailable.",
-        x if x == pcsc::ffi::SCARD_E_PCI_TOO_SMALL => "PCI struct too small.",
-        x if x == pcsc::ffi::SCARD_E_READER_UNSUPPORTED => "Reader is unsupported.",
-        x if x == pcsc::ffi::SCARD_E_DUPLICATE_READER => "Reader already exists.",
-        x if x == pcsc::ffi::SCARD_E_CARD_UNSUPPORTED => "Card is unsupported.",
-        x if x == pcsc::ffi::SCARD_E_NO_SERVICE => "Service not available.",
-        x if x == pcsc::ffi::SCARD_E_SERVICE_STOPPED => "Service was stopped.",
-        x if x == pcsc::ffi::SCARD_E_NO_READERS_AVAILABLE => "Cannot find a smart card reader.",
-        x if x == pcsc::ffi::SCARD_W_UNSUPPORTED_CARD => "Card is not supported.",
-        x if x == pcsc::ffi::SCARD_W_UNRESPONSIVE_CARD => "Card is unresponsive.",
-        x if x == pcsc::ffi::SCARD_W_UNPOWERED_CARD => "Card is unpowered.",
-        x if x == pcsc::ffi::SCARD_W_RESET_CARD => "Card was reset.",
-        x if x == pcsc::ffi::SCARD_W_REMOVED_CARD => "Card was removed.",
-        x if x == pcsc::ffi::SCARD_E_UNSUPPORTED_FEATURE => "Feature not supported.",
+        x if x == pcsc::ffi::SCARD_S_SUCCESS as u32 as i32 => "Command successful.",
+        x if x == pcsc::ffi::SCARD_F_INTERNAL_ERROR as u32 as i32 => "Internal error.",
+        x if x == pcsc::ffi::SCARD_E_CANCELLED as u32 as i32 => "Command cancelled.",
+        x if x == pcsc::ffi::SCARD_E_INVALID_HANDLE as u32 as i32 => "Invalid handle.",
+        x if x == pcsc::ffi::SCARD_E_INVALID_PARAMETER as u32 as i32 => "Invalid parameter given.",
+        x if x == pcsc::ffi::SCARD_E_INVALID_TARGET as u32 as i32 => "Invalid target given.",
+        x if x == pcsc::ffi::SCARD_E_NO_MEMORY as u32 as i32 => "Not enough memory.",
+        x if x == pcsc::ffi::SCARD_F_WAITED_TOO_LONG as u32 as i32 => "Waited too long.",
+        x if x == pcsc::ffi::SCARD_E_INSUFFICIENT_BUFFER as u32 as i32 => "Insufficient buffer.",
+        x if x == pcsc::ffi::SCARD_E_UNKNOWN_READER as u32 as i32 => "Unknown reader specified.",
+        x if x == pcsc::ffi::SCARD_E_TIMEOUT as u32 as i32 => "Command timeout.",
+        x if x == pcsc::ffi::SCARD_E_SHARING_VIOLATION as u32 as i32 => "Sharing violation.",
+        x if x == pcsc::ffi::SCARD_E_NO_SMARTCARD as u32 as i32 => "No smart card inserted.",
+        x if x == pcsc::ffi::SCARD_E_UNKNOWN_CARD as u32 as i32 => "Unknown card.",
+        x if x == pcsc::ffi::SCARD_E_CANT_DISPOSE as u32 as i32 => "Cannot dispose handle.",
+        x if x == pcsc::ffi::SCARD_E_PROTO_MISMATCH as u32 as i32 => "Card protocol mismatch.",
+        x if x == pcsc::ffi::SCARD_E_NOT_READY as u32 as i32 => "Subsystem not ready.",
+        x if x == pcsc::ffi::SCARD_E_INVALID_VALUE as u32 as i32 => "Invalid value given.",
+        x if x == pcsc::ffi::SCARD_E_SYSTEM_CANCELLED as u32 as i32 => "System cancelled.",
+        x if x == pcsc::ffi::SCARD_F_COMM_ERROR as u32 as i32 => "RPC transport error.",
+        x if x == pcsc::ffi::SCARD_F_UNKNOWN_ERROR as u32 as i32 => "Unknown error.",
+        x if x == pcsc::ffi::SCARD_E_INVALID_ATR as u32 as i32 => "Invalid ATR.",
+        x if x == pcsc::ffi::SCARD_E_NOT_TRANSACTED as u32 as i32 => "Transaction failed.",
+        x if x == pcsc::ffi::SCARD_E_READER_UNAVAILABLE as u32 as i32 => "Reader is unavailable.",
+        x if x == pcsc::ffi::SCARD_E_PCI_TOO_SMALL as u32 as i32 => "PCI struct too small.",
+        x if x == pcsc::ffi::SCARD_E_READER_UNSUPPORTED as u32 as i32 => "Reader is unsupported.",
+        x if x == pcsc::ffi::SCARD_E_DUPLICATE_READER as u32 as i32 => "Reader already exists.",
+        x if x == pcsc::ffi::SCARD_E_CARD_UNSUPPORTED as u32 as i32 => "Card is unsupported.",
+        x if x == pcsc::ffi::SCARD_E_NO_SERVICE as u32 as i32 => "Service not available.",
+        x if x == pcsc::ffi::SCARD_E_SERVICE_STOPPED as u32 as i32 => "Service was stopped.",
+        x if x == pcsc::ffi::SCARD_E_NO_READERS_AVAILABLE as u32 as i32 => {
+            "Cannot find a smart card reader."
+        }
+        x if x == pcsc::ffi::SCARD_W_UNSUPPORTED_CARD as u32 as i32 => "Card is not supported.",
+        x if x == pcsc::ffi::SCARD_W_UNRESPONSIVE_CARD as u32 as i32 => "Card is unresponsive.",
+        x if x == pcsc::ffi::SCARD_W_UNPOWERED_CARD as u32 as i32 => "Card is unpowered.",
+        x if x == pcsc::ffi::SCARD_W_RESET_CARD as u32 as i32 => "Card was reset.",
+        x if x == pcsc::ffi::SCARD_W_REMOVED_CARD as u32 as i32 => "Card was removed.",
+        x if x == pcsc::ffi::SCARD_E_UNSUPPORTED_FEATURE as u32 as i32 => "Feature not supported.",
         _ => return None,
     })
 }
@@ -253,6 +261,8 @@ impl Card for SystemCard {
         receive_capacity: usize,
     ) -> Result<Vec<u8>, i32> {
         let mut buffer = vec![0u8; receive_capacity.max(2)];
+        #[cfg(windows)]
+        let control_code = u32::try_from(control_code).map_err(|_| -2)?;
         self.card
             .control(control_code, send_buffer, &mut buffer)
             .map(|payload| payload.to_vec())

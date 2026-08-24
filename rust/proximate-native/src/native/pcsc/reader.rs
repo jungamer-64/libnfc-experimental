@@ -3,7 +3,7 @@ use super::{NFC_ENOTSUCHDEV, PcscBackend, device_error, invalid_connection};
 use proximate_driver::{ConnectionString, Error, decode_connstring};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ReaderFilter {
+pub(crate) enum ReaderFilter {
     Generic,
     Acr122,
 }
@@ -15,7 +15,7 @@ fn reader_matches(filter: ReaderFilter, reader: &str) -> bool {
     }
 }
 
-pub(super) fn scan_matching_readers(
+pub(crate) fn scan_matching_readers(
     backend: &dyn PcscBackend,
     driver_name: &str,
     filter: ReaderFilter,
@@ -38,7 +38,7 @@ fn parse_reader_index(value: &str) -> Option<usize> {
     value.parse::<usize>().ok()
 }
 
-pub(super) fn resolve_reader(
+pub(crate) fn resolve_reader(
     backend: &dyn PcscBackend,
     connstring: &ConnectionString,
     driver_name: &str,

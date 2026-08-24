@@ -27,11 +27,20 @@ pub(crate) unsafe fn free_rust_device(device: *mut nfc_device) {
     };
 
     let state_ptr = device_ref.driver_data as *mut RustDeviceState;
+    let abort_ptr = device_ref.command_abort as *mut rt::CommandAbortHandle;
     device_ref.driver_data = ptr::null_mut();
+    device_ref.command_abort = ptr::null_mut();
     device_ref.driver = ptr::null();
 
     if !state_ptr.is_null() {
+        // SAFETY: attach_rust_device allocated this exact RustDeviceState and
+        // clearing driver_data above prevents a second ownership recovery.
         unsafe { drop(Box::from_raw(state_ptr)) };
+    }
+    if !abort_ptr.is_null() {
+        // SAFETY: attach_rust_device allocated this exact abort handle and
+        // clearing command_abort above prevents a second ownership recovery.
+        unsafe { drop(Box::from_raw(abort_ptr)) };
     }
 
     unsafe { release_allocated_ptr(device.cast()) };
@@ -44,6 +53,7 @@ pub(crate) fn attach_rust_device(
     let name = device.name().to_string();
     let connstring = device.connstring().clone();
     let last_error = device.last_error();
+    let command_abort = device.command_abort_handle();
     let connstring_c = CString::new(connstring.as_str()).ok()?;
     let raw = unsafe { nfc_device_new(context, connstring_c.as_ptr()) };
     if raw.is_null() {
@@ -56,7 +66,7 @@ pub(crate) fn attach_rust_device(
     }
 
     let mut state = Box::new(RustDeviceState {
-        handle: device.into_handle(),
+        handle: device.into_backend(),
         strerror: CString::new("success").expect("static string is valid"),
         supported_modulations: Vec::new(),
         supported_baud_rates: Vec::new(),
@@ -67,10 +77,23 @@ pub(crate) fn attach_rust_device(
     unsafe {
         (*raw).driver = ptr::null();
         (*raw).driver_data = Box::into_raw(state).cast();
+        (*raw).command_abort = command_abort
+            .map(|handle| Box::into_raw(Box::new(handle)).cast())
+            .unwrap_or(ptr::null_mut());
         set_device_last_error(raw, last_error);
     }
 
     Some(raw)
+}
+
+pub(crate) unsafe fn rust_command_abort_handle<'a>(
+    device: *mut nfc_device,
+) -> Option<&'a rt::CommandAbortHandle> {
+    // SAFETY: the caller guarantees device remains live for the returned borrow.
+    let device = unsafe { optional_ref(device) }?;
+    // SAFETY: a non-null command_abort was allocated as CommandAbortHandle by
+    // attach_rust_device and remains owned by the live nfc_device.
+    unsafe { optional_ref(device.command_abort.cast::<rt::CommandAbortHandle>()) }
 }
 
 pub(crate) fn is_rust_shim_device(raw: *mut nfc_device) -> bool {
@@ -93,7 +116,7 @@ unsafe extern "C" fn rust_test_close(device: *mut nfc_device) {
 }
 
 #[cfg(test)]
-pub(super) fn build_rust_device_shim_driver(_caps: rt::DeviceCaps) -> nfc_driver {
+pub(super) fn build_rust_device_shim_driver() -> nfc_driver {
     nfc_driver {
         name: RUST_DEVICE_DRIVER_NAME,
         scan_type: scan_type_enum::NOT_AVAILABLE,

@@ -30,17 +30,20 @@ Here are some directions to get you started:
 
     2.3 When touching the Rust bridge
 
-            cargo test --manifest-path rust/Cargo.toml -p proximate-sys --no-default-features --features c_ffi
+            cargo fmt --manifest-path rust/Cargo.toml --all -- --check
+            cargo check --manifest-path rust/Cargo.toml --workspace
+            cargo clippy --manifest-path rust/Cargo.toml --workspace -- -D warnings
+            cargo doc --manifest-path rust/Cargo.toml --workspace --no-deps
+            cargo test --manifest-path rust/Cargo.toml --workspace --lib
+            cargo check --manifest-path rust/Cargo.toml --workspace --all-targets
+            cargo check --manifest-path rust/Cargo.toml --workspace --no-default-features
             bash scripts/check_callerfree_usage.sh
-            cargo test --manifest-path rust/Cargo.toml -p proximate -- --nocapture
-            cargo test --manifest-path rust/Cargo.toml -p proximate-sys --no-default-features --features "c_ffi,secure,lifecycle,orchestration" -- --nocapture
             cmake -S . -B build-rust-core -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON
             cmake --build build-rust-core -j"$(nproc)"
             ctest --test-dir build-rust-core --output-on-failure
 
-     `PROXIMATE_SECURE`, `PROXIMATE_LIFECYCLE`, and
-     `PROXIMATE_ORCHESTRATION` remain accepted only as deprecated no-op
-     compatibility flags retained for older build scripts.
+     Run `cargo check --manifest-path rust/Cargo.toml --workspace --all-features`
+     on Linux, where all platform-constrained drivers are supported.
 
   3. Preserve cross-platform compatibility
 

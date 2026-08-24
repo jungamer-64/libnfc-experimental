@@ -9,9 +9,9 @@ unsafe fn rust_device_state<'a>(device: *mut nfc_device) -> Option<&'a mut RustD
 
 pub(crate) fn borrowed_device(raw: *mut nfc_device) -> rt::Device {
     if is_rust_shim_device(raw) {
-        return rt::Device::from_handle(Box::new(RustBorrowedDevice::new(raw)));
+        return rt::Device::from_backend(Box::new(RustBorrowedDevice::new(raw)));
     }
-    rt::Device::from_handle(Box::new(ExternalDevice::borrowed(raw)))
+    rt::Device::from_backend(Box::new(ExternalDevice::borrowed(raw)))
 }
 
 struct RustBorrowedDevice {
@@ -54,15 +54,9 @@ impl RustBorrowedDevice {
 
     fn normalize<T>(
         &mut self,
-        required: rt::DeviceCaps,
         operation: &'static str,
         result: Result<T, rt::Error>,
     ) -> Result<T, rt::Error> {
-        if !rt::DeviceMeta::caps(self).contains(required) {
-            set_device_last_error(self.raw, NFC_EDEVNOTSUPP);
-            return Err(missing_capability(operation));
-        }
-
         match result {
             Ok(value) => {
                 set_device_last_error(self.raw, 0);
@@ -90,12 +84,6 @@ impl rt::DeviceMeta for RustBorrowedDevice {
         &self.connstring
     }
 
-    fn caps(&self) -> rt::DeviceCaps {
-        unsafe { rust_device_state(self.raw) }
-            .map(|state| state.handle.caps())
-            .unwrap_or(rt::DeviceCaps::NONE)
-    }
-
     fn last_error(&self) -> i32 {
         unsafe { optional_ref(self.raw) }
             .map(|device| device.last_error)
@@ -117,27 +105,19 @@ impl rt::DeviceMeta for RustBorrowedDevice {
 impl rt::InfoBackend for RustBorrowedDevice {
     fn information_about(&mut self) -> Result<String, rt::Error> {
         let result = self.with_handle(|handle| handle.information_about());
-        self.normalize(rt::DeviceCaps::INFO, "device_get_information_about", result)
+        self.normalize("device_get_information_about", result)
     }
 }
 
 impl rt::PropertyBackend for RustBorrowedDevice {
     fn set_property_bool(&mut self, property: rt::Property, enable: bool) -> Result<(), rt::Error> {
         let result = self.with_handle(|handle| handle.set_property_bool(property, enable));
-        self.normalize(
-            rt::DeviceCaps::SET_PROPERTY_BOOL,
-            "device_set_property_bool",
-            result,
-        )
+        self.normalize("device_set_property_bool", result)
     }
 
     fn set_property_int(&mut self, property: rt::Property, value: i32) -> Result<(), rt::Error> {
         let result = self.with_handle(|handle| handle.set_property_int(property, value));
-        self.normalize(
-            rt::DeviceCaps::SET_PROPERTY_INT,
-            "device_set_property_int",
-            result,
-        )
+        self.normalize("device_set_property_int", result)
     }
 
     fn supported_modulations(
@@ -145,11 +125,7 @@ impl rt::PropertyBackend for RustBorrowedDevice {
         mode: rt::Mode,
     ) -> Result<Vec<rt::ModulationType>, rt::Error> {
         let result = self.with_handle(|handle| handle.supported_modulations(mode));
-        self.normalize(
-            rt::DeviceCaps::SUPPORTED_MODULATIONS,
-            "get_supported_modulation",
-            result,
-        )
+        self.normalize("get_supported_modulation", result)
     }
 
     fn supported_baud_rates(
@@ -158,11 +134,7 @@ impl rt::PropertyBackend for RustBorrowedDevice {
         modulation_type: rt::ModulationType,
     ) -> Result<Vec<rt::BaudRate>, rt::Error> {
         let result = self.with_handle(|handle| handle.supported_baud_rates(mode, modulation_type));
-        self.normalize(
-            rt::DeviceCaps::SUPPORTED_BAUD_RATES,
-            "get_supported_baud_rate",
-            result,
-        )
+        self.normalize("get_supported_baud_rate", result)
     }
 
     fn property_bool_state(&self, property: rt::Property) -> Option<bool> {
@@ -181,16 +153,12 @@ impl rt::PropertyBackend for RustBorrowedDevice {
 impl rt::InitiatorBackend for RustBorrowedDevice {
     fn initiator_init_driver(&mut self) -> Result<i32, rt::Error> {
         let result = self.with_handle(|handle| handle.initiator_init_driver());
-        self.normalize(rt::DeviceCaps::INITIATOR_INIT, "initiator_init", result)
+        self.normalize("initiator_init", result)
     }
 
     fn initiator_init_secure_element_driver(&mut self) -> Result<i32, rt::Error> {
         let result = self.with_handle(|handle| handle.initiator_init_secure_element_driver());
-        self.normalize(
-            rt::DeviceCaps::INITIATOR_INIT_SECURE_ELEMENT,
-            "initiator_init_secure_element",
-            result,
-        )
+        self.normalize("initiator_init_secure_element", result)
     }
 
     fn select_passive_target_driver(
@@ -199,22 +167,18 @@ impl rt::InitiatorBackend for RustBorrowedDevice {
         init_data: &[u8],
     ) -> Result<Option<rt::Target>, rt::Error> {
         let result = self.with_handle(|handle| handle.select_passive_target_driver(nm, init_data));
-        self.normalize(
-            rt::DeviceCaps::SELECT_PASSIVE_TARGET,
-            "initiator_select_passive_target",
-            result,
-        )
+        self.normalize("initiator_select_passive_target", result)
     }
 
     fn poll_target_driver(
         &mut self,
         modulations: &[rt::Modulation],
-        poll_nr: u8,
-        period: u8,
+        iterations: rt::PollIterations,
+        period: rt::PollPeriod,
     ) -> Result<Option<rt::Target>, rt::Error> {
         let result =
-            self.with_handle(|handle| handle.poll_target_driver(modulations, poll_nr, period));
-        self.normalize(rt::DeviceCaps::POLL_TARGET, "initiator_poll_target", result)
+            self.with_handle(|handle| handle.poll_target_driver(modulations, iterations, period));
+        self.normalize("initiator_poll_target", result)
     }
 
     fn select_dep_target_driver(
@@ -222,65 +186,41 @@ impl rt::InitiatorBackend for RustBorrowedDevice {
         ndm: rt::DepMode,
         nbr: rt::BaudRate,
         initiator: Option<&rt::DepInfo>,
-        timeout: i32,
+        timeout: rt::OperationTimeout,
     ) -> Result<Option<rt::Target>, rt::Error> {
         let result = self
             .with_handle(|handle| handle.select_dep_target_driver(ndm, nbr, initiator, timeout));
-        self.normalize(
-            rt::DeviceCaps::SELECT_DEP_TARGET,
-            "initiator_select_dep_target",
-            result,
-        )
+        self.normalize("initiator_select_dep_target", result)
     }
 
     fn deselect_target_driver(&mut self) -> Result<(), rt::Error> {
         let result = self.with_handle(|handle| handle.deselect_target_driver());
-        self.normalize(
-            rt::DeviceCaps::DESELECT_TARGET,
-            "initiator_deselect_target",
-            result,
-        )
+        self.normalize("initiator_deselect_target", result)
     }
 
     fn target_is_present_driver(&mut self, target: Option<&rt::Target>) -> Result<bool, rt::Error> {
         let result = self.with_handle(|handle| handle.target_is_present_driver(target));
-        self.normalize(
-            rt::DeviceCaps::TARGET_IS_PRESENT,
-            "initiator_target_is_present",
-            result,
-        )
+        self.normalize("initiator_target_is_present", result)
     }
 
     fn transceive_bytes_driver(
         &mut self,
         tx: &[u8],
         rx: &mut [u8],
-        timeout: i32,
+        timeout: rt::OperationTimeout,
     ) -> Result<usize, rt::Error> {
         let result = self.with_handle(|handle| handle.transceive_bytes_driver(tx, rx, timeout));
-        self.normalize(
-            rt::DeviceCaps::TRANSCEIVE_BYTES,
-            "initiator_transceive_bytes",
-            result,
-        )
+        self.normalize("initiator_transceive_bytes", result)
     }
 
     fn transceive_bits_driver(
         &mut self,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
+        tx: rt::BitFrame<'_>,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<usize, rt::Error> {
-        let result = self.with_handle(|handle| {
-            handle.transceive_bits_driver(tx, tx_bits_len, tx_parity, rx, rx_parity)
-        });
-        self.normalize(
-            rt::DeviceCaps::TRANSCEIVE_BITS,
-            "initiator_transceive_bits",
-            result,
-        )
+        let result = self.with_handle(|handle| handle.transceive_bits_driver(tx, rx, rx_parity));
+        self.normalize("initiator_transceive_bits", result)
     }
 
     fn transceive_bytes_timed_driver(
@@ -289,44 +229,33 @@ impl rt::InitiatorBackend for RustBorrowedDevice {
         rx: &mut [u8],
     ) -> Result<(usize, u32), rt::Error> {
         let result = self.with_handle(|handle| handle.transceive_bytes_timed_driver(tx, rx));
-        self.normalize(
-            rt::DeviceCaps::TRANSCEIVE_BYTES_TIMED,
-            "initiator_transceive_bytes_timed",
-            result,
-        )
+        self.normalize("initiator_transceive_bytes_timed", result)
     }
 
     fn transceive_bits_timed_driver(
         &mut self,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
+        tx: rt::BitFrame<'_>,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
     ) -> Result<(usize, u32), rt::Error> {
-        let result = self.with_handle(|handle| {
-            handle.transceive_bits_timed_driver(tx, tx_bits_len, tx_parity, rx, rx_parity)
-        });
-        self.normalize(
-            rt::DeviceCaps::TRANSCEIVE_BITS_TIMED,
-            "initiator_transceive_bits_timed",
-            result,
-        )
+        let result =
+            self.with_handle(|handle| handle.transceive_bits_timed_driver(tx, rx, rx_parity));
+        self.normalize("initiator_transceive_bits_timed", result)
     }
 
     fn abort_command_driver(&mut self) -> Result<(), rt::Error> {
         let result = self.with_handle(|handle| handle.abort_command_driver());
-        self.normalize(rt::DeviceCaps::ABORT_COMMAND, "abort_command", result)
+        self.normalize("abort_command", result)
     }
 
     fn idle_driver(&mut self) -> Result<(), rt::Error> {
         let result = self.with_handle(|handle| handle.idle_driver());
-        self.normalize(rt::DeviceCaps::IDLE, "idle", result)
+        self.normalize("idle", result)
     }
 
     fn powerdown_driver(&mut self) -> Result<(), rt::Error> {
         let result = self.with_handle(|handle| handle.powerdown_driver());
-        self.normalize(rt::DeviceCaps::POWERDOWN, "powerdown", result)
+        self.normalize("powerdown", result)
     }
 }
 
@@ -335,43 +264,33 @@ impl rt::TargetBackend for RustBorrowedDevice {
         &mut self,
         target: &mut rt::Target,
         rx: &mut [u8],
-        timeout: i32,
+        timeout: rt::OperationTimeout,
     ) -> Result<usize, rt::Error> {
         let result = self.with_handle(|handle| handle.target_init_driver(target, rx, timeout));
-        self.normalize(rt::DeviceCaps::TARGET_INIT, "target_init", result)
+        self.normalize("target_init", result)
     }
 
-    fn target_send_bytes_driver(&mut self, tx: &[u8], timeout: i32) -> Result<usize, rt::Error> {
+    fn target_send_bytes_driver(
+        &mut self,
+        tx: &[u8],
+        timeout: rt::OperationTimeout,
+    ) -> Result<usize, rt::Error> {
         let result = self.with_handle(|handle| handle.target_send_bytes_driver(tx, timeout));
-        self.normalize(
-            rt::DeviceCaps::TARGET_SEND_BYTES,
-            "target_send_bytes",
-            result,
-        )
+        self.normalize("target_send_bytes", result)
     }
 
     fn target_receive_bytes_driver(
         &mut self,
         rx: &mut [u8],
-        timeout: i32,
+        timeout: rt::OperationTimeout,
     ) -> Result<usize, rt::Error> {
         let result = self.with_handle(|handle| handle.target_receive_bytes_driver(rx, timeout));
-        self.normalize(
-            rt::DeviceCaps::TARGET_RECEIVE_BYTES,
-            "target_receive_bytes",
-            result,
-        )
+        self.normalize("target_receive_bytes", result)
     }
 
-    fn target_send_bits_driver(
-        &mut self,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
-    ) -> Result<usize, rt::Error> {
-        let result =
-            self.with_handle(|handle| handle.target_send_bits_driver(tx, tx_bits_len, tx_parity));
-        self.normalize(rt::DeviceCaps::TARGET_SEND_BITS, "target_send_bits", result)
+    fn target_send_bits_driver(&mut self, tx: rt::BitFrame<'_>) -> Result<usize, rt::Error> {
+        let result = self.with_handle(|handle| handle.target_send_bits_driver(tx));
+        self.normalize("target_send_bits", result)
     }
 
     fn target_receive_bits_driver(
@@ -380,11 +299,7 @@ impl rt::TargetBackend for RustBorrowedDevice {
         rx_parity: Option<&mut [u8]>,
     ) -> Result<usize, rt::Error> {
         let result = self.with_handle(|handle| handle.target_receive_bits_driver(rx, rx_parity));
-        self.normalize(
-            rt::DeviceCaps::TARGET_RECEIVE_BITS,
-            "target_receive_bits",
-            result,
-        )
+        self.normalize("target_receive_bits", result)
     }
 }
 
@@ -393,19 +308,15 @@ impl rt::Pn53xBackend for RustBorrowedDevice {
         &mut self,
         tx: &[u8],
         rx: &mut [u8],
-        timeout: i32,
+        timeout: rt::OperationTimeout,
     ) -> Result<usize, rt::Error> {
         let result = self.with_handle(|handle| handle.pn53x_transceive_driver(tx, rx, timeout));
-        self.normalize(rt::DeviceCaps::PN53X_TRANSCEIVE, "pn53x_transceive", result)
+        self.normalize("pn53x_transceive", result)
     }
 
     fn pn53x_read_register_driver(&mut self, register: u16) -> Result<u8, rt::Error> {
         let result = self.with_handle(|handle| handle.pn53x_read_register_driver(register));
-        self.normalize(
-            rt::DeviceCaps::PN53X_READ_REGISTER,
-            "pn53x_read_register",
-            result,
-        )
+        self.normalize("pn53x_read_register", result)
     }
 
     fn pn53x_write_register_driver(
@@ -416,20 +327,16 @@ impl rt::Pn53xBackend for RustBorrowedDevice {
     ) -> Result<(), rt::Error> {
         let result = self
             .with_handle(|handle| handle.pn53x_write_register_driver(register, symbol_mask, value));
-        self.normalize(
-            rt::DeviceCaps::PN53X_WRITE_REGISTER,
-            "pn53x_write_register",
-            result,
-        )
+        self.normalize("pn53x_write_register", result)
     }
 
-    fn pn532_sam_configuration_driver(&mut self, mode: u8, timeout: i32) -> Result<i32, rt::Error> {
+    fn pn532_sam_configuration_driver(
+        &mut self,
+        mode: u8,
+        timeout: rt::OperationTimeout,
+    ) -> Result<i32, rt::Error> {
         let result =
             self.with_handle(|handle| handle.pn532_sam_configuration_driver(mode, timeout));
-        self.normalize(
-            rt::DeviceCaps::PN532_SAM_CONFIGURATION,
-            "pn532_SAMConfiguration",
-            result,
-        )
+        self.normalize("pn532_SAMConfiguration", result)
     }
 }

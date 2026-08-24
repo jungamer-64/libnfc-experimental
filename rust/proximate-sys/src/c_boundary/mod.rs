@@ -30,7 +30,6 @@ thread_local! {
 }
 
 pub(crate) const LOG_GROUP_GENERAL: u8 = 1;
-#[cfg(any(feature = "lifecycle", cbindgen))]
 pub(crate) const LOG_PRIORITY_NONE: u8 = 0;
 pub(crate) const LOG_PRIORITY_ERROR: u8 = 1;
 pub(crate) const LOG_PRIORITY_DEBUG: u8 = 3;

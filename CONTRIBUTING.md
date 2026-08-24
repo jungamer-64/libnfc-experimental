@@ -45,25 +45,27 @@ shared code paths.
 Recommended local checks:
 
 ```bash
-cargo test --manifest-path rust/Cargo.toml -p proximate-sys --no-default-features --features c_ffi
+cargo fmt --manifest-path rust/Cargo.toml --all -- --check
+cargo check --manifest-path rust/Cargo.toml --workspace
+cargo clippy --manifest-path rust/Cargo.toml --workspace -- -D warnings
+cargo doc --manifest-path rust/Cargo.toml --workspace --no-deps
+cargo test --manifest-path rust/Cargo.toml --workspace --lib
+cargo check --manifest-path rust/Cargo.toml --workspace --all-targets
+cargo check --manifest-path rust/Cargo.toml --workspace --no-default-features
 bash scripts/check_callerfree_usage.sh
-cargo test --manifest-path rust/Cargo.toml -p proximate -- --nocapture
 ```
 
-If you touch the Rust lifecycle/core bridge, also verify the Rust-backed core
-slice:
+On Linux, where every platform-constrained driver is available, also run:
 
 ```bash
-cargo test --manifest-path rust/Cargo.toml -p proximate-sys --no-default-features --features "c_ffi,secure,lifecycle,orchestration" -- --nocapture
+cargo check --manifest-path rust/Cargo.toml --workspace --all-features
 cmake -S . -B build-rust-core -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON
 cmake --build build-rust-core -j"$(nproc)"
 ctest --test-dir build-rust-core --output-on-failure
 ```
 
-In this experimental branch, Rust is the only supported core implementation.
-The `PROXIMATE_SECURE`, `PROXIMATE_LIFECYCLE`, and
-`PROXIMATE_ORCHESTRATION` CMake options are deprecated no-ops retained for
-older build scripts.
+Rust is the only supported core implementation. CMake driver options map in
+one direction to the corresponding Cargo driver features.
 
 The Rust workspace lives under `rust/`, and `proximate-sys` remains the
 internal implementation used by the public C ABI exposed through `include/nfc/`.

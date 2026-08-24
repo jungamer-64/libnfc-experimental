@@ -1,3 +1,30 @@
+/*-
+ * Free/Libre Near Field Communication (NFC) library
+ *
+ * Libnfc historical contributors:
+ * Copyright (C) 2009      Roel Verdult
+ * Copyright (C) 2009-2013 Romuald Conty
+ * Copyright (C) 2010-2012 Romain Tartière
+ * Copyright (C) 2010-2013 Philippe Teuwen
+ * Copyright (C) 2012-2013 Ludovic Rousseau
+ * See AUTHORS file for a more comprehensive list of contributors.
+ * Additional contributors of this file:
+ * Copyright (C) 2020      Adam Laurie
+ *
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by the
+ * Free Software Foundation, either version 3 of the License, or (at your
+ * option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>
+ */
+
 use super::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -153,22 +180,27 @@ impl Pn53xProfile {
             usb_model: None,
         }
     }
+}
 
-    pub(super) fn supported_modulations(self, mode: Mode) -> Vec<ModulationType> {
-        match (self.usb_model, mode) {
-            (Some(Pn53xUsbModel::AskLogo), Mode::Target) => Vec::new(),
-            (_, Mode::Initiator) => vec![
-                ModulationType::Iso14443A,
-                ModulationType::Jewel,
-                ModulationType::Iso14443B,
-                ModulationType::Felica,
-                ModulationType::Dep,
-            ],
-            (_, Mode::Target) => vec![
-                ModulationType::Iso14443A,
-                ModulationType::Felica,
-                ModulationType::Dep,
-            ],
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Pn53xOperatingMode {
+    Idle,
+    Initiator,
+    Target,
+}
+
+/// Whether the protocol engine can issue a new command without first rebuilding chip state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum Pn53xProtocolState {
+    Ready,
+    NeedsReinitialization { cause: Error },
+}
+
+impl Pn53xProtocolState {
+    pub(super) fn recovery_cause(&self) -> Option<&Error> {
+        match self {
+            Self::Ready => None,
+            Self::NeedsReinitialization { cause } => Some(cause),
         }
     }
 }
@@ -183,7 +215,11 @@ pub(crate) struct Pn53xFirmwareVersion {
 
 impl Pn53xFirmwareVersion {
     pub(super) fn chip_type(&self) -> Pn53xType {
-        Pn53xType::from_ic_byte(self.ic)
+        if self.ic == 0x33 && self.version == 0x01 {
+            Pn53xType::Rcs360
+        } else {
+            Pn53xType::from_ic_byte(self.ic)
+        }
     }
 
     pub(super) fn text(&self) -> String {
@@ -194,6 +230,121 @@ impl Pn53xFirmwareVersion {
             self.revision,
             self.support
         )
+    }
+}
+
+/// Capabilities derived exactly once from the GetFirmwareVersion response.
+///
+/// The support byte and chip identity are kept together so driver profiles and
+/// local state cannot become competing authorities for protocol admission.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ChipCapabilities {
+    firmware: Pn53xFirmwareVersion,
+}
+
+impl ChipCapabilities {
+    pub(super) fn from_firmware_response(payload: &[u8]) -> Result<Self, Error> {
+        let firmware = match payload {
+            [version, revision] => Pn53xFirmwareVersion {
+                ic: 0x31,
+                version: *version,
+                revision: *revision,
+                support: SUPPORT_ISO14443A | SUPPORT_ISO18092,
+            },
+            [ic @ (0x32 | 0x33), version, revision, support] => Pn53xFirmwareVersion {
+                ic: *ic,
+                version: *version,
+                revision: *revision,
+                support: *support,
+            },
+            _ => return Err(Error::UnsupportedOperation("pn53x_firmware_version")),
+        };
+        Ok(Self { firmware })
+    }
+
+    pub(super) fn firmware(&self) -> &Pn53xFirmwareVersion {
+        &self.firmware
+    }
+
+    pub(super) fn chip_type(&self) -> Pn53xType {
+        self.firmware.chip_type()
+    }
+
+    pub(super) fn supported_modulations(&self, mode: Mode) -> Vec<ModulationType> {
+        if mode == Mode::Target {
+            return vec![
+                ModulationType::Iso14443A,
+                ModulationType::Felica,
+                ModulationType::Dep,
+            ];
+        }
+
+        let mut supported = Vec::new();
+        if self.firmware.support & SUPPORT_ISO14443A != 0 {
+            supported.push(ModulationType::Iso14443A);
+            supported.push(ModulationType::Felica);
+        }
+        if self.firmware.support & SUPPORT_ISO14443B != 0 {
+            supported.extend_from_slice(&[
+                ModulationType::Iso14443B,
+                ModulationType::Iso14443Bi,
+                ModulationType::Iso14443B2Sr,
+                ModulationType::Iso14443B2Ct,
+                ModulationType::Iso14443BiClass,
+            ]);
+        }
+        if self.chip_type() != Pn53xType::Pn531 {
+            supported.push(ModulationType::Jewel);
+            supported.push(ModulationType::Barcode);
+        }
+        supported.push(ModulationType::Dep);
+        supported
+    }
+
+    pub(super) fn supported_baud_rates(
+        &self,
+        mode: Mode,
+        modulation_type: ModulationType,
+    ) -> Vec<BaudRate> {
+        match modulation_type {
+            ModulationType::Iso14443A
+                if self.chip_type() == Pn53xType::Pn533 && mode == Mode::Initiator =>
+            {
+                vec![
+                    BaudRate::Br847,
+                    BaudRate::Br424,
+                    BaudRate::Br212,
+                    BaudRate::Br106,
+                ]
+            }
+            ModulationType::Iso14443A => {
+                vec![BaudRate::Br424, BaudRate::Br212, BaudRate::Br106]
+            }
+            ModulationType::Iso14443B if self.chip_type() == Pn53xType::Pn533 => vec![
+                BaudRate::Br847,
+                BaudRate::Br424,
+                BaudRate::Br212,
+                BaudRate::Br106,
+            ],
+            ModulationType::Iso14443B
+            | ModulationType::Iso14443Bi
+            | ModulationType::Iso14443B2Sr
+            | ModulationType::Iso14443B2Ct
+            | ModulationType::Iso14443BiClass => vec![BaudRate::Br106],
+            ModulationType::Felica => vec![BaudRate::Br424, BaudRate::Br212],
+            ModulationType::Dep => {
+                vec![BaudRate::Br424, BaudRate::Br212, BaudRate::Br106]
+            }
+            ModulationType::Jewel | ModulationType::Barcode => vec![BaudRate::Br106],
+        }
+    }
+
+    pub(super) fn supports(&self, modulation: Modulation, mode: Mode) -> bool {
+        self.supported_modulations(mode)
+            .contains(&modulation.modulation_type())
+            && self
+                .supported_baud_rates(mode, modulation.modulation_type())
+                .contains(&modulation.baud_rate())
     }
 }
 

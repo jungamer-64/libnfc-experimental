@@ -8,8 +8,15 @@ pub(crate) const NFC_EINVARG: c_int = -2;
 pub(crate) const NFC_EDEVNOTSUPP: c_int = -3;
 pub(crate) const NFC_ENOTSUCHDEV: c_int = -4;
 pub(crate) const NFC_EOVFLOW: c_int = -5;
+pub(crate) const NFC_ETIMEOUT: c_int = -6;
+pub(crate) const NFC_EOPABORTED: c_int = -7;
 pub(crate) const NFC_ENOTIMPL: c_int = -8;
+pub(crate) const NFC_ETGRELEASED: c_int = -10;
+pub(crate) const NFC_ERFTRANS: c_int = -20;
+pub(crate) const NFC_EMFCAUTHFAIL: c_int = -30;
 pub(crate) const NFC_ESOFT: c_int = -80;
+pub(crate) const NFC_ECHIP: c_int = -90;
+pub(crate) const NFC_EIO: c_int = -1;
 
 pub(crate) fn error_to_status(error: &rt::Error) -> c_int {
     match error {
@@ -21,6 +28,14 @@ pub(crate) fn error_to_status(error: &rt::Error) -> c_int {
         rt::Error::DriverOpenFailed(_) => NFC_ESOFT,
         rt::Error::MissingCapability(_) => NFC_EDEVNOTSUPP,
         rt::Error::UnsupportedOperation(_) => NFC_ENOTIMPL,
+        rt::Error::Timeout(_) => NFC_ETIMEOUT,
+        rt::Error::Aborted(_) => NFC_EOPABORTED,
+        rt::Error::TargetReleased(_) => NFC_ETGRELEASED,
+        rt::Error::RfTransmission(_) => NFC_ERFTRANS,
+        rt::Error::Authentication(_) => NFC_EMFCAUTHFAIL,
+        rt::Error::Io(_) => NFC_EIO,
+        rt::Error::Chip(_) => NFC_ECHIP,
+        rt::Error::OutcomeUnknown { .. } | rt::Error::RecoveryFailed { .. } => NFC_ESOFT,
         rt::Error::DeviceOperationFailed { code, .. } => *code,
     }
 }
@@ -102,6 +117,26 @@ mod tests {
         assert_eq!(
             error_to_status(&rt::Error::UnsupportedOperation("open")),
             NFC_ENOTIMPL
+        );
+        assert_eq!(error_to_status(&rt::Error::Timeout("x")), NFC_ETIMEOUT);
+        assert_eq!(error_to_status(&rt::Error::Aborted("x")), NFC_EOPABORTED);
+        assert_eq!(
+            error_to_status(&rt::Error::TargetReleased("x")),
+            NFC_ETGRELEASED
+        );
+        assert_eq!(
+            error_to_status(&rt::Error::RfTransmission("x")),
+            NFC_ERFTRANS
+        );
+        assert_eq!(
+            error_to_status(&rt::Error::Authentication("x")),
+            NFC_EMFCAUTHFAIL
+        );
+        assert_eq!(error_to_status(&rt::Error::Io("x")), NFC_EIO);
+        assert_eq!(error_to_status(&rt::Error::Chip("x")), NFC_ECHIP);
+        assert_eq!(
+            error_to_status(&rt::Error::OutcomeUnknown { operation: "x" }),
+            NFC_ESOFT
         );
         assert_eq!(
             error_to_status(&rt::Error::DeviceOperationFailed {

@@ -1,5 +1,5 @@
 use crate::nci::TagInfo;
-use proximate_driver::{Modulation, ModulationType, Target, TargetInfo};
+use proximate_driver::{Error, Modulation, ModulationType, Target, TargetInfo};
 
 use super::consts::{
     DESFIRE_ATS, NFA_PROTOCOL_T1T, TARGET_TYPE_FELICA, TARGET_TYPE_ISO14443_3A,
@@ -28,115 +28,95 @@ pub(super) fn technology_matches(tag: &TagInfo, modulation: ModulationType) -> b
     }
 }
 
-pub(super) fn build_target(tag: &TagInfo, modulation: Modulation) -> Option<Target> {
-    if !technology_matches(tag, modulation.modulation_type) {
-        return None;
+pub(super) fn build_target(tag: &TagInfo, modulation: Modulation) -> Result<Option<Target>, Error> {
+    if !technology_matches(tag, modulation.modulation_type()) {
+        return Ok(None);
     }
 
     let uid_len = (tag.uid_length as usize).min(tag.uid.len());
     if uid_len == 0 {
-        return None;
+        return Ok(None);
     }
 
-    let target = match modulation.modulation_type {
-        ModulationType::Iso14443A => Target {
-            modulation,
-            info: TargetInfo::Iso14443A {
-                atqa: [0x00, 0x00],
-                sak: if tag.technology == TARGET_TYPE_MIFARE_CLASSIC {
-                    0x08
-                } else {
-                    0x20
-                },
-                uid: tag.uid[..uid_len].to_vec(),
-                ats: if tag.technology == TARGET_TYPE_MIFARE_CLASSIC {
-                    Vec::new()
-                } else {
-                    DESFIRE_ATS.to_vec()
-                },
+    let info = match modulation.modulation_type() {
+        ModulationType::Iso14443A => TargetInfo::Iso14443A {
+            atqa: [0x00, 0x00],
+            sak: if tag.technology == TARGET_TYPE_MIFARE_CLASSIC {
+                0x08
+            } else {
+                0x20
+            },
+            uid: tag.uid[..uid_len].to_vec(),
+            ats: if tag.technology == TARGET_TYPE_MIFARE_CLASSIC {
+                Vec::new()
+            } else {
+                DESFIRE_ATS.to_vec()
             },
         },
+
         ModulationType::Iso14443B => {
             let mut pupi = [0u8; 4];
             let copy_len = uid_len.min(pupi.len());
             pupi[..copy_len].copy_from_slice(&tag.uid[..copy_len]);
-            Target {
-                modulation,
-                info: TargetInfo::Iso14443B {
-                    pupi,
-                    application_data: [0; 4],
-                    protocol_info: [0; 3],
-                    card_identifier: 0,
-                },
+            TargetInfo::Iso14443B {
+                pupi,
+                application_data: [0; 4],
+                protocol_info: [0; 3],
+                card_identifier: 0,
             }
         }
         ModulationType::Iso14443Bi => {
             let mut div = [0u8; 4];
             let copy_len = uid_len.min(div.len());
             div[..copy_len].copy_from_slice(&tag.uid[..copy_len]);
-            Target {
-                modulation,
-                info: TargetInfo::Iso14443Bi {
-                    div,
-                    version_log: 0,
-                    config: 0,
-                    atr: Vec::new(),
-                },
+            TargetInfo::Iso14443Bi {
+                div,
+                version_log: 0,
+                config: 0,
+                atr: Vec::new(),
             }
         }
         ModulationType::Iso14443B2Sr => {
             let mut uid = [0u8; 8];
             let copy_len = uid_len.min(uid.len());
             uid[..copy_len].copy_from_slice(&tag.uid[..copy_len]);
-            Target {
-                modulation,
-                info: TargetInfo::Iso14443B2Sr { uid },
-            }
+            TargetInfo::Iso14443B2Sr { uid }
         }
         ModulationType::Iso14443B2Ct => {
             let mut uid = [0u8; 4];
             let copy_len = uid_len.min(uid.len());
             uid[..copy_len].copy_from_slice(&tag.uid[..copy_len]);
-            Target {
-                modulation,
-                info: TargetInfo::Iso14443B2Ct {
-                    uid,
-                    product_code: 0,
-                    fabrication_code: 0,
-                },
+            TargetInfo::Iso14443B2Ct {
+                uid,
+                product_code: 0,
+                fabrication_code: 0,
             }
         }
         ModulationType::Felica => {
             let mut id = [0u8; 8];
             let copy_len = uid_len.min(id.len());
             id[..copy_len].copy_from_slice(&tag.uid[..copy_len]);
-            Target {
-                modulation,
-                info: TargetInfo::Felica {
-                    len: copy_len,
-                    response_code: 0,
-                    id,
-                    pad: [0; 8],
-                    system_code: [0; 2],
-                },
+            TargetInfo::Felica {
+                len: copy_len,
+                response_code: 0,
+                id,
+                pad: [0; 8],
+                system_code: [0; 2],
             }
         }
         ModulationType::Jewel => {
             let mut id = [0u8; 4];
             let copy_len = uid_len.min(id.len());
             id[..copy_len].copy_from_slice(&tag.uid[..copy_len]);
-            Target {
-                modulation,
-                info: TargetInfo::Jewel {
-                    sens_res: [0; 2],
-                    id,
-                },
+            TargetInfo::Jewel {
+                sens_res: [0; 2],
+                id,
             }
         }
-        _ => return None,
+        _ => return Ok(None),
     };
 
-    Some(target)
+    Target::try_new(modulation, info).map(Some)
 }
 
 #[cfg(test)]
@@ -153,11 +133,8 @@ mod tests {
             uid_length: 4,
             protocol: 0,
         };
-        let modulation = Modulation {
-            modulation_type: ModulationType::Dep,
-            baud_rate: BaudRate::Br106,
-        };
-        assert_eq!(build_target(&tag, modulation), None);
+        let modulation = Modulation::try_new(ModulationType::Dep, BaudRate::Br106).unwrap();
+        assert_eq!(build_target(&tag, modulation), Ok(None));
     }
 
     #[test]
@@ -169,10 +146,7 @@ mod tests {
             uid_length: 0,
             protocol: 0,
         };
-        let modulation = Modulation {
-            modulation_type: ModulationType::Iso14443A,
-            baud_rate: BaudRate::Br106,
-        };
-        assert_eq!(build_target(&tag, modulation), None);
+        let modulation = Modulation::try_new(ModulationType::Iso14443A, BaudRate::Br106).unwrap();
+        assert_eq!(build_target(&tag, modulation), Ok(None));
     }
 }

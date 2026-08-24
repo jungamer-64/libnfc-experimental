@@ -45,18 +45,13 @@ pub(crate) fn context_from_c(context: *const nfc_context) -> rt::Context {
     runtime
 }
 
-pub(crate) fn target_from_c(target: *const nfc_target) -> rt::Target {
-    let Some(target_ref) = (unsafe { optional_ref(target) }) else {
-        return rt::Target::new(rt::Modulation {
-            modulation_type: rt::ModulationType::Undefined,
-            baud_rate: rt::BaudRate::Undefined,
-        });
-    };
+pub(crate) fn target_from_c(target: *const nfc_target) -> Result<rt::Target, rt::Error> {
+    let target_ref = unsafe { optional_ref(target) }.ok_or(rt::Error::InvalidArgument("target"))?;
 
     let modulation =
-        modulation_from_c(unsafe { ptr::read_unaligned(ptr::addr_of!(target_ref.nm)) });
+        modulation_from_c(unsafe { ptr::read_unaligned(ptr::addr_of!(target_ref.nm)) })?;
     let info_union: nfc_target_info = unsafe { ptr::read_unaligned(ptr::addr_of!(target_ref.nti)) };
-    let info = match modulation.modulation_type {
+    let info = match modulation.modulation_type() {
         rt::ModulationType::Iso14443A => {
             let info = unsafe { info_union.nai };
             rt::TargetInfo::Iso14443A {
@@ -119,7 +114,7 @@ pub(crate) fn target_from_c(target: *const nfc_target) -> rt::Target {
         }
         rt::ModulationType::Dep => {
             let info = unsafe { info_union.ndi };
-            rt::TargetInfo::Dep(dep_info_from_c(info))
+            rt::TargetInfo::Dep(dep_info_from_c(info)?)
         }
         rt::ModulationType::Barcode => {
             let info = unsafe { info_union.nti };
@@ -127,10 +122,9 @@ pub(crate) fn target_from_c(target: *const nfc_target) -> rt::Target {
                 data: info.abtData[..info.szDataLen.min(info.abtData.len())].to_vec(),
             }
         }
-        rt::ModulationType::Undefined => rt::TargetInfo::None,
     };
 
-    rt::Target { modulation, info }
+    rt::Target::try_new(modulation, info)
 }
 
 pub(crate) fn property_from_c(property: nfc_property) -> rt::Property {
@@ -153,35 +147,33 @@ pub(crate) fn property_from_c(property: nfc_property) -> rt::Property {
     }
 }
 
-pub(crate) fn modulation_from_c(modulation: nfc_modulation) -> rt::Modulation {
-    rt::Modulation {
-        modulation_type: modulation_type_from_c(unsafe {
-            ptr::addr_of!(modulation.nmt).read_unaligned()
-        }),
-        baud_rate: baud_rate_from_c(unsafe { ptr::addr_of!(modulation.nbr).read_unaligned() }),
-    }
+pub(crate) fn modulation_from_c(modulation: nfc_modulation) -> Result<rt::Modulation, rt::Error> {
+    rt::Modulation::try_new(
+        modulation_type_from_c(unsafe { ptr::addr_of!(modulation.nmt).read_unaligned() })?,
+        baud_rate_from_c(unsafe { ptr::addr_of!(modulation.nbr).read_unaligned() })?,
+    )
 }
 
-pub(crate) fn dep_mode_from_c(mode: nfc_dep_mode) -> rt::DepMode {
+pub(crate) fn dep_mode_from_c(mode: nfc_dep_mode) -> Result<rt::DepMode, rt::Error> {
     match mode {
-        nfc_dep_mode::NDM_UNDEFINED => rt::DepMode::Undefined,
-        nfc_dep_mode::NDM_PASSIVE => rt::DepMode::Passive,
-        nfc_dep_mode::NDM_ACTIVE => rt::DepMode::Active,
+        nfc_dep_mode::NDM_UNDEFINED => Err(rt::Error::InvalidArgument("DEP mode")),
+        nfc_dep_mode::NDM_PASSIVE => Ok(rt::DepMode::Passive),
+        nfc_dep_mode::NDM_ACTIVE => Ok(rt::DepMode::Active),
     }
 }
 
-pub(crate) fn baud_rate_from_c(rate: nfc_baud_rate) -> rt::BaudRate {
+pub(crate) fn baud_rate_from_c(rate: nfc_baud_rate) -> Result<rt::BaudRate, rt::Error> {
     match rate {
-        nfc_baud_rate::NBR_UNDEFINED => rt::BaudRate::Undefined,
-        nfc_baud_rate::NBR_106 => rt::BaudRate::Br106,
-        nfc_baud_rate::NBR_212 => rt::BaudRate::Br212,
-        nfc_baud_rate::NBR_424 => rt::BaudRate::Br424,
-        nfc_baud_rate::NBR_847 => rt::BaudRate::Br847,
+        nfc_baud_rate::NBR_UNDEFINED => Err(rt::Error::InvalidArgument("baud rate")),
+        nfc_baud_rate::NBR_106 => Ok(rt::BaudRate::Br106),
+        nfc_baud_rate::NBR_212 => Ok(rt::BaudRate::Br212),
+        nfc_baud_rate::NBR_424 => Ok(rt::BaudRate::Br424),
+        nfc_baud_rate::NBR_847 => Ok(rt::BaudRate::Br847),
     }
 }
 
-pub(crate) fn dep_info_from_c(info: nfc_dep_info) -> rt::DepInfo {
-    rt::DepInfo {
+pub(crate) fn dep_info_from_c(info: nfc_dep_info) -> Result<rt::DepInfo, rt::Error> {
+    Ok(rt::DepInfo {
         nfcid3: info.abtNFCID3,
         did: info.btDID,
         bs: info.btBS,
@@ -189,23 +181,25 @@ pub(crate) fn dep_info_from_c(info: nfc_dep_info) -> rt::DepInfo {
         timeout: info.btTO,
         pp: info.btPP,
         general_bytes: info.abtGB[..info.szGB.min(info.abtGB.len())].to_vec(),
-        mode: dep_mode_from_c(info.ndm),
-    }
+        mode: dep_mode_from_c(info.ndm)?,
+    })
 }
 
-pub(crate) fn modulation_type_from_c(value: nfc_modulation_type) -> rt::ModulationType {
+pub(crate) fn modulation_type_from_c(
+    value: nfc_modulation_type,
+) -> Result<rt::ModulationType, rt::Error> {
     match value {
-        nfc_modulation_type::NMT_UNDEFINED => rt::ModulationType::Undefined,
-        nfc_modulation_type::NMT_ISO14443A => rt::ModulationType::Iso14443A,
-        nfc_modulation_type::NMT_JEWEL => rt::ModulationType::Jewel,
-        nfc_modulation_type::NMT_ISO14443B => rt::ModulationType::Iso14443B,
-        nfc_modulation_type::NMT_ISO14443BI => rt::ModulationType::Iso14443Bi,
-        nfc_modulation_type::NMT_ISO14443B2SR => rt::ModulationType::Iso14443B2Sr,
-        nfc_modulation_type::NMT_ISO14443B2CT => rt::ModulationType::Iso14443B2Ct,
-        nfc_modulation_type::NMT_FELICA => rt::ModulationType::Felica,
-        nfc_modulation_type::NMT_DEP => rt::ModulationType::Dep,
-        nfc_modulation_type::NMT_BARCODE => rt::ModulationType::Barcode,
-        nfc_modulation_type::NMT_ISO14443BICLASS => rt::ModulationType::Iso14443BiClass,
+        nfc_modulation_type::NMT_UNDEFINED => Err(rt::Error::InvalidArgument("modulation type")),
+        nfc_modulation_type::NMT_ISO14443A => Ok(rt::ModulationType::Iso14443A),
+        nfc_modulation_type::NMT_JEWEL => Ok(rt::ModulationType::Jewel),
+        nfc_modulation_type::NMT_ISO14443B => Ok(rt::ModulationType::Iso14443B),
+        nfc_modulation_type::NMT_ISO14443BI => Ok(rt::ModulationType::Iso14443Bi),
+        nfc_modulation_type::NMT_ISO14443B2SR => Ok(rt::ModulationType::Iso14443B2Sr),
+        nfc_modulation_type::NMT_ISO14443B2CT => Ok(rt::ModulationType::Iso14443B2Ct),
+        nfc_modulation_type::NMT_FELICA => Ok(rt::ModulationType::Felica),
+        nfc_modulation_type::NMT_DEP => Ok(rt::ModulationType::Dep),
+        nfc_modulation_type::NMT_BARCODE => Ok(rt::ModulationType::Barcode),
+        nfc_modulation_type::NMT_ISO14443BICLASS => Ok(rt::ModulationType::Iso14443BiClass),
     }
 }
 
@@ -318,25 +312,32 @@ pub(crate) unsafe fn decode_modulations(
     if modulations.is_null() {
         return Err(invalid_argument_status(device));
     }
-    Ok(unsafe { slice::from_raw_parts(modulations, len) }
+    unsafe { slice::from_raw_parts(modulations, len) }
         .iter()
         .copied()
         .map(modulation_from_c)
-        .collect())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| invalid_argument_status(device))
 }
 
 pub(crate) unsafe fn decode_optional_dep_info(
     initiator: *const nfc_dep_info,
-) -> Option<rt::DepInfo> {
+) -> Result<Option<rt::DepInfo>, rt::Error> {
     if initiator.is_null() {
-        None
+        Ok(None)
     } else {
-        Some(dep_info_from_c(unsafe { ptr::read_unaligned(initiator) }))
+        dep_info_from_c(unsafe { ptr::read_unaligned(initiator) }).map(Some)
     }
 }
 
-pub(crate) unsafe fn decode_optional_target(target: *const nfc_target) -> Option<rt::Target> {
-    (!target.is_null()).then(|| target_from_c(target))
+pub(crate) unsafe fn decode_optional_target(
+    target: *const nfc_target,
+) -> Result<Option<rt::Target>, rt::Error> {
+    if target.is_null() {
+        Ok(None)
+    } else {
+        target_from_c(target).map(Some)
+    }
 }
 
 #[cfg(test)]
@@ -410,17 +411,17 @@ mod tests {
             unsafe { decode_modulations(ptr::null_mut(), modulations.as_ptr(), 1) }.unwrap();
         assert_eq!(
             decoded,
-            vec![rt::Modulation {
-                modulation_type: rt::ModulationType::Iso14443A,
-                baud_rate: rt::BaudRate::Br106,
-            }]
+            vec![
+                rt::Modulation::try_new(rt::ModulationType::Iso14443A, rt::BaudRate::Br106,)
+                    .unwrap()
+            ]
         );
     }
 
     #[test]
     fn optional_decoders_accept_null() {
-        assert_eq!(unsafe { decode_optional_dep_info(ptr::null()) }, None);
-        assert_eq!(unsafe { decode_optional_target(ptr::null()) }, None);
+        assert_eq!(unsafe { decode_optional_dep_info(ptr::null()) }, Ok(None));
+        assert_eq!(unsafe { decode_optional_target(ptr::null()) }, Ok(None));
 
         let dep = nfc_dep_info {
             ndm: nfc_dep_mode::NDM_ACTIVE,
@@ -433,7 +434,9 @@ mod tests {
             abtGB: [0; 48],
             szGB: 0,
         };
-        let decoded = unsafe { decode_optional_dep_info(ptr::addr_of!(dep)) }.unwrap();
+        let decoded = unsafe { decode_optional_dep_info(ptr::addr_of!(dep)) }
+            .unwrap()
+            .unwrap();
         assert_eq!(decoded.mode, rt::DepMode::Active);
         assert_eq!(decoded.did, 2);
     }

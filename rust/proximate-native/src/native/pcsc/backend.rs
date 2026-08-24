@@ -1,4 +1,3 @@
-#[cfg(feature = "pcsc_helper")]
 use crate::pcsc as platform_pcsc;
 
 use super::{
@@ -7,16 +6,7 @@ use super::{
 };
 
 pub(super) fn pcsc_error_message(code: i32) -> Option<&'static str> {
-    #[cfg(feature = "pcsc_helper")]
-    {
-        platform_pcsc::error_message(code)
-    }
-
-    #[cfg(not(feature = "pcsc_helper"))]
-    {
-        let _ = code;
-        None
-    }
+    platform_pcsc::error_message(code)
 }
 
 pub(super) fn stringify_pcsc_error(code: i32) -> String {
@@ -25,7 +15,6 @@ pub(super) fn stringify_pcsc_error(code: i32) -> String {
         .unwrap_or_else(|| format!("Unknown error: 0x{:08X}", code as u32))
 }
 
-#[cfg(feature = "pcsc_helper")]
 fn map_share_mode(value: PcscShareMode) -> platform_pcsc::ShareMode {
     match value {
         PcscShareMode::Exclusive => platform_pcsc::ShareMode::Exclusive,
@@ -34,7 +23,6 @@ fn map_share_mode(value: PcscShareMode) -> platform_pcsc::ShareMode {
     }
 }
 
-#[cfg(feature = "pcsc_helper")]
 fn map_protocols(value: PcscProtocols) -> platform_pcsc::Protocols {
     let mut protocols = platform_pcsc::Protocols::UNDEFINED;
     if value.contains(PcscProtocol::T0) {
@@ -49,7 +37,6 @@ fn map_protocols(value: PcscProtocols) -> platform_pcsc::Protocols {
     protocols
 }
 
-#[cfg(feature = "pcsc_helper")]
 fn map_disposition(value: PcscDisposition) -> platform_pcsc::Disposition {
     match value {
         PcscDisposition::LeaveCard => platform_pcsc::Disposition::LeaveCard,
@@ -59,7 +46,6 @@ fn map_disposition(value: PcscDisposition) -> platform_pcsc::Disposition {
     }
 }
 
-#[cfg(feature = "pcsc_helper")]
 fn map_protocol(value: platform_pcsc::Protocol) -> PcscProtocol {
     match value {
         platform_pcsc::Protocol::T0 => PcscProtocol::T0,
@@ -68,7 +54,6 @@ fn map_protocol(value: platform_pcsc::Protocol) -> PcscProtocol {
     }
 }
 
-#[cfg(feature = "pcsc_helper")]
 fn map_attribute(value: PcscAttribute) -> platform_pcsc::Attribute {
     match value {
         PcscAttribute::VendorName => platform_pcsc::Attribute::VendorName,
@@ -79,15 +64,12 @@ fn map_attribute(value: PcscAttribute) -> platform_pcsc::Attribute {
     }
 }
 
-#[cfg(feature = "pcsc_helper")]
-pub(super) struct SystemPcscBackend;
+pub(crate) struct SystemPcscBackend;
 
-#[cfg(feature = "pcsc_helper")]
 struct SystemPcscCard {
     inner: Box<dyn platform_pcsc::Card>,
 }
 
-#[cfg(feature = "pcsc_helper")]
 impl PcscCard for SystemPcscCard {
     fn reconnect(
         &mut self,
@@ -129,7 +111,6 @@ impl PcscCard for SystemPcscCard {
     }
 }
 
-#[cfg(feature = "pcsc_helper")]
 impl PcscBackend for SystemPcscBackend {
     fn list_readers_owned(&self) -> Result<Vec<String>, i32> {
         platform_pcsc::Backend::list_readers_owned(&platform_pcsc::SystemBackend)

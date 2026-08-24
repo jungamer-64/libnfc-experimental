@@ -51,5 +51,6 @@ pub(crate) use borrowed_rust::borrowed_device;
 use common::*;
 pub(crate) use external::ExternalDriver;
 pub(crate) use rust_owned::{
-    attach_rust_device, free_rust_device, is_rust_shim_device, rust_device_state_mut,
+    attach_rust_device, free_rust_device, is_rust_shim_device, rust_command_abort_handle,
+    rust_device_state_mut,
 };

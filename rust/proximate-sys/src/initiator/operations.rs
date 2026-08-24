@@ -2,8 +2,10 @@ use super::log_general_debug;
 use crate::c_abi::types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_modulation, nfc_property, nfc_target,
 };
-use crate::c_boundary::status::{NFC_ESOFT, invalid_argument_status, runtime_result_status};
-use crate::domain_bridge::c_driver::is_rust_shim_device;
+use crate::c_boundary::status::{
+    NFC_EDEVNOTSUPP, NFC_ESOFT, error_to_status, invalid_argument_status, runtime_result_status,
+};
+use crate::domain_bridge::c_driver::{is_rust_shim_device, rust_command_abort_handle};
 use crate::domain_bridge::decode::OutputBytes;
 use crate::domain_bridge::decode::{
     InputBytes, ParityMarker, ParityMarkerMut, baud_rate_from_c, decode_modulations,
@@ -95,12 +97,12 @@ pub(crate) unsafe fn nfc_initiator_select_passive_target(
                 Err(status) => return status,
             };
             let target = TargetOut::from_raw(target);
+            let modulation = match modulation_from_c(nm) {
+                Ok(value) => value,
+                Err(_) => return invalid_argument_status(device),
+            };
 
-            match runtime::select_passive_target(
-                device,
-                modulation_from_c(nm),
-                payload.as_optional(),
-            ) {
+            match runtime::select_passive_target(device, modulation, payload.as_optional()) {
                 Ok(Some(runtime_target)) => {
                     target.write_back(&runtime_target);
                     1
@@ -126,8 +128,12 @@ pub(crate) unsafe fn nfc_initiator_list_passive_targets(
             Ok(targets) => targets,
             Err(status) => return status,
         };
+        let modulation = match modulation_from_c(nm) {
+            Ok(value) => value,
+            Err(_) => return invalid_argument_status(device),
+        };
 
-        match runtime::list_passive_targets(device, modulation_from_c(nm), targets_len) {
+        match runtime::list_passive_targets(device, modulation, targets_len) {
             Ok(runtime_targets) => {
                 targets.write_back(&runtime_targets);
                 runtime_targets.len() as c_int
@@ -191,16 +197,22 @@ pub(crate) unsafe fn nfc_initiator_select_dep_target(
             });
         }
 
-        let initiator_info = decode_optional_dep_info(initiator);
+        let initiator_info = match decode_optional_dep_info(initiator) {
+            Ok(value) => value,
+            Err(_) => return invalid_argument_status(device),
+        };
+        let mode = match dep_mode_from_c(ndm) {
+            Ok(value) => value,
+            Err(_) => return invalid_argument_status(device),
+        };
+        let baud_rate = match baud_rate_from_c(nbr) {
+            Ok(value) => value,
+            Err(_) => return invalid_argument_status(device),
+        };
         let target = TargetOut::from_raw(target);
 
-        match runtime::select_dep_target(
-            device,
-            dep_mode_from_c(ndm),
-            baud_rate_from_c(nbr),
-            initiator_info.as_ref(),
-            timeout,
-        ) {
+        match runtime::select_dep_target(device, mode, baud_rate, initiator_info.as_ref(), timeout)
+        {
             Ok(Some(runtime_target)) => {
                 target.write_back(&runtime_target);
                 1
@@ -220,16 +232,21 @@ pub(crate) unsafe fn nfc_initiator_poll_dep_target(
     timeout: c_int,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_poll_dep_target", NFC_ESOFT, || unsafe {
-        let initiator_info = decode_optional_dep_info(initiator);
+        let initiator_info = match decode_optional_dep_info(initiator) {
+            Ok(value) => value,
+            Err(_) => return invalid_argument_status(device),
+        };
+        let mode = match dep_mode_from_c(ndm) {
+            Ok(value) => value,
+            Err(_) => return invalid_argument_status(device),
+        };
+        let baud_rate = match baud_rate_from_c(nbr) {
+            Ok(value) => value,
+            Err(_) => return invalid_argument_status(device),
+        };
         let target = TargetOut::from_raw(target);
 
-        match runtime::poll_dep_target(
-            device,
-            dep_mode_from_c(ndm),
-            baud_rate_from_c(nbr),
-            initiator_info.as_ref(),
-            timeout,
-        ) {
+        match runtime::poll_dep_target(device, mode, baud_rate, initiator_info.as_ref(), timeout) {
             Ok(Some(runtime_target)) => {
                 target.write_back(&runtime_target);
                 1
@@ -254,7 +271,10 @@ pub(crate) unsafe fn nfc_initiator_target_is_present(
     target: *const nfc_target,
 ) -> c_int {
     ffi_catch_unwind_int("nfc_initiator_target_is_present", NFC_ESOFT, || unsafe {
-        let runtime_target = decode_optional_target(target);
+        let runtime_target = match decode_optional_target(target) {
+            Ok(value) => value,
+            Err(_) => return invalid_argument_status(device),
+        };
         match runtime::target_is_present(device, runtime_target.as_ref()) {
             Ok(true) => 1,
             Ok(false) => 0,
@@ -530,9 +550,12 @@ pub(crate) unsafe fn nfc_abort_command(device: *mut nfc_device) -> c_int {
             return call_abort_command_impl(device);
         }
 
-        match runtime::abort_command(device) {
+        let Some(command_abort) = rust_command_abort_handle(device) else {
+            return NFC_EDEVNOTSUPP;
+        };
+        match command_abort.abort() {
             Ok(()) => 0,
-            Err(error) => runtime_result_status(device, &error, true),
+            Err(error) => error_to_status(&error),
         }
     })
 }

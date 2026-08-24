@@ -6,9 +6,11 @@ use crate::initiator::accessors::{
     nfc_device_get_information_about, nfc_device_get_supported_baud_rate,
     nfc_device_get_supported_baud_rate_target_mode, nfc_device_get_supported_modulation,
 };
-use proximate_driver::{DeviceHandle, DeviceMeta, Driver};
+use crate::initiator::operations::nfc_abort_command;
+use proximate_driver::{DeviceHandle, Driver};
 use std::collections::VecDeque;
 use std::ffi::CStr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::{ptr, slice};
 
@@ -216,9 +218,20 @@ static FALLBACK_USB_DRIVER: nfc_driver = nfc_driver {
 struct FakeRustHandle {
     name: String,
     connstring: rt::ConnectionString,
-    caps: rt::DeviceCaps,
     property_calls: Arc<Mutex<Vec<(rt::Property, bool)>>>,
     info_result: Result<String, rt::Error>,
+    command_abort: Option<rt::CommandAbortHandle>,
+}
+
+struct FakeCommandAbort {
+    calls: Arc<AtomicUsize>,
+}
+
+impl rt::CommandAbort for FakeCommandAbort {
+    fn abort(&self) -> Result<(), rt::Error> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
 }
 
 impl rt::DeviceMeta for FakeRustHandle {
@@ -228,10 +241,6 @@ impl rt::DeviceMeta for FakeRustHandle {
 
     fn connstring(&self) -> &rt::ConnectionString {
         &self.connstring
-    }
-
-    fn caps(&self) -> rt::DeviceCaps {
-        self.caps
     }
 }
 
@@ -267,7 +276,11 @@ impl rt::PropertyBackend for FakeRustHandle {
     }
 }
 
-impl rt::InitiatorBackend for FakeRustHandle {}
+impl rt::InitiatorBackend for FakeRustHandle {
+    fn command_abort_handle(&self) -> Option<rt::CommandAbortHandle> {
+        self.command_abort.clone()
+    }
+}
 
 impl rt::TargetBackend for FakeRustHandle {}
 
@@ -277,19 +290,46 @@ fn make_rust_shim_device(handle: FakeRustHandle) -> *mut nfc_device {
     let conn = CString::new(handle.connstring.as_str()).unwrap();
     let raw = unsafe { nfc_device_new(ptr::null(), conn.as_ptr()) };
     assert!(!raw.is_null());
-    let caps = handle.caps();
+    let command_abort = rt::InitiatorBackend::command_abort_handle(&handle);
     let state = Box::new(RustDeviceState {
         handle: Box::new(handle) as Box<dyn DeviceHandle>,
         strerror: CString::new("shim").unwrap(),
         supported_modulations: Vec::new(),
         supported_baud_rates: Vec::new(),
     });
-    let driver = Box::new(super::rust_owned::build_rust_device_shim_driver(caps));
+    let driver = Box::new(super::rust_owned::build_rust_device_shim_driver());
     unsafe {
         (*raw).driver = Box::into_raw(driver);
         (*raw).driver_data = Box::into_raw(state).cast();
+        (*raw).command_abort = command_abort
+            .map(|handle| Box::into_raw(Box::new(handle)).cast())
+            .unwrap_or(ptr::null_mut());
     }
     raw
+}
+
+#[test]
+fn rust_shim_abort_uses_authority_outside_mutable_backend_state() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let raw = make_rust_shim_device(FakeRustHandle {
+        name: "rust-shim".into(),
+        connstring: rt::ConnectionString::new("alpha:001").unwrap(),
+        property_calls: Arc::new(Mutex::new(Vec::new())),
+        info_result: Ok("shim".into()),
+        command_abort: Some(Arc::new(FakeCommandAbort {
+            calls: calls.clone(),
+        })),
+    });
+
+    assert_eq!(unsafe { nfc_abort_command(raw) }, 0);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    unsafe {
+        let driver = (*raw).driver as *mut nfc_driver;
+        let close = (*driver).close.unwrap();
+        close(raw);
+        drop(Box::from_raw(driver));
+    }
 }
 
 #[test]
@@ -355,16 +395,16 @@ fn external_driver_registry_keeps_usb_fallback_and_name_override_behavior() {
 }
 
 #[test]
-fn borrowed_rust_device_normalizes_missing_caps_and_clears_last_error_on_success() {
+fn borrowed_rust_device_normalizes_unsupported_results_and_clears_last_error_on_success() {
     let property_calls = Arc::new(Mutex::new(Vec::new()));
     let raw = make_rust_shim_device(FakeRustHandle {
         name: "rust-shim".into(),
         connstring: rt::ConnectionString::new("alpha:001").unwrap(),
-        caps: rt::DeviceCaps::INFO | rt::DeviceCaps::SET_PROPERTY_BOOL,
         property_calls: property_calls.clone(),
         info_result: Err(rt::Error::UnsupportedOperation(
             "device_get_information_about",
         )),
+        command_abort: None,
     });
 
     let mut device = borrowed_device(raw);
@@ -398,9 +438,9 @@ fn rust_shim_capability_accessors_return_success_and_terminated_arrays() {
     let raw = make_rust_shim_device(FakeRustHandle {
         name: "rust-shim".into(),
         connstring: rt::ConnectionString::new("alpha:001").unwrap(),
-        caps: rt::DeviceCaps::SUPPORTED_MODULATIONS | rt::DeviceCaps::SUPPORTED_BAUD_RATES,
         property_calls: Arc::new(Mutex::new(Vec::new())),
         info_result: Ok("shim".into()),
+        command_abort: None,
     });
 
     let mut supported_modulations = ptr::null();
@@ -467,9 +507,9 @@ fn rust_shim_information_about_allocates_owned_c_string_and_clears_last_error() 
     let raw = make_rust_shim_device(FakeRustHandle {
         name: "rust-shim".into(),
         connstring: rt::ConnectionString::new("alpha:001").unwrap(),
-        caps: rt::DeviceCaps::INFO,
         property_calls: Arc::new(Mutex::new(Vec::new())),
         info_result: Ok("shim-info".into()),
+        command_abort: None,
     });
 
     let mut info: *mut c_char = ptr::null_mut();
@@ -499,11 +539,9 @@ fn rust_shim_accessors_reject_null_output_pointers() {
     let raw = make_rust_shim_device(FakeRustHandle {
         name: "rust-shim".into(),
         connstring: rt::ConnectionString::new("alpha:001").unwrap(),
-        caps: rt::DeviceCaps::INFO
-            | rt::DeviceCaps::SUPPORTED_MODULATIONS
-            | rt::DeviceCaps::SUPPORTED_BAUD_RATES,
         property_calls: Arc::new(Mutex::new(Vec::new())),
         info_result: Ok("shim".into()),
+        command_abort: None,
     });
 
     assert_eq!(

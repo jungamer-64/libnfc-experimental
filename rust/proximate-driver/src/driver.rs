@@ -1,7 +1,4 @@
-use crate::{
-    ConnectionString, Context, ContextConfig, Device, DeviceCaps, DeviceHandle, DriverCaps, Error,
-    ScanType,
-};
+use crate::{ConnectionString, Context, ContextConfig, Device, DeviceHandle, Error, ScanType};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DeviceOrigin {
@@ -13,7 +10,6 @@ pub enum DeviceOrigin {
 pub struct DiscoveredDevice {
     pub display_name: String,
     pub connstring: ConnectionString,
-    pub caps: Option<DeviceCaps>,
     pub scan_type: ScanType,
     pub exclusive: bool,
     pub origin: DeviceOrigin,
@@ -22,13 +18,6 @@ pub struct DiscoveredDevice {
 pub trait Driver: Send + Sync {
     fn name(&self) -> &str;
     fn scan_type(&self) -> ScanType;
-    fn caps(&self) -> DriverCaps {
-        let mut caps = DriverCaps::OPEN;
-        if self.scan_type() != ScanType::NotAvailable {
-            caps |= DriverCaps::SCAN;
-        }
-        caps
-    }
     fn origin(&self) -> DeviceOrigin {
         DeviceOrigin::Driver(self.name().to_string())
     }
@@ -42,12 +31,10 @@ pub trait Driver: Send + Sync {
         &self,
         display_name: String,
         connstring: ConnectionString,
-        caps: Option<DeviceCaps>,
     ) -> DiscoveredDevice {
         DiscoveredDevice {
             display_name,
             connstring,
-            caps,
             scan_type: self.scan_type(),
             exclusive: self.exclusive(),
             origin: self.origin(),
@@ -102,7 +89,6 @@ impl DriverRegistry {
             devices.push(DiscoveredDevice {
                 display_name: configured.name.clone(),
                 connstring: configured.connstring.clone(),
-                caps: None,
                 scan_type: ScanType::NotAvailable,
                 exclusive: false,
                 origin: DeviceOrigin::UserDefined,
@@ -117,9 +103,6 @@ impl DriverRegistry {
         }
 
         for driver in self.drivers.iter().rev() {
-            if !driver.caps().contains(DriverCaps::SCAN) {
-                continue;
-            }
             if !scan_allowed_for_driver(&context.config, driver.as_ref()) {
                 continue;
             }
@@ -146,7 +129,6 @@ impl DriverRegistry {
             return Ok(Some(DiscoveredDevice {
                 display_name: configured.name.clone(),
                 connstring: configured.connstring.clone(),
-                caps: None,
                 scan_type: ScanType::NotAvailable,
                 exclusive: false,
                 origin: DeviceOrigin::UserDefined,
@@ -158,9 +140,6 @@ impl DriverRegistry {
         }
 
         for driver in self.drivers.iter().rev() {
-            if !driver.caps().contains(DriverCaps::SCAN) {
-                continue;
-            }
             if !scan_allowed_for_driver(&context.config, driver.as_ref()) {
                 continue;
             }
@@ -192,9 +171,6 @@ impl DriverRegistry {
         let requested_family = requested.family().to_string();
 
         for driver in self.drivers.iter().rev() {
-            if !driver.caps().contains(DriverCaps::OPEN) {
-                continue;
-            }
             if !driver.accepts_family(&requested_family) {
                 continue;
             }

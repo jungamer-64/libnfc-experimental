@@ -35,7 +35,6 @@ impl Driver for Pn71xxDriver {
             return Ok(vec![self.describe_discovered(
                 PN71XX_DRIVER_NAME.to_string(),
                 ConnectionString::new(PN71XX_DRIVER_NAME).unwrap(),
-                Some(Pn71xxDevice::scan_caps()),
             )]);
         }
 
@@ -47,7 +46,6 @@ impl Driver for Pn71xxDriver {
         Ok(vec![self.describe_discovered(
             PN71XX_DRIVER_NAME.to_string(),
             ConnectionString::new(PN71XX_DRIVER_NAME).unwrap(),
-            Some(Pn71xxDevice::scan_caps()),
         )])
     }
 

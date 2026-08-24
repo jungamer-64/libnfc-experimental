@@ -80,7 +80,7 @@ jobs:
             os: windows-latest
             command: cargo check --manifest-path rust/Cargo.toml --workspace --no-default-features
           - name: all-features
-            os: windows-latest
+            os: ubuntu-latest
             command: cargo check --manifest-path rust/Cargo.toml --workspace --all-features
 
     steps:
@@ -92,6 +92,12 @@ jobs:
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy
           rustup default stable
           rustup show
+
+      - name: Install Linux feature dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpcsclite-dev pkg-config
 
       - name: Cache Cargo
         uses: actions/cache@v5
@@ -124,9 +130,6 @@ jobs:
 
       - name: Check Rust FFI free ownership
         run: bash scripts/check_callerfree_usage.sh
-
-      - name: Check retired private headers
-        run: bash scripts/check-no-retired-private-header-includes.sh
 
   cmake-shared:
     name: CMake shared (${{ matrix.name }})

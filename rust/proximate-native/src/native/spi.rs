@@ -2,11 +2,11 @@ use super::connstring::{build_path_speed_connstring, decode_path_speed_descripto
 use super::pn53x::{
     Pn53xDevice, Pn53xProfile, Pn53xTransport, command_from_host_frame, is_ack_frame,
 };
+use crate::command_abort::AtomicCommandAbort;
 use crate::spi::{SpiHandle, SpiOpenError};
-use proximate_driver::{ConnectionString, Context, DeviceHandle, Driver, Error, ScanType};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use proximate_driver::{
+    CommandAbort, CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error,
+    ScanType,
 };
 use std::thread;
 use std::time::{Duration, Instant};
@@ -17,7 +17,6 @@ const SPI_MODE_0: u8 = 0;
 const PROBE_TIMEOUT_MS: i32 = 250;
 const NFC_EIO: i32 = -1;
 const NFC_ETIMEOUT: i32 = -6;
-const NFC_EOPABORTED: i32 = -7;
 const DATAREAD: u8 = 0x03;
 const DATAWRITE: u8 = 0x01;
 const STATREAD: u8 = 0x02;
@@ -60,11 +59,7 @@ impl Driver for Pn532SpiDriver {
             )
             .is_ok()
             {
-                devices.push(self.describe_discovered(
-                    format!("PN532 SPI ({path})"),
-                    connstring,
-                    Some(super::pn53x::scan_caps(Pn53xProfile::pn532(DRIVER_NAME))),
-                ));
+                devices.push(self.describe_discovered(format!("PN532 SPI ({path})"), connstring));
             }
         }
         Ok(devices)
@@ -94,7 +89,7 @@ fn list_candidate_paths() -> Vec<String> {
 
 pub struct SpiTransport {
     handle: SpiHandle,
-    abort_requested: Arc<AtomicBool>,
+    command_abort: std::sync::Arc<AtomicCommandAbort>,
 }
 
 impl SpiTransport {
@@ -114,7 +109,7 @@ impl SpiTransport {
 
         Ok(Self {
             handle,
-            abort_requested: Arc::new(AtomicBool::new(false)),
+            command_abort: AtomicCommandAbort::new(),
         })
     }
 
@@ -129,8 +124,8 @@ impl SpiTransport {
     fn wait_ready(&mut self, timeout_ms: i32) -> Result<(), Error> {
         let start = Instant::now();
         loop {
-            if self.abort_requested.swap(false, Ordering::SeqCst) {
-                return Err(device_error("spi_abort", NFC_EOPABORTED));
+            if self.command_abort.take_requested() {
+                return Err(Error::Aborted("spi_receive"));
             }
 
             if self.read_status()? == 0x01 {
@@ -148,7 +143,7 @@ impl SpiTransport {
 
 impl Pn53xTransport for SpiTransport {
     fn send(&mut self, payload: &[u8], _timeout_ms: i32) -> Result<(), Error> {
-        self.abort_requested.store(false, Ordering::SeqCst);
+        self.command_abort.begin_command();
         let _ = command_from_host_frame(payload);
         let mut tx = Vec::with_capacity(payload.len() + 1);
         tx.push(DATAWRITE);
@@ -189,8 +184,11 @@ impl Pn53xTransport for SpiTransport {
     }
 
     fn abort_command(&mut self) -> Result<(), Error> {
-        self.abort_requested.store(true, Ordering::SeqCst);
-        Ok(())
+        self.command_abort.abort()
+    }
+
+    fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
+        Some(self.command_abort.handle())
     }
 
     fn wake_up(&mut self) -> Result<(), Error> {
@@ -200,6 +198,12 @@ impl Pn53xTransport for SpiTransport {
             .map_err(|_| device_error("spi_transfer", NFC_EIO))?;
         thread::sleep(Duration::from_millis(1));
         Ok(())
+    }
+}
+
+impl Drop for SpiTransport {
+    fn drop(&mut self) {
+        self.command_abort.revoke();
     }
 }
 

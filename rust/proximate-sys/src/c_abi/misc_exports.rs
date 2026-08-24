@@ -214,11 +214,17 @@ macro_rules! read_unaligned_field {
 }
 
 fn modulation_label(value: nfc_modulation_type) -> *const c_char {
-    modulation_label_cstr(modulation_type_from_c(value)).as_ptr()
+    modulation_type_from_c(value)
+        .map(modulation_label_cstr)
+        .unwrap_or(c"???")
+        .as_ptr()
 }
 
 fn baud_rate_label(value: nfc_baud_rate) -> *const c_char {
-    baud_rate_label_cstr(baud_rate_from_c(value)).as_ptr()
+    baud_rate_from_c(value)
+        .map(baud_rate_label_cstr)
+        .unwrap_or(c"undefined baud rate")
+        .as_ptr()
 }
 
 fn iso14443a_crc_bytes(data: &[u8]) -> [u8; 2] {
@@ -283,13 +289,17 @@ fn write_hex(rendered: &mut String, bytes: &[u8]) {
 }
 
 fn modulation_label_str(value: nfc_modulation_type) -> &'static str {
-    modulation_label_cstr(modulation_type_from_c(value))
+    modulation_type_from_c(value)
+        .map(modulation_label_cstr)
+        .unwrap_or(c"???")
         .to_str()
         .expect("static modulation label should be utf-8")
 }
 
 fn baud_rate_label_str(value: nfc_baud_rate) -> &'static str {
-    baud_rate_label_cstr(baud_rate_from_c(value))
+    baud_rate_from_c(value)
+        .map(baud_rate_label_cstr)
+        .unwrap_or(c"undefined baud rate")
         .to_str()
         .expect("static baud-rate label should be utf-8")
 }
@@ -1095,9 +1105,9 @@ mod tests {
     }
 
     #[test]
-    fn version_is_non_empty() {
+    fn version_matches_libnfc_compatibility_contract() {
         let version = unsafe { CStr::from_ptr(nfc_version()) }.to_str().unwrap();
-        assert!(!version.is_empty());
+        assert_eq!(version, "1.8.0");
     }
 
     #[test]
@@ -1139,6 +1149,7 @@ mod tests {
             driver: ptr::addr_of!(driver),
             driver_data: ptr::null_mut(),
             chip_data: ptr::null_mut(),
+            command_abort: ptr::null_mut(),
             name: [0; crate::lifecycle::DEVICE_NAME_LENGTH],
             connstring: [0; NFC_BUFSIZE_CONNSTRING],
             bCrc: false,

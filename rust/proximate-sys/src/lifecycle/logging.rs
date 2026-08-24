@@ -98,7 +98,7 @@ pub(crate) fn load_context_outcome() -> Result<rt::diagnostics::ContextLoadOutco
 }
 
 fn log_context_state(context: &nfc_context) {
-    let first_priority = if cfg!(libnfc_debug) {
+    let first_priority = if cfg!(feature = "debug-logging") {
         LOG_PRIORITY_NONE
     } else {
         LOG_PRIORITY_DEBUG

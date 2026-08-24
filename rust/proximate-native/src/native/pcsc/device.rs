@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) struct PcscDevice {
+pub(crate) struct PcscDevice {
     name: String,
     connstring: ConnectionString,
     card: Box<dyn PcscCard>,
@@ -24,19 +24,7 @@ impl fmt::Debug for PcscDevice {
 }
 
 impl PcscDevice {
-    pub(super) fn scan_caps() -> DeviceCaps {
-        DeviceCaps::INFO
-            | DeviceCaps::SET_PROPERTY_BOOL
-            | DeviceCaps::SUPPORTED_MODULATIONS
-            | DeviceCaps::SUPPORTED_BAUD_RATES
-            | DeviceCaps::INITIATOR_INIT
-            | DeviceCaps::SELECT_PASSIVE_TARGET
-            | DeviceCaps::POLL_TARGET
-            | DeviceCaps::TARGET_IS_PRESENT
-            | DeviceCaps::TRANSCEIVE_BYTES
-    }
-
-    pub(super) fn new(
+    pub(crate) fn new(
         name: String,
         connstring: ConnectionString,
         card: Box<dyn PcscCard>,
@@ -213,18 +201,17 @@ impl PcscDevice {
             self.enrich_iso14443a_for_feitian(&mut atqa, &mut sak, &mut ats)?;
         }
 
-        self.succeed(Target {
-            modulation: Modulation {
-                modulation_type: ModulationType::Iso14443A,
-                baud_rate: BaudRate::Br106,
-            },
-            info: TargetInfo::Iso14443A {
+        let modulation = Modulation::try_new(ModulationType::Iso14443A, BaudRate::Br106)?;
+        let target = Target::try_new(
+            modulation,
+            TargetInfo::Iso14443A {
                 atqa,
                 sak,
                 uid: uid.to_vec(),
                 ats,
             },
-        })
+        )?;
+        self.succeed(target)
     }
 
     fn fill_iso14443b_target(
@@ -246,18 +233,17 @@ impl PcscDevice {
         protocol_info.copy_from_slice(&atr[8..11]);
         protocol_info[1] = 0x01;
 
-        self.succeed(Target {
-            modulation: Modulation {
-                modulation_type: ModulationType::Iso14443B,
-                baud_rate: BaudRate::Br106,
-            },
-            info: TargetInfo::Iso14443B {
+        let modulation = Modulation::try_new(ModulationType::Iso14443B, BaudRate::Br106)?;
+        let target = Target::try_new(
+            modulation,
+            TargetInfo::Iso14443B {
                 pupi: [0u8; 4],
                 application_data,
                 protocol_info,
                 card_identifier: 0,
             },
-        })
+        )?;
+        self.succeed(target)
     }
 
     fn props_to_target(
@@ -391,10 +377,6 @@ impl DeviceMeta for PcscDevice {
         &self.connstring
     }
 
-    fn caps(&self) -> DeviceCaps {
-        Self::scan_caps()
-    }
-
     fn last_error(&self) -> i32 {
         self.last_error
     }
@@ -517,7 +499,7 @@ impl InitiatorBackend for PcscDevice {
         nm: Modulation,
         _init_data: &[u8],
     ) -> Result<Option<Target>, Error> {
-        if nm.baud_rate != BaudRate::Br106 && nm.baud_rate != BaudRate::Br424 {
+        if nm.baud_rate() != BaudRate::Br106 && nm.baud_rate() != BaudRate::Br424 {
             return self.fail("pcsc_select_passive_target", NFC_EINVARG);
         }
 
@@ -528,7 +510,7 @@ impl InitiatorBackend for PcscDevice {
 
         let icc_type = self.get_icc_type()?;
         let uid = self.get_uid().unwrap_or_default();
-        let target = match self.props_to_target(icc_type, &status.atr, &uid, nm.modulation_type) {
+        let target = match self.props_to_target(icc_type, &status.atr, &uid, nm.modulation_type()) {
             Ok(target) => target,
             Err(error) if error.device_code() == Some(NFC_EINVARG) => {
                 return self.fail("pcsc_select_passive_target", NFC_EDEVNOTSUPP);
@@ -547,15 +529,23 @@ impl InitiatorBackend for PcscDevice {
     fn poll_target_driver(
         &mut self,
         modulations: &[Modulation],
-        poll_nr: u8,
-        period: u8,
+        iterations: PollIterations,
+        period: PollPeriod,
     ) -> Result<Option<Target>, Error> {
-        let delay = Duration::from_micros(period as u64 * 150_000);
-        for _ in 0..poll_nr {
+        let delay = Duration::from_micros(u64::from(period.get()) * 150_000);
+        let mut remaining = if iterations.is_continuous() {
+            usize::MAX
+        } else {
+            usize::from(iterations.to_libnfc())
+        };
+        while remaining > 0 {
             for modulation in modulations {
                 if let Some(target) = self.select_passive_target_driver(*modulation, &[])? {
                     return self.succeed(Some(target));
                 }
+            }
+            if !iterations.is_continuous() {
+                remaining -= 1;
             }
             thread::sleep(delay);
         }
@@ -572,9 +562,9 @@ impl InitiatorBackend for PcscDevice {
                 ICC_TYPE_UNKNOWN,
                 &status.atr,
                 &[],
-                target.modulation.modulation_type,
+                target.modulation().modulation_type(),
             )?;
-            if current.modulation != target.modulation {
+            if current.modulation() != target.modulation() {
                 return self.fail("pcsc_target_is_present", NFC_ENOTSUCHDEV);
             }
         }
@@ -585,7 +575,7 @@ impl InitiatorBackend for PcscDevice {
         &mut self,
         tx: &[u8],
         rx: &mut [u8],
-        _timeout: i32,
+        _timeout: OperationTimeout,
     ) -> Result<usize, Error> {
         if is_feitian_reader(&self.name) {
             self.feitian_route_command(tx, rx)

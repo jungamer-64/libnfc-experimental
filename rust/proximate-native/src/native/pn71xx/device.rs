@@ -2,8 +2,9 @@ use std::thread;
 use std::time::Duration;
 
 use proximate_driver::{
-    BaudRate, ConnectionString, DeviceCaps, DeviceMeta, Error, InfoBackend, InitiatorBackend, Mode,
-    Modulation, ModulationType, Pn53xBackend, Property, PropertyBackend, Target, TargetBackend,
+    BaudRate, ConnectionString, DeviceMeta, Error, InfoBackend, InitiatorBackend, Mode, Modulation,
+    ModulationType, OperationTimeout, Pn53xBackend, PollIterations, PollPeriod, Property,
+    PropertyBackend, Target, TargetBackend,
 };
 
 use super::backend::backend;
@@ -23,23 +24,6 @@ pub(super) struct Pn71xxDevice {
 }
 
 impl Pn71xxDevice {
-    pub(super) fn scan_caps() -> DeviceCaps {
-        DeviceCaps::INFO
-            | DeviceCaps::SET_PROPERTY_BOOL
-            | DeviceCaps::SET_PROPERTY_INT
-            | DeviceCaps::SUPPORTED_MODULATIONS
-            | DeviceCaps::SUPPORTED_BAUD_RATES
-            | DeviceCaps::INITIATOR_INIT
-            | DeviceCaps::SELECT_PASSIVE_TARGET
-            | DeviceCaps::POLL_TARGET
-            | DeviceCaps::DESELECT_TARGET
-            | DeviceCaps::TARGET_IS_PRESENT
-            | DeviceCaps::TRANSCEIVE_BYTES
-            | DeviceCaps::ABORT_COMMAND
-            | DeviceCaps::IDLE
-            | DeviceCaps::POWERDOWN
-    }
-
     pub(super) fn new(device_id: u64, connstring: ConnectionString) -> Self {
         Self {
             device_id,
@@ -72,10 +56,6 @@ impl DeviceMeta for Pn71xxDevice {
 
     fn connstring(&self) -> &ConnectionString {
         &self.connstring
-    }
-
-    fn caps(&self) -> DeviceCaps {
-        Self::scan_caps()
     }
 
     fn last_error(&self) -> i32 {
@@ -132,21 +112,34 @@ impl InitiatorBackend for Pn71xxDevice {
         modulation: Modulation,
         _init_data: &[u8],
     ) -> Result<Option<Target>, Error> {
-        self.succeed(current_tag_snapshot().and_then(|tag| build_target(&tag, modulation)))
+        let target = current_tag_snapshot()
+            .map(|tag| build_target(&tag, modulation))
+            .transpose()?
+            .flatten();
+        self.succeed(target)
     }
 
     fn poll_target_driver(
         &mut self,
         modulations: &[Modulation],
-        poll_nr: u8,
-        period: u8,
+        iterations: PollIterations,
+        period: PollPeriod,
     ) -> Result<Option<Target>, Error> {
-        let sleep_duration = Duration::from_micros(period as u64 * POLL_PERIOD_FACTOR_MICROS);
-        for _ in 0..poll_nr {
+        let sleep_duration =
+            Duration::from_micros(u64::from(period.get()) * POLL_PERIOD_FACTOR_MICROS);
+        let mut remaining = if iterations.is_continuous() {
+            usize::MAX
+        } else {
+            usize::from(iterations.to_libnfc())
+        };
+        while remaining > 0 {
             for modulation in modulations {
                 if let Some(target) = self.select_passive_target_driver(*modulation, &[])? {
                     return self.succeed(Some(target));
                 }
+            }
+            if !iterations.is_continuous() {
+                remaining -= 1;
             }
             if !sleep_duration.is_zero() {
                 thread::sleep(sleep_duration);
@@ -164,13 +157,14 @@ impl InitiatorBackend for Pn71xxDevice {
         &mut self,
         tx: &[u8],
         rx: &mut [u8],
-        _timeout: i32,
+        timeout: OperationTimeout,
     ) -> Result<usize, Error> {
         let Some(tag) = current_tag_snapshot() else {
             return self.fail("pn71xx_transceive_bytes", NFC_EINVARG);
         };
 
-        let received = backend().transceive(tag.handle, tx, rx, 500);
+        let timeout = timeout.resolve_libnfc_millis(500)?;
+        let received = backend().transceive(tag.handle, tx, rx, timeout);
         if received <= 0 {
             return self.fail("pn71xx_transceive_bytes", NFC_EIO);
         }

@@ -6,6 +6,6 @@ pub use proximate_driver::{
     Pn53xOps, PropertyOps, SessionOps, TargetIoOps, UserDefinedDevice,
 };
 pub use proximate_types::{
-    BaudRate, DepInfo, DepMode, DeviceCaps, DriverCaps, Error, Modulation, ModulationType,
-    Property, ScanType, Target, TargetInfo, version,
+    BaudRate, DepInfo, DepMode, Error, Modulation, ModulationType, Property, ScanType, Target,
+    TargetInfo, version,
 };

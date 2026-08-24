@@ -1,15 +1,16 @@
-use super::*;
-
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(super) enum PcscShareMode {
+pub(crate) enum PcscShareMode {
     Exclusive,
     Shared,
     Direct,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[cfg_attr(not(test), allow(dead_code))]
-pub(super) enum PcscDisposition {
+#[allow(
+    dead_code,
+    reason = "the internal PC/SC boundary models every disposition accepted by SCardReconnect"
+)]
+pub(crate) enum PcscDisposition {
     LeaveCard,
     ResetCard,
     UnpowerCard,
@@ -17,23 +18,23 @@ pub(super) enum PcscDisposition {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(super) enum PcscProtocol {
+pub(crate) enum PcscProtocol {
     T0,
     T1,
     Raw,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(super) struct PcscProtocols(pub(super) u8);
+pub(crate) struct PcscProtocols(pub(crate) u8);
 
 impl PcscProtocols {
-    pub(super) const UNDEFINED: Self = Self(0);
-    pub(super) const T0: Self = Self(1 << 0);
-    pub(super) const T1: Self = Self(1 << 1);
-    pub(super) const RAW: Self = Self(1 << 2);
-    pub(super) const ANY: Self = Self(Self::T0.0 | Self::T1.0);
+    pub(crate) const UNDEFINED: Self = Self(0);
+    pub(crate) const T0: Self = Self(1 << 0);
+    pub(crate) const T1: Self = Self(1 << 1);
+    pub(crate) const RAW: Self = Self(1 << 2);
+    pub(crate) const ANY: Self = Self(Self::T0.0 | Self::T1.0);
 
-    pub(super) const fn contains(self, protocol: PcscProtocol) -> bool {
+    pub(crate) const fn contains(self, protocol: PcscProtocol) -> bool {
         let mask = match protocol {
             PcscProtocol::T0 => Self::T0.0,
             PcscProtocol::T1 => Self::T1.0,
@@ -44,7 +45,7 @@ impl PcscProtocols {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(super) enum PcscAttribute {
+pub(crate) enum PcscAttribute {
     VendorName,
     VendorIfdType,
     VendorIfdVersion,
@@ -53,13 +54,13 @@ pub(super) enum PcscAttribute {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct PcscCardStatus {
+pub(crate) struct PcscCardStatus {
     pub present: bool,
     pub atr: Vec<u8>,
     pub protocol: Option<PcscProtocol>,
 }
 
-pub(super) trait PcscCard: Send {
+pub(crate) trait PcscCard: Send {
     fn reconnect(
         &mut self,
         share_mode: PcscShareMode,
@@ -81,7 +82,7 @@ pub(super) trait PcscCard: Send {
     ) -> Result<Vec<u8>, i32>;
 }
 
-pub(super) trait PcscBackend: Send + Sync {
+pub(crate) trait PcscBackend: Send + Sync {
     fn list_readers_owned(&self) -> Result<Vec<String>, i32>;
 
     fn connect(
