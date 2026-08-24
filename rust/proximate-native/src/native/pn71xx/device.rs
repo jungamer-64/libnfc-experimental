@@ -73,7 +73,7 @@ pub(super) struct Pn71xxDevice {
     device_id: u64,
     connstring: ConnectionString,
     last_error: i32,
-    timeout_communication_ms: u32,
+    communication_timeout: OperationTimeout,
     infinite_select: bool,
     command_abort: Arc<Pn71xxCommandAbort>,
 }
@@ -84,7 +84,8 @@ impl Pn71xxDevice {
             device_id,
             connstring,
             last_error: NFC_SUCCESS,
-            timeout_communication_ms: 500,
+            communication_timeout: OperationTimeout::try_milliseconds(500)
+                .expect("PN71xx communication timeout is representable"),
             infinite_select: false,
             command_abort: Pn71xxCommandAbort::new(device_id),
         }

@@ -250,21 +250,6 @@ impl OperationTimeout {
             None
         }
     }
-
-    /// Resolves the default timeout for a driver boundary that still consumes
-    /// libnfc's millisecond representation.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidArgument`] if the configured default cannot be
-    /// represented by libnfc's signed timeout ABI.
-    pub fn resolve_libnfc_millis(self, default_millis: u32) -> Result<i32, Error> {
-        if self == Self::DEFAULT {
-            i32::try_from(default_millis).map_err(|_| Error::InvalidArgument("timeout"))
-        } else {
-            Ok(self.0)
-        }
-    }
 }
 
 /// PN53x timer cycles used as both an input budget and measured output.
@@ -598,11 +583,6 @@ mod tests {
             OperationTimeout::try_milliseconds(i32::MAX as u32 + 1),
             Err(Error::InvalidArgument("timeout")),
         );
-        assert_eq!(
-            OperationTimeout::DEFAULT.resolve_libnfc_millis(750),
-            Ok(750),
-        );
-        assert_eq!(OperationTimeout::INFINITE.resolve_libnfc_millis(750), Ok(0),);
     }
 
     #[test]
