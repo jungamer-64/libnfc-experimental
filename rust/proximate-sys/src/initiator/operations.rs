@@ -3,7 +3,8 @@ use crate::c_abi::types::{
     nfc_baud_rate, nfc_dep_info, nfc_dep_mode, nfc_modulation, nfc_property, nfc_target,
 };
 use crate::c_boundary::status::{
-    NFC_EDEVNOTSUPP, NFC_ESOFT, error_to_status, invalid_argument_status, runtime_result_status,
+    NFC_EDEVNOTSUPP, NFC_ESOFT, error_to_status, invalid_argument_status, reset_device_last_error,
+    runtime_result_status,
 };
 use crate::domain_bridge::c_driver::{is_rust_shim_device, rust_command_abort_handle};
 use crate::domain_bridge::decode::OutputBytes;
@@ -276,8 +277,15 @@ pub(crate) unsafe fn nfc_initiator_target_is_present(
             Err(_) => return invalid_argument_status(device),
         };
         match runtime::target_is_present(device, runtime_target.as_ref()) {
-            Ok(true) => 1,
-            Ok(false) => 0,
+            Ok(true) => {
+                reset_device_last_error(device);
+                0
+            }
+            Ok(false) => runtime_result_status(
+                device,
+                &proximate_driver::Error::TargetReleased("target_is_present"),
+                false,
+            ),
             Err(error) => runtime_result_status(device, &error, true),
         }
     })

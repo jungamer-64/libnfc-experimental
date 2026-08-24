@@ -1006,7 +1006,7 @@ fn poll_target_and_target_is_present_dispatch() {
 
     with_test_state(|state| {
         state.poll_target_return = 3;
-        state.target_is_present_return = 1;
+        state.target_is_present_return = 0;
     });
 
     let device = unsafe { make_device(ptr::addr_of!(TEST_DRIVER_FULL)) };
@@ -1032,7 +1032,7 @@ fn poll_target_and_target_is_present_dispatch() {
     );
     assert_eq!(
         unsafe { nfc_initiator_target_is_present(device, ptr::addr_of!(target)) },
-        1
+        0
     );
 
     let snapshot = snapshot_test_state();

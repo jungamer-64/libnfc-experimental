@@ -542,7 +542,8 @@ impl rt::InitiatorBackend for ExternalDevice {
                         .map_or(ptr::null(), |value| ptr::addr_of!(*value)),
                 )
             })?;
-            Ok(status > 0)
+            debug_assert!(status >= 0);
+            Ok(true)
         })();
         self.normalize("initiator_target_is_present", result)
     }
