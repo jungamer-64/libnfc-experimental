@@ -27,6 +27,7 @@
 
 use super::*;
 use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 
 fn timeout(milliseconds: u32) -> OperationTimeout {
     OperationTimeout::try_milliseconds(milliseconds).expect("test timeout is representable")
@@ -238,6 +239,7 @@ impl<T> TestPn53xOps for Pn53xDevice<T> where T: Pn53xTransport + Send + 'static
 #[derive(Default)]
 struct FakeTransport {
     sent: Vec<Vec<u8>>,
+    sent_observer: Option<Arc<Mutex<Vec<Vec<u8>>>>>,
     send_failures: VecDeque<TransportSendError>,
     received: VecDeque<Vec<u8>>,
     receive_calls: usize,
@@ -255,10 +257,16 @@ impl Pn53xTransport for FakeTransport {
         if let Some(failure) = self.send_failures.pop_front() {
             if matches!(failure, TransportSendError::OutcomeUnknown(_)) {
                 self.sent.push(payload.to_vec());
+                if let Some(observer) = &self.sent_observer {
+                    observer.lock().unwrap().push(payload.to_vec());
+                }
             }
             return Err(failure);
         }
         self.sent.push(payload.to_vec());
+        if let Some(observer) = &self.sent_observer {
+            observer.lock().unwrap().push(payload.to_vec());
+        }
         Ok(())
     }
 
@@ -402,6 +410,75 @@ fn probed_device() -> Pn53xDevice<FakeTransport> {
         timeout(25),
     )
     .unwrap()
+}
+
+fn normal_power_pn532_device(profile: Pn53xProfile) -> Pn53xDevice<FakeTransport> {
+    let mut transport = FakeTransport::default();
+    queue_command_response(
+        &mut transport,
+        PN53X_GET_FIRMWARE_VERSION,
+        &[0x32, 0x01, 0x06, 0x07],
+    );
+    queue_command_response(&mut transport, PN53X_SET_PARAMETERS, &[]);
+    queue_masked_register_update(&mut transport, &[0x00, 0x00, 0x00, 0x00, 0x00], true);
+    let connstring = ConnectionString::new("acr122_usb:001:002").unwrap();
+    Pn53xDevice::probe_with_profile("PN532", connstring, profile, transport, timeout(25)).unwrap()
+}
+
+fn observed_payloads(observer: &Arc<Mutex<Vec<Vec<u8>>>>) -> Vec<Vec<u8>> {
+    observer
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|frame| payload_from_host_frame(frame).unwrap())
+        .collect()
+}
+
+#[test]
+fn dropping_active_serial_device_runs_confirmed_protocol_finalization() {
+    let mut device = probed_device();
+    let observer = Arc::new(Mutex::new(Vec::new()));
+    device.transport.sent_observer = Some(Arc::clone(&observer));
+    device.core.operating_mode = Pn53xOperatingMode::Initiator;
+    queue_command_response(&mut device.transport, PN53X_IN_RELEASE, &[0x00]);
+    queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
+    queue_command_response(&mut device.transport, PN53X_POWER_DOWN, &[]);
+
+    drop(device);
+
+    assert_eq!(
+        observed_payloads(&observer),
+        vec![
+            vec![PN53X_IN_RELEASE, 0x00],
+            vec![PN53X_RF_CONFIGURATION, RFCI_FIELD, 0x00],
+            vec![PN53X_POWER_DOWN, 0xf0],
+        ]
+    );
+}
+
+#[test]
+fn acr122_finalization_does_not_issue_unsupported_powerdown() {
+    let mut device = normal_power_pn532_device(Pn53xProfile::acr122_usb());
+    assert_eq!(
+        device.powerdown_driver(),
+        Err(Error::MissingCapability("PN53x PowerDown"))
+    );
+
+    let observer = Arc::new(Mutex::new(Vec::new()));
+    device.transport.sent_observer = Some(Arc::clone(&observer));
+    device.core.operating_mode = Pn53xOperatingMode::Initiator;
+    queue_command_response(&mut device.transport, PN53X_IN_RELEASE, &[0x00]);
+    queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
+
+    drop(device);
+
+    assert_eq!(
+        observed_payloads(&observer),
+        vec![
+            vec![PN53X_IN_RELEASE, 0x00],
+            vec![PN53X_RF_CONFIGURATION, RFCI_FIELD, 0x00],
+        ]
+    );
 }
 
 #[test]

@@ -27,7 +27,7 @@
 
 use super::*;
 
-pub(crate) struct Pn53xDevice<T> {
+pub(crate) struct Pn53xDevice<T: Pn53xTransport + Send + 'static> {
     name: String,
     connstring: ConnectionString,
     profile: Pn53xProfile,
@@ -1174,7 +1174,8 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
     }
 
     fn enter_low_vbat(&mut self) -> Result<(), Error> {
-        if !matches!(self.core.chip_type(), Pn53xType::Pn531 | Pn53xType::Pn532) {
+        if self.core.chip_type() != Pn53xType::Pn532 || self.profile.sam_mode_on_low_vbat.is_none()
+        {
             return Err(Error::MissingCapability("PN53x PowerDown"));
         }
         let _ = self.exchange_raw(PN53X_POWER_DOWN, &[0xf0], self.core.command_timeout)?;
@@ -1476,7 +1477,7 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
         if mode == Pn53xOperatingMode::Initiator {
             self.apply_property_bool(Property::ActivateField, false)?;
         }
-        if self.core.chip_type() == Pn53xType::Pn532 {
+        if self.profile.sam_mode_on_low_vbat.is_some() {
             self.enter_low_vbat()?;
         }
         self.core.operating_mode = Pn53xOperatingMode::Idle;
@@ -1487,6 +1488,15 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
     fn powerdown_driver(&mut self) -> Result<(), Error> {
         let result = self.enter_low_vbat();
         self.remember(result)
+    }
+}
+
+impl<T: Pn53xTransport + Send + 'static> Drop for Pn53xDevice<T> {
+    fn drop(&mut self) {
+        // The public C close contract cannot report finalization errors. The
+        // transport still owns unconditional OS-handle cleanup after this
+        // best-effort protocol transition.
+        let _ = self.idle_driver();
     }
 }
 
