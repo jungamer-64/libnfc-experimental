@@ -114,6 +114,79 @@ jobs:
       - name: Run required boundary command
         run: ${{ matrix.command }}
 
+  rust-target-matrix:
+    name: Rust target matrix (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-gnu
+            os: windows-latest
+            target: x86_64-pc-windows-gnu
+            command: cargo check -p proximate-native --target x86_64-pc-windows-gnu
+          - name: freebsd-serial
+            os: ubuntu-latest
+            target: x86_64-unknown-freebsd
+            command: cargo check -p proximate-native --target x86_64-unknown-freebsd --no-default-features --features driver-acr122s,driver-arygon,driver-pn532-uart
+          - name: linux-pn71xx
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            command: cargo check -p proximate-native --target x86_64-unknown-linux-gnu --no-default-features --features driver-pn71xx
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust target
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-target-${{ matrix.name }}-${{ hashFiles('rust/Cargo.lock', 'rust-toolchain.toml', 'rust/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-
+            ${{ runner.os }}-cargo-
+
+      - name: Check target configuration
+        working-directory: rust
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: ${{ matrix.command }}
+
+  rust-platform-rejection:
+    name: Rust unsupported platform rejection (FreeBSD USB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust target
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add x86_64-unknown-freebsd
+
+      - name: Require explicit USB platform rejection
+        working-directory: rust
+        run: |
+          if cargo check -p proximate-native --target x86_64-unknown-freebsd >cargo-output.log 2>&1; then
+            echo "FreeBSD USB configuration unexpectedly succeeded"
+            exit 1
+          fi
+          grep -F "USB drivers are supported only on Linux, macOS, and Windows" cargo-output.log
+
   script-hygiene:
     name: Script hygiene
     runs-on: ubuntu-latest
