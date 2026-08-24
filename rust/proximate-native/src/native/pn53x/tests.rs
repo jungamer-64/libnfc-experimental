@@ -1253,11 +1253,13 @@ fn transceive_bits_supports_short_frames_with_register_backed_last_bits() {
         &[SYMBOL_TX_CRC_ENABLE],
     );
     let mut rx = [0u8; 8];
+    let mut rx_parity = [0xa5; 8];
     let bits = device
-        .transceive_bits(&[0x26], 7, None, &mut rx, None)
+        .transceive_bits(&[0x26], 7, Some(&[1]), &mut rx, Some(&mut rx_parity))
         .unwrap();
     assert_eq!(bits, 16);
     assert_eq!(&rx[..2], &[0x04, 0x00]);
+    assert_eq!(rx_parity, [0xa5; 8]);
 }
 
 #[test]
@@ -1294,10 +1296,6 @@ fn transceive_bits_timed_uses_shared_register_timer_flow() {
     device
         .set_property_bool(Property::EasyFraming, false)
         .unwrap();
-    queue_masked_register_update(&mut device.transport, &[0x00], true);
-    device
-        .set_property_bool(Property::HandleParity, false)
-        .unwrap();
     queue_masked_register_update(
         &mut device.transport,
         &[SYMBOL_TX_CRC_ENABLE, SYMBOL_RX_CRC_ENABLE],
@@ -1306,29 +1304,42 @@ fn transceive_bits_timed_uses_shared_register_timer_flow() {
     device
         .set_property_bool(Property::HandleCrc, false)
         .unwrap();
-    let wrapped = pn53x_wrap_frame(&[0x93, 0x20], 16, Some(&[1, 0])).unwrap();
     queue_command_response(&mut device.transport, PN53X_WRITE_REGISTER, &[]);
     queue_command_response(&mut device.transport, PN53X_WRITE_REGISTER, &[]);
+    queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0x02]);
     queue_command_response(
         &mut device.transport,
         PN53X_READ_REGISTER,
-        &[wrapped.len() as u8],
+        &[0x93, 0x20, 0x00],
     );
-    let mut fifo_payload = wrapped.clone();
-    fifo_payload.push(0x00);
-    queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &fifo_payload);
-    queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0x02]);
+    queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0x00]);
     queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0xf0, 0x00]);
 
     let mut rx = [0u8; 8];
-    let mut parity = [0u8; 8];
     let (bits, elapsed) = device
-        .transceive_bits_timed(&[0x26], 7, None, &mut rx, Some(&mut parity), 0)
+        .transceive_bits_timed(&[0x26], 7, None, &mut rx, None, 0)
         .unwrap();
     assert_eq!(bits, 16);
     assert_eq!(&rx[..2], &[0x93, 0x20]);
-    assert_eq!(&parity[..2], &[1, 0]);
     assert_eq!(elapsed, 3504);
+}
+
+#[test]
+fn transceive_bits_timed_rejects_software_parity_without_transport_io() {
+    let mut device = probed_device();
+    queue_masked_register_update(&mut device.transport, &[0x00], true);
+    device
+        .set_property_bool(Property::HandleParity, false)
+        .unwrap();
+    let sent_before = device.transport.sent.len();
+
+    let mut rx = [0u8; 8];
+    let error = device
+        .transceive_bits_timed(&[0x26], 7, None, &mut rx, None, 0)
+        .unwrap_err();
+
+    assert_eq!(error, Error::UnsupportedOperation("transceive_bits_timed"));
+    assert_eq!(device.transport.sent.len(), sent_before);
 }
 
 #[test]

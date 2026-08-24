@@ -577,6 +577,9 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             rx_parity,
             max_cycles,
         } = request;
+        if !self.core.properties.handle_parity {
+            return self.remember(Err(Error::UnsupportedOperation(operation)));
+        }
         if self.core.properties.easy_framing {
             return self.remember(Err(Error::UnsupportedOperation(operation)));
         }
@@ -584,40 +587,27 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             return self.remember(Err(Error::UnsupportedOperation(operation)));
         }
 
-        let (payload, payload_bits_len) = if self.core.properties.handle_parity {
-            if tx_parity.is_some() || rx_parity.is_some() {
-                return self.remember(Err(Error::UnsupportedOperation(operation)));
-            }
-            let byte_len = bits_to_bytes_len(tx_bits_len);
-            if tx.len() < byte_len {
-                return self.remember(Err(status_error(operation, NFC_EINVARG)));
-            }
-            (tx[..byte_len].to_vec(), tx_bits_len)
-        } else if tx_bits_len == 0 {
-            (Vec::new(), 0)
-        } else {
-            (
-                pn53x_wrap_frame(tx, tx_bits_len, tx_parity)?,
-                tx_bits_len + (tx_bits_len / 8),
-            )
-        };
+        // With chip parity handling enabled, libnfc ignores caller parity
+        // buffers. Software parity framing is intentionally unsupported by
+        // this register-timed operation.
+        let _ = (tx_parity, rx_parity);
+        let byte_len = bits_to_bytes_len(tx_bits_len);
+        if tx.len() < byte_len {
+            return self.remember(Err(status_error(operation, NFC_EINVARG)));
+        }
+        let payload = &tx[..byte_len];
 
         self.init_timer(max_cycles.get())?;
-        self.timed_send_fifo(&payload, (payload_bits_len % 8) as u8)?;
+        self.timed_send_fifo(payload, (tx_bits_len % 8) as u8)?;
         let mut raw_rx = vec![0u8; rx.len().max(1)];
         let (raw_len, last_bits) = self.timed_receive_fifo(&mut raw_rx, true)?;
         let response_bits_len = raw_frame_bits_len(raw_len, last_bits);
-        let written = if self.core.properties.handle_parity {
-            let byte_len = bits_to_bytes_len(response_bits_len);
-            Self::copy_into(operation, &raw_rx[..byte_len], rx)?;
-            response_bits_len
-        } else {
-            pn53x_unwrap_frame(&raw_rx[..raw_len], response_bits_len, rx, rx_parity)?
-        };
+        let byte_len = bits_to_bytes_len(response_bits_len);
+        Self::copy_into(operation, &raw_rx[..byte_len], rx)?;
         let last_cmd_byte = payload.last().copied().unwrap_or(0);
         let cycles = self.timer_cycles(last_cmd_byte)?;
         self.last_error = 0;
-        Ok((written, TimerCycles::new(cycles)))
+        Ok((response_bits_len, TimerCycles::new(cycles)))
     }
 
     fn transceive_bits_shared(
@@ -635,9 +625,6 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             timeout_ms,
         } = request;
         let (payload, payload_bits_len) = if self.core.properties.handle_parity {
-            if tx_parity.is_some() || rx_parity.is_some() {
-                return self.remember(Err(Error::UnsupportedOperation(operation)));
-            }
             let byte_len = bits_to_bytes_len(tx_bits_len);
             if tx.len() < byte_len {
                 return self.remember(Err(status_error(operation, NFC_EINVARG)));
