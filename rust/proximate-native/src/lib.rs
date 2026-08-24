@@ -15,7 +15,8 @@ compile_error!("USB drivers are supported only on Linux, macOS, and Windows");
     feature = "driver-pn53x-usb",
     feature = "driver-acr122-usb",
     feature = "driver-pn532-i2c",
-    feature = "driver-pn532-spi"
+    feature = "driver-pn532-spi",
+    feature = "driver-pn71xx"
 ))]
 mod command_abort;
 #[path = "native_helpers/i2c.rs"]
@@ -24,6 +25,12 @@ pub mod i2c;
 pub mod nci;
 #[cfg(any(feature = "driver-pcsc", feature = "driver-acr122-pcsc"))]
 pub mod pcsc;
+#[cfg(any(
+    test,
+    feature = "driver-acr122s",
+    feature = "driver-arygon",
+    feature = "driver-pn532-uart"
+))]
 mod serial;
 #[path = "native_helpers/spi.rs"]
 pub mod spi;

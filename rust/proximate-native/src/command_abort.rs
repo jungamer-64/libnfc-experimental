@@ -1,4 +1,4 @@
-use proximate_driver::{CommandAbort, CommandAbortHandle, Error};
+use proximate_driver::{CommandAbort, Error};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -15,10 +15,6 @@ impl AtomicCommandAbort {
             requested: AtomicBool::new(false),
             active: AtomicBool::new(true),
         })
-    }
-
-    pub(crate) fn handle(self: &Arc<Self>) -> CommandAbortHandle {
-        self.clone()
     }
 
     pub(crate) fn begin_command(&self) {

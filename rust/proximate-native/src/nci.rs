@@ -157,6 +157,7 @@ impl Backend for SystemBackend {
 
     fn disable_discovery(&self) {
         unsafe { nfcManager_disableDiscovery() };
+        clear_current_tag();
     }
 
     fn transceive(&self, handle: u32, tx: &[u8], rx: &mut [u8], timeout: i32) -> i32 {

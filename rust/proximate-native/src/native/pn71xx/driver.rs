@@ -5,7 +5,7 @@ use proximate_driver::{ConnectionString, Context, DeviceHandle, Driver, Error, S
 use super::backend::backend;
 use super::consts::{DEFAULT_NFA_TECH_MASK, NFC_SETTLE_DELAY, PN71XX_DRIVER_NAME};
 use super::device::Pn71xxDevice;
-use super::runtime::{activate_device, active_device, normalize_inactive_runtime};
+use super::runtime::{activate_device, active_device};
 
 pub(crate) struct Pn71xxDriver;
 
@@ -29,8 +29,6 @@ impl Driver for Pn71xxDriver {
     }
 
     fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
-        normalize_inactive_runtime();
-
         if active_device().is_some() {
             return Ok(vec![self.describe_discovered(
                 PN71XX_DRIVER_NAME.to_string(),
@@ -54,8 +52,6 @@ impl Driver for Pn71xxDriver {
         _context: &Context,
         connstring: &ConnectionString,
     ) -> Result<Box<dyn DeviceHandle>, Error> {
-        normalize_inactive_runtime();
-
         if active_device().is_some() {
             return Err(Error::DriverOpenFailed(
                 "pn71xx only supports one active device at a time".to_string(),

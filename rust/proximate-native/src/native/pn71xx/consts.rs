@@ -33,7 +33,6 @@ pub(super) const SUPPORTED_MODULATIONS: &[ModulationType] = &[
     ModulationType::Iso14443B2Sr,
     ModulationType::Iso14443B2Ct,
     ModulationType::Jewel,
-    ModulationType::Dep,
 ];
 
 pub(super) const ISO14443A_SUPPORTED_BAUD_RATES: &[BaudRate] = &[
@@ -43,8 +42,6 @@ pub(super) const ISO14443A_SUPPORTED_BAUD_RATES: &[BaudRate] = &[
     BaudRate::Br106,
 ];
 pub(super) const FELICA_SUPPORTED_BAUD_RATES: &[BaudRate] = &[BaudRate::Br424, BaudRate::Br212];
-pub(super) const DEP_SUPPORTED_BAUD_RATES: &[BaudRate] =
-    &[BaudRate::Br424, BaudRate::Br212, BaudRate::Br106];
 pub(super) const JEWEL_SUPPORTED_BAUD_RATES: &[BaudRate] = &[
     BaudRate::Br847,
     BaudRate::Br424,

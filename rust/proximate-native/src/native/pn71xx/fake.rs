@@ -2,7 +2,9 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::nci::{Backend, TagInfo};
 
-use super::runtime::{callbacks_registered, clear_runtime_state, replace_runtime_state};
+use super::runtime::{
+    Pn71xxSession, callbacks_registered, clear_runtime_state, replace_runtime_state,
+};
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct BackendTestState {
@@ -66,7 +68,9 @@ impl Backend for FakeNciBackend {
     }
 
     fn disable_discovery(&self) {
-        self.state.lock().unwrap().disable_calls += 1;
+        let mut state = self.state.lock().unwrap();
+        state.disable_calls += 1;
+        state.current_tag = None;
     }
 
     fn transceive(&self, handle: u32, tx: &[u8], rx: &mut [u8], timeout: i32) -> i32 {
@@ -143,7 +147,7 @@ mod tests {
         assert_eq!(backend_state_snapshot().current_tag, None);
 
         replace_runtime_state(Pn71xxRuntime {
-            callbacks_registered: true,
+            session: Pn71xxSession::Idle { device_id: 1 },
             ..Default::default()
         });
         emit_tag_arrival_for_tests(tag);
@@ -151,6 +155,9 @@ mod tests {
 
         emit_tag_departure_for_tests();
         assert_eq!(backend_state_snapshot().current_tag, None);
-        assert!(runtime_snapshot().callbacks_registered);
+        assert_eq!(
+            runtime_snapshot().session,
+            Pn71xxSession::Idle { device_id: 1 }
+        );
     }
 }

@@ -423,7 +423,7 @@ impl Acr122UsbIo for UsbCcidHandle {
     }
 
     fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
-        Some(self.command_abort.handle())
+        Some(self.command_abort.clone())
     }
 
     fn begin_command(&self) {

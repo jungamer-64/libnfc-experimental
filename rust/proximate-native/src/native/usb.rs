@@ -327,7 +327,7 @@ impl Pn53xTransport for UsbTransport {
     }
 
     fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
-        Some(self.command_abort.handle())
+        Some(self.command_abort.clone())
     }
 }
 

@@ -2,7 +2,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use proximate_driver::{
-    BaudRate, ConnectionString, Context, Driver, Error, Modulation, ModulationType,
+    BaudRate, ConnectionString, Context, Driver, Error, Mode, Modulation, ModulationType,
     OperationTimeout, PollIterations, PollPeriod, Target, TargetInfo,
 };
 
@@ -15,7 +15,7 @@ use super::fake::{
     backend_state_snapshot, emit_tag_arrival_for_tests, emit_tag_departure_for_tests,
     reset_test_world, with_backend_state_mut,
 };
-use super::runtime::{current_tag_snapshot, runtime_snapshot};
+use super::runtime::{Pn71xxSession, current_tag_snapshot, runtime_snapshot};
 use crate::nci::TagInfo;
 
 fn modulation(modulation_type: ModulationType, baud_rate: BaudRate) -> Modulation {
@@ -171,10 +171,7 @@ fn close_tears_down_runtime_and_backend() {
     drop(device);
 
     let runtime = runtime_snapshot();
-    assert!(!runtime.initialized);
-    assert!(!runtime.callbacks_registered);
-    assert!(!runtime.discovery_enabled);
-    assert!(runtime.active_device.is_none());
+    assert_eq!(runtime.session, Pn71xxSession::Inactive);
 
     let backend = backend_state_snapshot();
     assert_eq!(backend.disable_calls, 1);
@@ -367,5 +364,219 @@ fn device_get_information_about_returns_expected_string() {
     assert_eq!(
         device.info_ops().unwrap().information_about().unwrap(),
         "PN71XX nfc driver using libnfc-nci userspace library"
+    );
+}
+
+#[test]
+fn field_property_and_deselect_drive_discovery_transitions() {
+    let _guard = test_guard().lock().unwrap();
+    reset_test_world();
+
+    let connstring = ConnectionString::new("pn71xx").unwrap();
+    let mut device = open_device(&connstring);
+    emit_tag_arrival_for_tests(make_tag(TARGET_TYPE_ISO14443_3A, &[0x11], 0));
+
+    device
+        .property_ops()
+        .unwrap()
+        .set_property_bool(proximate_driver::Property::ActivateField, false)
+        .unwrap();
+    assert_eq!(
+        runtime_snapshot().session,
+        Pn71xxSession::Idle { device_id: 0 }
+    );
+    assert!(current_tag_snapshot().is_none());
+
+    device
+        .property_ops()
+        .unwrap()
+        .set_property_bool(proximate_driver::Property::ActivateField, true)
+        .unwrap();
+    assert_eq!(
+        runtime_snapshot().session,
+        Pn71xxSession::Discovering { device_id: 0 }
+    );
+
+    emit_tag_arrival_for_tests(make_tag(TARGET_TYPE_ISO14443_3A, &[0x22], 0));
+    device.session_ops().unwrap().deselect_target().unwrap();
+    assert!(current_tag_snapshot().is_none());
+
+    let backend = backend_state_snapshot();
+    assert_eq!(backend.disable_calls, 2);
+    assert_eq!(backend.enable_calls, 3);
+    assert_eq!(backend.last_discovery_args, Some((0x07, 1, 0, 1)));
+}
+
+#[test]
+fn powerdown_releases_nci_and_initiator_init_reestablishes_it() {
+    let _guard = test_guard().lock().unwrap();
+    reset_test_world();
+
+    let connstring = ConnectionString::new("pn71xx").unwrap();
+    let mut device = open_device(&connstring);
+    device.session_ops().unwrap().powerdown().unwrap();
+
+    assert_eq!(
+        runtime_snapshot().session,
+        Pn71xxSession::PoweredDown { device_id: 0 }
+    );
+    let powered_down = backend_state_snapshot();
+    assert_eq!(powered_down.disable_calls, 1);
+    assert_eq!(powered_down.deregister_calls, 1);
+    assert_eq!(powered_down.deinitialize_calls, 1);
+
+    assert_eq!(device.passive_scan_ops().unwrap().init().unwrap(), 0);
+    assert_eq!(
+        runtime_snapshot().session,
+        Pn71xxSession::Discovering { device_id: 0 }
+    );
+    let restored = backend_state_snapshot();
+    assert_eq!(restored.initialize_calls, 2);
+    assert_eq!(restored.register_calls, 2);
+    assert_eq!(restored.enable_calls, 2);
+}
+
+#[test]
+fn communication_timeout_is_applied_and_unimplemented_properties_are_rejected() {
+    let _guard = test_guard().lock().unwrap();
+    reset_test_world();
+
+    let connstring = ConnectionString::new("pn71xx").unwrap();
+    let mut device = open_device(&connstring);
+    {
+        let mut properties = device.property_ops().unwrap();
+        properties
+            .set_property_int(proximate_driver::Property::TimeoutCom, 777)
+            .unwrap();
+        assert_eq!(
+            properties.set_property_int(proximate_driver::Property::TimeoutAtr, 12),
+            Err(Error::UnsupportedOperation("pn71xx_property_int"))
+        );
+        assert_eq!(
+            properties.set_property_bool(proximate_driver::Property::HandleCrc, false),
+            Err(Error::UnsupportedOperation("pn71xx_property_bool"))
+        );
+        assert_eq!(
+            properties.set_property_int(proximate_driver::Property::TimeoutCom, -1),
+            Err(Error::InvalidArgument("timeout"))
+        );
+    }
+
+    emit_tag_arrival_for_tests(make_tag(TARGET_TYPE_ISO14443_3A, &[0x33], 0));
+    with_backend_state_mut(|state| {
+        state.transceive_result = 1;
+        state.transceive_response = vec![0x90];
+    });
+    let mut rx = [0; 1];
+    assert_eq!(device.transceive_bytes(&[0x00], &mut rx, -1).unwrap(), 1);
+    assert_eq!(backend_state_snapshot().last_transceive_timeout, Some(777));
+}
+
+#[test]
+fn continuous_poll_is_aborted_and_leaves_discovery_idle() {
+    let _guard = test_guard().lock().unwrap();
+    reset_test_world();
+
+    let connstring = ConnectionString::new("pn71xx").unwrap();
+    let mut device = open_device(&connstring);
+    let abort = device.command_abort_handle().unwrap();
+    let worker = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(10));
+        abort.abort()
+    });
+
+    let modulations = [modulation(ModulationType::Iso14443A, BaudRate::Br106)];
+    assert_eq!(
+        device.poll_target(&modulations, u8::MAX, 1),
+        Err(Error::Aborted("pn71xx_poll_target"))
+    );
+    worker.join().unwrap().unwrap();
+    assert_eq!(
+        runtime_snapshot().session,
+        Pn71xxSession::Idle { device_id: 0 }
+    );
+    assert_eq!(backend_state_snapshot().disable_calls, 1);
+}
+
+#[test]
+fn command_abort_authority_is_revoked_when_device_is_closed() {
+    let _guard = test_guard().lock().unwrap();
+    reset_test_world();
+
+    let connstring = ConnectionString::new("pn71xx").unwrap();
+    let device = open_device(&connstring);
+    let abort = device.command_abort_handle().unwrap();
+    drop(device);
+
+    assert_eq!(abort.abort(), Err(Error::TargetReleased("abort_command")));
+}
+
+#[test]
+fn infinite_select_waits_for_a_tag_and_can_be_disabled() {
+    let _guard = test_guard().lock().unwrap();
+    reset_test_world();
+
+    let connstring = ConnectionString::new("pn71xx").unwrap();
+    let mut device = open_device(&connstring);
+    device
+        .property_ops()
+        .unwrap()
+        .set_property_bool(proximate_driver::Property::InfiniteSelect, true)
+        .unwrap();
+    let worker = std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_millis(10));
+        emit_tag_arrival_for_tests(make_tag(TARGET_TYPE_ISO14443_3A, &[0x44], 0));
+    });
+
+    let selected = device
+        .select_passive_target(modulation(ModulationType::Iso14443A, BaudRate::Br106), None)
+        .unwrap();
+    worker.join().unwrap();
+    assert!(selected.is_some());
+
+    emit_tag_departure_for_tests();
+    device
+        .property_ops()
+        .unwrap()
+        .set_property_bool(proximate_driver::Property::InfiniteSelect, false)
+        .unwrap();
+    assert_eq!(
+        device
+            .select_passive_target(modulation(ModulationType::Iso14443A, BaudRate::Br106), None,)
+            .unwrap(),
+        None
+    );
+}
+
+#[test]
+fn reported_capabilities_only_include_implemented_initiator_paths() {
+    let _guard = test_guard().lock().unwrap();
+    reset_test_world();
+
+    let connstring = ConnectionString::new("pn71xx").unwrap();
+    let mut device = open_device(&connstring);
+    let mut properties = device.property_ops().unwrap();
+    assert_eq!(
+        properties.supported_modulations(Mode::Initiator).unwrap(),
+        vec![
+            ModulationType::Iso14443A,
+            ModulationType::Felica,
+            ModulationType::Iso14443B,
+            ModulationType::Iso14443Bi,
+            ModulationType::Iso14443B2Sr,
+            ModulationType::Iso14443B2Ct,
+            ModulationType::Jewel,
+        ]
+    );
+    assert_eq!(
+        properties.supported_modulations(Mode::Target),
+        Err(Error::UnsupportedOperation("pn71xx_target_mode"))
+    );
+    assert_eq!(
+        properties.supported_baud_rates(Mode::Initiator, ModulationType::Dep),
+        Err(Error::DeviceOperationFailed {
+            operation: "pn71xx_get_supported_baud_rate",
+            code: NFC_EINVARG,
+        })
     );
 }
