@@ -6,18 +6,6 @@ pub(crate) enum PcscShareMode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[allow(
-    dead_code,
-    reason = "the internal PC/SC boundary models every disposition accepted by SCardReconnect"
-)]
-pub(crate) enum PcscDisposition {
-    LeaveCard,
-    ResetCard,
-    UnpowerCard,
-    EjectCard,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum PcscProtocol {
     T0,
     T1,
