@@ -32,8 +32,11 @@ pub enum Error {
     Io(&'static str),
     #[error("device chip rejected operation: {0}")]
     Chip(&'static str),
-    #[error("device state is unknown after operation: {operation}")]
-    OutcomeUnknown { operation: &'static str },
+    #[error("device state is unknown after operation {operation}: {cause}")]
+    OutcomeUnknown {
+        operation: &'static str,
+        cause: Box<Error>,
+    },
     #[error("operation failed and recovery also failed")]
     RecoveryFailed {
         operation: Box<Error>,

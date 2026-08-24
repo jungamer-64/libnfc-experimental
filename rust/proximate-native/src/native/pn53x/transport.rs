@@ -96,8 +96,21 @@ pub(super) fn status_code(error: &Error) -> i32 {
     }
 }
 
+/// Classifies whether a failed transport send left the PN53x protocol state
+/// interpretable.
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum TransportSendError {
+    /// The frame was not sent, or transport-specific cancellation/recovery
+    /// established a known protocol state.
+    ProtocolStable(Error),
+    /// Transmission started and the transport cannot prove whether the chip
+    /// accepted the frame.
+    OutcomeUnknown(Error),
+}
+
 pub(crate) trait Pn53xTransport {
-    fn send(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error>;
+    fn send(&mut self, payload: &[u8], timeout: OperationTimeout)
+    -> Result<(), TransportSendError>;
     fn receive(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error>;
     fn abort_command(&mut self) -> Result<(), Error>;
 
