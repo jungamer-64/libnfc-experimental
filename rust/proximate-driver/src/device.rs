@@ -55,7 +55,11 @@ pub trait InfoBackend: DeviceMeta {
 pub trait PropertyBackend: DeviceMeta {
     fn set_property_bool(&mut self, property: Property, enable: bool) -> Result<(), Error>;
 
-    fn set_property_int(&mut self, property: Property, value: i32) -> Result<(), Error>;
+    fn set_timeout(
+        &mut self,
+        property: crate::TimeoutProperty,
+        timeout: OperationTimeout,
+    ) -> Result<(), Error>;
 
     fn supported_modulations(&mut self, mode: Mode) -> Result<Vec<ModulationType>, Error>;
 
@@ -380,8 +384,12 @@ impl<'a> PropertyOps<'a> {
         ops::property::set_property_bool(self.device, property, enable)
     }
 
-    pub fn set_property_int(&mut self, property: Property, value: i32) -> Result<(), Error> {
-        ops::property::set_property_int(self.device, property, value)
+    pub fn set_timeout(
+        &mut self,
+        property: crate::TimeoutProperty,
+        timeout: OperationTimeout,
+    ) -> Result<(), Error> {
+        ops::property::set_timeout(self.device, property, timeout)
     }
 
     pub fn supported_modulations(&mut self, mode: Mode) -> Result<Vec<ModulationType>, Error> {
@@ -713,15 +721,15 @@ mod ops {
             device.set_property_bool(property, enable)
         }
 
-        pub(crate) fn set_property_int<D>(
+        pub(crate) fn set_timeout<D>(
             device: &mut D,
-            property: Property,
-            value: i32,
+            property: crate::TimeoutProperty,
+            timeout: OperationTimeout,
         ) -> Result<(), Error>
         where
             D: PropertyBackend + ?Sized,
         {
-            device.set_property_int(property, value)
+            device.set_timeout(property, timeout)
         }
 
         pub(crate) fn supported_modulations<D>(

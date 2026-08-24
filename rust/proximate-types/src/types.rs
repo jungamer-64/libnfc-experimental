@@ -11,9 +11,6 @@ pub enum ScanType {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Property {
-    TimeoutCommand,
-    TimeoutAtr,
-    TimeoutCom,
     HandleCrc,
     HandleParity,
     ActivateField,
@@ -32,9 +29,6 @@ impl Property {
     #[doc(hidden)]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::TimeoutCommand => "NP_TIMEOUT_COMMAND",
-            Self::TimeoutAtr => "NP_TIMEOUT_ATR",
-            Self::TimeoutCom => "NP_TIMEOUT_COM",
             Self::HandleCrc => "NP_HANDLE_CRC",
             Self::HandleParity => "NP_HANDLE_PARITY",
             Self::ActivateField => "NP_ACTIVATE_FIELD",
