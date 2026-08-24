@@ -25,7 +25,7 @@
  *
  */
 
-use proximate_driver::{CommandAbort, CommandAbortHandle, Error};
+use proximate_driver::{CommandAbort, CommandAbortHandle, Error, OperationTimeout};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -180,10 +180,14 @@ mod platform {
             Ok(())
         }
 
-        pub(crate) fn write_all(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
+        pub(crate) fn write_all(
+            &mut self,
+            payload: &[u8],
+            timeout: OperationTimeout,
+        ) -> Result<(), Error> {
             let mut written = 0usize;
             while written < payload.len() {
-                self.wait_for(PollFlags::OUT, timeout_ms)?;
+                self.wait_for(PollFlags::OUT, timeout)?;
                 let len =
                     write(&self.fd, &payload[written..]).map_err(|_| Error::Io("uart_send"))?;
                 if len == 0 {
@@ -197,9 +201,9 @@ mod platform {
         pub(crate) fn read_some(
             &mut self,
             buffer: &mut [u8],
-            timeout_ms: i32,
+            timeout: OperationTimeout,
         ) -> Result<usize, Error> {
-            self.wait_for(PollFlags::IN, timeout_ms)?;
+            self.wait_for(PollFlags::IN, timeout)?;
             let available = ioctl_fionread(&self.fd).unwrap_or(1).max(1) as usize;
             let want = available.min(buffer.len());
             let len = read(&self.fd, &mut buffer[..want]).map_err(|_| Error::Io("uart_receive"))?;
@@ -209,7 +213,7 @@ mod platform {
             Ok(len)
         }
 
-        fn wait_for(&self, flags: PollFlags, timeout_ms: i32) -> Result<(), Error> {
+        fn wait_for(&self, flags: PollFlags, timeout: OperationTimeout) -> Result<(), Error> {
             if self.command_abort.take_requested() {
                 self.command_abort.drain()?;
                 return Err(Error::Aborted("uart_io"));
@@ -222,7 +226,7 @@ mod platform {
                     PollFlags::IN | PollFlags::ERR | PollFlags::HUP | PollFlags::NVAL,
                 ),
             ];
-            let timeout = timeout_spec(timeout_ms);
+            let timeout = timeout_spec(timeout)?;
             let ready = poll(&mut pollfds, timeout.as_ref()).map_err(|_| Error::Io("uart_poll"))?;
             if ready == 0 {
                 return Err(Error::Timeout("uart_io"));
@@ -290,14 +294,15 @@ mod platform {
         ]
     }
 
-    fn timeout_spec(timeout_ms: i32) -> Option<Timespec> {
-        if timeout_ms < 0 {
-            None
+    fn timeout_spec(timeout: OperationTimeout) -> Result<Option<Timespec>, Error> {
+        let timeout_ms = timeout.configured_millis()?;
+        if timeout_ms == 0 {
+            Ok(None)
         } else {
-            Some(Timespec {
+            Ok(Some(Timespec {
                 tv_sec: (timeout_ms / 1000) as i64,
                 tv_nsec: ((timeout_ms % 1000) as i64) * 1_000_000,
-            })
+            }))
         }
     }
 
@@ -501,12 +506,16 @@ mod platform {
             Ok(())
         }
 
-        pub(crate) fn write_all(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
+        pub(crate) fn write_all(
+            &mut self,
+            payload: &[u8],
+            timeout: OperationTimeout,
+        ) -> Result<(), Error> {
             let mut written = 0usize;
             while written < payload.len() {
                 let chunk_len = (payload.len() - written).min(u32::MAX as usize);
                 let transferred =
-                    self.write_overlapped(&payload[written..written + chunk_len], timeout_ms)?;
+                    self.write_overlapped(&payload[written..written + chunk_len], timeout)?;
                 if transferred == 0 {
                     return Err(Error::Io("uart_send"));
                 }
@@ -518,16 +527,20 @@ mod platform {
         pub(crate) fn read_some(
             &mut self,
             buffer: &mut [u8],
-            timeout_ms: i32,
+            timeout: OperationTimeout,
         ) -> Result<usize, Error> {
             if buffer.is_empty() {
                 return Ok(0);
             }
             let chunk_len = buffer.len().min(u32::MAX as usize);
-            self.read_overlapped(&mut buffer[..chunk_len], timeout_ms)
+            self.read_overlapped(&mut buffer[..chunk_len], timeout)
         }
 
-        fn write_overlapped(&self, payload: &[u8], timeout_ms: i32) -> Result<usize, Error> {
+        fn write_overlapped(
+            &self,
+            payload: &[u8],
+            timeout: OperationTimeout,
+        ) -> Result<usize, Error> {
             let event = create_event("uart_send")?;
             let mut overlapped = OVERLAPPED {
                 hEvent: raw(&event),
@@ -544,10 +557,14 @@ mod platform {
                     &mut overlapped,
                 )
             };
-            self.complete_overlapped("uart_send", started, &mut overlapped, timeout_ms)
+            self.complete_overlapped("uart_send", started, &mut overlapped, timeout)
         }
 
-        fn read_overlapped(&self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
+        fn read_overlapped(
+            &self,
+            buffer: &mut [u8],
+            timeout: OperationTimeout,
+        ) -> Result<usize, Error> {
             let event = create_event("uart_receive")?;
             let mut overlapped = OVERLAPPED {
                 hEvent: raw(&event),
@@ -564,7 +581,7 @@ mod platform {
                     &mut overlapped,
                 )
             };
-            self.complete_overlapped("uart_receive", started, &mut overlapped, timeout_ms)
+            self.complete_overlapped("uart_receive", started, &mut overlapped, timeout)
         }
 
         fn complete_overlapped(
@@ -572,7 +589,7 @@ mod platform {
             operation: &'static str,
             started: i32,
             overlapped: &mut OVERLAPPED,
-            timeout_ms: i32,
+            timeout: OperationTimeout,
         ) -> Result<usize, Error> {
             if self.command_abort.take_requested() {
                 self.cancel_and_complete(overlapped);
@@ -586,7 +603,8 @@ mod platform {
             }
 
             if started == 0 {
-                let wait_ms = if timeout_ms < 0 {
+                let timeout_ms = timeout.configured_millis()?;
+                let wait_ms = if timeout_ms == 0 {
                     u32::MAX
                 } else {
                     timeout_ms as u32

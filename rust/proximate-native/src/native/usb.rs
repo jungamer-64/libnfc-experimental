@@ -25,18 +25,19 @@
  */
 
 use super::connstring::{UsbSelector, build_usb_connstring, decode_usb_selector};
-use super::pn53x::{PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, Pn53xUsbModel};
+use super::pn53x::{
+    PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, Pn53xUsbModel, probe_timeout,
+};
 use crate::command_abort::AtomicCommandAbort;
 use crate::usb::{UsbDeviceInfo, UsbError, UsbHandle, bulk_endpoints, list_devices, strerror};
 use proximate_driver::{
     CommandAbort, CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error,
-    ScanType,
+    OperationTimeout, ScanType,
 };
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const DRIVER_NAME: &str = "pn53x_usb";
-const PROBE_TIMEOUT_MS: i32 = 250;
 const NFC_EIO: i32 = -1;
 const USB_ABORT_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
@@ -157,7 +158,7 @@ impl Driver for Pn53xUsbDriver {
             connstring.clone(),
             Pn53xProfile::pn53x_usb(supported.model),
             transport,
-            PROBE_TIMEOUT_MS,
+            probe_timeout(),
         )?;
         Ok(Box::new(device))
     }
@@ -272,7 +273,8 @@ impl UsbTransport {
 }
 
 impl Pn53xTransport for UsbTransport {
-    fn send(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
+    fn send(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
+        let timeout_ms = timeout.configured_millis()?;
         self.command_abort.begin_command();
         let sent = self
             .handle
@@ -284,7 +286,8 @@ impl Pn53xTransport for UsbTransport {
         Ok(())
     }
 
-    fn receive(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
+    fn receive(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error> {
+        let timeout_ms = timeout.configured_millis()?;
         let started = Instant::now();
         loop {
             if self.command_abort.take_requested() {

@@ -28,17 +28,16 @@
 // implemented here in Rust.
 
 use super::connstring::{build_path_speed_connstring, decode_path_speed_descriptor};
-use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport, is_ack_frame};
+use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport, is_ack_frame, probe_timeout};
 use super::uart::{UartPort, list_candidate_paths};
 use proximate_driver::{
-    CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error, ScanType,
+    CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error, OperationTimeout,
+    ScanType,
 };
 use std::borrow::Cow;
 
 const DRIVER_NAME: &str = "arygon";
 const DEFAULT_SPEED: u32 = 9_600;
-const PROBE_TIMEOUT_MS: i32 = 250;
-const CONTROL_TIMEOUT_MS: i32 = 1_000;
 const FIRMWARE_BUFFER_LEN: usize = 16;
 const RESET_BUFFER_LEN: usize = 10;
 
@@ -53,6 +52,10 @@ const ABORT_FRAME: [u8; 17] = [
     0x32, 0x00, 0x00, 0xff, 0x09, 0xf7, 0xd4, 0x00, 0x00, 0x6c, 0x69, 0x62, 0x6e, 0x66, 0x63, 0xbe,
     0x00,
 ];
+
+fn control_timeout() -> OperationTimeout {
+    OperationTimeout::try_milliseconds(1_000).expect("ARYGON control timeout is representable")
+}
 const RESET_TAMA_COMMAND: &[u8] = &[PROTOCOL_ARYGON_ASCII, b'a', b'r'];
 const FIRMWARE_COMMAND: &[u8] = &[PROTOCOL_ARYGON_ASCII, b'a', b'v'];
 
@@ -114,7 +117,7 @@ impl Driver for ArygonDriver {
             connstring.clone(),
             Pn53xProfile::arygon(),
             transport,
-            PROBE_TIMEOUT_MS,
+            probe_timeout(),
         )?;
         Ok(Box::new(device))
     }
@@ -131,32 +134,35 @@ impl ArygonTransport {
 }
 
 impl Pn53xTransport for ArygonTransport {
-    fn send(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
+    fn send(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
         self.port.flush_input()?;
 
         let mut prefixed = Vec::with_capacity(payload.len() + 1);
         prefixed.push(PROTOCOL_TAMA);
         prefixed.extend_from_slice(payload);
-        self.port.write_all(&prefixed, timeout_ms)?;
+        self.port.write_all(&prefixed, timeout)?;
 
         let mut ack = [0u8; 16];
-        let ack_len = self.port.read_frame_into(&mut ack, timeout_ms)?;
+        let ack_len = self.port.read_frame_into(&mut ack, timeout)?;
         if is_ack_frame(&ack[..ack_len]) {
             return Ok(());
         }
 
         if ack[..ack_len].starts_with(ERROR_UNKNOWN_MODE_PREFIX) {
             let mut rest = [0u8; 4];
-            let _ = self.port.read_exact(&mut rest, timeout_ms);
+            let _ = self.port.read_exact(&mut rest, timeout);
         }
 
         Err(device_error("arygon_send", NFC_EIO))
     }
 
-    fn receive(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
-        match self.port.read_frame_into(buffer, timeout_ms) {
+    fn receive(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error> {
+        match self.port.read_frame_into(buffer, timeout) {
             Err(operation @ Error::Aborted(_)) => {
-                if let Err(recovery) = self.port.write_all(&ABORT_FRAME, 0) {
+                if let Err(recovery) = self
+                    .port
+                    .write_all(&ABORT_FRAME, OperationTimeout::INFINITE)
+                {
                     return Err(Error::RecoveryFailed {
                         operation: Box::new(operation),
                         recovery: Box::new(recovery),
@@ -185,12 +191,12 @@ fn query_ascii_command(
     port: &mut UartPort,
     command: &[u8],
     response_len: usize,
-    timeout_ms: i32,
+    timeout: OperationTimeout,
 ) -> Result<Vec<u8>, Error> {
     port.flush_input()?;
-    port.write_all(command, timeout_ms)?;
+    port.write_all(command, timeout)?;
     let mut response = vec![0u8; response_len];
-    port.read_exact(&mut response, timeout_ms)?;
+    port.read_exact(&mut response, timeout)?;
     Ok(response)
 }
 
@@ -217,7 +223,7 @@ fn query_firmware(port: &mut UartPort) -> Result<String, Error> {
         port,
         FIRMWARE_COMMAND,
         FIRMWARE_BUFFER_LEN,
-        CONTROL_TIMEOUT_MS,
+        control_timeout(),
     )?;
     parse_firmware(&response)
 }
@@ -227,7 +233,7 @@ fn reset_tama(port: &mut UartPort) -> Result<(), Error> {
         port,
         RESET_TAMA_COMMAND,
         RESET_BUFFER_LEN,
-        CONTROL_TIMEOUT_MS,
+        control_timeout(),
     )?;
     if response == ERROR_NONE {
         Ok(())

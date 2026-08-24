@@ -30,7 +30,7 @@ use super::acr122;
 use super::connstring::{UsbSelector, build_usb_connstring_for, decode_usb_selector_for};
 use super::pn53x::{
     PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, build_response_frame,
-    payload_from_host_frame,
+    payload_from_host_frame, probe_timeout,
 };
 use crate::command_abort::AtomicCommandAbort;
 use crate::usb::{UsbDeviceInfo, UsbError, UsbHandle, list_devices, strerror};
@@ -45,8 +45,6 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 const DRIVER_NAME: &str = "acr122_usb";
-const PROBE_TIMEOUT_MS: i32 = 250;
-const CONTROL_TIMEOUT_MS: i32 = 1_000;
 const RESPONSE_BUFFER_LEN: usize = 255 + 10;
 const USB_ABORT_POLL_INTERVAL: Duration = Duration::from_millis(200);
 const PN53X_GET_FIRMWARE_VERSION: u8 = 0x02;
@@ -58,6 +56,10 @@ const ACR122_CCID_PC_TO_RDR_ICC_POWER_ON: u8 = 0x62;
 const ACR122_CCID_PC_TO_RDR_XFR_BLOCK: u8 = 0x6F;
 const ACR122_CCID_RDR_TO_PC_DATABLOCK: u8 = 0x80;
 const ACR122_PN53X_READER_TO_HOST: u8 = 0xD5;
+
+fn control_timeout() -> OperationTimeout {
+    OperationTimeout::try_milliseconds(1_000).expect("ACR122 USB control timeout is representable")
+}
 
 pub(crate) struct Acr122UsbDriver;
 
@@ -103,8 +105,8 @@ impl Driver for Acr122UsbDriver {
         let display_name = usb_display_name(&info);
 
         let mut handle = UsbCcidHandle::open(&info)?;
-        handle.power_on(CONTROL_TIMEOUT_MS)?;
-        handle.configure_operating_parameters(CONTROL_TIMEOUT_MS)?;
+        handle.power_on(control_timeout())?;
+        handle.configure_operating_parameters(control_timeout())?;
 
         let transport = Acr122UsbTransport::new(handle);
         let mut device = Pn53xDevice::probe_with_profile(
@@ -112,12 +114,9 @@ impl Driver for Acr122UsbDriver {
             connstring.clone(),
             Pn53xProfile::acr122_usb(),
             transport,
-            PROBE_TIMEOUT_MS,
+            probe_timeout(),
         )?;
-        device.set_timeout(
-            TimeoutProperty::Command,
-            OperationTimeout::from_libnfc_millis(CONTROL_TIMEOUT_MS)?,
-        )?;
+        device.set_timeout(TimeoutProperty::Command, control_timeout())?;
         Ok(Box::new(device))
     }
 }
@@ -233,8 +232,8 @@ fn resolve_endpoints(device: &UsbDeviceInfo) -> Result<EndpointSelection, Error>
 }
 
 trait Acr122UsbIo: Send {
-    fn bulk_read(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error>;
-    fn bulk_write(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error>;
+    fn bulk_read(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error>;
+    fn bulk_write(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error>;
 
     fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
         None
@@ -247,7 +246,7 @@ trait Acr122UsbIo: Send {
         message_type: u8,
         message_specific: [u8; 3],
         payload: &[u8],
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<(), Error> {
         let mut frame = Vec::with_capacity(10 + payload.len());
         frame.push(message_type);
@@ -256,35 +255,35 @@ trait Acr122UsbIo: Send {
         frame.push(0x00);
         frame.extend_from_slice(&message_specific);
         frame.extend_from_slice(payload);
-        self.bulk_write(&frame, timeout_ms)
+        self.bulk_write(&frame, timeout)
     }
 
-    fn read_raw(&mut self, timeout_ms: i32) -> Result<Vec<u8>, Error> {
+    fn read_raw(&mut self, timeout: OperationTimeout) -> Result<Vec<u8>, Error> {
         let mut buffer = [0u8; RESPONSE_BUFFER_LEN];
-        let size = self.bulk_read(&mut buffer, timeout_ms)?;
+        let size = self.bulk_read(&mut buffer, timeout)?;
         Ok(buffer[..size].to_vec())
     }
 
-    fn send_apdu(&mut self, apdu: &[u8], timeout_ms: i32) -> Result<Vec<u8>, Error> {
-        self.write_ccid_message(ACR122_CCID_PC_TO_RDR_XFR_BLOCK, [0, 0, 0], apdu, timeout_ms)?;
-        let response = self.read_raw(timeout_ms)?;
+    fn send_apdu(&mut self, apdu: &[u8], timeout: OperationTimeout) -> Result<Vec<u8>, Error> {
+        self.write_ccid_message(ACR122_CCID_PC_TO_RDR_XFR_BLOCK, [0, 0, 0], apdu, timeout)?;
+        let response = self.read_raw(timeout)?;
         parse_ccid_data_block(&response)
     }
 
-    fn power_on(&mut self, timeout_ms: i32) -> Result<(), Error> {
+    fn power_on(&mut self, timeout: OperationTimeout) -> Result<(), Error> {
         self.write_ccid_message(
             ACR122_CCID_PC_TO_RDR_ICC_POWER_ON,
             [0x01, 0x00, 0x00],
             &[],
-            timeout_ms,
+            timeout,
         )?;
-        let _ = self.read_raw(timeout_ms)?;
+        let _ = self.read_raw(timeout)?;
         Ok(())
     }
 
-    fn configure_operating_parameters(&mut self, timeout_ms: i32) -> Result<(), Error> {
+    fn configure_operating_parameters(&mut self, timeout: OperationTimeout) -> Result<(), Error> {
         let apdu = acr122::build_apdu(0x00, 0x51, 0x00, &[], 0x00)?;
-        let _ = self.send_apdu(&apdu, timeout_ms)?;
+        let _ = self.send_apdu(&apdu, timeout)?;
         Ok(())
     }
 
@@ -292,18 +291,18 @@ trait Acr122UsbIo: Send {
         &mut self,
         command: u8,
         host_payload: &[u8],
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<Vec<u8>, Error> {
         let apdu = acr122::build_direct_transmit_apdu(host_payload)?;
-        let response = self.send_apdu(&apdu, timeout_ms)?;
-        self.complete_direct_transmit(command, response, timeout_ms)
+        let response = self.send_apdu(&apdu, timeout)?;
+        self.complete_direct_transmit(command, response, timeout)
     }
 
     fn cancel_pending_command(&mut self) -> Result<(), Error> {
         let _ = self.direct_transmit(
             PN53X_GET_FIRMWARE_VERSION,
             &[PN53X_GET_FIRMWARE_VERSION],
-            CONTROL_TIMEOUT_MS,
+            control_timeout(),
         )?;
         Ok(())
     }
@@ -312,7 +311,7 @@ trait Acr122UsbIo: Send {
         &mut self,
         command: u8,
         response: Vec<u8>,
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<Vec<u8>, Error> {
         if let Some(payload) = extract_direct_transmit_payload(command, &response)? {
             return Ok(payload);
@@ -325,7 +324,7 @@ trait Acr122UsbIo: Send {
         }
 
         let follow_up = acr122::build_get_additional_data_apdu(status.more_data_length)?;
-        let follow_up_response = self.send_apdu(&follow_up, timeout_ms)?;
+        let follow_up_response = self.send_apdu(&follow_up, timeout)?;
         extract_direct_transmit_payload(command, &follow_up_response)?
             .ok_or_else(|| device_error("acr122_usb_receive", NFC_EIO))
     }
@@ -369,7 +368,8 @@ impl UsbCcidHandle {
 }
 
 impl Acr122UsbIo for UsbCcidHandle {
-    fn bulk_read(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
+    fn bulk_read(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error> {
+        let timeout_ms = timeout.configured_millis()?;
         let started = Instant::now();
         loop {
             if self.command_abort.take_requested() {
@@ -406,7 +406,8 @@ impl Acr122UsbIo for UsbCcidHandle {
         }
     }
 
-    fn bulk_write(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
+    fn bulk_write(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
+        let timeout_ms = timeout.configured_millis()?;
         let actual_len = self
             .handle
             .bulk_write(self.endpoint_out, payload, timeout_ms)
@@ -486,13 +487,13 @@ impl<IO> Acr122UsbTransport<IO> {
 }
 
 impl<IO: Acr122UsbIo> Pn53xTransport for Acr122UsbTransport<IO> {
-    fn send(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
+    fn send(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
         self.io.begin_command();
         let host_payload = payload_from_host_frame(payload)?;
         let command = *host_payload
             .first()
             .ok_or_else(|| device_error("acr122_usb_send", NFC_EIO))?;
-        let response = match self.io.direct_transmit(command, &host_payload, timeout_ms) {
+        let response = match self.io.direct_transmit(command, &host_payload, timeout) {
             Ok(response) => response,
             Err(operation @ Error::Aborted(_)) => {
                 return match self.io.cancel_pending_command() {
@@ -512,7 +513,7 @@ impl<IO: Acr122UsbIo> Pn53xTransport for Acr122UsbTransport<IO> {
         Ok(())
     }
 
-    fn receive(&mut self, buffer: &mut [u8], _timeout_ms: i32) -> Result<usize, Error> {
+    fn receive(&mut self, buffer: &mut [u8], _timeout: OperationTimeout) -> Result<usize, Error> {
         let payload = self
             .pending
             .pop_front()
@@ -541,12 +542,12 @@ impl<IO: Acr122UsbIo> Pn53xTransport for Acr122UsbTransport<IO> {
 }
 
 impl Acr122UsbIo for Box<dyn Acr122UsbIo> {
-    fn bulk_read(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
-        self.as_mut().bulk_read(buffer, timeout_ms)
+    fn bulk_read(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error> {
+        self.as_mut().bulk_read(buffer, timeout)
     }
 
-    fn bulk_write(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
-        self.as_mut().bulk_write(payload, timeout_ms)
+    fn bulk_write(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
+        self.as_mut().bulk_write(payload, timeout)
     }
 
     fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
@@ -602,7 +603,7 @@ impl FakeUsbIo {
 
 #[cfg(test)]
 impl Acr122UsbIo for FakeUsbIo {
-    fn bulk_read(&mut self, buffer: &mut [u8], _timeout_ms: i32) -> Result<usize, Error> {
+    fn bulk_read(&mut self, buffer: &mut [u8], _timeout: OperationTimeout) -> Result<usize, Error> {
         let mut state = self.state.lock().expect("poisoned fake USB state");
         let payload = state
             .reads
@@ -615,7 +616,7 @@ impl Acr122UsbIo for FakeUsbIo {
         Ok(payload.len())
     }
 
-    fn bulk_write(&mut self, payload: &[u8], _timeout_ms: i32) -> Result<(), Error> {
+    fn bulk_write(&mut self, payload: &[u8], _timeout: OperationTimeout) -> Result<(), Error> {
         self.state
             .lock()
             .expect("poisoned fake USB state")
@@ -639,20 +640,24 @@ fn build_ccid_data_block(payload: &[u8]) -> Vec<u8> {
 mod tests {
     use super::*;
 
+    fn test_timeout() -> OperationTimeout {
+        OperationTimeout::try_milliseconds(25).expect("test timeout is representable")
+    }
+
     #[test]
     fn transport_builds_pending_ack_and_response_frames() {
         let io = FakeUsbIo::with_reads([build_ccid_data_block(&[0xD5, 0x03, 0x90, 0x00])]);
         let mut transport = Acr122UsbTransport::new(io);
 
         let frame = crate::native::pn53x::build_frame(&[0x02]).unwrap();
-        transport.send(&frame, 25).unwrap();
+        transport.send(&frame, test_timeout()).unwrap();
 
         let mut ack = [0u8; 6];
-        assert_eq!(transport.receive(&mut ack, 25).unwrap(), 6);
+        assert_eq!(transport.receive(&mut ack, test_timeout()).unwrap(), 6);
         assert_eq!(ack, PN53X_ACK_FRAME);
 
         let mut response = [0u8; 32];
-        let size = transport.receive(&mut response, 25).unwrap();
+        let size = transport.receive(&mut response, test_timeout()).unwrap();
         assert!(size > 0);
     }
 
@@ -666,7 +671,7 @@ mod tests {
         let mut transport = Acr122UsbTransport::new(io);
 
         let frame = crate::native::pn53x::build_frame(&[0x02]).unwrap();
-        transport.send(&frame, 25).unwrap();
+        transport.send(&frame, test_timeout()).unwrap();
 
         let writes = writes.writes();
         assert_eq!(writes.len(), 2);
@@ -686,7 +691,7 @@ mod tests {
 
         let frame = crate::native::pn53x::build_frame(&[0x4A, 0x01, 0x00]).unwrap();
         assert_eq!(
-            transport.send(&frame, 25),
+            transport.send(&frame, test_timeout()),
             Err(Error::Aborted("fake_bulk_read"))
         );
 
@@ -711,7 +716,7 @@ mod tests {
 
         let frame = crate::native::pn53x::build_frame(&[0x4A, 0x01, 0x00]).unwrap();
         assert_eq!(
-            transport.send(&frame, 25),
+            transport.send(&frame, test_timeout()),
             Err(Error::RecoveryFailed {
                 operation: Box::new(Error::Aborted("fake_bulk_read")),
                 recovery: Box::new(Error::Io("fake_cancel_read")),

@@ -30,13 +30,13 @@
 
 use super::connstring::{build_path_speed_connstring, decode_path_speed_descriptor};
 use super::pn53x::{
-    Pn53xDevice, Pn53xProfile, Pn53xTransport, command_from_host_frame, is_ack_frame,
+    Pn53xDevice, Pn53xProfile, Pn53xTransport, command_from_host_frame, is_ack_frame, probe_timeout,
 };
 use crate::command_abort::AtomicCommandAbort;
 use crate::spi::{SpiHandle, SpiOpenError};
 use proximate_driver::{
     CommandAbort, CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error,
-    ScanType,
+    OperationTimeout, ScanType,
 };
 use std::thread;
 use std::time::{Duration, Instant};
@@ -44,7 +44,6 @@ use std::time::{Duration, Instant};
 const DRIVER_NAME: &str = "pn532_spi";
 const DEFAULT_SPEED: u32 = 1_000_000;
 const SPI_MODE_0: u8 = 0;
-const PROBE_TIMEOUT_MS: i32 = 250;
 const NFC_EIO: i32 = -1;
 const NFC_ETIMEOUT: i32 = -6;
 const DATAREAD: u8 = 0x03;
@@ -85,7 +84,7 @@ impl Driver for Pn532SpiDriver {
                 connstring.clone(),
                 Pn53xProfile::pn532(DRIVER_NAME),
                 transport,
-                PROBE_TIMEOUT_MS,
+                probe_timeout(),
             )
             .is_ok()
             {
@@ -107,7 +106,7 @@ impl Driver for Pn532SpiDriver {
             connstring.clone(),
             Pn53xProfile::pn532(DRIVER_NAME),
             transport,
-            PROBE_TIMEOUT_MS,
+            probe_timeout(),
         )?;
         Ok(Box::new(device))
     }
@@ -151,7 +150,11 @@ impl SpiTransport {
         Ok(status[0])
     }
 
-    fn wait_ready(&mut self, timeout_ms: i32) -> Result<(), Error> {
+    fn wait_ready(&mut self, timeout: OperationTimeout) -> Result<(), Error> {
+        timeout.configured_millis()?;
+        let timeout = timeout
+            .finite_millis()
+            .map(|millis| Duration::from_millis(u64::from(millis)));
         let start = Instant::now();
         loop {
             if self.command_abort.take_requested() {
@@ -162,7 +165,7 @@ impl SpiTransport {
                 return Ok(());
             }
 
-            if timeout_ms >= 0 && start.elapsed() > Duration::from_millis(timeout_ms as u64) {
+            if timeout.is_some_and(|timeout| start.elapsed() > timeout) {
                 return Err(device_error("spi_wait_ready", NFC_ETIMEOUT));
             }
 
@@ -172,7 +175,7 @@ impl SpiTransport {
 }
 
 impl Pn53xTransport for SpiTransport {
-    fn send(&mut self, payload: &[u8], _timeout_ms: i32) -> Result<(), Error> {
+    fn send(&mut self, payload: &[u8], _timeout: OperationTimeout) -> Result<(), Error> {
         self.command_abort.begin_command();
         let _ = command_from_host_frame(payload);
         let mut tx = Vec::with_capacity(payload.len() + 1);
@@ -183,8 +186,8 @@ impl Pn53xTransport for SpiTransport {
             .map_err(|_| device_error("spi_transfer", NFC_EIO))
     }
 
-    fn receive(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
-        self.wait_ready(timeout_ms)?;
+    fn receive(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error> {
+        self.wait_ready(timeout)?;
 
         let read_len = buffer.len().saturating_add(4).min(buffer.len().max(16));
         let mut scratch = vec![0u8; read_len];

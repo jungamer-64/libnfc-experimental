@@ -55,6 +55,10 @@ const NFC_ENOTIMPL: i32 = -8;
 const NFC_ETGRELEASED: i32 = -10;
 const NFC_ERFTRANS: i32 = -20;
 
+pub(crate) fn probe_timeout() -> OperationTimeout {
+    OperationTimeout::try_milliseconds(250).expect("PN53x probe timeout is representable")
+}
+
 const HOST_TO_PN53X_TFI: u8 = 0xD4;
 const PN53X_TO_HOST_TFI: u8 = 0xD5;
 const PN53X_GET_FIRMWARE_VERSION: u8 = 0x02;

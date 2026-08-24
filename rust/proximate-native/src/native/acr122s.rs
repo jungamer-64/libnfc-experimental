@@ -32,7 +32,7 @@ use super::acr122;
 use super::connstring::{build_path_speed_connstring, decode_path_speed_descriptor};
 use super::pn53x::{
     PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, build_response_frame,
-    payload_from_host_frame,
+    payload_from_host_frame, probe_timeout,
 };
 use super::uart::{UartPort, list_candidate_paths};
 use proximate_driver::{
@@ -45,8 +45,6 @@ use std::sync::{Arc, Mutex};
 
 const DRIVER_NAME: &str = "ACR122S";
 const DEFAULT_SPEED: u32 = 9_600;
-const PROBE_TIMEOUT_MS: i32 = 250;
-const CONTROL_TIMEOUT_MS: i32 = 1_000;
 
 const STX: u8 = 0x02;
 const ETX: u8 = 0x03;
@@ -60,6 +58,10 @@ const NFC_EINVARG: i32 = -2;
 const ICC_POWER_ON_REQ_MSG: u8 = 0x62;
 const ICC_POWER_OFF_REQ_MSG: u8 = 0x63;
 const XFR_BLOCK_REQ_MSG: u8 = 0x6f;
+
+fn control_timeout() -> OperationTimeout {
+    OperationTimeout::try_milliseconds(1_000).expect("ACR122S control timeout is representable")
+}
 
 pub(crate) struct Acr122sDriver;
 
@@ -120,7 +122,12 @@ impl Driver for Acr122sDriver {
             )));
         }
 
-        power_command(&mut port, &mut seq, ICC_POWER_ON_REQ_MSG, 0)?;
+        power_command(
+            &mut port,
+            &mut seq,
+            ICC_POWER_ON_REQ_MSG,
+            OperationTimeout::INFINITE,
+        )?;
 
         let transport = Acr122sTransport::new(port, seq);
         let mut device = Pn53xDevice::probe_with_profile(
@@ -128,20 +135,17 @@ impl Driver for Acr122sDriver {
             connstring.clone(),
             Pn53xProfile::acr122s(),
             transport,
-            PROBE_TIMEOUT_MS,
+            probe_timeout(),
         )?;
-        device.set_timeout(
-            TimeoutProperty::Command,
-            OperationTimeout::from_libnfc_millis(CONTROL_TIMEOUT_MS)?,
-        )?;
+        device.set_timeout(TimeoutProperty::Command, control_timeout())?;
         Ok(Box::new(device))
     }
 }
 
 trait Acr122sIo: Send {
     fn flush_input(&mut self) -> Result<(), Error>;
-    fn write_all(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error>;
-    fn read_exact(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<(), Error>;
+    fn write_all(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error>;
+    fn read_exact(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<(), Error>;
     fn abort_command(&mut self) -> Result<(), Error>;
 
     fn command_abort_handle(&self) -> Option<CommandAbortHandle> {
@@ -154,12 +158,12 @@ impl Acr122sIo for UartPort {
         UartPort::flush_input(self)
     }
 
-    fn write_all(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
-        UartPort::write_all(self, payload, timeout_ms)
+    fn write_all(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
+        UartPort::write_all(self, payload, timeout)
     }
 
-    fn read_exact(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<(), Error> {
-        UartPort::read_exact(self, buffer, timeout_ms)
+    fn read_exact(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<(), Error> {
+        UartPort::read_exact(self, buffer, timeout)
     }
 
     fn abort_command(&mut self) -> Result<(), Error> {
@@ -202,25 +206,25 @@ impl<IO: Acr122sIo> Acr122sTransport<IO> {
 impl<IO: Acr122sIo> Drop for Acr122sTransport<IO> {
     fn drop(&mut self) {
         if self.deactivate_on_drop {
-            let _ = power_command(&mut self.io, &mut self.seq, ICC_POWER_OFF_REQ_MSG, 0);
+            let _ = power_command(
+                &mut self.io,
+                &mut self.seq,
+                ICC_POWER_OFF_REQ_MSG,
+                OperationTimeout::INFINITE,
+            );
         }
     }
 }
 
 impl<IO: Acr122sIo> Pn53xTransport for Acr122sTransport<IO> {
-    fn send(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
+    fn send(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
         self.io.flush_input()?;
         let host_payload = payload_from_host_frame(payload)?;
         let command = *host_payload
             .first()
             .ok_or_else(|| device_error("acr122s_send", NFC_EIO))?;
-        let response = direct_transmit(
-            &mut self.io,
-            &mut self.seq,
-            command,
-            &host_payload,
-            timeout_ms,
-        )?;
+        let response =
+            direct_transmit(&mut self.io, &mut self.seq, command, &host_payload, timeout)?;
         let frame = build_response_frame(command, &response)?;
         self.pending.clear();
         self.pending.push_back(PN53X_ACK_FRAME.to_vec());
@@ -228,7 +232,7 @@ impl<IO: Acr122sIo> Pn53xTransport for Acr122sTransport<IO> {
         Ok(())
     }
 
-    fn receive(&mut self, buffer: &mut [u8], _timeout_ms: i32) -> Result<usize, Error> {
+    fn receive(&mut self, buffer: &mut [u8], _timeout: OperationTimeout) -> Result<usize, Error> {
         let payload = self
             .pending
             .pop_front()
@@ -302,20 +306,20 @@ fn transact<IO: Acr122sIo>(
     message_type: u8,
     message_specific: [u8; 3],
     payload: &[u8],
-    timeout_ms: i32,
+    timeout: OperationTimeout,
 ) -> Result<Vec<u8>, Error> {
     let sent_seq = *seq;
     let frame = build_frame(message_type, sent_seq, message_specific, payload);
-    io.write_all(&frame, timeout_ms)?;
+    io.write_all(&frame, timeout)?;
 
     let mut ack = [0u8; 4];
-    io.read_exact(&mut ack, timeout_ms)?;
+    io.read_exact(&mut ack, timeout)?;
     validate_ack(&ack)?;
 
     *seq = sent_seq.wrapping_add(1);
 
     let mut header = [0u8; 11];
-    io.read_exact(&mut header, timeout_ms)?;
+    io.read_exact(&mut header, timeout)?;
     let payload_len = u32::from_le_bytes([header[2], header[3], header[4], header[5]]) as usize;
     let frame_len = FRAME_OVERHEAD + payload_len;
     if !(FRAME_OVERHEAD..=MAX_FRAME_SIZE).contains(&frame_len) {
@@ -324,7 +328,7 @@ fn transact<IO: Acr122sIo>(
 
     let mut frame = vec![0u8; frame_len];
     frame[..header.len()].copy_from_slice(&header);
-    io.read_exact(&mut frame[header.len()..], timeout_ms)?;
+    io.read_exact(&mut frame[header.len()..], timeout)?;
     validate_frame(&frame, sent_seq)?;
     Ok(frame[11..frame.len() - 2].to_vec())
 }
@@ -349,7 +353,7 @@ fn complete_direct_transmit<IO: Acr122sIo>(
     seq: &mut u8,
     command: u8,
     response: Vec<u8>,
-    timeout_ms: i32,
+    timeout: OperationTimeout,
 ) -> Result<Vec<u8>, Error> {
     if let Some(payload) = extract_direct_transmit_payload(command, &response)? {
         return Ok(payload);
@@ -368,7 +372,7 @@ fn complete_direct_transmit<IO: Acr122sIo>(
         XFR_BLOCK_REQ_MSG,
         [0x00, 0x00, 0x00],
         &follow_up,
-        timeout_ms,
+        timeout,
     )?;
     extract_direct_transmit_payload(command, &follow_up_response)?
         .ok_or_else(|| device_error("acr122s_receive", NFC_EIO))
@@ -379,7 +383,7 @@ fn direct_transmit<IO: Acr122sIo>(
     seq: &mut u8,
     command: u8,
     host_payload: &[u8],
-    timeout_ms: i32,
+    timeout: OperationTimeout,
 ) -> Result<Vec<u8>, Error> {
     let apdu = acr122::build_direct_transmit_apdu(host_payload)?;
     let response = transact(
@@ -388,18 +392,18 @@ fn direct_transmit<IO: Acr122sIo>(
         XFR_BLOCK_REQ_MSG,
         [0x00, 0x00, 0x00],
         &apdu,
-        timeout_ms,
+        timeout,
     )?;
-    complete_direct_transmit(io, seq, command, response, timeout_ms)
+    complete_direct_transmit(io, seq, command, response, timeout)
 }
 
 fn power_command<IO: Acr122sIo>(
     io: &mut IO,
     seq: &mut u8,
     message_type: u8,
-    timeout_ms: i32,
+    timeout: OperationTimeout,
 ) -> Result<(), Error> {
-    let _ = transact(io, seq, message_type, [0x00, 0x00, 0x00], &[], timeout_ms)?;
+    let _ = transact(io, seq, message_type, [0x00, 0x00, 0x00], &[], timeout)?;
     Ok(())
 }
 
@@ -411,7 +415,7 @@ fn fetch_firmware_version<IO: Acr122sIo>(io: &mut IO, seq: &mut u8) -> Result<St
         XFR_BLOCK_REQ_MSG,
         [0x00, 0x00, 0x00],
         &apdu,
-        CONTROL_TIMEOUT_MS,
+        control_timeout(),
     )?;
     Ok(String::from_utf8_lossy(&response)
         .trim_end_matches('\0')
@@ -460,7 +464,7 @@ impl Acr122sIo for FakeIo {
         Ok(())
     }
 
-    fn write_all(&mut self, payload: &[u8], _timeout_ms: i32) -> Result<(), Error> {
+    fn write_all(&mut self, payload: &[u8], _timeout: OperationTimeout) -> Result<(), Error> {
         self.state
             .lock()
             .expect("poisoned fake io")
@@ -469,7 +473,7 @@ impl Acr122sIo for FakeIo {
         Ok(())
     }
 
-    fn read_exact(&mut self, buffer: &mut [u8], _timeout_ms: i32) -> Result<(), Error> {
+    fn read_exact(&mut self, buffer: &mut [u8], _timeout: OperationTimeout) -> Result<(), Error> {
         let payload = self
             .state
             .lock()
@@ -504,6 +508,10 @@ fn build_response_frame_payload(message_type: u8, seq: u8, payload: &[u8]) -> [V
 mod tests {
     use super::*;
 
+    fn test_timeout() -> OperationTimeout {
+        OperationTimeout::try_milliseconds(25).expect("test timeout is representable")
+    }
+
     #[test]
     fn firmware_probe_and_power_on_use_expected_frames() {
         let [firmware_header, firmware_tail] =
@@ -522,7 +530,13 @@ mod tests {
 
         let firmware = fetch_firmware_version(&mut io_clone, &mut seq).unwrap();
         assert_eq!(firmware, "ACR122S101");
-        power_command(&mut io_clone, &mut seq, ICC_POWER_ON_REQ_MSG, 0).unwrap();
+        power_command(
+            &mut io_clone,
+            &mut seq,
+            ICC_POWER_ON_REQ_MSG,
+            OperationTimeout::INFINITE,
+        )
+        .unwrap();
 
         let writes = io.writes();
         assert_eq!(writes.len(), 2);
@@ -542,14 +556,14 @@ mod tests {
         let mut transport = Acr122sTransport::without_power_off(io.clone(), 0);
 
         let frame = crate::native::pn53x::build_frame(&[0x02]).unwrap();
-        transport.send(&frame, 25).unwrap();
+        transport.send(&frame, test_timeout()).unwrap();
 
         let mut ack = [0u8; 6];
-        assert_eq!(transport.receive(&mut ack, 25).unwrap(), 6);
+        assert_eq!(transport.receive(&mut ack, test_timeout()).unwrap(), 6);
         assert_eq!(ack, PN53X_ACK_FRAME);
 
         let mut response = [0u8; 32];
-        let size = transport.receive(&mut response, 25).unwrap();
+        let size = transport.receive(&mut response, test_timeout()).unwrap();
         assert!(size > 0);
 
         let writes = io.writes();
@@ -576,7 +590,7 @@ mod tests {
         let mut transport = Acr122sTransport::without_power_off(io.clone(), 0);
 
         let frame = crate::native::pn53x::build_frame(&[0x02]).unwrap();
-        transport.send(&frame, 25).unwrap();
+        transport.send(&frame, test_timeout()).unwrap();
 
         let writes = io.writes();
         assert_eq!(writes.len(), 2);

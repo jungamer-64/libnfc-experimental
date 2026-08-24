@@ -42,13 +42,13 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         connstring: ConnectionString,
         profile: Pn53xProfile,
         mut transport: T,
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<Self, Error> {
         let mut core = Pn53xCore {
             power_mode: profile.initial_power_mode,
             ..Pn53xCore::default()
         };
-        core.get_firmware_version(profile, &mut transport, timeout_ms)?;
+        core.get_firmware_version(profile, &mut transport, timeout)?;
         let mut device = Self {
             name: name.into(),
             connstring,
@@ -60,12 +60,12 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         let _ = device.exchange_raw(
             PN53X_SET_PARAMETERS,
             &[PARAM_AUTO_ATR_RES | PARAM_AUTO_RATS],
-            timeout_ms,
+            timeout,
         )?;
         device.core.parameters = PARAM_AUTO_ATR_RES | PARAM_AUTO_RATS;
         device
             .core
-            .reset_frame_settings(device.profile, &mut device.transport, timeout_ms)?;
+            .reset_frame_settings(device.profile, &mut device.transport, timeout)?;
         Ok(device)
     }
 
@@ -73,14 +73,14 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         name: impl Into<String>,
         connstring: ConnectionString,
         transport: T,
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<Self, Error> {
         Self::probe_with_profile(
             name,
             connstring,
             Pn53xProfile::pn532("pn532"),
             transport,
-            timeout_ms,
+            timeout,
         )
     }
 
@@ -97,10 +97,11 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         result
     }
 
-    fn resolve_timeout(timeout: OperationTimeout, default_millis: i32) -> Result<i32, Error> {
-        let default_millis = u32::try_from(default_millis)
-            .map_err(|_| Error::InvalidArgument("configured timeout"))?;
-        timeout.resolve_libnfc_millis(default_millis)
+    fn resolve_timeout(
+        timeout: OperationTimeout,
+        configured: OperationTimeout,
+    ) -> Result<OperationTimeout, Error> {
+        timeout.resolve(configured)
     }
 
     fn firmware_text(&self) -> String {
@@ -110,7 +111,11 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             .unwrap_or_else(|| format!("{} firmware unknown", self.core.chip_type().label()))
     }
 
-    fn sam_configuration(&mut self, mode: Pn532SamMode, timeout_ms: i32) -> Result<i32, Error> {
+    fn sam_configuration(
+        &mut self,
+        mode: Pn532SamMode,
+        timeout: OperationTimeout,
+    ) -> Result<i32, Error> {
         if self.core.chip_type() != Pn53xType::Pn532 {
             return self.remember(Err(status_error("pn532_SAMConfiguration", NFC_EDEVNOTSUPP)));
         }
@@ -127,7 +132,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
                 &mut self.transport,
                 PN532_SAM_CONFIGURATION,
                 &payload,
-                timeout_ms,
+                timeout,
             )
             .map(|_| 0);
         self.remember(result)
@@ -137,14 +142,14 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         &mut self,
         command: u8,
         payload: &[u8],
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<Vec<u8>, Error> {
         let result = self.core.exchange_command(
             self.profile,
             &mut self.transport,
             command,
             payload,
-            timeout_ms,
+            timeout,
         );
         self.remember(result)
     }
@@ -154,9 +159,9 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         operation: &'static str,
         command: u8,
         payload: &[u8],
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<Vec<u8>, Error> {
-        let response = self.exchange_raw(command, payload, timeout_ms)?;
+        let response = self.exchange_raw(command, payload, timeout)?;
         let (status, data) = split_status_response(command, &response)?;
         self.core.last_status_byte = status;
         let mapped = pn53x_translate_status(status);
@@ -205,7 +210,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             payload.push(*register as u8);
         }
         let response =
-            self.exchange_raw(PN53X_READ_REGISTER, &payload, self.core.timeout_command_ms)?;
+            self.exchange_raw(PN53X_READ_REGISTER, &payload, self.core.command_timeout)?;
         let values = if self.core.chip_type() == Pn53xType::Pn533 {
             let (status, data) = split_status_response(PN53X_READ_REGISTER, &response)?;
             self.core.last_status_byte = status;
@@ -233,7 +238,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             payload.push(*register as u8);
             payload.push(*value);
         }
-        let _ = self.exchange_raw(PN53X_WRITE_REGISTER, &payload, self.core.timeout_command_ms)?;
+        let _ = self.exchange_raw(PN53X_WRITE_REGISTER, &payload, self.core.command_timeout)?;
         Ok(())
     }
 
@@ -269,23 +274,20 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         if next == self.core.parameters {
             return Ok(());
         }
-        let _ = self.exchange_raw(PN53X_SET_PARAMETERS, &[next], self.core.timeout_command_ms)?;
+        let _ = self.exchange_raw(PN53X_SET_PARAMETERS, &[next], self.core.command_timeout)?;
         self.core.parameters = next;
         Ok(())
     }
 
     fn rf_configuration(&mut self, payload: &[u8]) -> Result<(), Error> {
-        let _ = self.exchange_raw(
-            PN53X_RF_CONFIGURATION,
-            payload,
-            self.core.timeout_command_ms,
-        )?;
+        let _ = self.exchange_raw(PN53X_RF_CONFIGURATION, payload, self.core.command_timeout)?;
         Ok(())
     }
 
-    fn int_to_timeout(milliseconds: i32) -> u8 {
+    fn encode_rf_timeout(timeout: OperationTimeout) -> Result<u8, Error> {
+        let milliseconds = timeout.configured_millis()?;
         if milliseconds == 0 {
-            return 0;
+            return Ok(0);
         }
         let mut encoded = 0x10u8;
         let mut threshold = 3280;
@@ -296,7 +298,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             encoded = encoded.saturating_sub(1);
             threshold /= 2;
         }
-        encoded
+        Ok(encoded)
     }
 
     /// Applies a boolean property after its chip response is confirmed.
@@ -384,28 +386,28 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         property: TimeoutProperty,
         timeout: OperationTimeout,
     ) -> Result<(), Error> {
-        let value = timeout.configured_millis()?;
+        timeout.configured_millis()?;
         match property {
-            TimeoutProperty::Command => self.core.timeout_command_ms = value,
+            TimeoutProperty::Command => self.core.command_timeout = timeout,
             TimeoutProperty::Atr | TimeoutProperty::Communication => {
                 let atr = if property == TimeoutProperty::Atr {
-                    value
+                    timeout
                 } else {
-                    self.core.timeout_atr_ms
+                    self.core.atr_timeout
                 };
                 let communication = if property == TimeoutProperty::Communication {
-                    value
+                    timeout
                 } else {
-                    self.core.timeout_communication_ms
+                    self.core.communication_timeout
                 };
                 self.rf_configuration(&[
                     RFCI_TIMING,
                     0x00,
-                    Self::int_to_timeout(atr),
-                    Self::int_to_timeout(communication),
+                    Self::encode_rf_timeout(atr)?,
+                    Self::encode_rf_timeout(communication)?,
                 ])?;
-                self.core.timeout_atr_ms = atr;
-                self.core.timeout_communication_ms = communication;
+                self.core.atr_timeout = atr;
+                self.core.communication_timeout = communication;
             }
         }
         Ok(())
@@ -422,11 +424,8 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
     }
 
     fn reset_settings(&mut self) -> Result<(), Error> {
-        self.core.reset_frame_settings(
-            self.profile,
-            &mut self.transport,
-            self.core.timeout_command_ms,
-        )
+        self.core
+            .reset_frame_settings(self.profile, &mut self.transport, self.core.command_timeout)
     }
 
     fn rx_last_bits(&mut self) -> Result<u8, Error> {
@@ -623,7 +622,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             tx_parity,
             rx,
             rx_parity,
-            timeout_ms,
+            timeout,
         } = request;
         let (payload, payload_bits_len) = if self.core.properties.handle_parity {
             let byte_len = bits_to_bytes_len(tx_bits_len);
@@ -641,7 +640,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         };
 
         self.set_tx_bits((payload_bits_len % 8) as u8)?;
-        let response = self.exchange_with_status(operation, command, &payload, timeout_ms)?;
+        let response = self.exchange_with_status(operation, command, &payload, timeout)?;
         let response_bits_len = raw_frame_bits_len(response.len(), self.rx_last_bits()?);
         let result_bits = if self.core.properties.handle_parity {
             let byte_len = bits_to_bytes_len(response_bits_len);
@@ -679,7 +678,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         &mut self,
         modulation: Modulation,
         init_data: &[u8],
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<Option<Target>, Error> {
         let capabilities = self
             .core
@@ -693,10 +692,10 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             | ModulationType::Iso14443B2Sr
             | ModulationType::Iso14443B2Ct
             | ModulationType::Iso14443BiClass => {
-                return self.select_specialized_iso14443b(modulation, init_data, timeout_ms);
+                return self.select_specialized_iso14443b(modulation, init_data, timeout);
             }
             ModulationType::Barcode => {
-                return self.select_barcode(modulation, timeout_ms);
+                return self.select_barcode(modulation, timeout);
             }
             _ => {}
         }
@@ -708,7 +707,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         payload.push(passive_modulation);
         payload.extend_from_slice(init_data);
 
-        let response = self.exchange_raw(PN53X_IN_LIST_PASSIVE_TARGET, &payload, timeout_ms)?;
+        let response = self.exchange_raw(PN53X_IN_LIST_PASSIVE_TARGET, &payload, timeout)?;
         let target = if response.first().copied().unwrap_or(0) == 0 {
             None
         } else {
@@ -732,7 +731,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
                     "select_passive_target_psl",
                     PN53X_IN_PSL,
                     &[0x01, speed, speed],
-                    0,
+                    OperationTimeout::INFINITE,
                 )?;
             }
             Some(target)
@@ -745,11 +744,12 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         Ok(target)
     }
 
-    fn transceive_raw_bytes(&mut self, tx: &[u8], timeout_ms: i32) -> Result<Vec<u8>, Error> {
+    fn transceive_raw_bytes(
+        &mut self,
+        tx: &[u8],
+        timeout: OperationTimeout,
+    ) -> Result<Vec<u8>, Error> {
         let mut response = vec![0u8; PN53X_EXTENDED_FRAME_DATA_MAX_LEN];
-        let timeout = OperationTimeout::try_milliseconds(
-            u32::try_from(timeout_ms).map_err(|_| Error::InvalidArgument("poll timeout"))?,
-        )?;
         let length = self.transceive_bytes_driver(tx, &mut response, timeout)?;
         response.truncate(length);
         Ok(response)
@@ -774,7 +774,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         &mut self,
         modulation: Modulation,
         init_data: &[u8],
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<Option<Target>, Error> {
         if self.core.chip_type() == Pn53xType::Rcs360 {
             return Err(Error::UnsupportedOperation(
@@ -790,33 +790,33 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             let attempt = (|| -> Result<Vec<u8>, Error> {
                 match modulation.modulation_type() {
                     ModulationType::Iso14443Bi => {
-                        let target_data = self.transceive_raw_bytes(init_data, timeout_ms)?;
+                        let target_data = self.transceive_raw_bytes(init_data, timeout)?;
                         if target_data.len() < 6 {
                             return Err(Error::InvalidEncoding("ISO14443BI discovery"));
                         }
                         let mut attrib = target_data[..6].to_vec();
                         attrib[1] = 0x0f;
-                        let _ = self.transceive_raw_bytes(&attrib, timeout_ms)?;
+                        let _ = self.transceive_raw_bytes(&attrib, timeout)?;
                         Ok(target_data)
                     }
                     ModulationType::Iso14443B2Sr => {
-                        let chip_id = self.transceive_raw_bytes(&[0x06, 0x00], timeout_ms)?;
+                        let chip_id = self.transceive_raw_bytes(&[0x06, 0x00], timeout)?;
                         let chip_id = *chip_id
                             .first()
                             .ok_or(Error::InvalidEncoding("ISO14443B2SR chip id"))?;
-                        let _ = self.transceive_raw_bytes(&[0x0e, chip_id], timeout_ms)?;
-                        self.transceive_raw_bytes(&[0x0b], timeout_ms)
+                        let _ = self.transceive_raw_bytes(&[0x0e, chip_id], timeout)?;
+                        self.transceive_raw_bytes(&[0x0b], timeout)
                     }
                     ModulationType::Iso14443B2Ct => {
-                        let product = self.transceive_raw_bytes(&[0x10], timeout_ms)?;
+                        let product = self.transceive_raw_bytes(&[0x10], timeout)?;
                         if product.len() < 2 {
                             return Err(Error::InvalidEncoding("ISO14443B2CT product data"));
                         }
-                        let uid_lsb = self.transceive_raw_bytes(&[0x9f, 0xff, 0xff], timeout_ms)?;
+                        let uid_lsb = self.transceive_raw_bytes(&[0x9f, 0xff, 0xff], timeout)?;
                         if uid_lsb.len() != 2 {
                             return Err(Error::InvalidEncoding("ISO14443B2CT UID LSB"));
                         }
-                        let uid_msb = self.transceive_raw_bytes(&[0xc4], timeout_ms)?;
+                        let uid_msb = self.transceive_raw_bytes(&[0xc4], timeout)?;
                         if uid_msb.len() < 2 {
                             return Err(Error::InvalidEncoding("ISO14443B2CT UID MSB"));
                         }
@@ -826,18 +826,18 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
                     }
                     ModulationType::Iso14443BiClass => {
                         self.configure_iclass()?;
-                        match self.transceive_raw_bytes(&[0x0a], timeout_ms) {
+                        match self.transceive_raw_bytes(&[0x0a], timeout) {
                             Ok(_) | Err(Error::RfTransmission(_)) => {}
                             Err(error) => return Err(error),
                         }
-                        let anticol = self.transceive_raw_bytes(&[0x0c], timeout_ms)?;
+                        let anticol = self.transceive_raw_bytes(&[0x0c], timeout)?;
                         if anticol.len() < 8 {
                             return Err(Error::InvalidEncoding("iClass anticollision"));
                         }
                         let mut select = Vec::with_capacity(9);
                         select.push(0x81);
                         select.extend_from_slice(&anticol[..8]);
-                        let uid = self.transceive_raw_bytes(&select, timeout_ms)?;
+                        let uid = self.transceive_raw_bytes(&select, timeout)?;
                         if uid.len() < 8 {
                             return Err(Error::InvalidEncoding("iClass UID"));
                         }
@@ -867,7 +867,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
     fn select_barcode(
         &mut self,
         modulation: Modulation,
-        _timeout_ms: i32,
+        _timeout: OperationTimeout,
     ) -> Result<Option<Target>, Error> {
         if self.core.chip_type() == Pn53xType::Rcs360 {
             return Err(Error::UnsupportedOperation("RCS360 NFC Barcode discovery"));
@@ -983,7 +983,8 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         payload.push(iterations.to_libnfc());
         payload.push(period.get());
         payload.extend_from_slice(&target_types);
-        let response = self.exchange_raw(PN532_IN_AUTO_POLL, &payload, 0)?;
+        let response =
+            self.exchange_raw(PN532_IN_AUTO_POLL, &payload, OperationTimeout::INFINITE)?;
         let Some((&count, mut encoded_targets)) = response.split_first() else {
             return Err(Error::InvalidEncoding("InAutoPoll response"));
         };
@@ -1024,12 +1025,11 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
     fn presence_transceive_bytes(
         &mut self,
         tx: &[u8],
-        timeout_ms: i32,
+        timeout: OperationTimeout,
         easy_framing: bool,
         attempts: usize,
     ) -> Result<bool, Error> {
         self.with_temporary_bool_property(Property::EasyFraming, easy_framing, |device| {
-            let timeout = OperationTimeout::from_libnfc_millis(timeout_ms)?;
             for _ in 0..attempts {
                 let mut rx = [0u8; PN53X_EXTENDED_FRAME_DATA_MAX_LEN];
                 match device.transceive_bytes_driver(tx, &mut rx, timeout) {
@@ -1094,7 +1094,8 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
 
     fn diagnose_card_presence(&mut self) -> Result<bool, Error> {
         const PN53X_DIAGNOSE: u8 = 0x00;
-        let response = self.exchange_raw(PN53X_DIAGNOSE, &[0x06], 1000)?;
+        let timeout = OperationTimeout::try_milliseconds(1_000)?;
+        let response = self.exchange_raw(PN53X_DIAGNOSE, &[0x06], timeout)?;
         let Some(&status) = response.first() else {
             return Err(status_error("target_is_present", NFC_EIO));
         };
@@ -1107,15 +1108,16 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
     }
 
     fn check_iso14443a_presence(&mut self, target: &Target) -> Result<bool, Error> {
+        let timeout = OperationTimeout::try_milliseconds(300)?;
         match target.info() {
             TargetInfo::Iso14443A { atqa, sak, uid, .. } if sak & SAK_ISO14443_4_COMPLIANT != 0 => {
-                self.presence_transceive_bytes(&[0xb2], 300, false, 2)
+                self.presence_transceive_bytes(&[0xb2], timeout, false, 2)
             }
             TargetInfo::Iso14443A { atqa, sak, .. } if *sak == 0x00 && *atqa == [0x00, 0x44] => {
                 if self.core.chip_type() == Pn53xType::Pn533 {
                     self.diagnose_card_presence()
                 } else {
-                    self.presence_transceive_bytes(&[0x30, 0x00], 300, true, 2)
+                    self.presence_transceive_bytes(&[0x30, 0x00], timeout, true, 2)
                 }
             }
             TargetInfo::Iso14443A { sak, uid, .. } if *sak & SAK_MIFARE_CLASSIC_MASK != 0 => {
@@ -1131,33 +1133,38 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
     }
 
     fn check_current_target_presence(&mut self, target: &Target) -> Result<bool, Error> {
+        let timeout = OperationTimeout::try_milliseconds(300)?;
         match target.modulation().modulation_type() {
             ModulationType::Iso14443A => self.check_iso14443a_presence(target),
             ModulationType::Iso14443B => {
-                self.presence_transceive_bytes(&[0xba, 0x01], 300, false, 2)
+                self.presence_transceive_bytes(&[0xba, 0x01], timeout, false, 2)
             }
             ModulationType::Iso14443Bi => match target.info() {
                 TargetInfo::Iso14443Bi { div, .. } => {
                     let mut command = vec![0x01, 0x0f];
                     command.extend_from_slice(div);
-                    self.presence_transceive_bytes(&command, 300, false, 2)
+                    self.presence_transceive_bytes(&command, timeout, false, 2)
                 }
                 _ => Err(status_error("target_is_present", NFC_EDEVNOTSUPP)),
             },
-            ModulationType::Iso14443B2Sr => self.presence_transceive_bytes(&[0x0b], 300, false, 2),
+            ModulationType::Iso14443B2Sr => {
+                self.presence_transceive_bytes(&[0x0b], timeout, false, 2)
+            }
             ModulationType::Iso14443B2Ct => match target.info() {
                 TargetInfo::Iso14443B2Ct { uid, .. } => {
-                    self.presence_transceive_bytes(&[0x9f, uid[0], uid[1]], 300, false, 2)
+                    self.presence_transceive_bytes(&[0x9f, uid[0], uid[1]], timeout, false, 2)
                 }
                 _ => Err(status_error("target_is_present", NFC_EDEVNOTSUPP)),
             },
             ModulationType::Iso14443BiClass => self.check_iclass_presence(),
-            ModulationType::Jewel => self.presence_transceive_bytes(&[0x78], -1, true, 2),
+            ModulationType::Jewel => {
+                self.presence_transceive_bytes(&[0x78], OperationTimeout::DEFAULT, true, 2)
+            }
             ModulationType::Felica => match target.info() {
                 TargetInfo::Felica { id, .. } => {
                     let mut command = vec![0x0a, 0x04];
                     command.extend_from_slice(id);
-                    self.presence_transceive_bytes(&command, 300, true, 3)
+                    self.presence_transceive_bytes(&command, timeout, true, 3)
                 }
                 _ => Err(status_error("target_is_present", NFC_EDEVNOTSUPP)),
             },
@@ -1170,7 +1177,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         if !matches!(self.core.chip_type(), Pn53xType::Pn531 | Pn53xType::Pn532) {
             return Err(Error::MissingCapability("PN53x PowerDown"));
         }
-        let _ = self.exchange_raw(PN53X_POWER_DOWN, &[0xf0], self.core.timeout_command_ms)?;
+        let _ = self.exchange_raw(PN53X_POWER_DOWN, &[0xf0], self.core.command_timeout)?;
         self.core.power_mode = Pn53xPowerMode::LowVbat;
         Ok(())
     }
@@ -1257,7 +1264,7 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
         let Some(mode) = self.profile.secure_element_mode else {
             return Err(Error::UnsupportedOperation("initiator_init_secure_element"));
         };
-        self.sam_configuration(mode, self.core.timeout_command_ms)
+        self.sam_configuration(mode, self.core.command_timeout)
     }
 
     fn select_passive_target_driver(
@@ -1265,7 +1272,8 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
         nm: Modulation,
         init_data: &[u8],
     ) -> Result<Option<Target>, Error> {
-        let result = self.select_passive_target_with_timeout(nm, init_data, 300);
+        let timeout = OperationTimeout::try_milliseconds(300)?;
+        let result = self.select_passive_target_with_timeout(nm, init_data, timeout);
         self.remember(result)
     }
 
@@ -1284,7 +1292,7 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
             return self.remember(result);
         }
 
-        let timeout_ms = i32::from(period.get()) * 150;
+        let timeout = OperationTimeout::try_milliseconds(u32::from(period.get()) * 150)?;
         let result = self.with_temporary_bool_property(Property::InfiniteSelect, true, |device| {
             loop {
                 for _ in 0..iterations.to_libnfc() {
@@ -1292,7 +1300,7 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
                         if let Some(target) = device.select_passive_target_with_timeout(
                             *modulation,
                             default_initiator_payload(*modulation),
-                            timeout_ms,
+                            timeout,
                         )? {
                             return Ok(Some(target));
                         }
@@ -1314,7 +1322,7 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
         timeout: OperationTimeout,
     ) -> Result<Option<Target>, Error> {
         let payload = build_injump_for_dep_command(ndm, nbr, initiator)?;
-        let timeout = Self::resolve_timeout(timeout, self.core.timeout_command_ms)?;
+        let timeout = Self::resolve_timeout(timeout, self.core.command_timeout)?;
         let response = self.exchange_with_status(
             "select_dep_target",
             PN53X_IN_JUMP_FOR_DEP,
@@ -1336,7 +1344,7 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
             "deselect_target",
             PN53X_IN_DESELECT,
             &[0x00],
-            self.core.timeout_command_ms,
+            self.core.command_timeout,
         )?;
         self.core.clear_target();
         self.last_error = 0;
@@ -1378,7 +1386,7 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
         if !self.core.properties.handle_parity {
             return self.remember(Err(status_error("transceive_bytes", NFC_EINVARG)));
         }
-        let timeout = Self::resolve_timeout(timeout, self.core.timeout_communication_ms)?;
+        let timeout = Self::resolve_timeout(timeout, self.core.communication_timeout)?;
         self.set_tx_bits(0)?;
         let response = if self.core.properties.easy_framing {
             let mut payload = Vec::with_capacity(tx.len() + 1);
@@ -1412,7 +1420,7 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
             tx_parity: tx.parity(),
             rx,
             rx_parity,
-            timeout_ms: self.core.timeout_communication_ms,
+            timeout: self.core.communication_timeout,
         })
     }
 
@@ -1462,7 +1470,7 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
             "idle_release",
             PN53X_IN_RELEASE,
             &[0x00],
-            self.core.timeout_command_ms,
+            self.core.command_timeout,
         )?;
         self.core.clear_target();
         if mode == Pn53xOperatingMode::Initiator {
@@ -1503,7 +1511,7 @@ impl<T: Pn53xTransport + Send + 'static> TargetBackend for Pn53xDevice<T> {
         )?;
         let command =
             build_target_init_command(self.core.chip_type(), self.core.properties, target)?;
-        let timeout = Self::resolve_timeout(timeout, self.core.timeout_command_ms)?;
+        let timeout = Self::resolve_timeout(timeout, self.core.command_timeout)?;
         let response = self.exchange_raw(PN53X_TG_INIT_AS_TARGET, &command[1..], timeout)?;
         let Some((&activation_mode, payload)) = response.split_first() else {
             return self.remember(Err(status_error("target_init", NFC_EIO)));
@@ -1525,7 +1533,7 @@ impl<T: Pn53xTransport + Send + 'static> TargetBackend for Pn53xDevice<T> {
         if !self.core.properties.handle_parity {
             return self.remember(Err(Error::Chip("target_send_bytes")));
         }
-        let timeout = Self::resolve_timeout(timeout, self.core.timeout_communication_ms)?;
+        let timeout = Self::resolve_timeout(timeout, self.core.communication_timeout)?;
         let command = match self.core.current_target() {
             Some(target) if self.core.properties.easy_framing => {
                 match target.modulation().modulation_type() {
@@ -1555,7 +1563,7 @@ impl<T: Pn53xTransport + Send + 'static> TargetBackend for Pn53xDevice<T> {
         rx: &mut [u8],
         timeout: OperationTimeout,
     ) -> Result<usize, Error> {
-        let timeout = Self::resolve_timeout(timeout, self.core.timeout_communication_ms)?;
+        let timeout = Self::resolve_timeout(timeout, self.core.communication_timeout)?;
         let command = match self.core.current_target() {
             Some(target) if self.core.properties.easy_framing => {
                 match target.modulation().modulation_type() {
@@ -1592,7 +1600,7 @@ impl<T: Pn53xTransport + Send + 'static> TargetBackend for Pn53xDevice<T> {
             tx_parity: tx.parity(),
             rx: &mut sink,
             rx_parity: None,
-            timeout_ms: self.core.timeout_communication_ms,
+            timeout: self.core.communication_timeout,
         })?;
         self.last_error = 0;
         Ok(tx.bit_len())
@@ -1611,7 +1619,7 @@ impl<T: Pn53xTransport + Send + 'static> TargetBackend for Pn53xDevice<T> {
             tx_parity: None,
             rx,
             rx_parity,
-            timeout_ms: self.core.timeout_communication_ms,
+            timeout: self.core.communication_timeout,
         })
     }
 }
@@ -1626,7 +1634,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xBackend for Pn53xDevice<T> {
         let Some((&command, payload)) = tx.split_first() else {
             return self.remember(Err(status_error("pn53x_transceive", NFC_EINVARG)));
         };
-        let timeout = Self::resolve_timeout(timeout, self.core.timeout_command_ms)?;
+        let timeout = Self::resolve_timeout(timeout, self.core.command_timeout)?;
         let response = self.exchange_raw(command, payload, timeout)?;
         let written = Self::copy_into("pn53x_transceive", &response, rx)?;
         self.last_error = 0;
@@ -1657,7 +1665,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xBackend for Pn53xDevice<T> {
     ) -> Result<i32, Error> {
         let mode = Pn532SamMode::from_raw(mode)
             .ok_or_else(|| status_error("pn532_SAMConfiguration", NFC_EINVARG))?;
-        let timeout = Self::resolve_timeout(timeout, self.core.timeout_command_ms)?;
+        let timeout = Self::resolve_timeout(timeout, self.core.command_timeout)?;
         self.sam_configuration(mode, timeout)
     }
 }

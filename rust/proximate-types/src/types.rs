@@ -226,6 +226,22 @@ impl OperationTimeout {
         }
     }
 
+    /// Resolves an operation timeout against a configured device timeout.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidArgument`] if `configured` is
+    /// [`Self::DEFAULT`], because a configured timeout cannot recursively
+    /// select itself.
+    pub fn resolve(self, configured: Self) -> Result<Self, Error> {
+        configured.configured_millis()?;
+        if self == Self::DEFAULT {
+            Ok(configured)
+        } else {
+            Ok(self)
+        }
+    }
+
     /// Returns a finite millisecond budget, if this operation has one.
     pub const fn finite_millis(self) -> Option<u32> {
         if self.0 > 0 {
@@ -602,7 +618,16 @@ mod tests {
         for value in [0, 1, i32::MAX] {
             let timeout = OperationTimeout::from_configured_millis(value).unwrap();
             assert_eq!(timeout.configured_millis(), Ok(value));
+            assert_eq!(OperationTimeout::DEFAULT.resolve(timeout), Ok(timeout));
+            assert_eq!(
+                OperationTimeout::INFINITE.resolve(timeout),
+                Ok(OperationTimeout::INFINITE)
+            );
         }
+        assert_eq!(
+            OperationTimeout::DEFAULT.resolve(OperationTimeout::DEFAULT),
+            Err(Error::InvalidArgument("timeout")),
+        );
     }
 
     #[test]

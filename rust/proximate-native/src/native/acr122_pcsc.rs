@@ -34,11 +34,13 @@ use super::pcsc::{
 };
 use super::pn53x::{
     PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, build_response_frame,
-    payload_from_host_frame,
+    payload_from_host_frame, probe_timeout,
 };
 #[cfg(any(target_os = "linux", windows))]
 use crate::pcsc::ctl_code as platform_pcsc_ctl_code;
-use proximate_driver::{ConnectionString, Context, DeviceHandle, Driver, Error, ScanType};
+use proximate_driver::{
+    ConnectionString, Context, DeviceHandle, Driver, Error, OperationTimeout, ScanType,
+};
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -157,7 +159,7 @@ impl Driver for Acr122PcscDriver {
             resolved_connstring,
             Pn53xProfile::acr122_pcsc(),
             transport,
-            250,
+            probe_timeout(),
         )?;
         Ok(Box::new(device))
     }
@@ -249,7 +251,7 @@ impl Acr122PcscTransport {
 }
 
 impl Pn53xTransport for Acr122PcscTransport {
-    fn send(&mut self, payload: &[u8], _timeout_ms: i32) -> Result<(), Error> {
+    fn send(&mut self, payload: &[u8], _timeout: OperationTimeout) -> Result<(), Error> {
         let host_payload = payload_from_host_frame(payload)?;
         let command = *host_payload
             .first()
@@ -272,7 +274,7 @@ impl Pn53xTransport for Acr122PcscTransport {
         Ok(())
     }
 
-    fn receive(&mut self, buffer: &mut [u8], _timeout_ms: i32) -> Result<usize, Error> {
+    fn receive(&mut self, buffer: &mut [u8], _timeout: OperationTimeout) -> Result<usize, Error> {
         let payload = self
             .pending
             .pop_front()

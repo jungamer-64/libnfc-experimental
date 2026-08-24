@@ -28,6 +28,10 @@
 use super::*;
 use std::collections::VecDeque;
 
+fn timeout(milliseconds: u32) -> OperationTimeout {
+    OperationTimeout::try_milliseconds(milliseconds).expect("test timeout is representable")
+}
+
 fn cascade_iso14443a_uid(uid: &[u8]) -> Vec<u8> {
     match uid.len() {
         4 => uid.to_vec(),
@@ -242,12 +246,12 @@ struct FakeTransport {
 }
 
 impl Pn53xTransport for FakeTransport {
-    fn send(&mut self, payload: &[u8], _timeout_ms: i32) -> Result<(), Error> {
+    fn send(&mut self, payload: &[u8], _timeout: OperationTimeout) -> Result<(), Error> {
         self.sent.push(payload.to_vec());
         Ok(())
     }
 
-    fn receive(&mut self, buffer: &mut [u8], _timeout_ms: i32) -> Result<usize, Error> {
+    fn receive(&mut self, buffer: &mut [u8], _timeout: OperationTimeout) -> Result<usize, Error> {
         self.receive_calls += 1;
         if self
             .receive_failures
@@ -295,7 +299,11 @@ fn transport_confirmed_abort_does_not_force_protocol_reinitialization() {
         .push_back((2, Error::Aborted("transport_receive")));
 
     assert_eq!(
-        core.get_firmware_version(Pn53xProfile::pn532("pn532_uart"), &mut transport, 25),
+        core.get_firmware_version(
+            Pn53xProfile::pn532("pn532_uart"),
+            &mut transport,
+            timeout(25),
+        ),
         Err(Error::Aborted("transport_receive"))
     );
 
@@ -304,7 +312,11 @@ fn transport_confirmed_abort_does_not_force_protocol_reinitialization() {
         .received
         .push_back(response_frame(0x02, &[0x32, 0x01, 0x06, 0x07]));
     let firmware = core
-        .get_firmware_version(Pn53xProfile::pn532("pn532_uart"), &mut transport, 25)
+        .get_firmware_version(
+            Pn53xProfile::pn532("pn532_uart"),
+            &mut transport,
+            timeout(25),
+        )
         .unwrap();
     assert_eq!(firmware.chip_type(), Pn53xType::Pn532);
     assert_eq!(transport.sent.len(), 2);
@@ -376,7 +388,7 @@ fn probed_device() -> Pn53xDevice<FakeTransport> {
         connstring,
         Pn53xProfile::pn532("pn532_uart"),
         transport,
-        25,
+        timeout(25),
     )
     .unwrap()
 }
@@ -468,7 +480,11 @@ fn exchange_command_wakes_up_and_tracks_last_command() {
 
     let mut core = Pn53xCore::default();
     let payload = core
-        .get_firmware_version(Pn53xProfile::pn532("pn532_uart"), &mut transport, 25)
+        .get_firmware_version(
+            Pn53xProfile::pn532("pn532_uart"),
+            &mut transport,
+            timeout(25),
+        )
         .unwrap();
 
     assert_eq!(transport.wake_up_calls, 1);
@@ -490,7 +506,7 @@ fn probe_builds_pure_rust_device_and_reports_information() {
         connstring,
         Pn53xProfile::pn532("pn532_uart"),
         transport,
-        25,
+        timeout(25),
     )
     .unwrap();
 
@@ -546,7 +562,7 @@ fn pn531_and_pn533_probe_transcripts_establish_the_same_frame_defaults() {
         ConnectionString::new("pn53x_usb:pn531").unwrap(),
         Pn53xProfile::pn53x_usb(Pn53xUsbModel::NxpPn531),
         pn531_transport,
-        25,
+        timeout(25),
     )
     .unwrap();
     assert_eq!(pn531.core.chip_type(), Pn53xType::Pn531);
@@ -574,7 +590,7 @@ fn pn531_and_pn533_probe_transcripts_establish_the_same_frame_defaults() {
         ConnectionString::new("pn53x_usb:pn533").unwrap(),
         Pn53xProfile::pn53x_usb(Pn53xUsbModel::NxpPn533),
         pn533_transport,
-        25,
+        timeout(25),
     )
     .unwrap();
     assert_eq!(pn533.core.chip_type(), Pn53xType::Pn533);
@@ -600,7 +616,7 @@ fn device_property_state_follows_confirmed_chip_commands() {
         connstring,
         Pn53xProfile::pn532("pn532_uart"),
         transport,
-        25,
+        timeout(25),
     )
     .unwrap();
 
@@ -648,7 +664,7 @@ fn timeout_properties_emit_timing_configuration_and_commit_after_confirmation() 
         Err(Error::InvalidArgument("timeout")),
     );
     assert_eq!(device.transport.sent.len(), sent_before);
-    assert_eq!(device.core().timeout_command_ms, 500);
+    assert_eq!(device.core().command_timeout, timeout(500));
 
     device
         .set_timeout(
@@ -657,7 +673,7 @@ fn timeout_properties_emit_timing_configuration_and_commit_after_confirmation() 
         )
         .unwrap();
     assert_eq!(device.transport.sent.len(), sent_before);
-    assert_eq!(device.core().timeout_command_ms, 900);
+    assert_eq!(device.core().command_timeout, timeout(900));
 
     queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
     device
@@ -670,8 +686,8 @@ fn timeout_properties_emit_timing_configuration_and_commit_after_confirmation() 
         sent_payload(&device.transport, sent_before),
         vec![PN53X_RF_CONFIGURATION, RFCI_TIMING, 0x00, 0x0b, 0x0a]
     );
-    assert_eq!(device.core().timeout_atr_ms, 200);
-    assert_eq!(device.core().timeout_communication_ms, 52);
+    assert_eq!(device.core().atr_timeout, timeout(200));
+    assert_eq!(device.core().communication_timeout, timeout(52));
 
     queue_command_response(&mut device.transport, PN53X_RF_CONFIGURATION, &[]);
     device
@@ -681,8 +697,11 @@ fn timeout_properties_emit_timing_configuration_and_commit_after_confirmation() 
         sent_payload(&device.transport, sent_before + 1),
         vec![PN53X_RF_CONFIGURATION, RFCI_TIMING, 0x00, 0x0b, 0x00]
     );
-    assert_eq!(device.core().timeout_atr_ms, 200);
-    assert_eq!(device.core().timeout_communication_ms, 0);
+    assert_eq!(device.core().atr_timeout, timeout(200));
+    assert_eq!(
+        device.core().communication_timeout,
+        OperationTimeout::INFINITE
+    );
 
     let mut failed = probed_device();
     failed
@@ -700,8 +719,8 @@ fn timeout_properties_emit_timing_configuration_and_commit_after_confirmation() 
         ),
         Err(Error::OutcomeUnknown { .. })
     ));
-    assert_eq!(failed.core().timeout_atr_ms, 103);
-    assert_eq!(failed.core().timeout_communication_ms, 52);
+    assert_eq!(failed.core().atr_timeout, timeout(103));
+    assert_eq!(failed.core().communication_timeout, timeout(52));
 }
 
 #[test]
@@ -741,7 +760,7 @@ fn abort_command_delegates_to_transport() {
         connstring,
         Pn53xProfile::pn532("pn532_uart"),
         transport,
-        25,
+        timeout(25),
     )
     .unwrap();
     device.abort_command().unwrap();
@@ -756,7 +775,11 @@ fn timeout_after_send_requires_reinitialization() {
 
     let mut core = Pn53xCore::default();
     let error = core
-        .get_firmware_version(Pn53xProfile::pn532("pn532_uart"), &mut transport, 25)
+        .get_firmware_version(
+            Pn53xProfile::pn532("pn532_uart"),
+            &mut transport,
+            timeout(25),
+        )
         .unwrap_err();
 
     assert_eq!(

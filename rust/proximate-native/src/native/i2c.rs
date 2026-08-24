@@ -29,11 +29,11 @@
 // here in Rust.
 
 use super::connstring::{build_path_connstring, decode_path_descriptor};
-use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport};
+use super::pn53x::{Pn53xDevice, Pn53xProfile, Pn53xTransport, probe_timeout};
 use crate::command_abort::AtomicCommandAbort;
 use proximate_driver::{
     CommandAbort, CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error,
-    ScanType,
+    OperationTimeout, ScanType,
 };
 use std::time::{Duration, Instant};
 
@@ -44,7 +44,6 @@ const DRIVER_NAME: &str = "pn532_i2c";
 const PN532_I2C_ADDR: u16 = 0x24;
 const PN532_SEND_RETRIES: u8 = 3;
 const PN532_BUS_FREE_TIME_MS: u64 = 5;
-const PROBE_TIMEOUT_MS: i32 = 250;
 const NFC_EIO: i32 = -1;
 const NFC_ETIMEOUT: i32 = -6;
 
@@ -82,7 +81,7 @@ impl Driver for Pn532I2cDriver {
                     connstring.clone(),
                     Pn53xProfile::pn532(DRIVER_NAME),
                     transport,
-                    PROBE_TIMEOUT_MS,
+                    probe_timeout(),
                 )
                 .is_ok()
                 {
@@ -114,7 +113,7 @@ impl Driver for Pn532I2cDriver {
                 connstring.clone(),
                 Pn53xProfile::pn532(DRIVER_NAME),
                 transport,
-                PROBE_TIMEOUT_MS,
+                probe_timeout(),
             )?;
             return Ok(Box::new(device));
         }
@@ -179,7 +178,7 @@ impl I2cTransport {
 
 #[cfg(target_os = "linux")]
 impl Pn53xTransport for I2cTransport {
-    fn send(&mut self, payload: &[u8], _timeout_ms: i32) -> Result<(), Error> {
+    fn send(&mut self, payload: &[u8], _timeout: OperationTimeout) -> Result<(), Error> {
         self.command_abort.begin_command();
         let mut last_error = None;
 
@@ -200,7 +199,11 @@ impl Pn53xTransport for I2cTransport {
         Err(last_error.unwrap_or_else(|| device_error("i2c_send", NFC_EIO)))
     }
 
-    fn receive(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
+    fn receive(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error> {
+        timeout.configured_millis()?;
+        let timeout = timeout
+            .finite_millis()
+            .map(|millis| Duration::from_millis(u64::from(millis)));
         let start = Instant::now();
         loop {
             if self.command_abort.take_requested() {
@@ -231,7 +234,7 @@ impl Pn53xTransport for I2cTransport {
                 return Ok(payload_len);
             }
 
-            if timeout_ms >= 0 && start.elapsed() > Duration::from_millis(timeout_ms as u64) {
+            if timeout.is_some_and(|timeout| start.elapsed() > timeout) {
                 return Err(device_error("i2c_receive", NFC_ETIMEOUT));
             }
 

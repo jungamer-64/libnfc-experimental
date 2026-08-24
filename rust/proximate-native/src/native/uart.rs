@@ -25,18 +25,20 @@
  */
 
 use super::connstring::{build_path_speed_connstring, decode_path_speed_descriptor};
-use super::pn53x::{PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, is_ack_frame};
+use super::pn53x::{
+    PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, is_ack_frame, probe_timeout,
+};
 #[cfg(all(test, unix))]
 use crate::serial::serial_name_prefixes;
 use crate::serial::{SerialPort, list_candidate_paths as platform_candidate_paths};
 use proximate_driver::{
-    CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error, ScanType,
+    CommandAbortHandle, ConnectionString, Context, DeviceHandle, Driver, Error, OperationTimeout,
+    ScanType,
 };
 use std::time::Duration;
 
 const DRIVER_NAME: &str = "pn532_uart";
 const DEFAULT_SPEED: u32 = 115_200;
-const PROBE_TIMEOUT_MS: i32 = 250;
 const WAKEUP_FRAME: [u8; 16] = [
     0x55, 0x55, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
@@ -75,7 +77,7 @@ impl Driver for Pn532UartDriver {
                 connstring.clone(),
                 Pn53xProfile::pn532(DRIVER_NAME),
                 port,
-                PROBE_TIMEOUT_MS,
+                probe_timeout(),
             )
             .is_ok()
             {
@@ -98,7 +100,7 @@ impl Driver for Pn532UartDriver {
             connstring.clone(),
             Pn53xProfile::pn532(DRIVER_NAME),
             port,
-            PROBE_TIMEOUT_MS,
+            probe_timeout(),
         )?;
         Ok(Box::new(device))
     }
@@ -132,15 +134,23 @@ impl UartPort {
         Ok(())
     }
 
-    pub(crate) fn write_all(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
-        self.serial.write_all(payload, timeout_ms)
+    pub(crate) fn write_all(
+        &mut self,
+        payload: &[u8],
+        timeout: OperationTimeout,
+    ) -> Result<(), Error> {
+        self.serial.write_all(payload, timeout)
     }
 
-    pub(crate) fn read_exact(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<(), Error> {
+    pub(crate) fn read_exact(
+        &mut self,
+        buffer: &mut [u8],
+        timeout: OperationTimeout,
+    ) -> Result<(), Error> {
         let mut filled = 0usize;
         while filled < buffer.len() {
             if self.read_buffer.is_empty() {
-                self.fill_read_buffer(timeout_ms)?;
+                self.fill_read_buffer(timeout)?;
             }
             let available = (buffer.len() - filled).min(self.read_buffer.len());
             buffer[filled..filled + available].copy_from_slice(&self.read_buffer[..available]);
@@ -153,7 +163,7 @@ impl UartPort {
     pub(crate) fn read_frame_into(
         &mut self,
         buffer: &mut [u8],
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<usize, Error> {
         loop {
             if let Some(frame_len) = expected_frame_len(&self.read_buffer)?
@@ -170,7 +180,7 @@ impl UartPort {
                 return Ok(frame_len);
             }
 
-            self.fill_read_buffer(timeout_ms)?;
+            self.fill_read_buffer(timeout)?;
         }
     }
 
@@ -178,9 +188,9 @@ impl UartPort {
         self.serial.abort_command()
     }
 
-    fn fill_read_buffer(&mut self, timeout_ms: i32) -> Result<(), Error> {
+    fn fill_read_buffer(&mut self, timeout: OperationTimeout) -> Result<(), Error> {
         let mut chunk = [0u8; 512];
-        let len = self.serial.read_some(&mut chunk, timeout_ms)?;
+        let len = self.serial.read_some(&mut chunk, timeout)?;
         if len == 0 {
             return Err(Error::Io("uart_receive"));
         }
@@ -190,15 +200,16 @@ impl UartPort {
 }
 
 impl Pn53xTransport for UartPort {
-    fn send(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error> {
+    fn send(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error> {
         self.flush_input()?;
-        self.write_all(payload, timeout_ms)
+        self.write_all(payload, timeout)
     }
 
-    fn receive(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error> {
-        match self.read_frame_into(buffer, timeout_ms) {
+    fn receive(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error> {
+        match self.read_frame_into(buffer, timeout) {
             Err(operation @ Error::Aborted(_)) => {
-                if let Err(recovery) = self.write_all(&PN53X_ACK_FRAME, 0) {
+                if let Err(recovery) = self.write_all(&PN53X_ACK_FRAME, OperationTimeout::INFINITE)
+                {
                     return Err(Error::RecoveryFailed {
                         operation: Box::new(operation),
                         recovery: Box::new(recovery),
@@ -219,7 +230,7 @@ impl Pn53xTransport for UartPort {
     }
 
     fn wake_up(&mut self) -> Result<(), Error> {
-        self.write_all(&WAKEUP_FRAME, 0)?;
+        self.write_all(&WAKEUP_FRAME, OperationTimeout::INFINITE)?;
         std::thread::sleep(Duration::from_millis(1));
         Ok(())
     }
