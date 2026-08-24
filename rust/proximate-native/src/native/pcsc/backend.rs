@@ -1,14 +1,15 @@
 use crate::pcsc as platform_pcsc;
 
-use super::{
-    PcscAttribute, PcscBackend, PcscCard, PcscCardStatus, PcscDisposition, PcscProtocol,
-    PcscProtocols, PcscShareMode,
-};
+#[cfg(feature = "driver-pcsc")]
+use super::PcscAttribute;
+use super::{PcscBackend, PcscCard, PcscCardStatus, PcscProtocol, PcscProtocols, PcscShareMode};
 
+#[cfg(feature = "driver-pcsc")]
 pub(super) fn pcsc_error_message(code: i32) -> Option<&'static str> {
     platform_pcsc::error_message(code)
 }
 
+#[cfg(feature = "driver-pcsc")]
 pub(super) fn stringify_pcsc_error(code: i32) -> String {
     pcsc_error_message(code)
         .map(str::to_string)
@@ -17,7 +18,9 @@ pub(super) fn stringify_pcsc_error(code: i32) -> String {
 
 fn map_share_mode(value: PcscShareMode) -> platform_pcsc::ShareMode {
     match value {
+        #[cfg(feature = "driver-acr122-pcsc")]
         PcscShareMode::Exclusive => platform_pcsc::ShareMode::Exclusive,
+        #[cfg(feature = "driver-pcsc")]
         PcscShareMode::Shared => platform_pcsc::ShareMode::Shared,
         PcscShareMode::Direct => platform_pcsc::ShareMode::Direct,
     }
@@ -37,15 +40,6 @@ fn map_protocols(value: PcscProtocols) -> platform_pcsc::Protocols {
     protocols
 }
 
-fn map_disposition(value: PcscDisposition) -> platform_pcsc::Disposition {
-    match value {
-        PcscDisposition::LeaveCard => platform_pcsc::Disposition::LeaveCard,
-        PcscDisposition::ResetCard => platform_pcsc::Disposition::ResetCard,
-        PcscDisposition::UnpowerCard => platform_pcsc::Disposition::UnpowerCard,
-        PcscDisposition::EjectCard => platform_pcsc::Disposition::EjectCard,
-    }
-}
-
 fn map_protocol(value: platform_pcsc::Protocol) -> PcscProtocol {
     match value {
         platform_pcsc::Protocol::T0 => PcscProtocol::T0,
@@ -54,6 +48,7 @@ fn map_protocol(value: platform_pcsc::Protocol) -> PcscProtocol {
     }
 }
 
+#[cfg(feature = "driver-pcsc")]
 fn map_attribute(value: PcscAttribute) -> platform_pcsc::Attribute {
     match value {
         PcscAttribute::VendorName => platform_pcsc::Attribute::VendorName,
@@ -71,16 +66,16 @@ struct SystemPcscCard {
 }
 
 impl PcscCard for SystemPcscCard {
+    #[cfg(feature = "driver-pcsc")]
     fn reconnect(
         &mut self,
         share_mode: PcscShareMode,
         preferred_protocols: PcscProtocols,
-        disposition: PcscDisposition,
     ) -> Result<(), i32> {
         self.inner.reconnect(
             map_share_mode(share_mode),
             map_protocols(preferred_protocols),
-            map_disposition(disposition),
+            platform_pcsc::Disposition::LeaveCard,
         )
     }
 
@@ -92,6 +87,7 @@ impl PcscCard for SystemPcscCard {
         })
     }
 
+    #[cfg(feature = "driver-pcsc")]
     fn get_attribute_owned(&self, attribute: PcscAttribute) -> Result<Vec<u8>, i32> {
         self.inner.get_attribute_owned(map_attribute(attribute))
     }
@@ -100,6 +96,7 @@ impl PcscCard for SystemPcscCard {
         self.inner.transmit(send_buffer, receive_capacity)
     }
 
+    #[cfg(feature = "driver-acr122-pcsc")]
     fn control(
         &self,
         control_code: u64,

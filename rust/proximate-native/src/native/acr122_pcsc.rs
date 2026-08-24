@@ -295,7 +295,9 @@ impl Pn53xTransport for Acr122PcscTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::native::pcsc::{PcscAttribute, PcscCardStatus, PcscDisposition, PcscProtocol};
+    #[cfg(feature = "driver-pcsc")]
+    use crate::native::pcsc::PcscAttribute;
+    use crate::native::pcsc::{PcscCardStatus, PcscProtocol};
     use std::sync::Mutex;
 
     #[derive(Default)]
@@ -318,11 +320,11 @@ mod tests {
     }
 
     impl PcscCard for TestCard {
+        #[cfg(feature = "driver-pcsc")]
         fn reconnect(
             &mut self,
             _share_mode: PcscShareMode,
             _preferred_protocols: PcscProtocols,
-            _disposition: PcscDisposition,
         ) -> Result<(), i32> {
             Ok(())
         }
@@ -340,6 +342,7 @@ mod tests {
                 }))
         }
 
+        #[cfg(feature = "driver-pcsc")]
         fn get_attribute_owned(&self, _attribute: PcscAttribute) -> Result<Vec<u8>, i32> {
             Ok(Vec::new())
         }
@@ -397,6 +400,15 @@ mod tests {
         }
     }
 
+    fn queue_pn53x_probe_defaults(state: &mut TestCardState) {
+        state
+            .transmit_responses
+            .push_back(Ok(vec![0x00, 0x00, 0x90, 0x00]));
+        state.transmit_responses.push_back(Ok(vec![
+            0x00, 0x00, 0x80, 0x80, 0x00, 0x00, 0x00, 0x90, 0x00,
+        ]));
+    }
+
     #[test]
     fn firmware_probe_accepts_acr122u_responses() {
         let mut state = TestCardState::default();
@@ -411,6 +423,7 @@ mod tests {
         state
             .transmit_responses
             .push_back(Ok(vec![0x00, 0x00, 0x32, 0x01, 0x06, 0x07, 0x90, 0x00]));
+        queue_pn53x_probe_defaults(&mut state);
         let backend = Arc::new(TestBackend::with_reader(
             "ACS ACR122U PICC Interface 00 00",
             state,
@@ -459,6 +472,7 @@ mod tests {
         state
             .transmit_responses
             .push_back(Ok(vec![0x00, 0x00, 0x32, 0x01, 0x06, 0x07, 0x90, 0x00]));
+        queue_pn53x_probe_defaults(&mut state);
         state.transmit_responses.push_back(Ok(vec![
             0x00, 0x00, 0x01, 0x01, 0x04, 0x00, 0x08, 0x04, 0xde, 0xad, 0xbe, 0xef, 0x05, 0x75,
             0x77, 0x81, 0x02, 0x90, 0x00,
@@ -545,6 +559,13 @@ mod tests {
         state
             .transmit_responses
             .push_back(Ok(vec![0x00, 0x00, 0x32, 0x01, 0x06, 0x07, 0x90, 0x00]));
+        queue_pn53x_probe_defaults(&mut state);
+        state
+            .transmit_responses
+            .push_back(Ok(vec![0x00, 0x00, 0x80, 0x80, 0x90, 0x00]));
+        state
+            .transmit_responses
+            .push_back(Ok(vec![0x00, 0x00, 0x90, 0x00]));
         state
             .transmit_responses
             .push_back(Ok(vec![0x00, 0x00, 0x90, 0x00]));

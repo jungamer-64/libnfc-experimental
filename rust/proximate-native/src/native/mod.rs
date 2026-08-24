@@ -31,7 +31,7 @@ mod arygon;
 mod connstring;
 #[cfg(all(target_os = "linux", feature = "driver-pn532-i2c"))]
 mod i2c;
-#[cfg(feature = "driver-pcsc")]
+#[cfg(any(feature = "driver-pcsc", feature = "driver-acr122-pcsc"))]
 mod pcsc;
 mod pn53x;
 #[cfg(any(test, all(target_os = "linux", feature = "driver-pn71xx")))]

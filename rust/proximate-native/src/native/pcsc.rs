@@ -23,58 +23,84 @@
 // Derived from libnfc's generic PC/SC driver. Reader adaptation and APDU
 // handling are implemented here in Rust.
 
+use proximate_driver::Error;
+#[cfg(feature = "driver-pcsc")]
 use proximate_driver::{
-    BaudRate, ConnectionString, Context, DeviceHandle, DeviceMeta, Driver, Error, InfoBackend,
+    BaudRate, ConnectionString, Context, DeviceHandle, DeviceMeta, Driver, InfoBackend,
     InitiatorBackend, Mode, Modulation, ModulationType, OperationTimeout, Pn53xBackend,
     PollIterations, PollPeriod, Property, PropertyBackend, ScanType, Target, TargetBackend,
     TargetInfo, device_error_message,
 };
+#[cfg(feature = "driver-pcsc")]
 use std::fmt;
+#[cfg(feature = "driver-pcsc")]
 use std::sync::Arc;
+#[cfg(feature = "driver-pcsc")]
 use std::thread;
+#[cfg(feature = "driver-pcsc")]
 use std::time::Duration;
 
+#[cfg(feature = "driver-pcsc")]
 mod apdu;
 mod backend;
+#[cfg(feature = "driver-pcsc")]
 mod device;
+#[cfg(feature = "driver-pcsc")]
 mod driver;
-#[cfg(test)]
+#[cfg(all(test, feature = "driver-pcsc"))]
 mod fake;
 mod reader;
-#[cfg(test)]
+#[cfg(all(test, feature = "driver-pcsc"))]
 mod tests;
 mod types;
 
+#[cfg(feature = "driver-pcsc")]
 use self::apdu::{
     attr_to_string, command_response_data, icc_type_matches, is_feitian_reader,
     iso14443a_atr_valid, iso14443a_uid_length_valid, iso14443b_atr_valid,
     iso14443b_uid_length_valid,
 };
 pub(crate) use self::backend::SystemPcscBackend;
+#[cfg(feature = "driver-pcsc")]
 use self::backend::stringify_pcsc_error;
+#[cfg(feature = "driver-pcsc")]
 pub(crate) use self::device::PcscDevice;
+#[cfg(feature = "driver-pcsc")]
 pub(crate) use self::driver::PcscDriver;
 pub(crate) use self::reader::{ReaderFilter, resolve_reader, scan_matching_readers};
+#[cfg(feature = "driver-pcsc")]
+pub(crate) use self::types::PcscAttribute;
 pub(crate) use self::types::{
-    PcscAttribute, PcscBackend, PcscCard, PcscCardStatus, PcscDisposition, PcscProtocol,
-    PcscProtocols, PcscShareMode,
+    PcscBackend, PcscCard, PcscCardStatus, PcscProtocol, PcscProtocols, PcscShareMode,
 };
 
+#[cfg(feature = "driver-pcsc")]
 const NFC_SUCCESS: i32 = 0;
+#[cfg(feature = "driver-pcsc")]
 const NFC_EIO: i32 = -1;
+#[cfg(feature = "driver-pcsc")]
 const NFC_EINVARG: i32 = -2;
+#[cfg(feature = "driver-pcsc")]
 const NFC_EDEVNOTSUPP: i32 = -3;
 const NFC_ENOTSUCHDEV: i32 = -4;
+#[cfg(feature = "driver-pcsc")]
 const NFC_ESOFT: i32 = -80;
+#[cfg(feature = "driver-pcsc")]
 const NFC_ECHIP: i32 = -90;
 
+#[cfg(feature = "driver-pcsc")]
 const PCSC_DRIVER_NAME: &str = "pcsc";
 
+#[cfg(feature = "driver-pcsc")]
 const ICC_TYPE_UNKNOWN: u8 = 0;
+#[cfg(feature = "driver-pcsc")]
 const ICC_TYPE_14443A: u8 = 5;
+#[cfg(feature = "driver-pcsc")]
 const ICC_TYPE_14443B: u8 = 6;
 
+#[cfg(feature = "driver-pcsc")]
 const PCSC_SUPPORTED_BAUD_RATES: &[BaudRate] = &[BaudRate::Br106, BaudRate::Br424];
+#[cfg(feature = "driver-pcsc")]
 const PCSC_SUPPORTED_MODULATIONS: &[ModulationType] =
     &[ModulationType::Iso14443A, ModulationType::Iso14443B];
 

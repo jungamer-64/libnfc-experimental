@@ -1,17 +1,31 @@
-use super::super::acr122;
 use super::{NFC_ENOTSUCHDEV, PcscBackend, device_error, invalid_connection};
 use proximate_driver::{ConnectionString, Error, decode_connstring};
 
+const ACR122_READER_PREFIXES: &[&str] = &[
+    "ACS ACR122",
+    "ACS ACR 38U-CCID",
+    "ACS ACR38U-CCID",
+    "ACS AET65",
+    "    CCID USB",
+];
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ReaderFilter {
+    #[cfg(feature = "driver-pcsc")]
     Generic,
+    #[cfg(feature = "driver-acr122-pcsc")]
     Acr122,
 }
 
 fn reader_matches(filter: ReaderFilter, reader: &str) -> bool {
+    let is_acr122 = ACR122_READER_PREFIXES
+        .iter()
+        .any(|prefix| reader.starts_with(prefix));
     match filter {
-        ReaderFilter::Generic => !acr122::is_pcsc_reader_name(reader),
-        ReaderFilter::Acr122 => acr122::is_pcsc_reader_name(reader),
+        #[cfg(feature = "driver-pcsc")]
+        ReaderFilter::Generic => !is_acr122,
+        #[cfg(feature = "driver-acr122-pcsc")]
+        ReaderFilter::Acr122 => is_acr122,
     }
 }
 

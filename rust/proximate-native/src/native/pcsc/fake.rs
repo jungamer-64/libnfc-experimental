@@ -7,8 +7,9 @@ pub(super) struct FakeCardState {
     pub(super) status_responses: VecDeque<Result<PcscCardStatus, i32>>,
     pub(super) attributes: HashMap<PcscAttribute, Result<Vec<u8>, i32>>,
     pub(super) transmit_responses: VecDeque<Result<Vec<u8>, i32>>,
+    #[cfg(feature = "driver-acr122-pcsc")]
     pub(super) control_responses: VecDeque<Result<Vec<u8>, i32>>,
-    pub(super) reconnect_calls: Vec<(PcscShareMode, PcscProtocols, PcscDisposition)>,
+    pub(super) reconnect_calls: Vec<(PcscShareMode, PcscProtocols)>,
     pub(super) transmit_calls: Vec<(Vec<u8>, usize)>,
 }
 
@@ -22,13 +23,12 @@ impl PcscCard for FakePcscCard {
         &mut self,
         share_mode: PcscShareMode,
         preferred_protocols: PcscProtocols,
-        disposition: PcscDisposition,
     ) -> Result<(), i32> {
-        self.state.lock().unwrap().reconnect_calls.push((
-            share_mode,
-            preferred_protocols,
-            disposition,
-        ));
+        self.state
+            .lock()
+            .unwrap()
+            .reconnect_calls
+            .push((share_mode, preferred_protocols));
         Ok(())
     }
 
@@ -66,6 +66,7 @@ impl PcscCard for FakePcscCard {
             .unwrap_or(Ok(Vec::new()))
     }
 
+    #[cfg(feature = "driver-acr122-pcsc")]
     fn control(
         &self,
         _control_code: u64,

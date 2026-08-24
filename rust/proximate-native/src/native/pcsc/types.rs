@@ -1,6 +1,8 @@
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum PcscShareMode {
+    #[cfg(feature = "driver-acr122-pcsc")]
     Exclusive,
+    #[cfg(feature = "driver-pcsc")]
     Shared,
     Direct,
 }
@@ -16,6 +18,7 @@ pub(crate) enum PcscProtocol {
 pub(crate) struct PcscProtocols(pub(crate) u8);
 
 impl PcscProtocols {
+    #[cfg(feature = "driver-acr122-pcsc")]
     pub(crate) const UNDEFINED: Self = Self(0);
     pub(crate) const T0: Self = Self(1 << 0);
     pub(crate) const T1: Self = Self(1 << 1);
@@ -32,6 +35,7 @@ impl PcscProtocols {
     }
 }
 
+#[cfg(feature = "driver-pcsc")]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum PcscAttribute {
     VendorName,
@@ -49,19 +53,21 @@ pub(crate) struct PcscCardStatus {
 }
 
 pub(crate) trait PcscCard: Send {
+    #[cfg(feature = "driver-pcsc")]
     fn reconnect(
         &mut self,
         share_mode: PcscShareMode,
         preferred_protocols: PcscProtocols,
-        disposition: PcscDisposition,
     ) -> Result<(), i32>;
 
     fn status2_owned(&self) -> Result<PcscCardStatus, i32>;
 
+    #[cfg(feature = "driver-pcsc")]
     fn get_attribute_owned(&self, attribute: PcscAttribute) -> Result<Vec<u8>, i32>;
 
     fn transmit(&self, send_buffer: &[u8], receive_capacity: usize) -> Result<Vec<u8>, i32>;
 
+    #[cfg(feature = "driver-acr122-pcsc")]
     fn control(
         &self,
         control_code: u64,

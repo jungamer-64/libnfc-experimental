@@ -66,10 +66,9 @@ impl PcscDevice {
         &mut self,
         share_mode: PcscShareMode,
         preferred_protocols: PcscProtocols,
-        disposition: PcscDisposition,
     ) -> Result<(), Error> {
         self.card
-            .reconnect(share_mode, preferred_protocols, disposition)
+            .reconnect(share_mode, preferred_protocols)
             .map_err(|status| {
                 self.last_error = NFC_EIO;
                 self.last_pcsc_error = Some(status);
@@ -362,7 +361,7 @@ impl PcscDevice {
             0x30 => self.feitian_handle_read(tx, rx),
             0xA0 | 0xA2 => self.feitian_handle_write(tx, rx),
             0x60 | 0x61 | 0x1A => self.feitian_handle_auth(command, tx, rx),
-            0xC0 | 0xC1 | 0xC2 => self.feitian_handle_value_operation(command, tx, rx),
+            0xC0..=0xC2 => self.feitian_handle_value_operation(command, tx, rx),
             _ => self.feitian_execute_apdu(tx, rx),
         }
     }
@@ -454,11 +453,7 @@ impl PropertyBackend for PcscDevice {
             }
             Property::ActivateField => {
                 if !enable {
-                    self.reconnect(
-                        self.share_mode,
-                        self.preferred_protocols,
-                        PcscDisposition::LeaveCard,
-                    )?;
+                    self.reconnect(self.share_mode, self.preferred_protocols)?;
                 }
                 self.succeed(())
             }
@@ -518,11 +513,7 @@ impl InitiatorBackend for PcscDevice {
             Err(error) => return Err(error),
         };
 
-        self.reconnect(
-            PcscShareMode::Shared,
-            PcscProtocols::ANY,
-            PcscDisposition::LeaveCard,
-        )?;
+        self.reconnect(PcscShareMode::Shared, PcscProtocols::ANY)?;
         self.succeed(Some(target))
     }
 

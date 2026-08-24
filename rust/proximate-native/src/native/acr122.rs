@@ -52,15 +52,6 @@ const ACR122_SW2_SUCCESS: u8 = 0x00;
 const ACR122_SW2_PN53X_APPLICATION_LEVEL_ERROR: u8 = 0x7F;
 
 #[cfg_attr(not(test), allow(dead_code))]
-const PCSC_READER_PREFIXES: &[&str] = &[
-    "ACS ACR122",
-    "ACS ACR 38U-CCID",
-    "ACS ACR38U-CCID",
-    "ACS AET65",
-    "    CCID USB",
-];
-
-#[cfg_attr(not(test), allow(dead_code))]
 const USB_DEVICES: &[(u16, u16, &str)] = &[
     (0x072F, 0x2200, "ACS ACR122"),
     (0x072F, 0x90CC, "Touchatag"),
@@ -94,13 +85,6 @@ pub(super) fn usb_device_name(vendor_id: u16, product_id: u16) -> Option<&'stati
         .iter()
         .find(|(vendor, product, _)| *vendor == vendor_id && *product == product_id)
         .map(|(_, _, name)| *name)
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
-pub(super) fn is_pcsc_reader_name(reader_name: &str) -> bool {
-    PCSC_READER_PREFIXES
-        .iter()
-        .any(|prefix| reader_name.starts_with(prefix))
 }
 
 pub(super) fn build_apdu(ins: u8, p1: u8, p2: u8, data: &[u8], le: u8) -> Result<Vec<u8>, Error> {
@@ -224,10 +208,6 @@ mod tests {
         assert!(is_usb_device(0x072F, 0x2200));
         assert!(is_usb_device(0x072F, 0x90CC));
         assert!(!is_usb_device(0x04CC, 0x0531));
-
-        assert!(is_pcsc_reader_name("ACS ACR122U PICC Interface 00 00"));
-        assert!(is_pcsc_reader_name("ACS ACR38U-CCID 00 00"));
-        assert!(!is_pcsc_reader_name("Feitian R502 CL Reader 0"));
     }
 
     #[test]
