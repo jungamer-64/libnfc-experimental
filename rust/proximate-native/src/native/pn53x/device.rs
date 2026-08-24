@@ -1370,6 +1370,9 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
         rx: &mut [u8],
         timeout: OperationTimeout,
     ) -> Result<usize, Error> {
+        if !self.core.properties.handle_parity {
+            return self.remember(Err(status_error("transceive_bytes", NFC_EINVARG)));
+        }
         let timeout = Self::resolve_timeout(timeout, self.core.timeout_communication_ms)?;
         self.set_tx_bits(0)?;
         let response = if self.core.properties.easy_framing {
@@ -1514,18 +1517,23 @@ impl<T: Pn53xTransport + Send + 'static> TargetBackend for Pn53xDevice<T> {
         tx: &[u8],
         timeout: OperationTimeout,
     ) -> Result<usize, Error> {
+        if !self.core.properties.handle_parity {
+            return self.remember(Err(Error::Chip("target_send_bytes")));
+        }
         let timeout = Self::resolve_timeout(timeout, self.core.timeout_communication_ms)?;
-        self.set_tx_bits(0)?;
         let command = match self.core.current_target() {
             Some(target) if self.core.properties.easy_framing => {
                 match target.modulation().modulation_type() {
                     ModulationType::Dep => PN53X_TG_SET_DATA,
-                    ModulationType::Iso14443A
+                    ModulationType::Iso14443A if is_iso14443_4_target(target) => {
                         if self.core.chip_type() == Pn53xType::Pn532
                             && self.core.properties.auto_iso14443_4
-                            && is_iso14443_4_target(target) =>
-                    {
-                        PN53X_TG_SET_DATA
+                        {
+                            PN53X_TG_SET_DATA
+                        } else {
+                            return self
+                                .remember(Err(Error::UnsupportedOperation("target_send_bytes")));
+                        }
                     }
                     _ => PN53X_TG_RESPONSE_TO_INITIATOR,
                 }
@@ -1547,12 +1555,16 @@ impl<T: Pn53xTransport + Send + 'static> TargetBackend for Pn53xDevice<T> {
             Some(target) if self.core.properties.easy_framing => {
                 match target.modulation().modulation_type() {
                     ModulationType::Dep => PN53X_TG_GET_DATA,
-                    ModulationType::Iso14443A
+                    ModulationType::Iso14443A if is_iso14443_4_target(target) => {
                         if self.core.chip_type() == Pn53xType::Pn532
                             && self.core.properties.auto_iso14443_4
-                            && is_iso14443_4_target(target) =>
-                    {
-                        PN53X_TG_GET_DATA
+                        {
+                            PN53X_TG_GET_DATA
+                        } else {
+                            return self.remember(Err(Error::UnsupportedOperation(
+                                "target_receive_bytes",
+                            )));
+                        }
                     }
                     _ => PN53X_TG_GET_INITIATOR_COMMAND,
                 }

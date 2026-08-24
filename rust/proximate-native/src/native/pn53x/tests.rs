@@ -1222,6 +1222,59 @@ fn target_init_and_target_byte_io_are_shared() {
 }
 
 #[test]
+fn byte_io_rejects_software_parity_before_transport_io() {
+    let mut device = probed_device();
+    queue_masked_register_update(&mut device.transport, &[0x00], true);
+    device
+        .set_property_bool(Property::HandleParity, false)
+        .unwrap();
+    let sent_before = device.transport.sent.len();
+    let mut rx = [0u8; 8];
+
+    assert_eq!(
+        device.transceive_bytes(&[0x26], &mut rx, 50),
+        Err(Error::InvalidArgument("transceive_bytes")),
+    );
+    assert_eq!(
+        device.target_send_bytes(&[0x26], 50),
+        Err(Error::Chip("target_send_bytes")),
+    );
+    assert_eq!(device.transport.sent.len(), sent_before);
+}
+
+#[test]
+fn target_iso14443_4_easy_framing_requires_pn532_hardware_path() {
+    let mut device = probed_device();
+    let target = Target::try_new(
+        Modulation::try_new(ModulationType::Iso14443A, BaudRate::Br106).unwrap(),
+        TargetInfo::Iso14443A {
+            atqa: [0x00, 0x04],
+            sak: 0x20,
+            uid: vec![0xde, 0xad, 0xbe, 0xef],
+            ats: vec![0x75],
+        },
+    )
+    .unwrap();
+    device.core.remember_target(target);
+    queue_command_response(&mut device.transport, PN53X_SET_PARAMETERS, &[]);
+    device
+        .set_property_bool(Property::AutoIso14443_4, false)
+        .unwrap();
+    let sent_before = device.transport.sent.len();
+    let mut rx = [0u8; 8];
+
+    assert_eq!(
+        device.target_send_bytes(&[0x90], 50),
+        Err(Error::UnsupportedOperation("target_send_bytes")),
+    );
+    assert_eq!(
+        device.target_receive_bytes(&mut rx, 50),
+        Err(Error::UnsupportedOperation("target_receive_bytes")),
+    );
+    assert_eq!(device.transport.sent.len(), sent_before);
+}
+
+#[test]
 fn wrap_and_unwrap_frame_preserve_parity_bits() {
     let wrapped = pn53x_wrap_frame(&[0x93, 0x20], 16, Some(&[1, 0])).unwrap();
     let mut rx = [0u8; 8];
