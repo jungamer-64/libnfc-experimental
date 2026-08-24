@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::{
     BaudRate, BitFrame, ConnectionString, DepInfo, DepMode, Error, Mode, Modulation,
-    ModulationType, OperationTimeout, PollIterations, PollPeriod, Property, Target,
+    ModulationType, OperationTimeout, PollIterations, PollPeriod, Property, Target, TimerCycles,
 };
 
 pub(crate) const POLL_DEP_PERIOD_MS: i32 = 300;
@@ -140,7 +140,8 @@ pub trait InitiatorBackend: DeviceMeta {
         &mut self,
         _tx: &[u8],
         _rx: &mut [u8],
-    ) -> Result<(usize, u32), Error> {
+        _max_cycles: TimerCycles,
+    ) -> Result<(usize, TimerCycles), Error> {
         Err(Error::UnsupportedOperation("transceive_bytes_timed"))
     }
 
@@ -149,7 +150,8 @@ pub trait InitiatorBackend: DeviceMeta {
         _tx: BitFrame<'_>,
         _rx: &mut [u8],
         _rx_parity: Option<&mut [u8]>,
-    ) -> Result<(usize, u32), Error> {
+        _max_cycles: TimerCycles,
+    ) -> Result<(usize, TimerCycles), Error> {
         Err(Error::UnsupportedOperation("transceive_bits_timed"))
     }
 
@@ -513,8 +515,9 @@ impl<'a> InitiatorIoOps<'a> {
         &mut self,
         tx: &[u8],
         rx: &mut [u8],
-    ) -> Result<(usize, u32), Error> {
-        ops::initiator::transceive_bytes_timed(self.device, tx, rx)
+        max_cycles: TimerCycles,
+    ) -> Result<(usize, TimerCycles), Error> {
+        ops::initiator::transceive_bytes_timed(self.device, tx, rx, max_cycles)
     }
 
     pub fn transceive_bits_timed(
@@ -522,8 +525,9 @@ impl<'a> InitiatorIoOps<'a> {
         tx: BitFrame<'_>,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
-    ) -> Result<(usize, u32), Error> {
-        ops::initiator::transceive_bits_timed(self.device, tx, rx, rx_parity)
+        max_cycles: TimerCycles,
+    ) -> Result<(usize, TimerCycles), Error> {
+        ops::initiator::transceive_bits_timed(self.device, tx, rx, rx_parity, max_cycles)
     }
 }
 
@@ -940,11 +944,12 @@ mod ops {
             device: &mut D,
             tx: &[u8],
             rx: &mut [u8],
-        ) -> Result<(usize, u32), Error>
+            max_cycles: TimerCycles,
+        ) -> Result<(usize, TimerCycles), Error>
         where
             D: InitiatorBackend + ?Sized,
         {
-            device.transceive_bytes_timed_driver(tx, rx)
+            device.transceive_bytes_timed_driver(tx, rx, max_cycles)
         }
 
         pub(crate) fn transceive_bits_timed<D>(
@@ -952,11 +957,12 @@ mod ops {
             tx: BitFrame<'_>,
             rx: &mut [u8],
             rx_parity: Option<&mut [u8]>,
-        ) -> Result<(usize, u32), Error>
+            max_cycles: TimerCycles,
+        ) -> Result<(usize, TimerCycles), Error>
         where
             D: InitiatorBackend + ?Sized,
         {
-            device.transceive_bits_timed_driver(tx, rx, rx_parity)
+            device.transceive_bits_timed_driver(tx, rx, rx_parity, max_cycles)
         }
 
         pub(crate) fn abort_command<D>(device: &mut D) -> Result<(), Error>
