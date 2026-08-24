@@ -1,3 +1,28 @@
+/*-
+ * Free/Libre Near Field Communication (NFC) library
+ *
+ * Libnfc historical contributors:
+ * Copyright (C) 2019      Frank Morgner
+ * See AUTHORS file for a more comprehensive list of contributors.
+ * Additional contributors of this file:
+ * Copyright (C) 2020      Feitian Technologies
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by the
+ * Free Software Foundation, either version 3 of the License, or (at your
+ * option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>
+ */
+
+// Derived from libnfc's generic PC/SC driver. Reader adaptation and APDU
+// handling are implemented here in Rust.
+
 use proximate_driver::{
     BaudRate, ConnectionString, Context, DeviceHandle, DeviceMeta, Driver, Error, InfoBackend,
     InitiatorBackend, Mode, Modulation, ModulationType, OperationTimeout, Pn53xBackend,
