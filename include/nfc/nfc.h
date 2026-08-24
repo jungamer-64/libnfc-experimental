@@ -39,8 +39,11 @@
 
 #ifdef _WIN32
 /* Windows platform */
-#ifndef _WINDLL
-/* CMake compilation */
+#if defined(NFC_STATIC) || defined(_WINDLL)
+/* Static library or manual makefile compilation */
+#define NFC_EXPORT
+#else
+/* Shared library CMake compilation */
 #ifdef nfc_EXPORTS
 #define NFC_EXPORT __declspec(dllexport)
 #else
@@ -48,12 +51,8 @@
 #define NFC_EXPORT __declspec(dllimport)
 #endif
 /* nfc_EXPORTS */
-#else
-/* _WINDLL */
-/* Manual makefile */
-#define NFC_EXPORT
 #endif
-/* _WINDLL */
+/* NFC_STATIC || _WINDLL */
 #else
 /* _WIN32 */
 #define NFC_EXPORT

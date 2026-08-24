@@ -5,7 +5,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/LibNFCTargets.cmake")
 set(_libnfc_static_link_libraries "@LIBNFC_STATIC_PACKAGE_LIBRARIES@")
 if(NOT "@BUILD_SHARED_LIBS@" STREQUAL "ON")
   list(PREPEND _libnfc_static_link_libraries "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/@RUST_LIB_FILENAME@")
-  list(APPEND _libnfc_static_link_libraries "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/libnfc.a")
+  list(APPEND _libnfc_static_link_libraries "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/@LIBNFC_STATIC_TARGET_FILENAME@")
 endif()
 
 if(_libnfc_static_link_libraries)
