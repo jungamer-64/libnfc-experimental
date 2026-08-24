@@ -227,8 +227,10 @@ impl rt::InitiatorBackend for RustBorrowedDevice {
         &mut self,
         tx: &[u8],
         rx: &mut [u8],
-    ) -> Result<(usize, u32), rt::Error> {
-        let result = self.with_handle(|handle| handle.transceive_bytes_timed_driver(tx, rx));
+        max_cycles: rt::TimerCycles,
+    ) -> Result<(usize, rt::TimerCycles), rt::Error> {
+        let result =
+            self.with_handle(|handle| handle.transceive_bytes_timed_driver(tx, rx, max_cycles));
         self.normalize("initiator_transceive_bytes_timed", result)
     }
 
@@ -237,9 +239,11 @@ impl rt::InitiatorBackend for RustBorrowedDevice {
         tx: rt::BitFrame<'_>,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
-    ) -> Result<(usize, u32), rt::Error> {
-        let result =
-            self.with_handle(|handle| handle.transceive_bits_timed_driver(tx, rx, rx_parity));
+        max_cycles: rt::TimerCycles,
+    ) -> Result<(usize, rt::TimerCycles), rt::Error> {
+        let result = self.with_handle(|handle| {
+            handle.transceive_bits_timed_driver(tx, rx, rx_parity, max_cycles)
+        });
         self.normalize("initiator_transceive_bits_timed", result)
     }
 

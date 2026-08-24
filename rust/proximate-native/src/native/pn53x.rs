@@ -31,6 +31,7 @@ use proximate_driver::{
     BaudRate, BitFrame, ConnectionString, DepInfo, DepMode, DeviceMeta, Error, InfoBackend,
     InitiatorBackend, Mode, Modulation, ModulationType, OperationTimeout, Pn53xBackend,
     PollIterations, PollPeriod, Property, PropertyBackend, Target, TargetBackend, TargetInfo,
+    TimerCycles,
 };
 
 mod core;
@@ -190,7 +191,10 @@ use self::target_decode::{
     nm_to_pm, nm_to_ptt, parse_dep_target, ptt_to_nm,
 };
 pub(crate) use self::transport::Pn53xTransport;
-use self::transport::{BitTransceiveRequest, pn53x_translate_status, status_code, status_error};
+use self::transport::{
+    BitTransceiveRequest, TimedBitTransceiveRequest, pn53x_translate_status, status_code,
+    status_error,
+};
 use self::types::{
     ChipCapabilities, Pn53xFirmwareVersion, Pn53xOperatingMode, Pn53xPowerMode, Pn53xProtocolState,
     Pn53xType, Pn532SamMode, PropertyState,

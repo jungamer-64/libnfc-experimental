@@ -240,9 +240,10 @@ pub(super) fn transceive_bytes_timed(
     raw: *mut nfc_device,
     tx: &[u8],
     rx: &mut [u8],
-) -> Result<(usize, u32), rt::Error> {
+    max_cycles: rt::TimerCycles,
+) -> Result<(usize, rt::TimerCycles), rt::Error> {
     with_initiator_io_ops(raw, |initiator_io_ops| {
-        initiator_io_ops.transceive_bytes_timed(tx, rx)
+        initiator_io_ops.transceive_bytes_timed(tx, rx, max_cycles)
     })
 }
 
@@ -253,10 +254,11 @@ pub(super) fn transceive_bits_timed(
     tx_parity: Option<&[u8]>,
     rx: &mut [u8],
     rx_parity: Option<&mut [u8]>,
-) -> Result<(usize, u32), rt::Error> {
+    max_cycles: rt::TimerCycles,
+) -> Result<(usize, rt::TimerCycles), rt::Error> {
     let tx = rt::BitFrame::try_new(tx, tx_bits_len, tx_parity)?;
     with_initiator_io_ops(raw, |initiator_io_ops| {
-        initiator_io_ops.transceive_bits_timed(tx, rx, rx_parity)
+        initiator_io_ops.transceive_bits_timed(tx, rx, rx_parity, max_cycles)
     })
 }
 

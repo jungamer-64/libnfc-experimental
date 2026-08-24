@@ -35,7 +35,7 @@ use super::{
     PN53X_STATUS_OVHEAT, PN53X_STATUS_PARITY, PN53X_STATUS_RFPROTO, PN53X_STATUS_RFTIMEOUT,
     PN53X_STATUS_SECNOTSUPP, PN53X_STATUS_SMALLBUF, PN53X_STATUS_TGREL, PN53X_STATUS_TIMEOUT,
 };
-use proximate_driver::{CommandAbortHandle, Error};
+use proximate_driver::{CommandAbortHandle, Error, TimerCycles};
 
 pub(super) struct BitTransceiveRequest<'tx, 'rx, 'parity> {
     pub(super) operation: &'static str,
@@ -46,6 +46,16 @@ pub(super) struct BitTransceiveRequest<'tx, 'rx, 'parity> {
     pub(super) rx: &'rx mut [u8],
     pub(super) rx_parity: Option<&'parity mut [u8]>,
     pub(super) timeout_ms: i32,
+}
+
+pub(super) struct TimedBitTransceiveRequest<'tx, 'rx, 'tx_parity, 'rx_parity> {
+    pub(super) operation: &'static str,
+    pub(super) tx: &'tx [u8],
+    pub(super) tx_bits_len: usize,
+    pub(super) tx_parity: Option<&'tx_parity [u8]>,
+    pub(super) rx: &'rx mut [u8],
+    pub(super) rx_parity: Option<&'rx_parity mut [u8]>,
+    pub(super) max_cycles: TimerCycles,
 }
 
 pub(super) fn status_error(operation: &'static str, code: i32) -> Error {

@@ -616,10 +616,11 @@ mod tests {
                 proximate_driver::BitFrame::try_new(&[0x26], 7, None).unwrap(),
                 &mut rx,
                 None,
+                proximate_driver::TimerCycles::ZERO,
             )
             .unwrap();
         assert_eq!(bits, 16);
         assert_eq!(&rx[..2], &[0x04, 0x00]);
-        assert_eq!(cycles, 3506);
+        assert_eq!(cycles.get(), 3506);
     }
 }

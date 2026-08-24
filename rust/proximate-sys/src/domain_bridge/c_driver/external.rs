@@ -612,7 +612,8 @@ impl rt::InitiatorBackend for ExternalDevice {
         &mut self,
         tx: &[u8],
         rx: &mut [u8],
-    ) -> Result<(usize, u32), rt::Error> {
+        max_cycles: rt::TimerCycles,
+    ) -> Result<(usize, rt::TimerCycles), rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
                 return Err(rt::Error::UnsupportedOperation(
@@ -624,7 +625,7 @@ impl rt::InitiatorBackend for ExternalDevice {
                     "initiator_transceive_bytes_timed",
                 ));
             };
-            let mut cycles = 0u32;
+            let mut cycles = max_cycles.get();
             let count = Self::status_to_result("initiator_transceive_bytes_timed", unsafe {
                 callback(
                     self.raw,
@@ -635,7 +636,7 @@ impl rt::InitiatorBackend for ExternalDevice {
                     ptr::addr_of_mut!(cycles),
                 )
             })?;
-            Ok((count as usize, cycles))
+            Ok((count as usize, rt::TimerCycles::new(cycles)))
         })();
         self.normalize("initiator_transceive_bytes_timed", result)
     }
@@ -645,7 +646,8 @@ impl rt::InitiatorBackend for ExternalDevice {
         tx: rt::BitFrame<'_>,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
-    ) -> Result<(usize, u32), rt::Error> {
+        max_cycles: rt::TimerCycles,
+    ) -> Result<(usize, rt::TimerCycles), rt::Error> {
         let result = (|| {
             let Some(driver) = self.driver_ref() else {
                 return Err(rt::Error::UnsupportedOperation(
@@ -657,7 +659,7 @@ impl rt::InitiatorBackend for ExternalDevice {
                     "initiator_transceive_bits_timed",
                 ));
             };
-            let mut cycles = 0u32;
+            let mut cycles = max_cycles.get();
             let count = Self::status_to_result("initiator_transceive_bits_timed", unsafe {
                 callback(
                     self.raw,
@@ -669,7 +671,7 @@ impl rt::InitiatorBackend for ExternalDevice {
                     ptr::addr_of_mut!(cycles),
                 )
             })?;
-            Ok((count as usize, cycles))
+            Ok((count as usize, rt::TimerCycles::new(cycles)))
         })();
         self.normalize("initiator_transceive_bits_timed", result)
     }

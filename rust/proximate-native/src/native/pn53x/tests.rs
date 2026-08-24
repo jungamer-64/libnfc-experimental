@@ -145,8 +145,14 @@ trait TestPn53xOps:
         self.transceive_bytes_driver(tx, rx, OperationTimeout::from_libnfc_millis(timeout)?)
     }
 
-    fn transceive_bytes_timed(&mut self, tx: &[u8], rx: &mut [u8]) -> Result<(usize, u32), Error> {
-        self.transceive_bytes_timed_driver(tx, rx)
+    fn transceive_bytes_timed(
+        &mut self,
+        tx: &[u8],
+        rx: &mut [u8],
+        max_cycles: u32,
+    ) -> Result<(usize, u32), Error> {
+        self.transceive_bytes_timed_driver(tx, rx, TimerCycles::new(max_cycles))
+            .map(|(written, cycles)| (written, cycles.get()))
     }
 
     fn target_init(
@@ -205,9 +211,11 @@ trait TestPn53xOps:
         tx_parity: Option<&[u8]>,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
+        max_cycles: u32,
     ) -> Result<(usize, u32), Error> {
         let tx = BitFrame::try_new(tx, tx_bits_len, tx_parity)?;
-        self.transceive_bits_timed_driver(tx, rx, rx_parity)
+        self.transceive_bits_timed_driver(tx, rx, rx_parity, TimerCycles::new(max_cycles))
+            .map(|(written, cycles)| (written, cycles.get()))
     }
 
     fn target_send_bits(
@@ -1146,7 +1154,7 @@ fn transceive_bytes_and_timed_variant_use_shared_timer_register_flow() {
     queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0xaa, 0x00]);
     queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0xf0, 0x00]);
 
-    let (timed_written, elapsed) = device.transceive_bytes_timed(&[0x50], &mut rx).unwrap();
+    let (timed_written, elapsed) = device.transceive_bytes_timed(&[0x50], &mut rx, 0).unwrap();
     assert_eq!(timed_written, 1);
     assert_eq!(&rx[..timed_written], &[0xaa]);
     assert_eq!(elapsed, 3568);
@@ -1315,7 +1323,7 @@ fn transceive_bits_timed_uses_shared_register_timer_flow() {
     let mut rx = [0u8; 8];
     let mut parity = [0u8; 8];
     let (bits, elapsed) = device
-        .transceive_bits_timed(&[0x26], 7, None, &mut rx, Some(&mut parity))
+        .transceive_bits_timed(&[0x26], 7, None, &mut rx, Some(&mut parity), 0)
         .unwrap();
     assert_eq!(bits, 16);
     assert_eq!(&rx[..2], &[0x93, 0x20]);
@@ -1368,16 +1376,36 @@ fn timed_bytes_reads_tx_mode_before_register_timed_exchange() {
     queue_command_response(&mut device.transport, PN53X_READ_REGISTER, &[0xf0, 0x00]);
 
     let mut rx = [0u8; 4];
-    let (written, elapsed) = device.transceive_bytes_timed(&[0x00], &mut rx).unwrap();
+    let (written, elapsed) = device
+        .transceive_bytes_timed(&[0x00], &mut rx, 196_605)
+        .unwrap();
     assert_eq!(written, 2);
     assert_eq!(&rx[..2], &[0x90, 0x00]);
-    assert_eq!(elapsed, 3504);
+    assert_eq!(elapsed, 11_694);
     assert_eq!(device.transport.sent[sent_before][6], PN53X_READ_REGISTER);
     assert_eq!(
         &device.transport.sent[sent_before][7..9],
         &[
             (PN53X_REG_CIU_TX_MODE >> 8) as u8,
             PN53X_REG_CIU_TX_MODE as u8
+        ]
+    );
+    assert_eq!(
+        sent_payload(&device.transport, sent_before + 1),
+        vec![
+            PN53X_WRITE_REGISTER,
+            0x63,
+            0x1a,
+            0x80,
+            0x63,
+            0x1b,
+            0x01,
+            0x63,
+            0x1c,
+            0xff,
+            0x63,
+            0x1d,
+            0xff,
         ]
     );
 }

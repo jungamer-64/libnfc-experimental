@@ -538,7 +538,8 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         operation: &'static str,
         tx: &[u8],
         rx: &mut [u8],
-    ) -> Result<(usize, u32), Error> {
+        max_cycles: TimerCycles,
+    ) -> Result<(usize, TimerCycles), Error> {
         if !self.core.properties.handle_parity {
             return self.remember(Err(status_error(operation, NFC_EINVARG)));
         }
@@ -554,24 +555,28 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         } else {
             None
         };
-        self.init_timer(0)?;
+        self.init_timer(max_cycles.get())?;
         self.timed_send_fifo(tx, 0)?;
         let (written, _) = self.timed_receive_fifo(rx, false)?;
         let last_cmd_byte = timer_last_command_byte(tx, txmode)?;
         let cycles = self.timer_cycles(last_cmd_byte)?;
         self.last_error = 0;
-        Ok((written, cycles))
+        Ok((written, TimerCycles::new(cycles)))
     }
 
     fn transceive_bits_timed_shared(
         &mut self,
-        operation: &'static str,
-        tx: &[u8],
-        tx_bits_len: usize,
-        tx_parity: Option<&[u8]>,
-        rx: &mut [u8],
-        rx_parity: Option<&mut [u8]>,
-    ) -> Result<(usize, u32), Error> {
+        request: TimedBitTransceiveRequest<'_, '_, '_, '_>,
+    ) -> Result<(usize, TimerCycles), Error> {
+        let TimedBitTransceiveRequest {
+            operation,
+            tx,
+            tx_bits_len,
+            tx_parity,
+            rx,
+            rx_parity,
+            max_cycles,
+        } = request;
         if self.core.properties.easy_framing {
             return self.remember(Err(Error::UnsupportedOperation(operation)));
         }
@@ -597,7 +602,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
             )
         };
 
-        self.init_timer(0)?;
+        self.init_timer(max_cycles.get())?;
         self.timed_send_fifo(&payload, (payload_bits_len % 8) as u8)?;
         let mut raw_rx = vec![0u8; rx.len().max(1)];
         let (raw_len, last_bits) = self.timed_receive_fifo(&mut raw_rx, true)?;
@@ -612,7 +617,7 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         let last_cmd_byte = payload.last().copied().unwrap_or(0);
         let cycles = self.timer_cycles(last_cmd_byte)?;
         self.last_error = 0;
-        Ok((written, cycles))
+        Ok((written, TimerCycles::new(cycles)))
     }
 
     fn transceive_bits_shared(
@@ -1420,8 +1425,9 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
         &mut self,
         tx: &[u8],
         rx: &mut [u8],
-    ) -> Result<(usize, u32), Error> {
-        self.transceive_bytes_timed_shared("transceive_bytes_timed", tx, rx)
+        max_cycles: TimerCycles,
+    ) -> Result<(usize, TimerCycles), Error> {
+        self.transceive_bytes_timed_shared("transceive_bytes_timed", tx, rx, max_cycles)
     }
 
     fn transceive_bits_timed_driver(
@@ -1429,15 +1435,17 @@ impl<T: Pn53xTransport + Send + 'static> InitiatorBackend for Pn53xDevice<T> {
         tx: BitFrame<'_>,
         rx: &mut [u8],
         rx_parity: Option<&mut [u8]>,
-    ) -> Result<(usize, u32), Error> {
-        self.transceive_bits_timed_shared(
-            "transceive_bits_timed",
-            tx.bytes(),
-            tx.bit_len(),
-            tx.parity(),
+        max_cycles: TimerCycles,
+    ) -> Result<(usize, TimerCycles), Error> {
+        self.transceive_bits_timed_shared(TimedBitTransceiveRequest {
+            operation: "transceive_bits_timed",
+            tx: tx.bytes(),
+            tx_bits_len: tx.bit_len(),
+            tx_parity: tx.parity(),
             rx,
             rx_parity,
-        )
+            max_cycles,
+        })
     }
 
     fn command_abort_handle(&self) -> Option<proximate_driver::CommandAbortHandle> {

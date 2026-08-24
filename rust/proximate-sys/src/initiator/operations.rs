@@ -13,7 +13,7 @@ use crate::domain_bridge::decode::{
     decode_optional_dep_info, decode_optional_target, dep_mode_from_c, modulation_from_c,
     property_from_c,
 };
-use crate::domain_bridge::encode::{CyclesOut, TargetInOut, TargetOut, TargetSliceOut};
+use crate::domain_bridge::encode::{CyclesInOut, TargetInOut, TargetOut, TargetSliceOut};
 use crate::ffi_catch_unwind_int;
 use crate::initiator::driver_dispatch::{
     call_abort_command_impl, call_idle_impl, call_initiator_poll_target_impl, dispatch_driver_call,
@@ -399,6 +399,13 @@ pub(crate) unsafe fn nfc_initiator_transceive_bytes_timed(
         "nfc_initiator_transceive_bytes_timed",
         NFC_ESOFT,
         || unsafe {
+            if !is_rust_shim_device(device) {
+                return dispatch_driver_call(device, |driver| {
+                    driver
+                        .initiator_transceive_bytes_timed
+                        .map(|callback| callback(device, tx, tx_len, rx, rx_len, cycles))
+                });
+            }
             let tx = match InputBytes::from_raw(device, tx, tx_len) {
                 Ok(bytes) => bytes,
                 Err(status) => return status,
@@ -407,8 +414,13 @@ pub(crate) unsafe fn nfc_initiator_transceive_bytes_timed(
                 Ok(bytes) => bytes,
                 Err(status) => return status,
             };
-            let cycles = CyclesOut::from_raw(cycles);
-            match runtime::transceive_bytes_timed(device, tx.as_slice(), rx.as_mut_slice()) {
+            let cycles = CyclesInOut::from_raw(cycles);
+            match runtime::transceive_bytes_timed(
+                device,
+                tx.as_slice(),
+                rx.as_mut_slice(),
+                cycles.initial(),
+            ) {
                 Ok((count, measured_cycles)) => {
                     cycles.write_back(measured_cycles);
                     count as c_int
@@ -458,7 +470,7 @@ pub(crate) unsafe fn nfc_initiator_transceive_bits_timed(
             };
             let tx_parity = ParityMarker::from_raw(tx_parity);
             let mut rx_parity = ParityMarkerMut::from_raw(rx_parity);
-            let cycles = CyclesOut::from_raw(cycles);
+            let cycles = CyclesInOut::from_raw(cycles);
             match runtime::transceive_bits_timed(
                 device,
                 tx.as_slice(),
@@ -466,6 +478,7 @@ pub(crate) unsafe fn nfc_initiator_transceive_bits_timed(
                 tx_parity.as_deref(),
                 rx.as_mut_slice(),
                 rx_parity.as_deref_mut(),
+                cycles.initial(),
             ) {
                 Ok((count, measured_cycles)) => {
                     cycles.write_back(measured_cycles);

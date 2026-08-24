@@ -235,6 +235,26 @@ impl OperationTimeout {
     }
 }
 
+/// PN53x timer cycles used as both an input budget and measured output.
+///
+/// A value of zero selects the chip's shortest prescaler range. Larger values
+/// allow the protocol engine to select a prescaler capable of measuring that
+/// many carrier cycles before saturation.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TimerCycles(u32);
+
+impl TimerCycles {
+    pub const ZERO: Self = Self(0);
+
+    pub const fn new(cycles: u32) -> Self {
+        Self(cycles)
+    }
+
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
 /// Number of complete polling iterations requested by a caller.
 ///
 /// libnfc reserves `0xff` for continuous polling and defines `0x01..=0xfe`

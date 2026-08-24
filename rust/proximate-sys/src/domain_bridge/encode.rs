@@ -317,18 +317,24 @@ impl TargetInOut {
     }
 }
 
-pub(crate) struct CyclesOut {
+pub(crate) struct CyclesInOut {
     raw: *mut u32,
 }
 
-impl CyclesOut {
+impl CyclesInOut {
     pub(crate) unsafe fn from_raw(raw: *mut u32) -> Self {
         Self { raw }
     }
 
-    pub(crate) fn write_back(&self, cycles: u32) {
+    pub(crate) fn initial(&self) -> rt::TimerCycles {
+        unsafe { optional_mut(self.raw) }
+            .map(|raw| rt::TimerCycles::new(*raw))
+            .unwrap_or(rt::TimerCycles::ZERO)
+    }
+
+    pub(crate) fn write_back(&self, cycles: rt::TimerCycles) {
         if let Some(raw) = unsafe { optional_mut(self.raw) } {
-            *raw = cycles;
+            *raw = cycles.get();
         }
     }
 }
@@ -817,10 +823,11 @@ mod tests {
     }
 
     #[test]
-    fn cycles_out_writes_when_pointer_is_present() {
-        let mut cycles = 0u32;
-        let output = unsafe { CyclesOut::from_raw(ptr::addr_of_mut!(cycles)) };
-        output.write_back(42);
+    fn cycles_in_out_reads_budget_and_writes_measurement() {
+        let mut cycles = 120_000u32;
+        let output = unsafe { CyclesInOut::from_raw(ptr::addr_of_mut!(cycles)) };
+        assert_eq!(output.initial(), rt::TimerCycles::new(120_000));
+        output.write_back(rt::TimerCycles::new(42));
         assert_eq!(cycles, 42);
     }
 

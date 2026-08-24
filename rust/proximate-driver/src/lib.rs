@@ -5,9 +5,9 @@ mod driver;
 pub use proximate_types::{
     BaudRate, BitFrame, ConnectionString, DecodedConnectionString, DepInfo, DepMode, Error, Mode,
     Modulation, ModulationType, NFC_BUFSIZE_CONNSTRING, OperationTimeout, PollIterations,
-    PollPeriod, Property, ScanType, Target, TargetInfo, build_connstring, decode_connstring,
-    decode_connstring_segments_bytes, device_error_message, extract_param_value_bytes,
-    parse_connstring, version,
+    PollPeriod, Property, ScanType, Target, TargetInfo, TimerCycles, build_connstring,
+    decode_connstring, decode_connstring_segments_bytes, device_error_message,
+    extract_param_value_bytes, parse_connstring, version,
 };
 
 pub use context::{Context, ContextConfig, ContextLoadError, UserDefinedDevice};

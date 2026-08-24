@@ -58,8 +58,8 @@ struct InitiatorTestState {
     target_init_calls: Vec<(usize, c_int)>,
     initiator_transceive_bytes_calls: Vec<(usize, usize, c_int)>,
     initiator_transceive_bits_calls: Vec<usize>,
-    initiator_transceive_bytes_timed_calls: Vec<(usize, usize)>,
-    initiator_transceive_bits_timed_calls: Vec<usize>,
+    initiator_transceive_bytes_timed_calls: Vec<(usize, usize, Option<u32>)>,
+    initiator_transceive_bits_timed_calls: Vec<(usize, Option<u32>)>,
     target_send_bytes_calls: Vec<(usize, c_int)>,
     target_receive_bytes_calls: Vec<(usize, c_int)>,
     target_send_bits_calls: Vec<usize>,
@@ -380,9 +380,14 @@ unsafe extern "C" fn test_initiator_transceive_bytes_timed(
     cycles: *mut u32,
 ) -> c_int {
     with_test_state(|state| {
+        let initial_cycles = if cycles.is_null() {
+            None
+        } else {
+            Some(unsafe { *cycles })
+        };
         state
             .initiator_transceive_bytes_timed_calls
-            .push((tx_len, rx_len));
+            .push((tx_len, rx_len, initial_cycles));
     });
     if !rx.is_null() && rx_len > 0 {
         unsafe {
@@ -407,9 +412,14 @@ unsafe extern "C" fn test_initiator_transceive_bits_timed(
     cycles: *mut u32,
 ) -> c_int {
     with_test_state(|state| {
+        let initial_cycles = if cycles.is_null() {
+            None
+        } else {
+            Some(unsafe { *cycles })
+        };
         state
             .initiator_transceive_bits_timed_calls
-            .push(tx_bits_len);
+            .push((tx_bits_len, initial_cycles));
     });
     if !rx.is_null() {
         unsafe {
@@ -1083,7 +1093,7 @@ fn transceive_wrappers_dispatch_and_preserve_hal_style_szrx_behavior() {
     let mut rx = [0u8; 2];
     let mut rx_bits = [0u8; 1];
     let mut rx_parity = [0u8; 1];
-    let mut cycles = 0u32;
+    let mut cycles = 120_000u32;
 
     assert_eq!(
         unsafe {
@@ -1125,6 +1135,7 @@ fn transceive_wrappers_dispatch_and_preserve_hal_style_szrx_behavior() {
         },
         14
     );
+    cycles = 196_605;
     assert_eq!(
         unsafe {
             nfc_initiator_transceive_bits_timed(
@@ -1146,9 +1157,12 @@ fn transceive_wrappers_dispatch_and_preserve_hal_style_szrx_behavior() {
     assert_eq!(snapshot.initiator_transceive_bits_calls, vec![7]);
     assert_eq!(
         snapshot.initiator_transceive_bytes_timed_calls,
-        vec![(2, 2)]
+        vec![(2, 2, Some(120_000))]
     );
-    assert_eq!(snapshot.initiator_transceive_bits_timed_calls, vec![5]);
+    assert_eq!(
+        snapshot.initiator_transceive_bits_timed_calls,
+        vec![(5, Some(196_605))]
+    );
     assert_eq!(rx[0], 0x71);
     assert_eq!(rx_bits[0], 0x81);
     assert_eq!(rx_parity[0], 0x02);
