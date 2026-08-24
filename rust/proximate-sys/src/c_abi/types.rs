@@ -184,3 +184,136 @@ pub struct nfc_target {
     pub nti: nfc_target_info,
     pub nm: nfc_modulation,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::mem::{align_of, offset_of, size_of};
+
+    #[test]
+    fn public_enum_values_and_representation_match_the_c_abi() {
+        assert_eq!(size_of::<nfc_property>(), 4);
+        assert_eq!(nfc_property::NP_TIMEOUT_COMMAND as i32, 0);
+        assert_eq!(nfc_property::NP_FORCE_SPEED_106 as i32, 14);
+
+        assert_eq!(size_of::<nfc_dep_mode>(), 4);
+        assert_eq!(nfc_dep_mode::NDM_UNDEFINED as i32, 0);
+        assert_eq!(nfc_dep_mode::NDM_PASSIVE as i32, 1);
+        assert_eq!(nfc_dep_mode::NDM_ACTIVE as i32, 2);
+
+        assert_eq!(size_of::<nfc_baud_rate>(), 4);
+        assert_eq!(nfc_baud_rate::NBR_UNDEFINED as i32, 0);
+        assert_eq!(nfc_baud_rate::NBR_106 as i32, 1);
+        assert_eq!(nfc_baud_rate::NBR_212 as i32, 2);
+        assert_eq!(nfc_baud_rate::NBR_424 as i32, 3);
+        assert_eq!(nfc_baud_rate::NBR_847 as i32, 4);
+
+        assert_eq!(size_of::<nfc_modulation_type>(), 4);
+        assert_eq!(nfc_modulation_type::NMT_UNDEFINED as i32, 0);
+        assert_eq!(nfc_modulation_type::NMT_ISO14443A as i32, 1);
+        assert_eq!(nfc_modulation_type::NMT_JEWEL as i32, 2);
+        assert_eq!(nfc_modulation_type::NMT_ISO14443B as i32, 3);
+        assert_eq!(nfc_modulation_type::NMT_ISO14443BI as i32, 4);
+        assert_eq!(nfc_modulation_type::NMT_ISO14443B2SR as i32, 5);
+        assert_eq!(nfc_modulation_type::NMT_ISO14443B2CT as i32, 6);
+        assert_eq!(nfc_modulation_type::NMT_FELICA as i32, 7);
+        assert_eq!(nfc_modulation_type::NMT_DEP as i32, 8);
+        assert_eq!(nfc_modulation_type::NMT_BARCODE as i32, 9);
+        assert_eq!(nfc_modulation_type::NMT_ISO14443BICLASS as i32, 10);
+
+        assert_eq!(size_of::<nfc_mode>(), 4);
+        assert_eq!(nfc_mode::N_TARGET as i32, 0);
+        assert_eq!(nfc_mode::N_INITIATOR as i32, 1);
+    }
+
+    #[test]
+    fn public_packed_structs_and_union_match_the_c_abi() {
+        let word = size_of::<size_t>();
+
+        assert_eq!(align_of::<nfc_dep_info>(), 1);
+        assert_eq!(size_of::<nfc_dep_info>(), 67 + word);
+        assert_eq!(offset_of!(nfc_dep_info, abtNFCID3), 0);
+        assert_eq!(offset_of!(nfc_dep_info, btDID), 10);
+        assert_eq!(offset_of!(nfc_dep_info, btBS), 11);
+        assert_eq!(offset_of!(nfc_dep_info, btBR), 12);
+        assert_eq!(offset_of!(nfc_dep_info, btTO), 13);
+        assert_eq!(offset_of!(nfc_dep_info, btPP), 14);
+        assert_eq!(offset_of!(nfc_dep_info, abtGB), 15);
+        assert_eq!(offset_of!(nfc_dep_info, szGB), 63);
+        assert_eq!(offset_of!(nfc_dep_info, ndm), 63 + word);
+
+        assert_eq!(align_of::<nfc_iso14443a_info>(), 1);
+        assert_eq!(size_of::<nfc_iso14443a_info>(), 267 + 2 * word);
+        assert_eq!(offset_of!(nfc_iso14443a_info, abtAtqa), 0);
+        assert_eq!(offset_of!(nfc_iso14443a_info, btSak), 2);
+        assert_eq!(offset_of!(nfc_iso14443a_info, szUidLen), 3);
+        assert_eq!(offset_of!(nfc_iso14443a_info, abtUid), 3 + word);
+        assert_eq!(offset_of!(nfc_iso14443a_info, szAtsLen), 13 + word);
+        assert_eq!(offset_of!(nfc_iso14443a_info, abtAts), 13 + 2 * word);
+
+        assert_eq!(size_of::<nfc_felica_info>(), 19 + word);
+        assert_eq!(offset_of!(nfc_felica_info, szLen), 0);
+        assert_eq!(offset_of!(nfc_felica_info, btResCode), word);
+        assert_eq!(offset_of!(nfc_felica_info, abtId), word + 1);
+        assert_eq!(offset_of!(nfc_felica_info, abtPad), word + 9);
+        assert_eq!(offset_of!(nfc_felica_info, abtSysCode), word + 17);
+
+        assert_eq!(size_of::<nfc_iso14443b_info>(), 12);
+        assert_eq!(offset_of!(nfc_iso14443b_info, abtPupi), 0);
+        assert_eq!(offset_of!(nfc_iso14443b_info, abtApplicationData), 4);
+        assert_eq!(offset_of!(nfc_iso14443b_info, abtProtocolInfo), 8);
+        assert_eq!(offset_of!(nfc_iso14443b_info, ui8CardIdentifier), 11);
+
+        assert_eq!(size_of::<nfc_iso14443bi_info>(), 39 + word);
+        assert_eq!(offset_of!(nfc_iso14443bi_info, abtDIV), 0);
+        assert_eq!(offset_of!(nfc_iso14443bi_info, btVerLog), 4);
+        assert_eq!(offset_of!(nfc_iso14443bi_info, btConfig), 5);
+        assert_eq!(offset_of!(nfc_iso14443bi_info, szAtrLen), 6);
+        assert_eq!(offset_of!(nfc_iso14443bi_info, abtAtr), 6 + word);
+
+        assert_eq!(size_of::<nfc_iso14443biclass_info>(), 8);
+        assert_eq!(offset_of!(nfc_iso14443biclass_info, abtUID), 0);
+        assert_eq!(size_of::<nfc_iso14443b2sr_info>(), 8);
+        assert_eq!(offset_of!(nfc_iso14443b2sr_info, abtUID), 0);
+        assert_eq!(size_of::<nfc_iso14443b2ct_info>(), 6);
+        assert_eq!(offset_of!(nfc_iso14443b2ct_info, abtUID), 0);
+        assert_eq!(offset_of!(nfc_iso14443b2ct_info, btProdCode), 4);
+        assert_eq!(offset_of!(nfc_iso14443b2ct_info, btFabCode), 5);
+        assert_eq!(size_of::<nfc_jewel_info>(), 6);
+        assert_eq!(offset_of!(nfc_jewel_info, btSensRes), 0);
+        assert_eq!(offset_of!(nfc_jewel_info, btId), 2);
+
+        assert_eq!(size_of::<nfc_barcode_info>(), 32 + word);
+        assert_eq!(offset_of!(nfc_barcode_info, szDataLen), 0);
+        assert_eq!(offset_of!(nfc_barcode_info, abtData), word);
+
+        assert_eq!(align_of::<nfc_target_info>(), 1);
+        assert_eq!(
+            size_of::<nfc_target_info>(),
+            size_of::<nfc_iso14443a_info>()
+        );
+        assert_eq!(offset_of!(nfc_target_info, nai), 0);
+        assert_eq!(offset_of!(nfc_target_info, nfi), 0);
+        assert_eq!(offset_of!(nfc_target_info, nbi), 0);
+        assert_eq!(offset_of!(nfc_target_info, nii), 0);
+        assert_eq!(offset_of!(nfc_target_info, nsi), 0);
+        assert_eq!(offset_of!(nfc_target_info, nci), 0);
+        assert_eq!(offset_of!(nfc_target_info, nji), 0);
+        assert_eq!(offset_of!(nfc_target_info, ndi), 0);
+        assert_eq!(offset_of!(nfc_target_info, nti), 0);
+        assert_eq!(offset_of!(nfc_target_info, nhi), 0);
+
+        assert_eq!(align_of::<nfc_modulation>(), 1);
+        assert_eq!(size_of::<nfc_modulation>(), 8);
+        assert_eq!(offset_of!(nfc_modulation, nmt), 0);
+        assert_eq!(offset_of!(nfc_modulation, nbr), 4);
+
+        assert_eq!(align_of::<nfc_target>(), 1);
+        assert_eq!(
+            size_of::<nfc_target>(),
+            size_of::<nfc_target_info>() + size_of::<nfc_modulation>()
+        );
+        assert_eq!(offset_of!(nfc_target, nti), 0);
+        assert_eq!(offset_of!(nfc_target, nm), size_of::<nfc_target_info>());
+    }
+}

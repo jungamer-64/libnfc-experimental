@@ -6,6 +6,90 @@
 #include <nfc/nfc-emulation.h>
 #include <nfc/nfc.h>
 
+static bool
+public_type_layout_matches_abi(void)
+{
+  const size_t word = sizeof(size_t);
+
+  return sizeof(nfc_connstring) == NFC_BUFSIZE_CONNSTRING &&
+         sizeof(nfc_property) == 4 && NP_TIMEOUT_COMMAND == 0 &&
+         NP_FORCE_SPEED_106 == 14 && sizeof(nfc_dep_mode) == 4 &&
+         NDM_UNDEFINED == 0 && NDM_PASSIVE == 1 && NDM_ACTIVE == 2 &&
+         sizeof(nfc_baud_rate) == 4 && NBR_UNDEFINED == 0 && NBR_106 == 1 &&
+         NBR_212 == 2 && NBR_424 == 3 && NBR_847 == 4 &&
+         sizeof(nfc_modulation_type) == 4 && NMT_ISO14443A == 1 &&
+         NMT_JEWEL == 2 && NMT_ISO14443B == 3 && NMT_ISO14443BI == 4 &&
+         NMT_ISO14443B2SR == 5 && NMT_ISO14443B2CT == 6 &&
+         NMT_FELICA == 7 && NMT_DEP == 8 && NMT_BARCODE == 9 &&
+         NMT_ISO14443BICLASS == 10 && NMT_END_ENUM == 10 &&
+         sizeof(nfc_mode) == 4 && N_TARGET == 0 && N_INITIATOR == 1 &&
+         sizeof(nfc_dep_info) == 67 + word &&
+         offsetof(nfc_dep_info, abtNFCID3) == 0 &&
+         offsetof(nfc_dep_info, btDID) == 10 &&
+         offsetof(nfc_dep_info, btBS) == 11 &&
+         offsetof(nfc_dep_info, btBR) == 12 &&
+         offsetof(nfc_dep_info, btTO) == 13 &&
+         offsetof(nfc_dep_info, btPP) == 14 &&
+         offsetof(nfc_dep_info, abtGB) == 15 &&
+         offsetof(nfc_dep_info, szGB) == 63 &&
+         offsetof(nfc_dep_info, ndm) == 63 + word &&
+         sizeof(nfc_iso14443a_info) == 267 + 2 * word &&
+         offsetof(nfc_iso14443a_info, abtAtqa) == 0 &&
+         offsetof(nfc_iso14443a_info, btSak) == 2 &&
+         offsetof(nfc_iso14443a_info, szUidLen) == 3 &&
+         offsetof(nfc_iso14443a_info, abtUid) == 3 + word &&
+         offsetof(nfc_iso14443a_info, szAtsLen) == 13 + word &&
+         offsetof(nfc_iso14443a_info, abtAts) == 13 + 2 * word &&
+         sizeof(nfc_felica_info) == 19 + word &&
+         offsetof(nfc_felica_info, szLen) == 0 &&
+         offsetof(nfc_felica_info, btResCode) == word &&
+         offsetof(nfc_felica_info, abtId) == word + 1 &&
+         offsetof(nfc_felica_info, abtPad) == word + 9 &&
+         offsetof(nfc_felica_info, abtSysCode) == word + 17 &&
+         sizeof(nfc_iso14443b_info) == 12 &&
+         offsetof(nfc_iso14443b_info, abtPupi) == 0 &&
+         offsetof(nfc_iso14443b_info, abtApplicationData) == 4 &&
+         offsetof(nfc_iso14443b_info, abtProtocolInfo) == 8 &&
+         offsetof(nfc_iso14443b_info, ui8CardIdentifier) == 11 &&
+         sizeof(nfc_iso14443bi_info) == 39 + word &&
+         offsetof(nfc_iso14443bi_info, abtDIV) == 0 &&
+         offsetof(nfc_iso14443bi_info, btVerLog) == 4 &&
+         offsetof(nfc_iso14443bi_info, btConfig) == 5 &&
+         offsetof(nfc_iso14443bi_info, szAtrLen) == 6 &&
+         offsetof(nfc_iso14443bi_info, abtAtr) == 6 + word &&
+         sizeof(nfc_iso14443biclass_info) == 8 &&
+         offsetof(nfc_iso14443biclass_info, abtUID) == 0 &&
+         sizeof(nfc_iso14443b2sr_info) == 8 &&
+         offsetof(nfc_iso14443b2sr_info, abtUID) == 0 &&
+         sizeof(nfc_iso14443b2ct_info) == 6 &&
+         offsetof(nfc_iso14443b2ct_info, abtUID) == 0 &&
+         offsetof(nfc_iso14443b2ct_info, btProdCode) == 4 &&
+         offsetof(nfc_iso14443b2ct_info, btFabCode) == 5 &&
+         sizeof(nfc_jewel_info) == 6 &&
+         offsetof(nfc_jewel_info, btSensRes) == 0 &&
+         offsetof(nfc_jewel_info, btId) == 2 &&
+         sizeof(nfc_barcode_info) == 32 + word &&
+         offsetof(nfc_barcode_info, szDataLen) == 0 &&
+         offsetof(nfc_barcode_info, abtData) == word &&
+         sizeof(nfc_target_info) == sizeof(nfc_iso14443a_info) &&
+         offsetof(nfc_target_info, nai) == 0 &&
+         offsetof(nfc_target_info, nfi) == 0 &&
+         offsetof(nfc_target_info, nbi) == 0 &&
+         offsetof(nfc_target_info, nii) == 0 &&
+         offsetof(nfc_target_info, nsi) == 0 &&
+         offsetof(nfc_target_info, nci) == 0 &&
+         offsetof(nfc_target_info, nji) == 0 &&
+         offsetof(nfc_target_info, ndi) == 0 &&
+         offsetof(nfc_target_info, nti) == 0 &&
+         offsetof(nfc_target_info, nhi) == 0 &&
+         sizeof(nfc_modulation) == 8 &&
+         offsetof(nfc_modulation, nmt) == 0 &&
+         offsetof(nfc_modulation, nbr) == 4 &&
+         sizeof(nfc_target) == sizeof(nfc_target_info) + sizeof(nfc_modulation) &&
+         offsetof(nfc_target, nti) == 0 &&
+         offsetof(nfc_target, nm) == sizeof(nfc_target_info);
+}
+
 static int
 exercise_public_entrypoints(nfc_context *context)
 {
@@ -170,14 +254,7 @@ main(void)
     return 4;
   }
 
-  if (sizeof(nfc_iso14443a_info) != 2 + 1 + sizeof(size_t) + 10 + sizeof(size_t) + 254 ||
-      offsetof(nfc_iso14443a_info, btSak) != 2 ||
-      offsetof(nfc_iso14443a_info, szUidLen) != 3 ||
-      offsetof(nfc_target_info, nai) != 0 ||
-      offsetof(nfc_target_info, ndi) != 0 ||
-      sizeof(nfc_target_info) < sizeof(nfc_iso14443a_info) ||
-      sizeof(nfc_target_info) < sizeof(nfc_dep_info) ||
-      offsetof(nfc_target, nm) != sizeof(nfc_target_info)) {
+  if (!public_type_layout_matches_abi()) {
     fprintf(stderr, "Public NFC target ABI layout does not match packed header contract\n");
     if (context) {
       nfc_exit(context);
