@@ -3,7 +3,109 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <nfc/nfc-emulation.h>
 #include <nfc/nfc.h>
+
+static int
+exercise_public_entrypoints(nfc_context *context)
+{
+  static const char unavailable_connstring[] = "public-abi-smoke:no-device";
+  uint8_t crc_a_data[6] = {0x01, 0x02, 0x03, 0x04, 0x00, 0x00};
+  uint8_t crc_b_data[6] = {0x01, 0x02, 0x03, 0x04, 0x00, 0x00};
+  uint8_t crc_a[2] = {0x00, 0x00};
+  uint8_t crc_b[2] = {0x00, 0x00};
+  uint8_t ats[4] = {0x00, 0x11, 0x22, 0x33};
+  uint32_t cycles = 0;
+  size_t historical_len = 0;
+  nfc_connstring connstrings[1] = {{0}};
+  nfc_modulation modulation = {NMT_ISO14443A, NBR_106};
+  const nfc_modulation_type *supported_modulations = NULL;
+  const nfc_baud_rate *supported_baud_rates = NULL;
+  nfc_device *device;
+  char *information = NULL;
+
+  iso14443a_crc(crc_a_data, 4, crc_a);
+  iso14443a_crc_append(crc_a_data, 4);
+  if (memcmp(crc_a, crc_a_data + 4, sizeof(crc_a)) != 0) {
+    fprintf(stderr, "iso14443a CRC entrypoints disagree\n");
+    return 14;
+  }
+
+  iso14443b_crc(crc_b_data, 4, crc_b);
+  iso14443b_crc_append(crc_b_data, 4);
+  if (memcmp(crc_b, crc_b_data + 4, sizeof(crc_b)) != 0) {
+    fprintf(stderr, "iso14443b CRC entrypoints disagree\n");
+    return 15;
+  }
+
+  if (iso14443a_locate_historical_bytes(ats, sizeof(ats), &historical_len) != ats + 1 ||
+      historical_len != 3) {
+    fprintf(stderr, "iso14443a historical-byte location failed\n");
+    return 16;
+  }
+
+  if (nfc_register_driver(NULL) != NFC_EINVARG) {
+    fprintf(stderr, "nfc_register_driver() accepted a NULL driver\n");
+    return 17;
+  }
+
+  (void)nfc_list_devices(context, connstrings, 1);
+  device = nfc_open(context, unavailable_connstring);
+  if (device != NULL) {
+    fprintf(stderr, "nfc_open() accepted an unavailable driver family\n");
+    nfc_close(device);
+    return 18;
+  }
+  nfc_close(NULL);
+
+  (void)nfc_abort_command(NULL);
+  (void)nfc_idle(NULL);
+  (void)nfc_initiator_init(NULL);
+  (void)nfc_initiator_init_secure_element(NULL);
+  (void)nfc_initiator_select_passive_target(NULL, modulation, NULL, 0, NULL);
+  (void)nfc_initiator_list_passive_targets(NULL, modulation, NULL, 0);
+  (void)nfc_initiator_poll_target(NULL, &modulation, 1, 1, 1, NULL);
+  (void)nfc_initiator_select_dep_target(NULL, NDM_PASSIVE, NBR_106, NULL, NULL, 0);
+  (void)nfc_initiator_poll_dep_target(NULL, NDM_PASSIVE, NBR_106, NULL, NULL, 0);
+  (void)nfc_initiator_deselect_target(NULL);
+  (void)nfc_initiator_target_is_present(NULL, NULL);
+  (void)nfc_initiator_transceive_bytes(NULL, NULL, 0, NULL, 0, 0);
+  (void)nfc_initiator_transceive_bits(NULL, NULL, 0, NULL, NULL, 0, NULL);
+  (void)nfc_initiator_transceive_bytes_timed(NULL, NULL, 0, NULL, 0, &cycles);
+  (void)nfc_initiator_transceive_bits_timed(NULL, NULL, 0, NULL, NULL, 0, NULL, &cycles);
+  (void)nfc_target_init(NULL, NULL, NULL, 0, 0);
+  (void)nfc_target_send_bytes(NULL, NULL, 0, 0);
+  (void)nfc_target_receive_bytes(NULL, NULL, 0, 0);
+  (void)nfc_target_send_bits(NULL, NULL, 0, NULL);
+  (void)nfc_target_receive_bits(NULL, NULL, 0, NULL);
+
+  if (nfc_emulate_target(NULL, NULL, 0) != NFC_EINVARG) {
+    fprintf(stderr, "nfc_emulate_target() accepted a NULL emulator\n");
+    return 19;
+  }
+
+  if (nfc_device_get_name(NULL) != NULL ||
+      nfc_device_get_connstring(NULL) != NULL) {
+    fprintf(stderr, "device string accessors accepted a NULL device\n");
+    return 20;
+  }
+  (void)nfc_device_get_last_error(NULL);
+  (void)nfc_device_get_supported_modulation(NULL, N_INITIATOR, &supported_modulations);
+  (void)nfc_device_get_supported_baud_rate(NULL, NMT_ISO14443A, &supported_baud_rates);
+  (void)nfc_device_get_supported_baud_rate_target_mode(NULL, NMT_ISO14443A, &supported_baud_rates);
+  (void)nfc_device_set_property_bool(NULL, NP_HANDLE_CRC, true);
+  (void)nfc_device_set_property_int(NULL, NP_TIMEOUT_COMMAND, 0);
+  (void)nfc_device_get_information_about(NULL, &information);
+  nfc_free(information);
+
+  if (nfc_strerror(NULL) == NULL) {
+    fprintf(stderr, "nfc_strerror() returned NULL\n");
+    return 21;
+  }
+  nfc_perror(NULL, "public-abi-smoke");
+
+  return 0;
+}
 
 int
 main(void)
@@ -20,8 +122,17 @@ main(void)
   const char *version;
   const char *baud_label;
   const char *modulation_label;
+  int entrypoint_status;
 
   nfc_init(&context);
+
+  entrypoint_status = exercise_public_entrypoints(context);
+  if (entrypoint_status != 0) {
+    if (context) {
+      nfc_exit(context);
+    }
+    return entrypoint_status;
+  }
 
   iso14443b_crc(data, sizeof(data), crc);
   if (memcmp(crc, expected_crc, sizeof(expected_crc)) != 0) {

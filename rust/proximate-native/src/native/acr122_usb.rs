@@ -563,7 +563,7 @@ impl Acr122UsbIo for Box<dyn Acr122UsbIo> {
 #[derive(Default)]
 struct FakeUsbIoState {
     writes: Vec<Vec<u8>>,
-    reads: VecDeque<Vec<u8>>,
+    reads: VecDeque<Result<Vec<u8>, Error>>,
 }
 
 #[cfg(test)]
@@ -575,6 +575,10 @@ struct FakeUsbIo {
 #[cfg(test)]
 impl FakeUsbIo {
     fn with_reads(reads: impl IntoIterator<Item = Vec<u8>>) -> Self {
+        Self::with_read_results(reads.into_iter().map(Ok))
+    }
+
+    fn with_read_results(reads: impl IntoIterator<Item = Result<Vec<u8>, Error>>) -> Self {
         let state = FakeUsbIoState {
             writes: Vec::new(),
             reads: reads.into_iter().collect(),
@@ -600,7 +604,7 @@ impl Acr122UsbIo for FakeUsbIo {
         let payload = state
             .reads
             .pop_front()
-            .ok_or_else(|| device_error("fake_bulk_read", NFC_EIO))?;
+            .ok_or_else(|| device_error("fake_bulk_read", NFC_EIO))??;
         if payload.len() > buffer.len() {
             return Err(device_error("fake_bulk_read", NFC_EIO));
         }
@@ -664,5 +668,52 @@ mod tests {
         let writes = writes.writes();
         assert_eq!(writes.len(), 2);
         assert_eq!(writes[1][10..15], [0xFF, 0xC0, 0x00, 0x00, 0x04]);
+    }
+
+    #[test]
+    fn aborted_transfer_sends_firmware_probe_as_cancel_transcript() {
+        let io = FakeUsbIo::with_read_results([
+            Err(Error::Aborted("fake_bulk_read")),
+            Ok(build_ccid_data_block(&[
+                0xD5, 0x03, 0x32, 0x01, 0x06, 0x07, 0x90, 0x00,
+            ])),
+        ]);
+        let writes = io.clone();
+        let mut transport = Acr122UsbTransport::new(io);
+
+        let frame = crate::native::pn53x::build_frame(&[0x4A, 0x01, 0x00]).unwrap();
+        assert_eq!(
+            transport.send(&frame, 25),
+            Err(Error::Aborted("fake_bulk_read"))
+        );
+
+        let writes = writes.writes();
+        assert_eq!(writes.len(), 2);
+        assert_eq!(
+            &writes[1][10..],
+            acr122::build_direct_transmit_apdu(&[PN53X_GET_FIRMWARE_VERSION])
+                .unwrap()
+                .as_slice()
+        );
+    }
+
+    #[test]
+    fn abort_cancel_failure_preserves_operation_and_recovery() {
+        let io = FakeUsbIo::with_read_results([
+            Err(Error::Aborted("fake_bulk_read")),
+            Err(Error::Io("fake_cancel_read")),
+        ]);
+        let writes = io.clone();
+        let mut transport = Acr122UsbTransport::new(io);
+
+        let frame = crate::native::pn53x::build_frame(&[0x4A, 0x01, 0x00]).unwrap();
+        assert_eq!(
+            transport.send(&frame, 25),
+            Err(Error::RecoveryFailed {
+                operation: Box::new(Error::Aborted("fake_bulk_read")),
+                recovery: Box::new(Error::Io("fake_cancel_read")),
+            })
+        );
+        assert_eq!(writes.writes().len(), 2);
     }
 }
