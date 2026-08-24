@@ -623,11 +623,34 @@ fn device_property_state_follows_confirmed_chip_commands() {
         device.property_bool_state(Property::InfiniteSelect),
         Some(true)
     );
-    assert_eq!(
-        device.property_bool_state(Property::ForceSpeed106),
-        Some(true)
-    );
+    assert_eq!(device.property_bool_state(Property::ForceSpeed106), None);
     assert_eq!(device.last_error(), 0);
+}
+
+#[test]
+fn force_properties_are_commands_not_cached_state() {
+    let mut device = probed_device();
+
+    let sent_before = device.transport.sent.len();
+    device
+        .set_property_bool(Property::ForceIso14443B, false)
+        .unwrap();
+    assert_eq!(device.transport.sent.len(), sent_before);
+    assert_eq!(device.property_bool_state(Property::ForceIso14443B), None);
+
+    queue_masked_register_update(&mut device.transport, &[0x00, 0x00], true);
+    device
+        .set_property_bool(Property::ForceIso14443B, true)
+        .unwrap();
+    assert_eq!(
+        sent_payload(&device.transport, sent_before),
+        vec![PN53X_READ_REGISTER, 0x63, 0x02, 0x63, 0x03,]
+    );
+    assert_eq!(
+        sent_payload(&device.transport, sent_before + 1),
+        vec![PN53X_WRITE_REGISTER, 0x63, 0x02, 0x03, 0x63, 0x03, 0x03,]
+    );
+    assert_eq!(device.property_bool_state(Property::ForceIso14443B), None);
 }
 
 #[test]

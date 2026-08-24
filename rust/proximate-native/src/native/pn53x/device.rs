@@ -299,6 +299,11 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
         encoded
     }
 
+    /// Applies a boolean property after its chip response is confirmed.
+    ///
+    /// The three `Force*` properties are one-shot framing commands rather than
+    /// readable state: enabling one changes registers, while disabling one
+    /// intentionally preserves the framing already selected on the chip.
     fn apply_property_bool(&mut self, property: Property, enable: bool) -> Result<(), Error> {
         if self.core.property_bool_state(property) == Some(enable) {
             return Ok(());
@@ -341,20 +346,34 @@ impl<T: Pn53xTransport + Send + 'static> Pn53xDevice<T> {
                 self.update_register_bits(PN53X_REG_CIU_RX_MODE, SYMBOL_RX_MULTIPLE, value)?;
             }
             Property::AutoIso14443_4 => self.set_parameters(PARAM_AUTO_RATS, enable)?,
-            Property::ForceIso14443A if enable => self.update_register_masks(&[
-                (PN53X_REG_CIU_TX_MODE, SYMBOL_TX_FRAMING, 0x00),
-                (PN53X_REG_CIU_RX_MODE, SYMBOL_RX_FRAMING, 0x00),
-                (PN53X_REG_CIU_TX_AUTO, SYMBOL_FORCE_100_ASK, 0x40),
-            ])?,
-            Property::ForceIso14443B if enable => self.update_register_masks(&[
-                (PN53X_REG_CIU_TX_MODE, SYMBOL_TX_FRAMING, 0x03),
-                (PN53X_REG_CIU_RX_MODE, SYMBOL_RX_FRAMING, 0x03),
-            ])?,
-            Property::ForceSpeed106 if enable => self.update_register_masks(&[
-                (PN53X_REG_CIU_TX_MODE, SYMBOL_TX_SPEED, 0x00),
-                (PN53X_REG_CIU_RX_MODE, SYMBOL_RX_SPEED, 0x00),
-            ])?,
-            Property::ForceIso14443A | Property::ForceIso14443B | Property::ForceSpeed106 => {}
+            Property::ForceIso14443A => {
+                if enable {
+                    self.update_register_masks(&[
+                        (PN53X_REG_CIU_TX_MODE, SYMBOL_TX_FRAMING, 0x00),
+                        (PN53X_REG_CIU_RX_MODE, SYMBOL_RX_FRAMING, 0x00),
+                        (PN53X_REG_CIU_TX_AUTO, SYMBOL_FORCE_100_ASK, 0x40),
+                    ])?;
+                }
+                return Ok(());
+            }
+            Property::ForceIso14443B => {
+                if enable {
+                    self.update_register_masks(&[
+                        (PN53X_REG_CIU_TX_MODE, SYMBOL_TX_FRAMING, 0x03),
+                        (PN53X_REG_CIU_RX_MODE, SYMBOL_RX_FRAMING, 0x03),
+                    ])?;
+                }
+                return Ok(());
+            }
+            Property::ForceSpeed106 => {
+                if enable {
+                    self.update_register_masks(&[
+                        (PN53X_REG_CIU_TX_MODE, SYMBOL_TX_SPEED, 0x00),
+                        (PN53X_REG_CIU_RX_MODE, SYMBOL_RX_SPEED, 0x00),
+                    ])?;
+                }
+                return Ok(());
+            }
             Property::TimeoutCommand | Property::TimeoutAtr | Property::TimeoutCom => {
                 return Err(Error::InvalidArgument("property"));
             }
