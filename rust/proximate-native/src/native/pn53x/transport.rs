@@ -35,7 +35,7 @@ use super::{
     PN53X_STATUS_OVHEAT, PN53X_STATUS_PARITY, PN53X_STATUS_RFPROTO, PN53X_STATUS_RFTIMEOUT,
     PN53X_STATUS_SECNOTSUPP, PN53X_STATUS_SMALLBUF, PN53X_STATUS_TGREL, PN53X_STATUS_TIMEOUT,
 };
-use proximate_driver::{CommandAbortHandle, Error, TimerCycles};
+use proximate_driver::{CommandAbortHandle, Error, OperationTimeout, TimerCycles};
 
 pub(super) struct BitTransceiveRequest<'tx, 'rx, 'parity> {
     pub(super) operation: &'static str,
@@ -45,7 +45,7 @@ pub(super) struct BitTransceiveRequest<'tx, 'rx, 'parity> {
     pub(super) tx_parity: Option<&'parity [u8]>,
     pub(super) rx: &'rx mut [u8],
     pub(super) rx_parity: Option<&'parity mut [u8]>,
-    pub(super) timeout_ms: i32,
+    pub(super) timeout: OperationTimeout,
 }
 
 pub(super) struct TimedBitTransceiveRequest<'tx, 'rx, 'tx_parity, 'rx_parity> {
@@ -97,8 +97,8 @@ pub(super) fn status_code(error: &Error) -> i32 {
 }
 
 pub(crate) trait Pn53xTransport {
-    fn send(&mut self, payload: &[u8], timeout_ms: i32) -> Result<(), Error>;
-    fn receive(&mut self, buffer: &mut [u8], timeout_ms: i32) -> Result<usize, Error>;
+    fn send(&mut self, payload: &[u8], timeout: OperationTimeout) -> Result<(), Error>;
+    fn receive(&mut self, buffer: &mut [u8], timeout: OperationTimeout) -> Result<usize, Error>;
     fn abort_command(&mut self) -> Result<(), Error>;
 
     fn command_abort_handle(&self) -> Option<CommandAbortHandle> {

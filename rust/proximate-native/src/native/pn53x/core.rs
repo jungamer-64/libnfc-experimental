@@ -36,9 +36,9 @@ pub(crate) struct Pn53xCore {
     pub(super) last_status_byte: u8,
     pub(super) tx_bits: u8,
     pub(super) timer_prescaler: u16,
-    pub(super) timeout_command_ms: i32,
-    pub(super) timeout_atr_ms: i32,
-    pub(super) timeout_communication_ms: i32,
+    pub(super) command_timeout: OperationTimeout,
+    pub(super) atr_timeout: OperationTimeout,
+    pub(super) communication_timeout: OperationTimeout,
     pub(super) properties: PropertyState,
     pub(super) parameters: u8,
     pub(super) current_target: Option<Target>,
@@ -55,9 +55,12 @@ impl Default for Pn53xCore {
             last_status_byte: 0,
             tx_bits: 0,
             timer_prescaler: 0,
-            timeout_command_ms: 500,
-            timeout_atr_ms: 103,
-            timeout_communication_ms: 52,
+            command_timeout: OperationTimeout::try_milliseconds(500)
+                .expect("default command timeout is representable"),
+            atr_timeout: OperationTimeout::try_milliseconds(103)
+                .expect("default ATR timeout is representable"),
+            communication_timeout: OperationTimeout::try_milliseconds(52)
+                .expect("default communication timeout is representable"),
             properties: PropertyState::default(),
             parameters: 0,
             current_target: None,
@@ -71,18 +74,18 @@ impl Pn53xCore {
         transport: &mut T,
         command: u8,
         payload: &[u8],
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<Vec<u8>, Error> {
         let mut command_payload = Vec::with_capacity(payload.len() + 1);
         command_payload.push(command);
         command_payload.extend_from_slice(payload);
 
         let frame = build_frame(&command_payload)?;
-        transport.send(&frame, timeout_ms)?;
+        transport.send(&frame, timeout)?;
         self.last_command = Some(command);
 
         let mut ack = [0u8; PN53X_ACK_FRAME.len()];
-        let ack_len = match transport.receive(&mut ack, timeout_ms) {
+        let ack_len = match transport.receive(&mut ack, timeout) {
             Ok(length) => length,
             Err(error @ Error::Aborted(_)) | Err(error @ Error::RecoveryFailed { .. }) => {
                 return Err(error);
@@ -94,7 +97,7 @@ impl Pn53xCore {
         }
 
         let mut response = [0u8; PN532_BUFFER_LEN];
-        let response_len = match transport.receive(&mut response, timeout_ms) {
+        let response_len = match transport.receive(&mut response, timeout) {
             Ok(length) => length,
             Err(error @ Error::Aborted(_)) | Err(error @ Error::RecoveryFailed { .. }) => {
                 return Err(error);
@@ -120,7 +123,7 @@ impl Pn53xCore {
         &mut self,
         transport: &mut T,
         registers: &[u16],
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<Vec<u8>, Error> {
         let mut command = Vec::with_capacity(registers.len() * 2);
         for register in registers {
@@ -128,7 +131,7 @@ impl Pn53xCore {
             command.push(*register as u8);
         }
         let response =
-            self.exchange_prepared_command(transport, PN53X_READ_REGISTER, &command, timeout_ms)?;
+            self.exchange_prepared_command(transport, PN53X_READ_REGISTER, &command, timeout)?;
         let values = if self.chip_type() == Pn53xType::Pn533 {
             let (status, data) = split_status_response(PN53X_READ_REGISTER, &response)?;
             self.last_status_byte = status;
@@ -150,10 +153,10 @@ impl Pn53xCore {
         &mut self,
         transport: &mut T,
         updates: &[(u16, u8, u8)],
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<(), Error> {
         let registers: Vec<u16> = updates.iter().map(|(register, _, _)| *register).collect();
-        let current = self.read_registers_prepared(transport, &registers, timeout_ms)?;
+        let current = self.read_registers_prepared(transport, &registers, timeout)?;
         let writes: Vec<(u16, u8)> = updates
             .iter()
             .zip(current)
@@ -173,14 +176,14 @@ impl Pn53xCore {
             command.push(value);
         }
         let _ =
-            self.exchange_prepared_command(transport, PN53X_WRITE_REGISTER, &command, timeout_ms)?;
+            self.exchange_prepared_command(transport, PN53X_WRITE_REGISTER, &command, timeout)?;
         Ok(())
     }
 
     fn reset_frame_settings_prepared<T: Pn53xTransport>(
         &mut self,
         transport: &mut T,
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<(), Error> {
         self.apply_register_masks_prepared(
             transport,
@@ -199,7 +202,7 @@ impl Pn53xCore {
                 (PN53X_REG_CIU_STATUS2, SYMBOL_MF_CRYPTO1_ON, 0x00),
                 (PN53X_REG_CIU_BIT_FRAMING, SYMBOL_TX_LAST_BITS, 0x00),
             ],
-            timeout_ms,
+            timeout,
         )?;
         self.tx_bits = 0;
         self.properties.handle_crc = true;
@@ -212,7 +215,7 @@ impl Pn53xCore {
     fn restore_protocol_defaults_prepared<T: Pn53xTransport>(
         &mut self,
         transport: &mut T,
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<(), Error> {
         self.apply_register_masks_prepared(
             transport,
@@ -240,19 +243,19 @@ impl Pn53xCore {
                 (PN53X_REG_CIU_STATUS2, SYMBOL_MF_CRYPTO1_ON, 0x00),
                 (PN53X_REG_CIU_BIT_FRAMING, SYMBOL_TX_LAST_BITS, 0x00),
             ],
-            timeout_ms,
+            timeout,
         )?;
         let _ = self.exchange_prepared_command(
             transport,
             PN53X_RF_CONFIGURATION,
             &[RFCI_FIELD, 0x01],
-            timeout_ms,
+            timeout,
         )?;
         let _ = self.exchange_prepared_command(
             transport,
             PN53X_RF_CONFIGURATION,
             &[RFCI_RETRY_SELECT, 0x00, 0x01, 0x02],
-            timeout_ms,
+            timeout,
         )?;
         self.tx_bits = 0;
         self.properties = PropertyState::default();
@@ -262,7 +265,7 @@ impl Pn53xCore {
     fn recover<T: Pn53xTransport>(
         &mut self,
         transport: &mut T,
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<(), Error> {
         let Some(operation) = self.protocol_state.recovery_cause().cloned() else {
             return Ok(());
@@ -274,17 +277,17 @@ impl Pn53xCore {
                 transport,
                 PN53X_GET_FIRMWARE_VERSION,
                 &[],
-                timeout_ms,
+                timeout,
             )?;
             self.capabilities = Some(ChipCapabilities::from_firmware_response(&payload)?);
             let _ = self.exchange_prepared_command(
                 transport,
                 PN53X_SET_PARAMETERS,
                 &[PARAM_AUTO_ATR_RES | PARAM_AUTO_RATS],
-                timeout_ms,
+                timeout,
             )?;
             self.parameters = PARAM_AUTO_ATR_RES | PARAM_AUTO_RATS;
-            self.restore_protocol_defaults_prepared(transport, timeout_ms)?;
+            self.restore_protocol_defaults_prepared(transport, timeout)?;
             self.current_target = None;
             self.operating_mode = Pn53xOperatingMode::Idle;
             self.protocol_state = Pn53xProtocolState::Ready;
@@ -300,13 +303,13 @@ impl Pn53xCore {
         &mut self,
         profile: Pn53xProfile,
         transport: &mut T,
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<(), Error> {
         if matches!(
             self.protocol_state,
             Pn53xProtocolState::NeedsReinitialization { .. }
         ) {
-            return self.recover(transport, timeout_ms);
+            return self.recover(transport, timeout);
         }
         if self.power_mode == Pn53xPowerMode::Normal {
             return Ok(());
@@ -329,7 +332,7 @@ impl Pn53xCore {
                 transport,
                 PN532_SAM_CONFIGURATION,
                 &payload,
-                timeout_ms,
+                timeout,
             )?;
         }
 
@@ -340,10 +343,10 @@ impl Pn53xCore {
         &mut self,
         profile: Pn53xProfile,
         transport: &mut T,
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<(), Error> {
-        self.ensure_ready(profile, transport, timeout_ms)?;
-        self.reset_frame_settings_prepared(transport, timeout_ms)
+        self.ensure_ready(profile, transport, timeout)?;
+        self.reset_frame_settings_prepared(transport, timeout)
     }
 
     pub(crate) fn chip_type(&self) -> Pn53xType {
@@ -398,25 +401,20 @@ impl Pn53xCore {
         transport: &mut T,
         command: u8,
         payload: &[u8],
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<Vec<u8>, Error> {
-        self.ensure_ready(profile, transport, timeout_ms)?;
-        self.exchange_prepared_command(transport, command, payload, timeout_ms)
+        self.ensure_ready(profile, transport, timeout)?;
+        self.exchange_prepared_command(transport, command, payload, timeout)
     }
 
     pub(crate) fn get_firmware_version<T: Pn53xTransport>(
         &mut self,
         profile: Pn53xProfile,
         transport: &mut T,
-        timeout_ms: i32,
+        timeout: OperationTimeout,
     ) -> Result<Pn53xFirmwareVersion, Error> {
-        let payload = self.exchange_command(
-            profile,
-            transport,
-            PN53X_GET_FIRMWARE_VERSION,
-            &[],
-            timeout_ms,
-        )?;
+        let payload =
+            self.exchange_command(profile, transport, PN53X_GET_FIRMWARE_VERSION, &[], timeout)?;
         let capabilities = ChipCapabilities::from_firmware_response(&payload)?;
         let firmware = capabilities.firmware().clone();
         self.last_status_byte = 0;
