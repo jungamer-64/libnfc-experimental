@@ -359,9 +359,6 @@ pub(super) struct PropertyState {
     pub(super) accept_multiple_frames: bool,
     pub(super) auto_iso14443_4: bool,
     pub(super) easy_framing: bool,
-    pub(super) force_iso14443_a: bool,
-    pub(super) force_iso14443_b: bool,
-    pub(super) force_speed_106: bool,
 }
 
 impl Default for PropertyState {
@@ -376,9 +373,6 @@ impl Default for PropertyState {
             accept_multiple_frames: false,
             auto_iso14443_4: true,
             easy_framing: true,
-            force_iso14443_a: false,
-            force_iso14443_b: false,
-            force_speed_106: false,
         }
     }
 }
@@ -395,9 +389,6 @@ impl PropertyState {
             Property::AcceptMultipleFrames => self.accept_multiple_frames,
             Property::AutoIso14443_4 => self.auto_iso14443_4,
             Property::EasyFraming => self.easy_framing,
-            Property::ForceIso14443A => self.force_iso14443_a,
-            Property::ForceIso14443B => self.force_iso14443_b,
-            Property::ForceSpeed106 => self.force_speed_106,
             Property::TimeoutCommand | Property::TimeoutAtr | Property::TimeoutCom => return None,
         })
     }
@@ -413,9 +404,6 @@ impl PropertyState {
             Property::AcceptMultipleFrames => self.accept_multiple_frames = value,
             Property::AutoIso14443_4 => self.auto_iso14443_4 = value,
             Property::EasyFraming => self.easy_framing = value,
-            Property::ForceIso14443A => self.force_iso14443_a = value,
-            Property::ForceIso14443B => self.force_iso14443_b = value,
-            Property::ForceSpeed106 => self.force_speed_106 = value,
             Property::TimeoutCommand | Property::TimeoutAtr | Property::TimeoutCom => {
                 return Err(Error::InvalidArgument("property"));
             }
