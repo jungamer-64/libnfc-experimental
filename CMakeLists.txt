@@ -145,7 +145,7 @@ if(WIN32)
 endif()
 set(RUST_LIB_PATH "${RUST_TARGET_PROFILE_DIR}/${RUST_LIB_FILENAME}" CACHE INTERNAL "Path to Rust libnfc implementation")
 
-set(RUST_CARGO_FEATURE_LIST external-drivers)
+set(RUST_CARGO_FEATURE_LIST)
 if(LIBNFC_CONFFILES_MODE)
   list(APPEND RUST_CARGO_FEATURE_LIST config-files)
 endif()

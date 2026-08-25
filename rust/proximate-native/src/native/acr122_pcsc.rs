@@ -528,8 +528,9 @@ mod tests {
         let connstring =
             ConnectionString::new("acr122_pcsc:ACS ACR122U PICC Interface 00 00").unwrap();
 
-        let mut device =
-            proximate_driver::Device::from_backend(driver.open(&context, &connstring).unwrap());
+        let mut registry = proximate_driver::DriverRegistry::new();
+        registry.register_driver(Box::new(driver));
+        let mut device = registry.open(&context, Some(&connstring)).unwrap();
         let target = device
             .passive_scan_ops()
             .unwrap()
@@ -626,8 +627,9 @@ mod tests {
         let connstring =
             ConnectionString::new("acr122_pcsc:ACS ACR122U PICC Interface 00 00").unwrap();
 
-        let mut device =
-            proximate_driver::Device::from_backend(driver.open(&context, &connstring).unwrap());
+        let mut registry = proximate_driver::DriverRegistry::new();
+        registry.register_driver(Box::new(driver));
+        let mut device = registry.open(&context, Some(&connstring)).unwrap();
         device
             .property_ops()
             .unwrap()

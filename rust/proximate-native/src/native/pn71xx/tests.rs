@@ -95,8 +95,9 @@ fn make_tag(technology: u32, uid: &[u8], protocol: u8) -> TagInfo {
 }
 
 fn open_device(connstring: &ConnectionString) -> proximate_driver::Device {
-    let driver = Pn71xxDriver::new();
-    proximate_driver::Device::from_backend(driver.open(&Context::new(), connstring).unwrap())
+    let mut registry = proximate_driver::DriverRegistry::new();
+    registry.register_driver(Box::new(Pn71xxDriver::new()));
+    registry.open(&Context::new(), Some(connstring)).unwrap()
 }
 
 #[test]

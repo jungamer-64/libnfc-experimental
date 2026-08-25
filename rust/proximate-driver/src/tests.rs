@@ -600,7 +600,15 @@ fn initiator_init_applies_expected_property_sequence() {
 
 #[test]
 fn configured_timeout_rejects_operation_default_before_backend_dispatch() {
-    let mut device = Device::from_backend(Box::new(FakeDevice::new("pn53x_usb")));
+    let connstring = ConnectionString::new("pn53x_usb:test").unwrap();
+    let mut registry = DriverRegistry::new();
+    registry.register_driver(Box::new(FakeDriver {
+        name: "pn53x_usb".into(),
+        scan_type: ScanType::NotIntrusive,
+        scan_results: vec![connstring.clone()],
+        open_result: Ok("fake".into()),
+    }));
+    let mut device = registry.open(&Context::new(), Some(&connstring)).unwrap();
     assert_eq!(
         device
             .property_ops()

@@ -97,6 +97,16 @@ impl FakePcscBackend {
         self
     }
 
+    pub(super) fn with_shared_reader(
+        mut self,
+        reader: &str,
+        state: Arc<Mutex<FakeCardState>>,
+    ) -> Self {
+        self.readers.push(reader.to_string());
+        self.cards.insert(reader.to_string(), state);
+        self
+    }
+
     pub(super) fn with_list_error(mut self, status: i32) -> Self {
         self.list_error = Some(status);
         self

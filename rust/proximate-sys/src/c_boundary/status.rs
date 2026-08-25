@@ -1,6 +1,5 @@
-use crate::c_boundary::raw::{optional_mut, optional_ref};
 use crate::ffi_strings::device_error_message_cstr;
-use crate::lifecycle::nfc_device;
+use crate::lifecycle::{device_ref, nfc_device};
 use libc::{c_char, c_int};
 use proximate_driver as rt;
 
@@ -41,14 +40,14 @@ pub(crate) fn error_to_status(error: &rt::Error) -> c_int {
 }
 
 pub(crate) fn set_device_last_error(device: *mut nfc_device, value: c_int) {
-    if let Some(device) = unsafe { optional_mut(device) } {
-        device.last_error = value;
+    if let Some(device) = unsafe { device_ref(device) } {
+        device.set_last_error(value);
     }
 }
 
 pub(crate) unsafe fn device_last_error(device: *const nfc_device) -> c_int {
-    unsafe { optional_ref(device) }
-        .map(|device| device.last_error)
+    unsafe { device_ref(device) }
+        .map(|device| device.last_error())
         .unwrap_or(0)
 }
 
@@ -70,6 +69,23 @@ pub(crate) fn soft_error_status(device: *mut nfc_device) -> c_int {
     NFC_ESOFT
 }
 
+pub(crate) fn bounded_count_status(
+    device: *mut nfc_device,
+    count: usize,
+    capacity: usize,
+) -> c_int {
+    match c_int::try_from(count) {
+        Ok(count) if count as usize <= capacity => {
+            reset_device_last_error(device);
+            count
+        }
+        _ => {
+            set_device_last_error(device, NFC_EOVFLOW);
+            NFC_EOVFLOW
+        }
+    }
+}
+
 pub(crate) fn runtime_result_status(
     device: *mut nfc_device,
     error: &rt::Error,
@@ -84,6 +100,7 @@ pub(crate) fn runtime_result_status(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn unsupported_driver_operation(device: *mut nfc_device) -> c_int {
     set_device_last_error(device, NFC_EDEVNOTSUPP);
     0
@@ -152,20 +169,29 @@ mod tests {
 
     #[test]
     fn status_helpers_update_last_error() {
-        let mut device = unsafe { std::mem::zeroed::<nfc_device>() };
-        set_device_last_error(&mut device, -7);
-        assert_eq!(unsafe { device_last_error(&device) }, -7);
+        let (device, _state) = crate::test_support::fake_abi_device();
+        set_device_last_error(device, -7);
+        assert_eq!(unsafe { device_last_error(device) }, -7);
 
-        reset_device_last_error(&mut device);
-        assert_eq!(unsafe { device_last_error(&device) }, 0);
+        reset_device_last_error(device);
+        assert_eq!(unsafe { device_last_error(device) }, 0);
 
-        assert_eq!(invalid_argument_status(&mut device), NFC_EINVARG);
-        assert_eq!(device.last_error, NFC_EINVARG);
+        assert_eq!(invalid_argument_status(device), NFC_EINVARG);
+        assert_eq!(unsafe { device_last_error(device) }, NFC_EINVARG);
 
-        assert_eq!(soft_error_status(&mut device), NFC_ESOFT);
-        assert_eq!(device.last_error, NFC_ESOFT);
+        assert_eq!(soft_error_status(device), NFC_ESOFT);
+        assert_eq!(unsafe { device_last_error(device) }, NFC_ESOFT);
 
-        assert_eq!(unsupported_driver_operation(&mut device), 0);
-        assert_eq!(device.last_error, NFC_EDEVNOTSUPP);
+        assert_eq!(bounded_count_status(device, 4, 4), 4);
+        assert_eq!(unsafe { device_last_error(device) }, 0);
+        assert_eq!(
+            bounded_count_status(device, usize::MAX, usize::MAX),
+            NFC_EOVFLOW
+        );
+        assert_eq!(unsafe { device_last_error(device) }, NFC_EOVFLOW);
+
+        assert_eq!(unsupported_driver_operation(device), 0);
+        assert_eq!(unsafe { device_last_error(device) }, NFC_EDEVNOTSUPP);
+        unsafe { crate::lifecycle::drop_device(device) };
     }
 }

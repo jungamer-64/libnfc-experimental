@@ -5,7 +5,12 @@
 // Shared low-level helpers for Rust FFI code.
 
 use libc::c_char;
-use std::{ptr, slice};
+use std::{mem, ptr, slice};
+
+pub(crate) const fn raw_slice_len_is_valid<T>(len: usize) -> bool {
+    let element_size = mem::size_of::<T>();
+    element_size == 0 || len <= (isize::MAX as usize) / element_size
+}
 
 pub(crate) unsafe fn optional_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
     unsafe { ptr.as_ref() }
@@ -20,8 +25,12 @@ pub(crate) fn bounded_strlen(ptr: *const c_char, max: usize) -> usize {
         return 0;
     }
 
-    let bytes = unsafe { slice::from_raw_parts(ptr.cast::<u8>(), max) };
-    bytes.iter().position(|&byte| byte == 0).unwrap_or(max)
+    for index in 0..max {
+        if unsafe { ptr.add(index).read() } == 0 {
+            return index;
+        }
+    }
+    max
 }
 
 pub(crate) fn c_string_ptr_to_string(ptr: *const c_char, max_len: usize) -> String {
@@ -53,30 +62,6 @@ pub(crate) unsafe fn copy_bytes_to_c_buffer(dst: *mut c_char, dst_size: usize, s
             ptr::copy_nonoverlapping(src.as_ptr().cast::<c_char>(), dst, src.len());
         }
         *dst.add(src.len()) = 0;
-    }
-
-    true
-}
-
-pub(crate) unsafe fn copy_c_string_to_c_buffer(
-    dst: *mut c_char,
-    dst_size: usize,
-    src: *const c_char,
-) -> bool {
-    if dst.is_null() || src.is_null() {
-        return false;
-    }
-
-    let length = bounded_strlen(src, dst_size);
-    if length >= dst_size {
-        return false;
-    }
-
-    unsafe {
-        if length > 0 {
-            ptr::copy_nonoverlapping(src, dst, length);
-        }
-        *dst.add(length) = 0;
     }
 
     true

@@ -1,99 +1,112 @@
 use crate::c_abi::types::{nfc_baud_rate, nfc_mode, nfc_modulation_type};
-use crate::c_boundary::raw::{
-    bounded_strlen, c_string_ptr_to_string, copy_bytes_to_c_buffer, optional_ref,
-};
+use crate::c_boundary::raw::{bounded_strlen, c_string_ptr_to_string, copy_bytes_to_c_buffer};
 use crate::c_boundary::status::{
-    NFC_ESOFT, device_last_error, error_message_ptr, invalid_argument_status, runtime_result_status,
+    NFC_ESOFT, device_last_error, error_message_ptr, invalid_argument_status,
+    reset_device_last_error, runtime_result_status,
 };
-use crate::domain_bridge::c_driver::is_rust_shim_device;
 use crate::domain_bridge::decode::modulation_type_from_c;
-use crate::domain_bridge::encode::{CStringOut, SupportedBaudRatesOut, SupportedModulationsOut};
-use crate::ffi_catch_unwind_int;
-use crate::ffi_catch_unwind_ptr;
-use crate::ffi_catch_unwind_void;
-use crate::initiator::driver_dispatch::{
-    get_information_about_impl, get_supported_baud_rate_impl, get_supported_modulation_impl,
-};
+use crate::domain_bridge::encode::{CStringOut, baud_rate_to_c, modulation_type_to_c};
 use crate::initiator::runtime;
-use crate::lifecycle::nfc_device;
+use crate::lifecycle::{device_ref, nfc_device};
+use crate::{ffi_catch_unwind_int, ffi_catch_unwind_ptr, ffi_catch_unwind_void};
 use libc::{c_char, c_int, size_t};
 use proximate_driver as rt;
 use std::io::{self, Write};
-use std::ptr;
-use std::slice;
+use std::{ptr, slice};
 
 const NULL_ERROR_PREFIX: *const c_char = b"(null)\0" as *const u8 as *const c_char;
 
-fn mode_from_c(mode: nfc_mode) -> rt::Mode {
+fn mode_from_c(mode: nfc_mode) -> Result<rt::Mode, rt::Error> {
     match mode {
-        nfc_mode::N_INITIATOR => rt::Mode::Initiator,
-        nfc_mode::N_TARGET => rt::Mode::Target,
+        nfc_mode::N_INITIATOR => Ok(rt::Mode::Initiator),
+        nfc_mode::N_TARGET => Ok(rt::Mode::Target),
+        _ => Err(rt::Error::InvalidArgument("mode")),
     }
 }
 
-fn get_supported_modulation_direct_impl(
+fn get_supported_modulation_impl(
     device: *mut nfc_device,
     mode: nfc_mode,
     supported: *mut *const nfc_modulation_type,
 ) -> c_int {
-    let supported = match unsafe { SupportedModulationsOut::from_raw(device, supported) } {
-        Ok(supported) => supported,
-        Err(status) => return status,
+    let Some(abi) = (unsafe { device_ref(device) }) else {
+        return invalid_argument_status(device);
     };
-
-    match runtime::supported_modulations(device, mode_from_c(mode)) {
-        Ok(values) => supported.write_back(values),
+    if supported.is_null() {
+        return invalid_argument_status(device);
+    }
+    let mode = match mode_from_c(mode) {
+        Ok(mode) => mode,
+        Err(_) => return invalid_argument_status(device),
+    };
+    let values = match runtime::supported_modulations(device, mode) {
+        Ok(values) => values,
+        Err(error) => return runtime_result_status(device, &error, true),
+    };
+    let mut encoded: Vec<_> = values.into_iter().map(modulation_type_to_c).collect();
+    encoded.push(nfc_modulation_type::NMT_UNDEFINED);
+    match abi.cache_modulations(mode, encoded.into_boxed_slice()) {
+        Ok(pointer) => {
+            unsafe { *supported = pointer };
+            reset_device_last_error(device);
+            0
+        }
         Err(error) => runtime_result_status(device, &error, true),
     }
 }
 
-fn get_supported_baud_rate_direct_impl(
+fn get_supported_baud_rate_impl(
     device: *mut nfc_device,
     mode: nfc_mode,
     modulation_type: nfc_modulation_type,
     supported: *mut *const nfc_baud_rate,
 ) -> c_int {
-    let supported = match unsafe { SupportedBaudRatesOut::from_raw(device, supported) } {
-        Ok(supported) => supported,
-        Err(status) => return status,
+    let Some(abi) = (unsafe { device_ref(device) }) else {
+        return invalid_argument_status(device);
     };
-
+    if supported.is_null() {
+        return invalid_argument_status(device);
+    }
     let modulation_type = match modulation_type_from_c(modulation_type) {
         Ok(value) => value,
         Err(_) => return invalid_argument_status(device),
     };
-    match runtime::supported_baud_rates(device, mode_from_c(mode), modulation_type) {
-        Ok(values) => supported.write_back(values),
-        Err(error) => runtime_result_status(device, &error, true),
-    }
-}
-
-fn get_information_about_direct_impl(device: *mut nfc_device, buf: *mut *mut c_char) -> c_int {
-    let output = match unsafe { CStringOut::from_raw(device, buf) } {
-        Ok(output) => output,
-        Err(status) => return status,
+    let mode = match mode_from_c(mode) {
+        Ok(mode) => mode,
+        Err(_) => return invalid_argument_status(device),
     };
-
-    match runtime::information_about(device) {
-        Ok(value) => output.write_back(device, &value),
+    let values = match runtime::supported_baud_rates(device, mode, modulation_type) {
+        Ok(values) => values,
+        Err(error) => return runtime_result_status(device, &error, true),
+    };
+    let mut encoded: Vec<_> = values.into_iter().map(baud_rate_to_c).collect();
+    encoded.push(nfc_baud_rate::NBR_UNDEFINED);
+    match abi.cache_baud_rates(mode, modulation_type, encoded.into_boxed_slice()) {
+        Ok(pointer) => {
+            unsafe { *supported = pointer };
+            reset_device_last_error(device);
+            0
+        }
         Err(error) => runtime_result_status(device, &error, true),
     }
 }
 
 pub(crate) unsafe fn nfc_device_get_name(device: *mut nfc_device) -> *const c_char {
     ffi_catch_unwind_ptr("nfc_device_get_name", || unsafe {
-        optional_ref(device)
-            .map(|device| device.name.as_ptr().cast_mut())
+        device_ref(device)
+            .map(|device| device.name_ptr().cast_mut())
             .unwrap_or(ptr::null_mut())
-    }) as *const c_char
+    })
+    .cast_const()
 }
 
 pub(crate) unsafe fn nfc_device_get_connstring(device: *mut nfc_device) -> *const c_char {
     ffi_catch_unwind_ptr("nfc_device_get_connstring", || unsafe {
-        optional_ref(device)
-            .map(|device| device.connstring.as_ptr().cast_mut())
+        device_ref(device)
+            .map(|device| device.connstring_ptr().cast_mut())
             .unwrap_or(ptr::null_mut())
-    }) as *const c_char
+    })
+    .cast_const()
 }
 
 pub(crate) unsafe fn nfc_device_get_supported_modulation(
@@ -101,17 +114,9 @@ pub(crate) unsafe fn nfc_device_get_supported_modulation(
     mode: nfc_mode,
     supported: *mut *const nfc_modulation_type,
 ) -> c_int {
-    ffi_catch_unwind_int(
-        "nfc_device_get_supported_modulation",
-        NFC_ESOFT,
-        || unsafe {
-            if is_rust_shim_device(device) {
-                get_supported_modulation_direct_impl(device, mode, supported)
-            } else {
-                get_supported_modulation_impl(device, mode, supported)
-            }
-        },
-    )
+    ffi_catch_unwind_int("nfc_device_get_supported_modulation", NFC_ESOFT, || {
+        get_supported_modulation_impl(device, mode, supported)
+    })
 }
 
 pub(crate) unsafe fn nfc_device_get_supported_baud_rate(
@@ -119,17 +124,8 @@ pub(crate) unsafe fn nfc_device_get_supported_baud_rate(
     modulation_type: nfc_modulation_type,
     supported: *mut *const nfc_baud_rate,
 ) -> c_int {
-    ffi_catch_unwind_int("nfc_device_get_supported_baud_rate", NFC_ESOFT, || unsafe {
-        if is_rust_shim_device(device) {
-            get_supported_baud_rate_direct_impl(
-                device,
-                nfc_mode::N_INITIATOR,
-                modulation_type,
-                supported,
-            )
-        } else {
-            get_supported_baud_rate_impl(device, nfc_mode::N_INITIATOR, modulation_type, supported)
-        }
+    ffi_catch_unwind_int("nfc_device_get_supported_baud_rate", NFC_ESOFT, || {
+        get_supported_baud_rate_impl(device, nfc_mode::N_INITIATOR, modulation_type, supported)
     })
 }
 
@@ -141,18 +137,7 @@ pub(crate) unsafe fn nfc_device_get_supported_baud_rate_target_mode(
     ffi_catch_unwind_int(
         "nfc_device_get_supported_baud_rate_target_mode",
         NFC_ESOFT,
-        || unsafe {
-            if is_rust_shim_device(device) {
-                get_supported_baud_rate_direct_impl(
-                    device,
-                    nfc_mode::N_TARGET,
-                    modulation_type,
-                    supported,
-                )
-            } else {
-                get_supported_baud_rate_impl(device, nfc_mode::N_TARGET, modulation_type, supported)
-            }
-        },
+        || get_supported_baud_rate_impl(device, nfc_mode::N_TARGET, modulation_type, supported),
     )
 }
 
@@ -160,11 +145,14 @@ pub(crate) unsafe fn nfc_device_get_information_about(
     device: *mut nfc_device,
     buf: *mut *mut c_char,
 ) -> c_int {
-    ffi_catch_unwind_int("nfc_device_get_information_about", NFC_ESOFT, || unsafe {
-        if is_rust_shim_device(device) {
-            get_information_about_direct_impl(device, buf)
-        } else {
-            get_information_about_impl(device, buf)
+    ffi_catch_unwind_int("nfc_device_get_information_about", NFC_ESOFT, || {
+        let output = match unsafe { CStringOut::from_raw(device, buf) } {
+            Ok(output) => output,
+            Err(status) => return status,
+        };
+        match runtime::information_about(device) {
+            Ok(value) => output.write_back(device, &value),
+            Err(error) => runtime_result_status(device, &error, true),
         }
     })
 }
@@ -178,7 +166,8 @@ pub(crate) unsafe fn nfc_device_get_last_error(device: *const nfc_device) -> c_i
 pub(crate) unsafe fn nfc_strerror(device: *const nfc_device) -> *const c_char {
     ffi_catch_unwind_ptr("nfc_strerror", || unsafe {
         error_message_ptr(device_last_error(device)).cast_mut()
-    }) as *const c_char
+    })
+    .cast_const()
 }
 
 pub(crate) unsafe fn nfc_strerror_r(
@@ -190,17 +179,14 @@ pub(crate) unsafe fn nfc_strerror_r(
         if buflen == 0 {
             return 0;
         }
-
         if buf.is_null() {
             return -1;
         }
-
         let message = nfc_strerror(device);
         let max_copy = buflen.saturating_sub(1);
         let message_len = bounded_strlen(message, max_copy.saturating_add(1));
         let copy_len = message_len.min(max_copy);
         let bytes = slice::from_raw_parts(message.cast::<u8>(), copy_len);
-
         if copy_bytes_to_c_buffer(buf, buflen, bytes) {
             0
         } else {
@@ -217,7 +203,7 @@ pub(crate) unsafe fn nfc_perror(device: *const nfc_device, message: *const c_cha
             c_string_ptr_to_string(message, 4096)
         };
         let error = c_string_ptr_to_string(nfc_strerror(device), 128);
-        let rendered = format!("{}: {}\n", prefix, error);
+        let rendered = format!("{prefix}: {error}\n");
         let mut stderr = io::stderr().lock();
         let _ = stderr.write_all(rendered.as_bytes());
         let _ = stderr.flush();

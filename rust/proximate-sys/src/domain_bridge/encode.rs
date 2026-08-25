@@ -5,57 +5,12 @@ use crate::c_abi::types::{
     nfc_modulation_type, nfc_property, nfc_target, nfc_target_info,
 };
 use crate::c_boundary::NFC_BUFSIZE_CONNSTRING;
-use crate::c_boundary::raw::{copy_bytes_to_c_buffer, optional_mut};
-use crate::domain_bridge::c_driver::rust_device_state_mut;
-use crate::lifecycle::{
-    DEVICE_NAME_LENGTH, MAX_USER_DEFINED_DEVICES, nfc_connstring, nfc_context, nfc_device,
-    nfc_user_defined_device,
-};
+use crate::c_boundary::raw::{copy_bytes_to_c_buffer, optional_mut, raw_slice_len_is_valid};
+use crate::lifecycle::{nfc_connstring, nfc_device};
 use crate::release_allocated_ptr;
 use libc::{c_char, c_int, size_t};
 use proximate_driver as rt;
 use std::{ffi::CString, ptr};
-
-pub(crate) fn write_context_to_c(context: &rt::Context, destination: *mut nfc_context) {
-    let Some(destination) = (unsafe { optional_mut(destination) }) else {
-        return;
-    };
-
-    destination.allow_autoscan = context.config.allow_autoscan;
-    destination.allow_intrusive_scan = context.config.allow_intrusive_scan;
-    destination.log_level = context.config.log_level;
-    destination.user_defined_device_count = 0;
-
-    for slot in &mut destination.user_defined_devices {
-        unsafe { ptr::write_bytes(slot as *mut nfc_user_defined_device, 0, 1) };
-    }
-
-    for (index, configured) in context
-        .config
-        .user_defined_devices
-        .iter()
-        .take(MAX_USER_DEFINED_DEVICES)
-        .enumerate()
-    {
-        let slot = &mut destination.user_defined_devices[index];
-        let _ = unsafe {
-            copy_bytes_to_c_buffer(
-                slot.name.as_mut_ptr(),
-                DEVICE_NAME_LENGTH,
-                configured.name.as_bytes(),
-            )
-        };
-        let _ = unsafe {
-            copy_bytes_to_c_buffer(
-                slot.connstring.as_mut_ptr(),
-                NFC_BUFSIZE_CONNSTRING,
-                configured.connstring.as_str().as_bytes(),
-            )
-        };
-        slot.optional = configured.optional;
-        destination.user_defined_device_count += 1;
-    }
-}
 
 pub(crate) fn write_target_to_c(target: &rt::Target, destination: *mut nfc_target) {
     let Some(destination) = (unsafe { optional_mut(destination) }) else {
@@ -283,7 +238,7 @@ impl TargetSliceOut {
         if len == 0 {
             return Ok(Self { raw, len: 0 });
         }
-        if raw.is_null() {
+        if raw.is_null() || !raw_slice_len_is_valid::<nfc_target>(len) {
             return Err(crate::c_boundary::status::invalid_argument_status(device));
         }
         Ok(Self { raw, len })
@@ -361,6 +316,13 @@ impl CStringOut {
     }
 
     pub(crate) fn write_back(&self, device: *mut nfc_device, value: &str) -> c_int {
+        if value.len() > c_int::MAX as usize {
+            return crate::c_boundary::status::bounded_count_status(
+                device,
+                value.len(),
+                c_int::MAX as usize,
+            );
+        }
         let rendered = match CString::new(value) {
             Ok(value) => value,
             Err(_) => return crate::c_boundary::status::soft_error_status(device),
@@ -379,78 +341,11 @@ impl CStringOut {
         unsafe {
             *self.raw = allocation;
         }
-        crate::c_boundary::status::reset_device_last_error(device);
-        rendered.as_bytes().len() as c_int
-    }
-}
-
-pub(crate) struct SupportedModulationsOut {
-    device: *mut nfc_device,
-    raw: *mut *const nfc_modulation_type,
-}
-
-impl SupportedModulationsOut {
-    pub(crate) unsafe fn from_raw(
-        device: *mut nfc_device,
-        raw: *mut *const nfc_modulation_type,
-    ) -> Result<Self, c_int> {
-        if raw.is_null() || unsafe { rust_device_state_mut(device) }.is_none() {
-            return Err(crate::c_boundary::status::invalid_argument_status(device));
-        }
-        Ok(Self { device, raw })
-    }
-
-    pub(crate) fn write_back(&self, values: Vec<rt::ModulationType>) -> c_int {
-        let Some(state) = (unsafe { rust_device_state_mut(self.device) }) else {
-            return crate::c_boundary::status::invalid_argument_status(self.device);
-        };
-        state.supported_modulations.clear();
-        state
-            .supported_modulations
-            .extend(values.into_iter().map(modulation_type_to_c));
-        state
-            .supported_modulations
-            .push(nfc_modulation_type::NMT_UNDEFINED);
-        unsafe {
-            *self.raw = state.supported_modulations.as_ptr();
-        }
-        crate::c_boundary::status::reset_device_last_error(self.device);
-        0
-    }
-}
-
-pub(crate) struct SupportedBaudRatesOut {
-    device: *mut nfc_device,
-    raw: *mut *const nfc_baud_rate,
-}
-
-impl SupportedBaudRatesOut {
-    pub(crate) unsafe fn from_raw(
-        device: *mut nfc_device,
-        raw: *mut *const nfc_baud_rate,
-    ) -> Result<Self, c_int> {
-        if raw.is_null() || unsafe { rust_device_state_mut(device) }.is_none() {
-            return Err(crate::c_boundary::status::invalid_argument_status(device));
-        }
-        Ok(Self { device, raw })
-    }
-
-    pub(crate) fn write_back(&self, values: Vec<rt::BaudRate>) -> c_int {
-        let Some(state) = (unsafe { rust_device_state_mut(self.device) }) else {
-            return crate::c_boundary::status::invalid_argument_status(self.device);
-        };
-        state.supported_baud_rates.clear();
-        state
-            .supported_baud_rates
-            .extend(values.into_iter().map(baud_rate_to_c));
-        state
-            .supported_baud_rates
-            .push(nfc_baud_rate::NBR_UNDEFINED);
-        unsafe {
-            *self.raw = state.supported_baud_rates.as_ptr();
-        }
-        crate::c_boundary::status::reset_device_last_error(self.device);
-        0
+        crate::c_boundary::status::bounded_count_status(
+            device,
+            rendered.as_bytes().len(),
+            c_int::MAX as usize,
+        )
     }
 }
 
@@ -461,7 +356,7 @@ pub(crate) struct ConnstringsOut {
 
 impl ConnstringsOut {
     pub(crate) unsafe fn from_raw(raw: *mut nfc_connstring, len: size_t) -> Option<Self> {
-        if raw.is_null() || len == 0 {
+        if raw.is_null() || len == 0 || !raw_slice_len_is_valid::<nfc_connstring>(len) {
             return None;
         }
         Some(Self { raw, len })
@@ -851,15 +746,21 @@ mod tests {
 
     #[test]
     fn cstring_out_allocates_and_writes_bytes() {
-        let mut device = unsafe { std::mem::zeroed::<nfc_device>() };
-        device.last_error = -7;
+        let (device, _state) = crate::test_support::fake_abi_device();
+        crate::c_boundary::status::set_device_last_error(device, -7);
         let mut raw = ptr::null_mut();
-        let output = unsafe { CStringOut::from_raw(&mut device, ptr::addr_of_mut!(raw)) }.unwrap();
-        let written = output.write_back(&mut device, "hello");
+        let output = unsafe { CStringOut::from_raw(device, ptr::addr_of_mut!(raw)) }.unwrap();
+        let written = output.write_back(device, "hello");
         assert_eq!(written, 5);
-        assert_eq!(device.last_error, 0);
+        assert_eq!(
+            unsafe { crate::c_boundary::status::device_last_error(device) },
+            0
+        );
         assert_eq!(unsafe { CStr::from_ptr(raw) }.to_str().unwrap(), "hello");
-        unsafe { release_allocated_ptr(raw.cast()) };
+        unsafe {
+            release_allocated_ptr(raw.cast());
+            crate::lifecycle::drop_device(device);
+        }
     }
 
     #[test]

@@ -50,11 +50,6 @@ thread_local! {
 }
 
 #[inline]
-pub(crate) fn default_log_level() -> u32 {
-    DEFAULT_LOG_LEVEL
-}
-
-#[inline]
 pub(crate) fn log_init(log_level: u32) {
     #[cfg(not(test))]
     CURRENT_LOG_LEVEL.store(log_level, Ordering::Relaxed);
@@ -162,45 +157,8 @@ pub(crate) unsafe fn log_message_ptrs(
 }
 
 #[cfg(test)]
-fn message_slice(rendered: &[u8]) -> &[u8] {
-    let Some(first_tab) = rendered.iter().position(|byte| *byte == b'\t') else {
-        return trim_trailing_newline(rendered);
-    };
-    let remaining = &rendered[first_tab + 1..];
-    let Some(second_tab_rel) = remaining.iter().position(|byte| *byte == b'\t') else {
-        return trim_trailing_newline(rendered);
-    };
-    let start = first_tab + second_tab_rel + 2;
-    trim_trailing_newline(&rendered[start..])
-}
-
-#[cfg(test)]
-fn trim_trailing_newline(rendered: &[u8]) -> &[u8] {
-    rendered.strip_suffix(b"\n").unwrap_or(rendered)
-}
-
-#[cfg(test)]
 pub(crate) fn test_get_rendered_logs() -> Vec<Vec<u8>> {
     TEST_RENDERED_LOGS.with(|cell| cell.borrow().clone())
-}
-
-#[cfg(test)]
-pub(crate) fn test_get_last_log() -> Option<String> {
-    TEST_RENDERED_LOGS.with(|cell| {
-        cell.borrow()
-            .last()
-            .map(|entry| String::from_utf8_lossy(message_slice(entry)).into_owned())
-    })
-}
-
-#[cfg(test)]
-pub(crate) fn test_get_logs() -> Vec<String> {
-    TEST_RENDERED_LOGS.with(|cell| {
-        cell.borrow()
-            .iter()
-            .map(|entry| String::from_utf8_lossy(message_slice(entry)).into_owned())
-            .collect()
-    })
 }
 
 #[cfg(test)]

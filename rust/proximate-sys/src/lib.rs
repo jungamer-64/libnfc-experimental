@@ -1,3 +1,10 @@
+//! libnfc 1.8 C ABI boundary backed by Rust domain and driver types.
+//!
+//! Context and device pointers are opaque identities for Rust-owned
+//! allocations. Unsafe pointer interpretation, integer-carrier validation,
+//! legacy external-driver projections, and C allocation ownership stay in
+//! this crate; opened devices use one safe `proximate_driver::Device` path.
+
 /// cbindgen:ignore
 mod c_abi;
 /// cbindgen:ignore
@@ -13,6 +20,8 @@ mod initiator;
 mod lifecycle;
 /// cbindgen:ignore
 mod logger;
+#[cfg(test)]
+mod test_support;
 pub use c_abi::exports::*;
 #[cfg(cbindgen)]
 use c_abi::private as _;
@@ -29,8 +38,3 @@ pub(crate) use c_boundary::{
     set_last_error_message,
 };
 pub use lifecycle::{nfc_connstring, nfc_context, nfc_device, nfc_driver};
-#[cfg(test)]
-pub(crate) use logger::{
-    test_clear_rendered_logs as test_clear_last_log, test_get_last_log, test_get_logs,
-    test_reset_log_level,
-};

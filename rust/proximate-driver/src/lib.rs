@@ -21,7 +21,6 @@ pub mod diagnostics {
 }
 #[doc(hidden)]
 pub use context::set_test_conf_root;
-#[doc(hidden)]
 pub use device::DeviceHandle;
 pub use device::{
     CommandAbort, CommandAbortHandle, DepOps, Device, DeviceMeta, InfoBackend, InfoOps,

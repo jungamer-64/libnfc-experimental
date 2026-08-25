@@ -1,99 +1,68 @@
-use crate::c_boundary::status::{NFC_EINVARG, NFC_ESOFT};
-use crate::domain_bridge::c_driver::ExternalDriver;
+use super::external_driver::{DriverSnapshot, ExternalDriver};
+use crate::c_boundary::status::NFC_ESOFT;
 use crate::lifecycle::nfc_driver;
 use libc::c_int;
 use proximate_driver as rt;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
-#[derive(Clone, Copy)]
-pub(crate) struct DriverHandle(pub(crate) *const nfc_driver);
-
-unsafe impl Send for DriverHandle {}
-
-pub(crate) struct RegisteredDriverSet<T> {
-    drivers: Vec<T>,
+#[derive(Default)]
+struct RegisteredDrivers {
+    entries: Vec<Arc<DriverSnapshot>>,
 }
 
-impl<T> Default for RegisteredDriverSet<T> {
-    fn default() -> Self {
-        Self {
-            drivers: Vec::new(),
-        }
-    }
+static DRIVER_REGISTRY: OnceLock<Mutex<RegisteredDrivers>> = OnceLock::new();
+
+fn registry() -> &'static Mutex<RegisteredDrivers> {
+    DRIVER_REGISTRY.get_or_init(|| Mutex::new(RegisteredDrivers::default()))
 }
 
-impl<T> RegisteredDriverSet<T> {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
-    pub(crate) fn register(&mut self, driver: T) -> Result<(), std::collections::TryReserveError> {
-        self.drivers.try_reserve(1)?;
-        self.drivers.push(driver);
-        Ok(())
-    }
-
-    pub(crate) fn clear(&mut self) {
-        self.drivers.clear();
-    }
-}
-
-impl<T: Clone> RegisteredDriverSet<T> {
-    pub(crate) fn snapshot(&self) -> Vec<T> {
-        self.drivers.clone()
-    }
-}
-
-static DRIVER_REGISTRY: OnceLock<Mutex<RegisteredDriverSet<DriverHandle>>> = OnceLock::new();
-
-fn driver_registry() -> &'static Mutex<RegisteredDriverSet<DriverHandle>> {
-    DRIVER_REGISTRY.get_or_init(|| Mutex::new(RegisteredDriverSet::new()))
-}
-
-fn with_registry<R>(f: impl FnOnce(&mut RegisteredDriverSet<DriverHandle>) -> R) -> R {
-    let mut registry = driver_registry()
+fn with_registry<R>(operation: impl FnOnce(&mut RegisteredDrivers) -> R) -> Result<R, ()> {
+    registry()
         .lock()
-        .expect("driver registry mutex should not be poisoned");
-    f(&mut registry)
+        .map(|mut registry| operation(&mut registry))
+        .map_err(|_| ())
 }
 
 pub(crate) unsafe fn push_driver(driver: *const nfc_driver) -> c_int {
-    if driver.is_null() {
-        return NFC_EINVARG;
+    let snapshot = match unsafe { DriverSnapshot::from_raw(driver) } {
+        Ok(snapshot) => Arc::new(snapshot),
+        Err(status) => return status,
+    };
+    match with_registry(|registry| {
+        registry.entries.try_reserve(1)?;
+        registry.entries.push(snapshot);
+        Ok::<(), std::collections::TryReserveError>(())
+    }) {
+        Ok(Ok(())) => 0,
+        Ok(Err(_)) | Err(()) => NFC_ESOFT,
     }
-
-    with_registry(|registry| {
-        if registry.register(DriverHandle(driver)).is_err() {
-            return NFC_ESOFT;
-        }
-        0
-    })
 }
 
 pub(crate) fn register_external_drivers(registry: &mut rt::DriverRegistry) {
-    for handle in registry_snapshot() {
-        registry.register_driver(Box::new(ExternalDriver::new(handle.0)));
+    let snapshots = with_registry(|registered| registered.entries.clone()).unwrap_or_default();
+    for snapshot in snapshots {
+        registry.register_driver(Box::new(ExternalDriver::new(snapshot)));
     }
 }
 
-pub(crate) fn registry_snapshot() -> Vec<DriverHandle> {
-    with_registry(|registry| registry.snapshot())
+#[cfg(test)]
+pub(crate) fn registry_snapshot() -> Vec<Arc<DriverSnapshot>> {
+    with_registry(|registered| registered.entries.clone()).unwrap_or_default()
 }
 
 pub(crate) fn clear_registry() {
-    with_registry(|registry| registry.clear());
+    let _ = with_registry(|registered| registered.entries.clear());
 }
 
 #[cfg(test)]
 mod tests {
-    use super::RegisteredDriverSet;
+    use super::*;
 
     #[test]
-    fn snapshot_preserves_insertion_order() {
-        let mut registry = RegisteredDriverSet::new();
-        registry.register("alpha").unwrap();
-        registry.register("beta").unwrap();
-
-        assert_eq!(registry.snapshot(), vec!["alpha", "beta"]);
+    fn null_registration_is_rejected() {
+        assert_eq!(
+            unsafe { push_driver(std::ptr::null()) },
+            crate::c_boundary::status::NFC_EINVARG
+        );
     }
 }

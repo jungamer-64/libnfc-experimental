@@ -1,5 +1,4 @@
-use crate::domain_bridge::c_driver::borrowed_device;
-use crate::lifecycle::nfc_device;
+use crate::lifecycle::{device_ref, nfc_device};
 use libc::c_int;
 use proximate_driver as rt;
 
@@ -7,8 +6,13 @@ pub(super) fn with_device<R>(
     raw: *mut nfc_device,
     f: impl FnOnce(&mut rt::Device) -> Result<R, rt::Error>,
 ) -> Result<R, rt::Error> {
-    let mut device = borrowed_device(raw);
-    f(&mut device)
+    let device = unsafe { device_ref(raw) }.ok_or(rt::Error::InvalidArgument("device"))?;
+    device.with_device(f)
+}
+
+pub(super) fn abort(raw: *mut nfc_device) -> Result<(), rt::Error> {
+    let device = unsafe { device_ref(raw) }.ok_or(rt::Error::InvalidArgument("device"))?;
+    device.abort()
 }
 
 pub(super) fn with_property_ops<R>(

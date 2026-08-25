@@ -21,6 +21,7 @@ use std::ffi::CString;
 use std::panic;
 use std::ptr;
 
+pub(crate) mod external_driver;
 pub(crate) mod external_registry;
 pub(crate) mod raw;
 pub(crate) mod status;

@@ -252,7 +252,12 @@ pub trait Pn53xBackend: DeviceMeta {
     }
 }
 
-#[doc(hidden)]
+/// Backend contract owned by a registered driver after a successful open.
+///
+/// Driver implementations return this handle from [`crate::Driver::open`].
+/// The registry immediately transfers it into [`Device`], which becomes the
+/// sole finalization owner. Application code constructs devices through
+/// [`crate::DriverRegistry`] rather than injecting arbitrary handles.
 pub trait DeviceHandle:
     DeviceMeta + InfoBackend + PropertyBackend + InitiatorBackend + TargetBackend + Pn53xBackend
 {
@@ -312,16 +317,6 @@ impl Device {
         })
     }
 
-    /// Transfers an opened driver backend into the device lifecycle.
-    ///
-    /// This is the production ownership boundary used by driver and C-ABI
-    /// integration crates. Callers surrender exclusive finalization authority
-    /// to the returned [`Device`].
-    #[doc(hidden)]
-    pub fn from_backend(handle: Box<dyn DeviceHandle>) -> Self {
-        Self::new(handle, None)
-    }
-
     pub fn property_ops(&mut self) -> Result<PropertyOps<'_>, Error> {
         Ok(PropertyOps {
             device: self.handle.as_mut(),
@@ -362,13 +357,6 @@ impl Device {
         Ok(Pn53xOps {
             device: self.handle.as_mut(),
         })
-    }
-
-    /// Transfers finalization authority from the Rust device wrapper to an
-    /// owning external ABI wrapper.
-    #[doc(hidden)]
-    pub fn into_backend(self) -> Box<dyn DeviceHandle> {
-        self.handle
     }
 }
 

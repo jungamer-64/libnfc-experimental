@@ -105,17 +105,13 @@ fn select_passive_target_builds_iso14443a_target() {
         .transmit_responses
         .push_back(Ok(vec![0x01, 0x02, 0x03, 0x04, 0x90, 0x00]));
     let state = Arc::new(Mutex::new(state));
-    let card = Box::new(FakePcscCard {
-        state: Arc::clone(&state),
-    });
-    let device = PcscDevice::new(
-        "Reader A".into(),
-        ConnectionString::new("pcsc:Reader A").unwrap(),
-        card,
-        PcscShareMode::Direct,
-        PcscProtocols::T0,
-    );
-    let mut device = proximate_driver::Device::from_backend(Box::new(device));
+    let backend =
+        Arc::new(FakePcscBackend::default().with_shared_reader("Reader A", Arc::clone(&state)));
+    let mut registry = proximate_driver::DriverRegistry::new();
+    registry.register_driver(Box::new(PcscDriver::with_backend(backend)));
+    let context = Context::new();
+    let connstring = ConnectionString::new("pcsc:Reader A").unwrap();
+    let mut device = registry.open(&context, Some(&connstring)).unwrap();
 
     let target = device
         .passive_scan_ops()
@@ -147,17 +143,14 @@ fn feitian_transceive_routes_through_apdu_translation() {
     let mut state = FakeCardState::default();
     state.transmit_responses.push_back(Ok(vec![0x90, 0x00]));
     let state = Arc::new(Mutex::new(state));
-    let card = Box::new(FakePcscCard {
-        state: Arc::clone(&state),
-    });
-    let device = PcscDevice::new(
-        "Feitian Reader".into(),
-        ConnectionString::new("pcsc:Feitian Reader").unwrap(),
-        card,
-        PcscShareMode::Direct,
-        PcscProtocols::T0,
+    let backend = Arc::new(
+        FakePcscBackend::default().with_shared_reader("Feitian Reader", Arc::clone(&state)),
     );
-    let mut device = proximate_driver::Device::from_backend(Box::new(device));
+    let mut registry = proximate_driver::DriverRegistry::new();
+    registry.register_driver(Box::new(PcscDriver::with_backend(backend)));
+    let context = Context::new();
+    let connstring = ConnectionString::new("pcsc:Feitian Reader").unwrap();
+    let mut device = registry.open(&context, Some(&connstring)).unwrap();
     let mut rx = [0u8; 8];
     let size = device
         .initiator_io_ops()

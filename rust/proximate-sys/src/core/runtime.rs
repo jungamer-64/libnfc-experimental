@@ -1,20 +1,16 @@
 use super::{log_general_debug, log_general_error, log_general_info};
 use crate::c_boundary::external_registry::register_external_drivers;
-use crate::domain_bridge::c_driver::attach_rust_device;
 use crate::domain_bridge::decode::{context_from_c, decode_connstring_ptr};
 use crate::domain_bridge::encode::ConnstringsOut;
 use crate::ffi_catch_unwind_ptr;
-use crate::lifecycle::{nfc_connstring, nfc_context, nfc_device};
+use crate::lifecycle::{attach_device, nfc_connstring, nfc_context, nfc_device};
 use libc::{c_char, size_t};
 use proximate_driver as rt;
 use std::ptr;
 
-fn register_compiled_bridge_drivers(_registry: &mut rt::DriverRegistry) {}
-
 fn create_runtime_registry() -> rt::DriverRegistry {
     let mut registry = rt::DriverRegistry::new();
     proximate_native::register_builtin_drivers(&mut registry);
-    register_compiled_bridge_drivers(&mut registry);
     register_external_drivers(&mut registry);
     registry
 }
@@ -56,7 +52,7 @@ unsafe fn nfc_open_impl(context: *mut nfc_context, connstring: *const c_char) ->
     };
 
     match registry.open(&runtime_context, Some(&requested)) {
-        Ok(device) => attach_rust_device(device, context.cast_const()).unwrap_or(ptr::null_mut()),
+        Ok(device) => attach_device(device),
         Err(error) => {
             log_general_debug(&format!("nfc_open failed: {:?}", error));
             ptr::null_mut()

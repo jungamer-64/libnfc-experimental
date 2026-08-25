@@ -1,5 +1,3 @@
-use super::abi::nfc_context;
-use crate::c_boundary::raw::{fixed_c_buffer_to_string, optional_mut, optional_ref};
 use crate::c_boundary::{LOG_PRIORITY_DEBUG, LOG_PRIORITY_NONE};
 use crate::logger;
 use crate::{emit_log_message, log_error, log_message, set_last_error_message};
@@ -30,18 +28,16 @@ fn record_log_exit_for_tests() {
     });
 }
 
-fn context_log_level(context: *const nfc_context) -> u32 {
-    unsafe { optional_ref(context) }
-        .map(|context| context.log_level)
-        .unwrap_or_else(logger::default_log_level)
+fn context_log_level(context: &rt::Context) -> u32 {
+    context.config.log_level
 }
 
-unsafe fn initialize_context_logging(context: *const nfc_context) {
+fn initialize_context_logging(context: &rt::Context) {
     record_log_init_for_tests();
     logger::log_init(context_log_level(context));
 }
 
-pub(crate) fn bridge_context_log_exit() {
+pub(crate) fn finalize_context_logging() {
     record_log_exit_for_tests();
     logger::log_exit();
 }
@@ -97,7 +93,7 @@ pub(crate) fn load_context_outcome() -> Result<rt::diagnostics::ContextLoadOutco
     }
 }
 
-fn log_context_state(context: &nfc_context) {
+fn log_context_state(context: &rt::Context) {
     let first_priority = if cfg!(feature = "debug-logging") {
         LOG_PRIORITY_NONE
     } else {
@@ -106,13 +102,13 @@ fn log_context_state(context: &nfc_context) {
 
     log_message(
         first_priority,
-        &format!("log_level is set to {}", context.log_level),
+        &format!("log_level is set to {}", context.config.log_level),
     );
     log_message(
         LOG_PRIORITY_DEBUG,
         &format!(
             "allow_autoscan is set to {}",
-            if context.allow_autoscan {
+            if context.config.allow_autoscan {
                 "true"
             } else {
                 "false"
@@ -123,7 +119,7 @@ fn log_context_state(context: &nfc_context) {
         LOG_PRIORITY_DEBUG,
         &format!(
             "allow_intrusive_scan is set to {}",
-            if context.allow_intrusive_scan {
+            if context.config.allow_intrusive_scan {
                 "true"
             } else {
                 "false"
@@ -134,39 +130,31 @@ fn log_context_state(context: &nfc_context) {
         LOG_PRIORITY_DEBUG,
         &format!(
             "{} device(s) defined by user",
-            context.user_defined_device_count
+            context.config.user_defined_devices.len()
         ),
     );
 
-    for (index, device) in context.user_defined_devices
-        [..context.user_defined_device_count as usize]
-        .iter()
-        .enumerate()
-    {
+    for (index, device) in context.config.user_defined_devices.iter().enumerate() {
         log_message(
             LOG_PRIORITY_DEBUG,
             &format!(
                 "  #{} name: \"{}\", connstring: \"{}\"",
                 index,
-                fixed_c_buffer_to_string(&device.name),
-                fixed_c_buffer_to_string(&device.connstring)
+                device.name,
+                device.connstring.as_str()
             ),
         );
     }
 }
 
-pub(crate) unsafe fn initialize_loaded_context_logging(context: *mut nfc_context) {
-    unsafe {
-        initialize_context_logging(context);
-        if let Some(context_ref) = optional_mut(context) {
-            log_context_state(context_ref);
-        }
-    }
+pub(crate) fn initialize_loaded_context_logging(context: &rt::Context) {
+    initialize_context_logging(context);
+    log_context_state(context);
 }
 
 #[cfg(test)]
 #[derive(Clone, Default)]
-pub(crate) struct LifecycleBridgeTestState {
+pub(crate) struct LifecycleLoggingTestState {
     pub(crate) log_init_calls: usize,
     pub(crate) log_exit_calls: usize,
     pub(crate) context_free_calls: usize,
@@ -175,19 +163,19 @@ pub(crate) struct LifecycleBridgeTestState {
 
 #[cfg(test)]
 thread_local! {
-    static TEST_LIFECYCLE_STATE: std::cell::RefCell<LifecycleBridgeTestState> =
-        std::cell::RefCell::new(LifecycleBridgeTestState::default());
+    static TEST_LIFECYCLE_STATE: std::cell::RefCell<LifecycleLoggingTestState> =
+        std::cell::RefCell::new(LifecycleLoggingTestState::default());
 }
 
 #[cfg(test)]
 pub(crate) fn reset_lifecycle_test_state() {
     TEST_LIFECYCLE_STATE.with(|cell| {
-        *cell.borrow_mut() = LifecycleBridgeTestState::default();
+        *cell.borrow_mut() = LifecycleLoggingTestState::default();
     });
 }
 
 #[cfg(test)]
-pub(crate) fn snapshot_lifecycle_test_state() -> LifecycleBridgeTestState {
+pub(crate) fn snapshot_lifecycle_test_state() -> LifecycleLoggingTestState {
     TEST_LIFECYCLE_STATE.with(|cell| cell.borrow().clone())
 }
 
@@ -197,6 +185,3 @@ pub(crate) fn increment_context_free_count_for_tests() {
         cell.borrow_mut().context_free_calls += 1;
     });
 }
-
-#[cfg(not(test))]
-pub(crate) fn increment_context_free_count_for_tests() {}

@@ -4,45 +4,16 @@ use crate::c_abi::types::{
 };
 use crate::c_boundary::NFC_BUFSIZE_CONNSTRING;
 use crate::c_boundary::raw::{
-    bounded_strlen, c_string_ptr_to_string, fixed_c_buffer_to_string, optional_ref,
+    bounded_strlen, c_string_ptr_to_string, optional_ref, raw_slice_len_is_valid,
 };
 use crate::c_boundary::status::invalid_argument_status;
-use crate::lifecycle::{MAX_USER_DEFINED_DEVICES, nfc_context, runtime_context_from_c};
+use crate::lifecycle::{nfc_context, runtime_context_from_c};
 use libc::{c_char, c_int, size_t};
 use proximate_driver as rt;
 use std::{ptr, slice};
 
 pub(crate) fn context_from_c(context: *const nfc_context) -> rt::Context {
-    let Some(context_ref) = (unsafe { optional_ref(context) }) else {
-        return rt::Context::default();
-    };
-
-    let mut runtime = unsafe { runtime_context_from_c(context) }.unwrap_or_default();
-
-    let mut user_defined_devices = Vec::new();
-    let count = (context_ref.user_defined_device_count as usize).min(MAX_USER_DEFINED_DEVICES);
-    for configured in &context_ref.user_defined_devices[..count] {
-        let connstring = fixed_c_buffer_to_string(&configured.connstring);
-        if connstring.is_empty() {
-            continue;
-        }
-        let Ok(connstring) = rt::ConnectionString::new(connstring) else {
-            continue;
-        };
-        user_defined_devices.push(rt::UserDefinedDevice {
-            name: fixed_c_buffer_to_string(&configured.name),
-            connstring,
-            optional: configured.optional,
-        });
-    }
-
-    runtime.config = rt::ContextConfig {
-        allow_autoscan: context_ref.allow_autoscan,
-        allow_intrusive_scan: context_ref.allow_intrusive_scan,
-        log_level: context_ref.log_level,
-        user_defined_devices,
-    };
-    runtime
+    runtime_context_from_c(context).unwrap_or_default()
 }
 
 pub(crate) fn target_from_c(target: *const nfc_target) -> Result<rt::Target, rt::Error> {
@@ -144,6 +115,7 @@ pub(crate) fn bool_property_from_c(property: nfc_property) -> Result<rt::Propert
         nfc_property::NP_FORCE_ISO14443_A => rt::Property::ForceIso14443A,
         nfc_property::NP_FORCE_ISO14443_B => rt::Property::ForceIso14443B,
         nfc_property::NP_FORCE_SPEED_106 => rt::Property::ForceSpeed106,
+        _ => return Err(rt::Error::InvalidArgument("property")),
     })
 }
 
@@ -170,6 +142,7 @@ pub(crate) fn dep_mode_from_c(mode: nfc_dep_mode) -> Result<rt::DepMode, rt::Err
         nfc_dep_mode::NDM_UNDEFINED => Err(rt::Error::InvalidArgument("DEP mode")),
         nfc_dep_mode::NDM_PASSIVE => Ok(rt::DepMode::Passive),
         nfc_dep_mode::NDM_ACTIVE => Ok(rt::DepMode::Active),
+        _ => Err(rt::Error::InvalidArgument("DEP mode")),
     }
 }
 
@@ -180,6 +153,7 @@ pub(crate) fn baud_rate_from_c(rate: nfc_baud_rate) -> Result<rt::BaudRate, rt::
         nfc_baud_rate::NBR_212 => Ok(rt::BaudRate::Br212),
         nfc_baud_rate::NBR_424 => Ok(rt::BaudRate::Br424),
         nfc_baud_rate::NBR_847 => Ok(rt::BaudRate::Br847),
+        _ => Err(rt::Error::InvalidArgument("baud rate")),
     }
 }
 
@@ -211,6 +185,7 @@ pub(crate) fn modulation_type_from_c(
         nfc_modulation_type::NMT_DEP => Ok(rt::ModulationType::Dep),
         nfc_modulation_type::NMT_BARCODE => Ok(rt::ModulationType::Barcode),
         nfc_modulation_type::NMT_ISO14443BICLASS => Ok(rt::ModulationType::Iso14443BiClass),
+        _ => Err(rt::Error::InvalidArgument("modulation type")),
     }
 }
 
@@ -240,7 +215,7 @@ impl<'a> InputBytes<'a> {
         if len == 0 {
             return Ok(Self(&[]));
         }
-        if bytes.is_null() {
+        if bytes.is_null() || !raw_slice_len_is_valid::<u8>(len) {
             return Err(invalid_argument_status(device));
         }
         Ok(Self(unsafe { slice::from_raw_parts(bytes, len) }))
@@ -267,7 +242,7 @@ impl<'a> OutputBytes<'a> {
         if len == 0 {
             return Ok(Self(&mut []));
         }
-        if bytes.is_null() {
+        if bytes.is_null() || !raw_slice_len_is_valid::<u8>(len) {
             return Err(invalid_argument_status(device));
         }
         Ok(Self(unsafe { slice::from_raw_parts_mut(bytes, len) }))
@@ -320,7 +295,7 @@ pub(crate) unsafe fn decode_modulations(
     if len == 0 {
         return Ok(Vec::new());
     }
-    if modulations.is_null() {
+    if modulations.is_null() || !raw_slice_len_is_valid::<nfc_modulation>(len) {
         return Err(invalid_argument_status(device));
     }
     unsafe { slice::from_raw_parts(modulations, len) }
@@ -355,7 +330,6 @@ pub(crate) unsafe fn decode_optional_target(
 mod tests {
     use super::*;
     use crate::c_abi::types::{nfc_baud_rate, nfc_dep_mode, nfc_modulation, nfc_modulation_type};
-    use crate::lifecycle::nfc_device;
     use std::ptr;
 
     #[test]
@@ -380,10 +354,14 @@ mod tests {
 
     #[test]
     fn input_bytes_rejects_null_nonzero_and_updates_last_error() {
-        let mut device = unsafe { std::mem::zeroed::<nfc_device>() };
-        let status = unsafe { InputBytes::from_raw(&mut device, ptr::null(), 1).unwrap_err() };
+        let (device, _state) = crate::test_support::fake_abi_device();
+        let status = unsafe { InputBytes::from_raw(device, ptr::null(), 1).unwrap_err() };
         assert_eq!(status, crate::c_boundary::status::NFC_EINVARG);
-        assert_eq!(device.last_error, crate::c_boundary::status::NFC_EINVARG);
+        assert_eq!(
+            unsafe { crate::c_boundary::status::device_last_error(device) },
+            crate::c_boundary::status::NFC_EINVARG
+        );
+        unsafe { crate::lifecycle::drop_device(device) };
     }
 
     #[test]
@@ -406,10 +384,14 @@ mod tests {
 
     #[test]
     fn decode_modulations_requires_pointer_when_length_is_nonzero() {
-        let mut device = unsafe { std::mem::zeroed::<nfc_device>() };
-        let status = unsafe { decode_modulations(&mut device, ptr::null(), 1).unwrap_err() };
+        let (device, _state) = crate::test_support::fake_abi_device();
+        let status = unsafe { decode_modulations(device, ptr::null(), 1).unwrap_err() };
         assert_eq!(status, crate::c_boundary::status::NFC_EINVARG);
-        assert_eq!(device.last_error, crate::c_boundary::status::NFC_EINVARG);
+        assert_eq!(
+            unsafe { crate::c_boundary::status::device_last_error(device) },
+            crate::c_boundary::status::NFC_EINVARG
+        );
+        unsafe { crate::lifecycle::drop_device(device) };
     }
 
     #[test]

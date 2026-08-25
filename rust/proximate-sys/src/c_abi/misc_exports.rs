@@ -10,21 +10,17 @@ use crate::c_abi::types::{
     nfc_iso14443b_info, nfc_iso14443b2ct_info, nfc_iso14443b2sr_info, nfc_iso14443bi_info,
     nfc_iso14443biclass_info, nfc_jewel_info, nfc_modulation_type, nfc_target,
 };
-use crate::c_boundary::raw::optional_ref;
-use crate::domain_bridge::c_driver::{free_rust_device, is_rust_shim_device};
 use crate::domain_bridge::decode::{
     InputBytes, OutputBytes, baud_rate_from_c, modulation_type_from_c,
 };
 use crate::domain_bridge::encode::CStringOut;
 use crate::ffi_strings::{baud_rate_label_cstr, modulation_label_cstr, version_cstr};
-use crate::lifecycle::nfc_device;
+use crate::lifecycle::{drop_device, nfc_device};
 use crate::{
     ffi_catch_unwind_int, ffi_catch_unwind_ptr, ffi_catch_unwind_void, release_allocated_ptr,
 };
 use libc::{c_char, c_int, c_void, size_t};
 
-#[cfg(test)]
-use crate::c_boundary::NFC_BUFSIZE_CONNSTRING;
 use std::fmt::{self, Write as _};
 use std::ptr;
 #[cfg(test)]
@@ -898,6 +894,7 @@ fn render_nfc_target(target: *const nfc_target, verbose: bool) -> String {
             write_nfc_dep_info(&mut rendered, read_unaligned_field!(target_ref.nti.ndi));
         }
         nfc_modulation_type::NMT_UNDEFINED => {}
+        _ => {}
     }
 
     rendered
@@ -905,20 +902,7 @@ fn render_nfc_target(target: *const nfc_target, verbose: bool) -> String {
 
 pub unsafe fn nfc_close(device: *mut nfc_device) {
     ffi_catch_unwind_void("nfc_close", || unsafe {
-        if is_rust_shim_device(device) {
-            free_rust_device(device);
-            return;
-        }
-
-        let Some(device_ref) = optional_ref(device) else {
-            return;
-        };
-        let Some(driver_ref) = optional_ref(device_ref.driver) else {
-            return;
-        };
-        if let Some(close) = driver_ref.close {
-            close(device);
-        }
+        drop_device(device);
     });
 }
 
@@ -1067,7 +1051,6 @@ mod tests {
     use crate::c_abi::types::{
         nfc_dep_mode, nfc_felica_info, nfc_iso14443a_info, nfc_target, nfc_target_info,
     };
-    use crate::lifecycle::nfc_driver;
     use std::ffi::CStr;
 
     fn render_target(target: *const nfc_target, verbose: bool) -> (c_int, *mut c_char, String) {
@@ -1098,71 +1081,10 @@ mod tests {
         }
     }
 
-    unsafe extern "C" fn test_close(device: *mut nfc_device) {
-        unsafe {
-            (*device).last_error = 123;
-        }
-    }
-
     #[test]
     fn version_matches_libnfc_compatibility_contract() {
         let version = unsafe { CStr::from_ptr(nfc_version()) }.to_str().unwrap();
         assert_eq!(version, "1.8.0");
-    }
-
-    #[test]
-    fn close_dispatches_driver_callback() {
-        let driver = nfc_driver {
-            name: ptr::null(),
-            scan_type: crate::lifecycle::scan_type_enum::NOT_AVAILABLE,
-            scan: None,
-            open: None,
-            close: Some(test_close),
-            strerror: None,
-            initiator_init: None,
-            initiator_init_secure_element: None,
-            initiator_select_passive_target: None,
-            initiator_poll_target: None,
-            initiator_select_dep_target: None,
-            initiator_deselect_target: None,
-            initiator_transceive_bytes: None,
-            initiator_transceive_bits: None,
-            initiator_transceive_bytes_timed: None,
-            initiator_transceive_bits_timed: None,
-            initiator_target_is_present: None,
-            target_init: None,
-            target_send_bytes: None,
-            target_receive_bytes: None,
-            target_send_bits: None,
-            target_receive_bits: None,
-            device_set_property_bool: None,
-            device_set_property_int: None,
-            get_supported_modulation: None,
-            get_supported_baud_rate: None,
-            device_get_information_about: None,
-            abort_command: None,
-            idle: None,
-            powerdown: None,
-        };
-        let mut device = nfc_device {
-            context: ptr::null(),
-            driver: ptr::addr_of!(driver),
-            driver_data: ptr::null_mut(),
-            chip_data: ptr::null_mut(),
-            command_abort: ptr::null_mut(),
-            name: [0; crate::lifecycle::DEVICE_NAME_LENGTH],
-            connstring: [0; NFC_BUFSIZE_CONNSTRING],
-            bCrc: false,
-            bPar: false,
-            bEasyFraming: false,
-            bInfiniteSelect: false,
-            bAutoIso14443_4: false,
-            btSupportByte: 0,
-            last_error: 0,
-        };
-
-        unsafe { nfc_close(ptr::addr_of_mut!(device)) };
-        assert_eq!(device.last_error, 123);
     }
 
     #[test]

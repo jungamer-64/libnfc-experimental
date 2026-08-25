@@ -5,11 +5,31 @@
 // ABI mirrors intentionally keep libnfc's public C names and exported layout.
 #![allow(dead_code, non_camel_case_types, non_snake_case)]
 
-use libc::size_t;
+use libc::{c_int, size_t};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(C)]
-pub enum nfc_property {
+macro_rules! c_enum_carrier {
+    ($name:ident { $($constant:ident = $value:expr),+ $(,)? }) => {
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        #[repr(transparent)]
+        pub struct $name(c_int);
+
+        impl $name {
+            $(pub const $constant: Self = Self($value);)+
+
+            /// Constructs the ABI carrier without assuming the integer is a
+            /// known C enumerator. Semantic validation happens at the boundary.
+            pub const fn from_raw(raw: c_int) -> Self {
+                Self(raw)
+            }
+
+            pub const fn raw(self) -> c_int {
+                self.0
+            }
+        }
+    };
+}
+
+c_enum_carrier!(nfc_property {
     NP_TIMEOUT_COMMAND = 0,
     NP_TIMEOUT_ATR = 1,
     NP_TIMEOUT_COM = 2,
@@ -25,29 +45,23 @@ pub enum nfc_property {
     NP_FORCE_ISO14443_A = 12,
     NP_FORCE_ISO14443_B = 13,
     NP_FORCE_SPEED_106 = 14,
-}
+});
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(C)]
-pub enum nfc_dep_mode {
+c_enum_carrier!(nfc_dep_mode {
     NDM_UNDEFINED = 0,
     NDM_PASSIVE = 1,
     NDM_ACTIVE = 2,
-}
+});
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(C)]
-pub enum nfc_baud_rate {
+c_enum_carrier!(nfc_baud_rate {
     NBR_UNDEFINED = 0,
     NBR_106 = 1,
     NBR_212 = 2,
     NBR_424 = 3,
     NBR_847 = 4,
-}
+});
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(C)]
-pub enum nfc_modulation_type {
+c_enum_carrier!(nfc_modulation_type {
     NMT_UNDEFINED = 0,
     NMT_ISO14443A = 1,
     NMT_JEWEL = 2,
@@ -59,14 +73,12 @@ pub enum nfc_modulation_type {
     NMT_DEP = 8,
     NMT_BARCODE = 9,
     NMT_ISO14443BICLASS = 10,
-}
+});
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(C)]
-pub enum nfc_mode {
+c_enum_carrier!(nfc_mode {
     N_TARGET = 0,
     N_INITIATOR = 1,
-}
+});
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
@@ -193,37 +205,37 @@ mod tests {
     #[test]
     fn public_enum_values_and_representation_match_the_c_abi() {
         assert_eq!(size_of::<nfc_property>(), 4);
-        assert_eq!(nfc_property::NP_TIMEOUT_COMMAND as i32, 0);
-        assert_eq!(nfc_property::NP_FORCE_SPEED_106 as i32, 14);
+        assert_eq!(nfc_property::NP_TIMEOUT_COMMAND.raw(), 0);
+        assert_eq!(nfc_property::NP_FORCE_SPEED_106.raw(), 14);
 
         assert_eq!(size_of::<nfc_dep_mode>(), 4);
-        assert_eq!(nfc_dep_mode::NDM_UNDEFINED as i32, 0);
-        assert_eq!(nfc_dep_mode::NDM_PASSIVE as i32, 1);
-        assert_eq!(nfc_dep_mode::NDM_ACTIVE as i32, 2);
+        assert_eq!(nfc_dep_mode::NDM_UNDEFINED.raw(), 0);
+        assert_eq!(nfc_dep_mode::NDM_PASSIVE.raw(), 1);
+        assert_eq!(nfc_dep_mode::NDM_ACTIVE.raw(), 2);
 
         assert_eq!(size_of::<nfc_baud_rate>(), 4);
-        assert_eq!(nfc_baud_rate::NBR_UNDEFINED as i32, 0);
-        assert_eq!(nfc_baud_rate::NBR_106 as i32, 1);
-        assert_eq!(nfc_baud_rate::NBR_212 as i32, 2);
-        assert_eq!(nfc_baud_rate::NBR_424 as i32, 3);
-        assert_eq!(nfc_baud_rate::NBR_847 as i32, 4);
+        assert_eq!(nfc_baud_rate::NBR_UNDEFINED.raw(), 0);
+        assert_eq!(nfc_baud_rate::NBR_106.raw(), 1);
+        assert_eq!(nfc_baud_rate::NBR_212.raw(), 2);
+        assert_eq!(nfc_baud_rate::NBR_424.raw(), 3);
+        assert_eq!(nfc_baud_rate::NBR_847.raw(), 4);
 
         assert_eq!(size_of::<nfc_modulation_type>(), 4);
-        assert_eq!(nfc_modulation_type::NMT_UNDEFINED as i32, 0);
-        assert_eq!(nfc_modulation_type::NMT_ISO14443A as i32, 1);
-        assert_eq!(nfc_modulation_type::NMT_JEWEL as i32, 2);
-        assert_eq!(nfc_modulation_type::NMT_ISO14443B as i32, 3);
-        assert_eq!(nfc_modulation_type::NMT_ISO14443BI as i32, 4);
-        assert_eq!(nfc_modulation_type::NMT_ISO14443B2SR as i32, 5);
-        assert_eq!(nfc_modulation_type::NMT_ISO14443B2CT as i32, 6);
-        assert_eq!(nfc_modulation_type::NMT_FELICA as i32, 7);
-        assert_eq!(nfc_modulation_type::NMT_DEP as i32, 8);
-        assert_eq!(nfc_modulation_type::NMT_BARCODE as i32, 9);
-        assert_eq!(nfc_modulation_type::NMT_ISO14443BICLASS as i32, 10);
+        assert_eq!(nfc_modulation_type::NMT_UNDEFINED.raw(), 0);
+        assert_eq!(nfc_modulation_type::NMT_ISO14443A.raw(), 1);
+        assert_eq!(nfc_modulation_type::NMT_JEWEL.raw(), 2);
+        assert_eq!(nfc_modulation_type::NMT_ISO14443B.raw(), 3);
+        assert_eq!(nfc_modulation_type::NMT_ISO14443BI.raw(), 4);
+        assert_eq!(nfc_modulation_type::NMT_ISO14443B2SR.raw(), 5);
+        assert_eq!(nfc_modulation_type::NMT_ISO14443B2CT.raw(), 6);
+        assert_eq!(nfc_modulation_type::NMT_FELICA.raw(), 7);
+        assert_eq!(nfc_modulation_type::NMT_DEP.raw(), 8);
+        assert_eq!(nfc_modulation_type::NMT_BARCODE.raw(), 9);
+        assert_eq!(nfc_modulation_type::NMT_ISO14443BICLASS.raw(), 10);
 
         assert_eq!(size_of::<nfc_mode>(), 4);
-        assert_eq!(nfc_mode::N_TARGET as i32, 0);
-        assert_eq!(nfc_mode::N_INITIATOR as i32, 1);
+        assert_eq!(nfc_mode::N_TARGET.raw(), 0);
+        assert_eq!(nfc_mode::N_INITIATOR.raw(), 1);
     }
 
     #[test]
