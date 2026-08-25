@@ -14,10 +14,6 @@ if(WIN32)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/version.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/libnfc.rc" @ONLY)
   list(APPEND WINDOWS_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/libnfc.rc")
 
-  if(BUILD_SHARED_LIBS)
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/libnfc.def.in" "${CMAKE_CURRENT_BINARY_DIR}/libnfc.def" @ONLY)
-    list(APPEND WINDOWS_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/libnfc.def")
-  endif()
 endif()
 
 set(CHIPS_SOURCES)
@@ -64,15 +60,12 @@ endif()
 set(LIBNFC_SHARED_LINK_LIBRARIES)
 set(LIBNFC_STATIC_LINK_LIBRARIES)
 set(LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES)
-set(LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES)
 
 if(MSVC)
   # The module-definition file makes every public ABI symbol a link root.
   # /WHOLEARCHIVE cannot be used for a Rust staticlib because it also expands
   # bundled Windows import-library members and creates duplicate descriptors.
   list(APPEND LIBNFC_SHARED_LINK_LIBRARIES "${RUST_LIB_PATH}")
-else()
-  list(APPEND LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES "${RUST_LIB_PATH}")
 endif()
 list(APPEND LIBNFC_STATIC_LINK_LIBRARIES "${RUST_LIB_PATH}")
 
@@ -98,22 +91,6 @@ endif()
 
 if(BUILD_SHARED_LIBS)
   target_link_libraries(nfc PRIVATE ${LIBNFC_SHARED_LINK_LIBRARIES})
-  if(LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES)
-    if(MSVC)
-      foreach(whole_archive_lib ${LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES})
-        target_link_options(nfc PRIVATE "/WHOLEARCHIVE:${whole_archive_lib}")
-      endforeach()
-    elseif(APPLE)
-      foreach(whole_archive_lib ${LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES})
-        target_link_options(nfc PRIVATE "-Wl,-force_load,${whole_archive_lib}")
-      endforeach()
-    else()
-      target_link_libraries(nfc PRIVATE
-        "-Wl,--whole-archive"
-        ${LIBNFC_SHARED_WHOLE_ARCHIVE_LIBRARIES}
-        "-Wl,--no-whole-archive")
-    endif()
-  endif()
 elseif(LIBNFC_STATIC_LINK_LIBRARIES OR LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES)
   target_link_libraries(nfc INTERFACE
     $<BUILD_INTERFACE:${LIBNFC_STATIC_LINK_LIBRARIES}>
