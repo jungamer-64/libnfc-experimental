@@ -10,7 +10,6 @@ use libc::c_char;
 use std::ffi::CString;
 
 pub(crate) mod accessors;
-mod driver_dispatch;
 pub(crate) mod emulation;
 pub(crate) mod operations;
 mod runtime;
