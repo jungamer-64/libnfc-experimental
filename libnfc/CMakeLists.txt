@@ -13,7 +13,6 @@ if(WIN32)
   endif()
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../contrib/win32/version.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/libnfc.rc" @ONLY)
   list(APPEND WINDOWS_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/libnfc.rc")
-
 endif()
 
 set(CHIPS_SOURCES)
@@ -30,9 +29,40 @@ set(LIBRARY_SOURCES
   ${WINDOWS_SOURCES})
 
 set(LIBNFC_EXPORTS_FILE "${CMAKE_SOURCE_DIR}/libnfc/libnfc.exports")
+set(LIBNFC_WINDOWS_DEF "${CMAKE_CURRENT_BINARY_DIR}/libnfc.def")
+set(LIBNFC_APPLE_EXPORT_LIST "${CMAKE_CURRENT_BINARY_DIR}/libnfc.apple.exports")
 set(LIBNFC_VERSION_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/libnfc.map")
-if(EXISTS "${LIBNFC_EXPORTS_FILE}")
-  file(STRINGS "${LIBNFC_EXPORTS_FILE}" LIBNFC_EXPORT_SYMBOLS)
+if(NOT EXISTS "${LIBNFC_EXPORTS_FILE}")
+  message(FATAL_ERROR "Missing canonical ABI symbol list: ${LIBNFC_EXPORTS_FILE}")
+endif()
+file(STRINGS "${LIBNFC_EXPORTS_FILE}" LIBNFC_EXPORT_SYMBOLS)
+if(NOT LIBNFC_EXPORT_SYMBOLS)
+  message(FATAL_ERROR "Canonical ABI symbol list is empty: ${LIBNFC_EXPORTS_FILE}")
+endif()
+
+file(WRITE "${LIBNFC_WINDOWS_DEF}"
+  "LIBRARY libnfc\nVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}\n\nEXPORTS\n")
+file(WRITE "${LIBNFC_APPLE_EXPORT_LIST}" "")
+file(WRITE "${LIBNFC_VERSION_SCRIPT}" "LIBNFC_6 {\n  global:\n")
+set(LIBNFC_EXPORT_LINK_OPTIONS)
+foreach(symbol ${LIBNFC_EXPORT_SYMBOLS})
+  if(NOT "${symbol}" MATCHES "^[A-Za-z_][A-Za-z0-9_]*$")
+    message(FATAL_ERROR "Invalid ABI symbol '${symbol}' in ${LIBNFC_EXPORTS_FILE}")
+  endif()
+  file(APPEND "${LIBNFC_WINDOWS_DEF}" "  ${symbol}\n")
+  file(APPEND "${LIBNFC_APPLE_EXPORT_LIST}" "_${symbol}\n")
+  file(APPEND "${LIBNFC_VERSION_SCRIPT}" "    ${symbol};\n")
+
+  if(APPLE)
+    list(APPEND LIBNFC_EXPORT_LINK_OPTIONS "LINKER:-u,_${symbol}")
+  elseif(MINGW OR UNIX)
+    list(APPEND LIBNFC_EXPORT_LINK_OPTIONS "LINKER:--undefined=${symbol}")
+  endif()
+endforeach()
+file(APPEND "${LIBNFC_VERSION_SCRIPT}" "  local:\n    *;\n};\n")
+
+if(WIN32 AND BUILD_SHARED_LIBS)
+  list(APPEND LIBRARY_SOURCES "${LIBNFC_WINDOWS_DEF}")
 endif()
 
 set(LIBNFC_OPTIONAL_PRIVATE_INCLUDE_DIRS)
@@ -61,12 +91,7 @@ set(LIBNFC_SHARED_LINK_LIBRARIES)
 set(LIBNFC_STATIC_LINK_LIBRARIES)
 set(LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES)
 
-if(MSVC)
-  # The module-definition file makes every public ABI symbol a link root.
-  # /WHOLEARCHIVE cannot be used for a Rust staticlib because it also expands
-  # bundled Windows import-library members and creates duplicate descriptors.
-  list(APPEND LIBNFC_SHARED_LINK_LIBRARIES "${RUST_LIB_PATH}")
-endif()
+list(APPEND LIBNFC_SHARED_LINK_LIBRARIES "${RUST_LIB_PATH}")
 list(APPEND LIBNFC_STATIC_LINK_LIBRARIES "${RUST_LIB_PATH}")
 
 if(PCSC_FOUND)
@@ -83,14 +108,21 @@ if(LIBRT_FOUND)
   list(APPEND LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES ${LIBRT_LIBRARIES})
 endif()
 
-if(WIN32)
-  set(LIBNFC_RUST_WINDOWS_LIBRARIES ntdll userenv ws2_32 bcrypt advapi32)
-  list(APPEND LIBNFC_SHARED_LINK_LIBRARIES ${LIBNFC_RUST_WINDOWS_LIBRARIES})
-  list(APPEND LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES ${LIBNFC_RUST_WINDOWS_LIBRARIES})
-endif()
+list(APPEND LIBNFC_SHARED_LINK_LIBRARIES ${LIBNFC_RUST_PLATFORM_LINK_LIBRARIES})
+list(APPEND LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES ${LIBNFC_RUST_PLATFORM_LINK_LIBRARIES})
 
 if(BUILD_SHARED_LIBS)
   target_link_libraries(nfc PRIVATE ${LIBNFC_SHARED_LINK_LIBRARIES})
+  if(LIBNFC_EXPORT_LINK_OPTIONS)
+    target_link_options(nfc PRIVATE ${LIBNFC_EXPORT_LINK_OPTIONS})
+  endif()
+  if((UNIX AND NOT APPLE) OR MINGW)
+    target_link_options(nfc PRIVATE "LINKER:--no-undefined")
+  endif()
+  if(APPLE)
+    target_link_options(nfc PRIVATE
+      "LINKER:-exported_symbols_list,${LIBNFC_APPLE_EXPORT_LIST}")
+  endif()
 elseif(LIBNFC_STATIC_LINK_LIBRARIES OR LIBNFC_STATIC_POST_NFC_LINK_LIBRARIES)
   target_link_libraries(nfc INTERFACE
     $<BUILD_INTERFACE:${LIBNFC_STATIC_LINK_LIBRARIES}>
@@ -107,12 +139,7 @@ if(BUILD_SHARED_LIBS AND LIBNFC_NCI_LIBRARY_DIRS)
 endif()
 
 if(UNIX AND NOT APPLE AND BUILD_SHARED_LIBS)
-  file(WRITE "${LIBNFC_VERSION_SCRIPT}" "LIBNFC_6 {\n  global:\n")
-  foreach(symbol ${LIBNFC_EXPORT_SYMBOLS})
-    file(APPEND "${LIBNFC_VERSION_SCRIPT}" "    ${symbol};\n")
-  endforeach()
-  file(APPEND "${LIBNFC_VERSION_SCRIPT}" "  local:\n    *;\n};\n")
-  target_link_options(nfc PRIVATE "-Wl,--version-script=${LIBNFC_VERSION_SCRIPT}")
+  target_link_options(nfc PRIVATE "LINKER:--version-script=${LIBNFC_VERSION_SCRIPT}")
 endif()
 
 set_target_properties(nfc PROPERTIES
@@ -128,8 +155,8 @@ if(WIN32 AND BUILD_SHARED_LIBS)
   if(MINGW)
     add_custom_command(
       OUTPUT libnfc.lib
-      COMMAND ${DLLTOOL} -d "${CMAKE_CURRENT_BINARY_DIR}/libnfc.def" -l "${CMAKE_CURRENT_BINARY_DIR}/libnfc.lib" "${CMAKE_CURRENT_BINARY_DIR}/libnfc.dll"
-      DEPENDS nfc "${CMAKE_CURRENT_BINARY_DIR}/libnfc.def")
+      COMMAND ${DLLTOOL} -d "${LIBNFC_WINDOWS_DEF}" -l "${CMAKE_CURRENT_BINARY_DIR}/libnfc.lib" "${CMAKE_CURRENT_BINARY_DIR}/libnfc.dll"
+      DEPENDS nfc "${LIBNFC_WINDOWS_DEF}")
     add_custom_target(win32lib ALL DEPENDS libnfc.lib)
   endif()
 endif()

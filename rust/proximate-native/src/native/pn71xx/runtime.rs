@@ -204,26 +204,3 @@ pub(super) fn runtime_snapshot() -> Pn71xxRuntime {
 pub(super) fn replace_runtime_state(state: Pn71xxRuntime) {
     *runtime().lock().unwrap() = state;
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::native::pn71xx::fake::{backend_state_snapshot, reset_test_world};
-
-    #[test]
-    fn ensuring_an_active_discovery_is_idempotent() {
-        reset_test_world();
-        replace_runtime_state(Pn71xxRuntime {
-            session: Pn71xxSession::Discovering { device_id: 7 },
-            next_device_id: 8,
-        });
-
-        ensure_discovery(7).unwrap();
-
-        let backend = backend_state_snapshot();
-        assert_eq!(backend.disable_calls, 0);
-        assert_eq!(backend.deregister_calls, 0);
-        assert_eq!(backend.deinitialize_calls, 0);
-        assert_eq!(active_device(), Some(7));
-    }
-}

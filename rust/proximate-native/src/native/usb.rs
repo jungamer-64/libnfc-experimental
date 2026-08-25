@@ -24,7 +24,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
 
-use super::connstring::{
+use super::connstring::usb::{
     UsbSelector, build_usb_connstring_for, decode_usb_selector, select_usb_candidate,
 };
 use super::pn53x::{

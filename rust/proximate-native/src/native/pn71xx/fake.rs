@@ -2,9 +2,7 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::nci::{Backend, TagInfo};
 
-use super::runtime::{
-    Pn71xxSession, callbacks_registered, clear_runtime_state, replace_runtime_state,
-};
+use super::runtime::{callbacks_registered, clear_runtime_state};
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct BackendTestState {
@@ -124,40 +122,5 @@ pub(super) fn emit_tag_arrival_for_tests(tag: TagInfo) {
 pub(super) fn emit_tag_departure_for_tests() {
     if callbacks_registered() {
         backend_instance().state.lock().unwrap().current_tag = None;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::native::pn71xx::runtime::{Pn71xxRuntime, runtime_snapshot};
-
-    #[test]
-    fn callback_helpers_only_update_tag_state_when_callbacks_are_registered() {
-        reset_test_world();
-        let tag = TagInfo {
-            technology: 1,
-            handle: 2,
-            uid: [0xAA; 32],
-            uid_length: 4,
-            protocol: 0,
-        };
-
-        emit_tag_arrival_for_tests(tag);
-        assert_eq!(backend_state_snapshot().current_tag, None);
-
-        replace_runtime_state(Pn71xxRuntime {
-            session: Pn71xxSession::Idle { device_id: 1 },
-            ..Default::default()
-        });
-        emit_tag_arrival_for_tests(tag);
-        assert_eq!(backend_state_snapshot().current_tag, Some(tag));
-
-        emit_tag_departure_for_tests();
-        assert_eq!(backend_state_snapshot().current_tag, None);
-        assert_eq!(
-            runtime_snapshot().session,
-            Pn71xxSession::Idle { device_id: 1 }
-        );
     }
 }

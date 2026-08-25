@@ -158,8 +158,8 @@ impl UsbDeviceKey {
 
         #[cfg(not(target_os = "windows"))]
         {
-            return info.device_address() == self.device_address
-                && device_bus_number(info) == self.bus_number;
+            info.device_address() == self.device_address
+                && device_bus_number(info) == self.bus_number
         }
 
         #[cfg(target_os = "windows")]

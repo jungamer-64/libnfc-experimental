@@ -232,7 +232,7 @@ jobs:
             cxx: clang++
           - name: windows-msvc
             os: windows-latest
-            generator: Visual Studio 17 2022
+            generator: ""
             platform: x64
             cc: ""
             cxx: ""
@@ -291,12 +291,14 @@ jobs:
           cmake_args=(
             -S .
             -B build
-            -G "$CMAKE_GENERATOR_NAME"
             -DCMAKE_BUILD_TYPE=Release
             -DBUILD_EXAMPLES=ON
             -DBUILD_UTILS=ON
             -DBUILD_TESTING=ON
           )
+          if [ -n "$CMAKE_GENERATOR_NAME" ]; then
+            cmake_args+=(-G "$CMAKE_GENERATOR_NAME")
+          fi
           if [ -n "$CMAKE_GENERATOR_PLATFORM" ]; then
             cmake_args+=(-A "$CMAKE_GENERATOR_PLATFORM")
           fi
@@ -312,15 +314,24 @@ jobs:
         run: cmake --install build --prefix "$RUNNER_TEMP/libnfc-install-shared" --config Release
 
   cmake-package-smoke:
-    name: CMake install package smoke (Ubuntu)
-    runs-on: ubuntu-latest
+    name: CMake install package smoke (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu
+            os: ubuntu-latest
+          - name: macos
+            os: macos-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Install packages
+      - name: Install Ubuntu packages
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -328,6 +339,10 @@ jobs:
             cmake \
             ninja-build \
             pkg-config
+
+      - name: Install macOS packages
+        if: runner.os == 'macOS'
+        run: brew install ninja pkg-config
 
       - name: Install Rust toolchain
         run: |
@@ -442,14 +457,20 @@ jobs:
       - name: Verify installed CMake consumers
         run: |
           create_consumer() {
-            local source_dir="$1"
-            local install_prefix="$2"
+            local source_dir
+            local source_dir_cmake
+            local install_prefix
+            local install_prefix_cmake
             local linkage="$3"
+            source_dir="$(cygpath -u "$1")"
+            source_dir_cmake="$(cygpath -m "$1")"
+            install_prefix="$(cygpath -u "$2")"
+            install_prefix_cmake="$(cygpath -m "$2")"
             mkdir -p "$source_dir"
             cat > "$source_dir/CMakeLists.txt" <<EOF
           cmake_minimum_required(VERSION 3.16)
           project(libnfc_windows_consumer C)
-          find_package(LibNFC CONFIG REQUIRED PATHS "$install_prefix/lib/cmake/LibNFC" NO_DEFAULT_PATH)
+          find_package(LibNFC CONFIG REQUIRED PATHS "$install_prefix_cmake/lib/cmake/LibNFC" NO_DEFAULT_PATH)
           add_executable(consumer main.c)
           target_link_libraries(consumer PRIVATE LibNFC::nfc)
           EOF
@@ -457,8 +478,8 @@ jobs:
           #include <nfc/nfc.h>
           int main(void) { return nfc_version() == 0; }
           EOF
-            cmake -S "$source_dir" -B "$source_dir/build" -A x64
-            cmake --build "$source_dir/build" --parallel --config Release
+            cmake -S "$source_dir_cmake" -B "$source_dir_cmake/build" -A x64
+            cmake --build "$source_dir_cmake/build" --parallel --config Release
             if [ "$linkage" = shared ]; then
               PATH="$install_prefix/bin:$PATH" "$source_dir/build/Release/consumer.exe"
             else

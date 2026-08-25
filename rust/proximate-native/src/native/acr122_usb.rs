@@ -27,7 +27,7 @@
 // Derived from libnfc's direct-USB ACR122 driver and its cited CCID/ACR122U
 // protocol documents. The device protocol is implemented here in Rust.
 use super::acr122;
-use super::connstring::{
+use super::connstring::usb::{
     UsbSelector, build_usb_connstring_for, decode_usb_selector_for, select_usb_candidate,
 };
 use super::pn53x::{

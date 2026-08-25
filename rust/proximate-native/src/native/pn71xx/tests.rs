@@ -15,7 +15,10 @@ use super::fake::{
     backend_state_snapshot, emit_tag_arrival_for_tests, emit_tag_departure_for_tests,
     reset_test_world, with_backend_state_mut,
 };
-use super::runtime::{Pn71xxSession, current_tag_snapshot, runtime_snapshot};
+use super::runtime::{
+    Pn71xxRuntime, Pn71xxSession, active_device, current_tag_snapshot, ensure_discovery,
+    replace_runtime_state, runtime_snapshot,
+};
 use crate::nci::TagInfo;
 
 fn modulation(modulation_type: ModulationType, baud_rate: BaudRate) -> Modulation {
@@ -98,6 +101,54 @@ fn open_device(connstring: &ConnectionString) -> proximate_driver::Device {
     let mut registry = proximate_driver::DriverRegistry::new();
     registry.register_driver(Box::new(Pn71xxDriver::new()));
     registry.open(&Context::new(), Some(connstring)).unwrap()
+}
+
+#[test]
+fn callback_helpers_only_update_tag_state_when_callbacks_are_registered() {
+    let _guard = test_guard().lock().unwrap();
+    reset_test_world();
+    let tag = TagInfo {
+        technology: 1,
+        handle: 2,
+        uid: [0xAA; 32],
+        uid_length: 4,
+        protocol: 0,
+    };
+
+    emit_tag_arrival_for_tests(tag);
+    assert_eq!(backend_state_snapshot().current_tag, None);
+
+    replace_runtime_state(Pn71xxRuntime {
+        session: Pn71xxSession::Idle { device_id: 1 },
+        ..Default::default()
+    });
+    emit_tag_arrival_for_tests(tag);
+    assert_eq!(backend_state_snapshot().current_tag, Some(tag));
+
+    emit_tag_departure_for_tests();
+    assert_eq!(backend_state_snapshot().current_tag, None);
+    assert_eq!(
+        runtime_snapshot().session,
+        Pn71xxSession::Idle { device_id: 1 }
+    );
+}
+
+#[test]
+fn ensuring_an_active_discovery_is_idempotent() {
+    let _guard = test_guard().lock().unwrap();
+    reset_test_world();
+    replace_runtime_state(Pn71xxRuntime {
+        session: Pn71xxSession::Discovering { device_id: 7 },
+        next_device_id: 8,
+    });
+
+    ensure_discovery(7).unwrap();
+
+    let backend = backend_state_snapshot();
+    assert_eq!(backend.disable_calls, 0);
+    assert_eq!(backend.deregister_calls, 0);
+    assert_eq!(backend.deinitialize_calls, 0);
+    assert_eq!(active_device(), Some(7));
 }
 
 #[test]
