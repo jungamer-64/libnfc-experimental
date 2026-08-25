@@ -7,6 +7,7 @@ use crate::initiator::accessors::{
     nfc_device_get_supported_baud_rate_target_mode, nfc_device_get_supported_modulation,
 };
 use crate::initiator::operations::nfc_abort_command;
+use crate::release_allocated_ptr;
 use proximate_driver::{DeviceHandle, Driver};
 use std::collections::VecDeque;
 use std::ffi::CStr;
@@ -535,7 +536,7 @@ fn rust_shim_information_about_allocates_owned_c_string_and_clears_last_error() 
     assert_eq!(unsafe { (*raw).last_error }, 0);
 
     unsafe {
-        libc::free(info.cast());
+        release_allocated_ptr(info.cast());
         let driver = (*raw).driver as *mut nfc_driver;
         let close = (*driver).close.unwrap();
         close(raw);

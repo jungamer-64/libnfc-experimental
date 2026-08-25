@@ -11,6 +11,7 @@ use crate::lifecycle::{
     DEVICE_NAME_LENGTH, MAX_USER_DEFINED_DEVICES, nfc_connstring, nfc_context, nfc_device,
     nfc_user_defined_device,
 };
+use crate::release_allocated_ptr;
 use libc::{c_char, c_int, size_t};
 use proximate_driver as rt;
 use std::{ffi::CString, ptr};
@@ -371,7 +372,7 @@ impl CStringOut {
         }
 
         if !unsafe { copy_bytes_to_c_buffer(allocation, allocation_len, rendered.as_bytes()) } {
-            unsafe { libc::free(allocation.cast()) };
+            unsafe { release_allocated_ptr(allocation.cast()) };
             return crate::c_boundary::status::soft_error_status(device);
         }
 
@@ -858,7 +859,7 @@ mod tests {
         assert_eq!(written, 5);
         assert_eq!(device.last_error, 0);
         assert_eq!(unsafe { CStr::from_ptr(raw) }.to_str().unwrap(), "hello");
-        unsafe { libc::free(raw.cast()) };
+        unsafe { release_allocated_ptr(raw.cast()) };
     }
 
     #[test]
