@@ -29,6 +29,7 @@ pub struct UsbDeviceInfo {
     pub product_id: u16,
     pub manufacturer_string_index: u8,
     pub product_string_index: u8,
+    #[cfg(not(target_os = "windows"))]
     pub bus_number: u8,
     pub device_address: u8,
     pub configuration_value: u8,
@@ -44,14 +45,6 @@ pub struct UsbBulkEndpoints {
     pub endpoint_in: u8,
     pub endpoint_out: u8,
     pub max_packet_size: u16,
-}
-
-#[derive(Clone, Debug)]
-pub struct UsbDeviceSelector {
-    pub vendor_id: u16,
-    pub product_id: u16,
-    pub bus_number: u8,
-    pub device_address: u8,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -75,6 +68,7 @@ pub enum UsbError {
 struct UsbDeviceKey {
     vendor_id: u16,
     product_id: u16,
+    #[cfg(not(target_os = "windows"))]
     bus_number: u8,
     device_address: u8,
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -96,6 +90,7 @@ impl UsbDeviceKey {
         Self {
             vendor_id: info.vendor_id(),
             product_id: info.product_id(),
+            #[cfg(not(target_os = "windows"))]
             bus_number: device_bus_number(info),
             device_address: info.device_address(),
             #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -121,7 +116,16 @@ impl UsbDeviceKey {
             }
         }
 
-        info.device_address() == self.device_address && device_bus_number(info) == self.bus_number
+        #[cfg(not(target_os = "windows"))]
+        {
+            return info.device_address() == self.device_address
+                && device_bus_number(info) == self.bus_number;
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            info.device_address() == self.device_address
+        }
     }
 }
 
@@ -131,7 +135,7 @@ fn device_bus_number(info: &NusbDeviceInfo) -> u8 {
         info.busnum()
     }
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
         info.bus_id().parse::<u8>().unwrap_or(0)
     }
@@ -222,6 +226,7 @@ fn build_device_info(info: &NusbDeviceInfo) -> UsbDeviceInfo {
         product_id: info.product_id(),
         manufacturer_string_index: 0,
         product_string_index: 0,
+        #[cfg(not(target_os = "windows"))]
         bus_number: device_bus_number(info),
         device_address: info.device_address(),
         configuration_value: 1,
@@ -301,6 +306,7 @@ pub fn list_devices() -> Result<Vec<UsbDeviceInfo>, UsbError> {
     Ok(devices.iter().map(build_device_info).collect())
 }
 
+#[cfg(not(target_os = "windows"))]
 pub fn bus_device_strings(device: &UsbDeviceInfo) -> (String, String) {
     (
         format!("{:03}", device.bus_number),
@@ -363,19 +369,6 @@ impl UsbHandle {
             read_overflow: HashMap::new(),
             string_descriptors,
         })
-    }
-
-    pub fn open_by_selector(selector: UsbDeviceSelector) -> Result<Self, UsbError> {
-        let devices = list_devices()?;
-        let Some(device) = devices.into_iter().find(|device| {
-            device.vendor_id == selector.vendor_id
-                && device.product_id == selector.product_id
-                && device.bus_number == selector.bus_number
-                && device.device_address == selector.device_address
-        }) else {
-            return Err(UsbError::NoDevice);
-        };
-        Self::open(&device)
     }
 
     pub fn set_configuration(&mut self, configuration_value: u8) -> Result<(), UsbError> {

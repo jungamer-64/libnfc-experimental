@@ -16,9 +16,9 @@ pub(crate) struct PathDescriptor {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct UsbSelector {
-    pub bus: Option<u8>,
-    pub device: Option<u8>,
+pub(crate) enum UsbSelector {
+    Any,
+    Numeric { bus: u8, address: u8 },
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -82,10 +82,7 @@ pub(crate) fn decode_usb_selector_for(
             "connstring '{}' does not match {driver_name}",
             connstring,
         ))),
-        1 => Ok(UsbSelector {
-            bus: None,
-            device: None,
-        }),
+        1 => Ok(UsbSelector::Any),
         3 => {
             let bus_value = decoded
                 .param1
@@ -95,9 +92,9 @@ pub(crate) fn decode_usb_selector_for(
                 .param2
                 .as_deref()
                 .ok_or_else(|| Error::InvalidConnectionString("missing USB device".into()))?;
-            Ok(UsbSelector {
-                bus: Some(parse_usb_number("bus", bus_value)?),
-                device: Some(parse_usb_number("device", device_value)?),
+            Ok(UsbSelector::Numeric {
+                bus: parse_usb_number("bus", bus_value)?,
+                address: parse_usb_number("device", device_value)?,
             })
         }
         _ => Err(Error::InvalidConnectionString(format!(
