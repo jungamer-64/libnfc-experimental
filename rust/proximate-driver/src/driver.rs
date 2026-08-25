@@ -15,10 +15,31 @@ pub struct DiscoveredDevice {
     pub origin: DeviceOrigin,
 }
 
+/// Result produced by one driver without losing backend availability.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DriverScan {
+    /// The driver completed its scan, including the valid empty result.
     Complete(Vec<DiscoveredDevice>),
+    /// The driver's optional backend is currently unavailable.
     Unavailable(Error),
+}
+
+/// An unavailable backend observed while other drivers continued scanning.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnavailableDriver {
+    /// Name of the driver whose backend was unavailable.
+    pub driver: String,
+    /// Machine-readable cause reported by the backend.
+    pub cause: Error,
+}
+
+/// Complete registry scan result.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScanOutcome {
+    /// Devices discovered by available drivers and user configuration.
+    pub devices: Vec<DiscoveredDevice>,
+    /// Optional driver backends that could not participate in this scan.
+    pub unavailable_drivers: Vec<UnavailableDriver>,
 }
 
 pub trait Driver: Send + Sync {
@@ -46,6 +67,12 @@ pub trait Driver: Send + Sync {
             origin: self.origin(),
         }
     }
+    /// Scans this driver's backend without conflating a valid empty result
+    /// with temporary backend unavailability.
+    ///
+    /// # Errors
+    ///
+    /// Returns an operational failure that should abort the aggregate scan.
     fn scan(&self, context: &Context) -> Result<DriverScan, Error>;
     fn open(
         &self,
@@ -77,6 +104,53 @@ impl DriverRegistry {
         self.drivers.iter().map(|driver| driver.name()).collect()
     }
 
+    /// Scans every enabled driver while preserving optional backend availability.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first operational scan failure. Backend unavailability is
+    /// represented in [`ScanOutcome`] and does not stop other drivers.
+    pub fn scan(&self, context: &Context) -> Result<ScanOutcome, Error> {
+        let mut devices = Vec::new();
+        let mut unavailable_drivers = Vec::new();
+
+        for configured in &context.config.user_defined_devices {
+            if configured.optional && self.open(context, Some(&configured.connstring)).is_err() {
+                continue;
+            }
+            devices.push(DiscoveredDevice {
+                display_name: configured.name.clone(),
+                connstring: configured.connstring.clone(),
+                scan_type: ScanType::NotAvailable,
+                exclusive: false,
+                origin: DeviceOrigin::UserDefined,
+            });
+        }
+
+        if context.config.allow_autoscan {
+            for driver in self.drivers.iter().rev() {
+                if !scan_allowed_for_driver(&context.config, driver.as_ref()) {
+                    continue;
+                }
+
+                match driver.scan(context)? {
+                    DriverScan::Complete(mut scanned) => devices.append(&mut scanned),
+                    DriverScan::Unavailable(cause) => {
+                        unavailable_drivers.push(UnavailableDriver {
+                            driver: driver.name().to_string(),
+                            cause,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(ScanOutcome {
+            devices,
+            unavailable_drivers,
+        })
+    }
+
     fn first_available_device(&self, context: &Context) -> Result<Option<DiscoveredDevice>, Error> {
         for configured in &context.config.user_defined_devices {
             if configured.optional && self.open(context, Some(&configured.connstring)).is_err() {
@@ -100,10 +174,13 @@ impl DriverRegistry {
                 continue;
             }
 
-            if let DriverScan::Complete(devices) = driver.scan(context)?
-                && let Some(device) = devices.into_iter().next()
-            {
-                return Ok(Some(device));
+            match driver.scan(context)? {
+                DriverScan::Complete(devices) => {
+                    if let Some(device) = devices.into_iter().next() {
+                        return Ok(Some(device));
+                    }
+                }
+                DriverScan::Unavailable(_) => continue,
             }
         }
 

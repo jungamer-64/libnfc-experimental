@@ -27,7 +27,9 @@
 // Derived from libnfc's direct-USB ACR122 driver and its cited CCID/ACR122U
 // protocol documents. The device protocol is implemented here in Rust.
 use super::acr122;
-use super::connstring::{UsbSelector, build_usb_connstring_for, decode_usb_selector_for};
+use super::connstring::{
+    UsbSelector, build_usb_connstring_for, decode_usb_selector_for, select_usb_candidate,
+};
 use super::pn53x::{
     PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, TransportSendError,
     build_response_frame, payload_from_host_frame, probe_timeout,
@@ -78,7 +80,7 @@ impl Driver for Acr122UsbDriver {
         ScanType::NotIntrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
+    fn scan(&self, _context: &Context) -> Result<proximate_driver::DriverScan, Error> {
         let devices = list_devices().map_err(usb_open_error)?;
 
         let mut found = Vec::new();
@@ -88,11 +90,11 @@ impl Driver for Acr122UsbDriver {
             }
             found.push(self.describe_discovered(
                 usb_display_name(&info),
-                build_usb_connstring_for(DRIVER_NAME, info.bus_number, info.device_address)?,
+                build_usb_connstring_for(DRIVER_NAME, &info)?,
             ));
         }
 
-        Ok(found)
+        Ok(proximate_driver::DriverScan::Complete(found))
     }
 
     fn open(
@@ -123,27 +125,11 @@ impl Driver for Acr122UsbDriver {
 
 fn select_usb_device(selector: UsbSelector) -> Result<UsbDeviceInfo, Error> {
     let devices = list_devices().map_err(usb_open_error)?;
-
-    for info in devices {
-        if !acr122::is_usb_device(info.vendor_id, info.product_id) {
-            continue;
-        }
-        if let Some(bus) = selector.bus
-            && info.bus_number != bus
-        {
-            continue;
-        }
-        if let Some(device) = selector.device
-            && info.device_address != device
-        {
-            continue;
-        }
-        return Ok(info);
-    }
-
-    Err(Error::DriverOpenFailed(
-        "no supported acr122 USB device is available".into(),
-    ))
+    let candidates = devices
+        .into_iter()
+        .filter(|info| acr122::is_usb_device(info.vendor_id, info.product_id))
+        .map(|info| (info, ()));
+    select_usb_candidate(DRIVER_NAME, &selector, candidates).map(|(info, ())| info)
 }
 
 fn usb_display_name(info: &UsbDeviceInfo) -> String {

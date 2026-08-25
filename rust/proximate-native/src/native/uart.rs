@@ -61,10 +61,10 @@ impl Driver for Pn532UartDriver {
         ScanType::Intrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
+    fn scan(&self, _context: &Context) -> Result<proximate_driver::DriverScan, Error> {
         let mut devices = Vec::new();
 
-        for path in list_candidate_paths() {
+        for path in list_candidate_paths()? {
             let Ok(connstring) = build_path_speed_connstring(DRIVER_NAME, &path, DEFAULT_SPEED)
             else {
                 continue;
@@ -86,7 +86,7 @@ impl Driver for Pn532UartDriver {
             }
         }
 
-        Ok(devices)
+        Ok(proximate_driver::DriverScan::Complete(devices))
     }
 
     fn open(
@@ -107,7 +107,7 @@ impl Driver for Pn532UartDriver {
     }
 }
 
-pub(crate) fn list_candidate_paths() -> Vec<String> {
+pub(crate) fn list_candidate_paths() -> Result<Vec<String>, Error> {
     platform_candidate_paths()
 }
 
@@ -283,10 +283,7 @@ mod tests {
         #[cfg(unix)]
         assert!(serial_name_prefixes().contains(&"ttyUSB"));
         #[cfg(windows)]
-        assert_eq!(
-            list_candidate_paths().first().map(String::as_str),
-            Some(r"\\.\COM1")
-        );
+        assert!(list_candidate_paths().is_ok());
     }
 
     #[test]
@@ -307,12 +304,14 @@ mod tests {
         #[cfg(unix)]
         assert!(
             list_candidate_paths()
+                .unwrap()
                 .iter()
                 .all(|path| path.starts_with("/dev/"))
         );
         #[cfg(windows)]
         assert!(
             list_candidate_paths()
+                .unwrap()
                 .iter()
                 .all(|path| path.starts_with(r"\\.\COM"))
         );

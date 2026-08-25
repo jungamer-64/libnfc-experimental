@@ -24,7 +24,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
 
-use super::connstring::{UsbSelector, build_usb_connstring, decode_usb_selector};
+use super::connstring::{
+    UsbSelector, build_usb_connstring_for, decode_usb_selector, select_usb_candidate,
+};
 use super::pn53x::{
     PN53X_ACK_FRAME, Pn53xDevice, Pn53xProfile, Pn53xTransport, Pn53xUsbModel, TransportSendError,
     probe_timeout,
@@ -128,7 +130,7 @@ impl Driver for Pn53xUsbDriver {
         ScanType::NotIntrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
+    fn scan(&self, _context: &Context) -> Result<proximate_driver::DriverScan, Error> {
         let devices = list_devices().map_err(usb_open_error)?;
 
         let mut found = Vec::new();
@@ -136,13 +138,13 @@ impl Driver for Pn53xUsbDriver {
             let Some(supported) = supported_device(&info) else {
                 continue;
             };
-            if let Ok(connstring) = build_usb_connstring(info.bus_number, info.device_address) {
+            if let Ok(connstring) = build_usb_connstring_for(DRIVER_NAME, &info) {
                 found
                     .push(self.describe_discovered(usb_display_name(&info, supported), connstring));
             }
         }
 
-        Ok(found)
+        Ok(proximate_driver::DriverScan::Complete(found))
     }
 
     fn open(
@@ -167,27 +169,10 @@ impl Driver for Pn53xUsbDriver {
 
 fn select_usb_device(selector: UsbSelector) -> Result<(UsbDeviceInfo, SupportedUsbDevice), Error> {
     let devices = list_devices().map_err(usb_open_error)?;
-
-    for info in devices {
-        let Some(supported) = supported_device(&info) else {
-            continue;
-        };
-        if let Some(bus) = selector.bus
-            && info.bus_number != bus
-        {
-            continue;
-        }
-        if let Some(device) = selector.device
-            && info.device_address != device
-        {
-            continue;
-        }
-        return Ok((info, supported));
-    }
-
-    Err(Error::DriverOpenFailed(
-        "no supported pn53x USB device is available".into(),
-    ))
+    let candidates = devices
+        .into_iter()
+        .filter_map(|info| supported_device(&info).map(|supported| (info, supported)));
+    select_usb_candidate(DRIVER_NAME, &selector, candidates)
 }
 
 fn usb_display_name(info: &UsbDeviceInfo, supported: SupportedUsbDevice) -> String {

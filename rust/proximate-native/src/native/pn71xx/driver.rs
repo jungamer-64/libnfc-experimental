@@ -28,23 +28,27 @@ impl Driver for Pn71xxDriver {
         ScanType::NotIntrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
+    fn scan(&self, _context: &Context) -> Result<proximate_driver::DriverScan, Error> {
         if active_device().is_some() {
-            return Ok(vec![self.describe_discovered(
-                PN71XX_DRIVER_NAME.to_string(),
-                ConnectionString::new(PN71XX_DRIVER_NAME).unwrap(),
-            )]);
+            return Ok(proximate_driver::DriverScan::Complete(vec![
+                self.describe_discovered(
+                    PN71XX_DRIVER_NAME.to_string(),
+                    ConnectionString::new(PN71XX_DRIVER_NAME).unwrap(),
+                ),
+            ]));
         }
 
         if backend().initialize() != 0 {
-            return Ok(Vec::new());
+            return Ok(proximate_driver::DriverScan::Complete(Vec::new()));
         }
         backend().deinitialize();
 
-        Ok(vec![self.describe_discovered(
-            PN71XX_DRIVER_NAME.to_string(),
-            ConnectionString::new(PN71XX_DRIVER_NAME).unwrap(),
-        )])
+        Ok(proximate_driver::DriverScan::Complete(vec![
+            self.describe_discovered(
+                PN71XX_DRIVER_NAME.to_string(),
+                ConnectionString::new(PN71XX_DRIVER_NAME).unwrap(),
+            ),
+        ]))
     }
 
     fn open(

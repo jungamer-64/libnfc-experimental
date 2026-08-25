@@ -70,7 +70,7 @@ impl Driver for Pn532SpiDriver {
         ScanType::Intrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
+    fn scan(&self, _context: &Context) -> Result<proximate_driver::DriverScan, Error> {
         let mut devices = Vec::new();
         for path in list_candidate_paths() {
             let Ok(connstring) = build_path_speed_connstring(DRIVER_NAME, &path, DEFAULT_SPEED)
@@ -92,7 +92,7 @@ impl Driver for Pn532SpiDriver {
                 devices.push(self.describe_discovered(format!("PN532 SPI ({path})"), connstring));
             }
         }
-        Ok(devices)
+        Ok(proximate_driver::DriverScan::Complete(devices))
     }
 
     fn open(

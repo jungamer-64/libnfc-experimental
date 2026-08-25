@@ -178,13 +178,16 @@ impl Driver for FakeDriver {
         self.scan_type
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<DiscoveredDevice>, Error> {
-        Ok(self
-            .scan_results
-            .iter()
-            .cloned()
-            .map(|connstring| self.describe_discovered(connstring.as_str().to_string(), connstring))
-            .collect())
+    fn scan(&self, _context: &Context) -> Result<DriverScan, Error> {
+        Ok(DriverScan::Complete(
+            self.scan_results
+                .iter()
+                .cloned()
+                .map(|connstring| {
+                    self.describe_discovered(connstring.as_str().to_string(), connstring)
+                })
+                .collect(),
+        ))
     }
 
     fn open(
@@ -533,9 +536,10 @@ fn driver_registry_honors_intrusive_scan_and_usb_fallback() {
         user_defined_devices: Vec::new(),
     });
 
-    let listed = registry.list_devices(&context).unwrap();
+    let listed = registry.scan(&context).unwrap();
     assert_eq!(
         listed
+            .devices
             .into_iter()
             .map(|device| device.connstring)
             .collect::<Vec<_>>(),
@@ -723,7 +727,7 @@ fn decode_connstring_preserves_segments() {
 }
 
 #[test]
-fn list_devices_outcome_warns_only_for_manual_selection_mode_without_devices() {
+fn scan_without_autoscan_returns_only_manual_devices() {
     let registry = DriverRegistry::new();
     let context = Context::with_config(ContextConfig {
         allow_autoscan: false,
@@ -732,9 +736,9 @@ fn list_devices_outcome_warns_only_for_manual_selection_mode_without_devices() {
         user_defined_devices: Vec::new(),
     });
 
-    let outcome = registry.list_devices_outcome(&context).unwrap();
-    assert!(outcome.warn_manual_selection);
+    let outcome = registry.scan(&context).unwrap();
     assert!(outcome.devices.is_empty());
+    assert!(outcome.unavailable_drivers.is_empty());
 
     let with_manual_device = Context::with_config(ContextConfig {
         allow_autoscan: false,
@@ -747,12 +751,9 @@ fn list_devices_outcome_warns_only_for_manual_selection_mode_without_devices() {
         }],
     });
 
-    assert!(
-        !registry
-            .list_devices_outcome(&with_manual_device)
-            .unwrap()
-            .warn_manual_selection
-    );
+    let outcome = registry.scan(&with_manual_device).unwrap();
+    assert_eq!(outcome.devices.len(), 1);
+    assert!(outcome.unavailable_drivers.is_empty());
 }
 
 #[test]
@@ -773,16 +774,17 @@ fn open_without_connstring_uses_first_listed_device() {
             ScanType::NotIntrusive
         }
 
-        fn scan(&self, _context: &Context) -> Result<Vec<DiscoveredDevice>, Error> {
+        fn scan(&self, _context: &Context) -> Result<DriverScan, Error> {
             self.scan_calls.fetch_add(1, Ordering::SeqCst);
-            Ok(self
-                .scan_results
-                .iter()
-                .cloned()
-                .map(|connstring| {
-                    self.describe_discovered(connstring.as_str().to_string(), connstring)
-                })
-                .collect())
+            Ok(DriverScan::Complete(
+                self.scan_results
+                    .iter()
+                    .cloned()
+                    .map(|connstring| {
+                        self.describe_discovered(connstring.as_str().to_string(), connstring)
+                    })
+                    .collect(),
+            ))
         }
 
         fn open(
@@ -831,7 +833,7 @@ fn open_without_connstring_uses_first_listed_device() {
 }
 
 #[test]
-fn list_devices_outcome_uses_effective_driver_priority_order() {
+fn scan_uses_effective_driver_priority_order() {
     let mut registry = DriverRegistry::new();
     registry.register_driver(Box::new(FakeDriver {
         name: "alpha".into(),
@@ -858,8 +860,9 @@ fn list_devices_outcome_uses_effective_driver_priority_order() {
 
     assert_eq!(
         registry
-            .list_devices(&context)
+            .scan(&context)
             .unwrap()
+            .devices
             .into_iter()
             .map(|device| device.connstring)
             .collect::<Vec<_>>(),
@@ -868,6 +871,58 @@ fn list_devices_outcome_uses_effective_driver_priority_order() {
             ConnectionString::new("beta:002").unwrap(),
             ConnectionString::new("alpha:001").unwrap(),
         ]
+    );
+}
+
+#[test]
+fn scan_preserves_unavailable_driver_and_continues() {
+    struct UnavailableBackend;
+
+    impl Driver for UnavailableBackend {
+        fn name(&self) -> &str {
+            "pcsc"
+        }
+
+        fn scan_type(&self) -> ScanType {
+            ScanType::NotIntrusive
+        }
+
+        fn scan(&self, _context: &Context) -> Result<DriverScan, Error> {
+            Ok(DriverScan::Unavailable(Error::DeviceOperationFailed {
+                operation: "pcsc_scan",
+                code: -17,
+            }))
+        }
+
+        fn open(
+            &self,
+            _context: &Context,
+            _connstring: &ConnectionString,
+        ) -> Result<Box<dyn DeviceHandle>, Error> {
+            Err(Error::DriverOpenFailed("PC/SC unavailable".into()))
+        }
+    }
+
+    let mut registry = DriverRegistry::new();
+    registry.register_driver(Box::new(FakeDriver {
+        name: "fallback".into(),
+        scan_type: ScanType::NotIntrusive,
+        scan_results: vec![ConnectionString::new("fallback:001").unwrap()],
+        open_result: Ok("fallback".into()),
+    }));
+    registry.register_driver(Box::new(UnavailableBackend));
+
+    let outcome = registry.scan(&Context::new()).unwrap();
+    assert_eq!(outcome.devices.len(), 1);
+    assert_eq!(
+        outcome.unavailable_drivers,
+        vec![UnavailableDriver {
+            driver: "pcsc".into(),
+            cause: Error::DeviceOperationFailed {
+                operation: "pcsc_scan",
+                code: -17,
+            },
+        }]
     );
 }
 

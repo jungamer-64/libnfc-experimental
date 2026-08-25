@@ -342,7 +342,9 @@ fn external_driver_grows_scan_capacity_until_result_is_not_saturated() {
     with_raw_scan_state(|state| state.results = VecDeque::from([4, 8, 3]));
     let driver = ExternalDriver::new(ptr::addr_of!(SCAN_DRIVER));
 
-    let listed = driver.scan(&rt::Context::default()).unwrap();
+    let rt::DriverScan::Complete(listed) = driver.scan(&rt::Context::default()).unwrap() else {
+        panic!("external C drivers cannot report unavailable");
+    };
 
     assert_eq!(listed.len(), 3);
     assert_eq!(
@@ -357,7 +359,9 @@ fn external_driver_stops_scanning_at_max_capacity() {
     with_raw_scan_state(|state| state.results = VecDeque::from([4, 8, 16, 32, 64, 128, 256]));
     let driver = ExternalDriver::new(ptr::addr_of!(SCAN_DRIVER));
 
-    let listed = driver.scan(&rt::Context::default()).unwrap();
+    let rt::DriverScan::Complete(listed) = driver.scan(&rt::Context::default()).unwrap() else {
+        panic!("external C drivers cannot report unavailable");
+    };
 
     assert_eq!(listed.len(), 256);
     assert_eq!(

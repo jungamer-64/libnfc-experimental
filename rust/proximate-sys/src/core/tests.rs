@@ -701,6 +701,29 @@ fn list_devices_warns_when_autoscan_is_disabled_without_manual_devices() {
 }
 
 #[test]
+fn c_scan_boundary_projects_unavailable_drivers_to_the_log() {
+    let _guard = core_test_guard();
+    reset_core_test_world();
+    crate::logger::log_init(LOG_PRIORITY_INFO.into());
+
+    super::runtime::log_unavailable_drivers(&[proximate_driver::UnavailableDriver {
+        driver: "pcsc".into(),
+        cause: proximate_driver::Error::DeviceOperationFailed {
+            operation: "pcsc_scan",
+            code: -2_147_217_054,
+        },
+    }]);
+
+    assert_eq!(
+        test_get_last_log(),
+        Some(
+            "driver 'pcsc' unavailable during scan: device operation pcsc_scan failed with status -2147217054"
+                .into()
+        )
+    );
+}
+
+#[test]
 fn list_devices_respects_intrusive_scan_flag() {
     let _guard = core_test_guard();
     reset_core_test_world();

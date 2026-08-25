@@ -6,7 +6,37 @@ use nusb::{
 };
 use std::collections::HashMap;
 use std::num::NonZeroU8;
+#[cfg(target_os = "windows")]
+use std::os::windows::ffi::OsStrExt;
 use std::time::Duration;
+
+#[cfg(target_os = "windows")]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct WindowsUsbInstanceId(Vec<u16>);
+
+#[cfg(target_os = "windows")]
+impl WindowsUsbInstanceId {
+    fn from_device_info(info: &NusbDeviceInfo) -> Self {
+        Self::from_units(info.instance_id().encode_wide())
+    }
+
+    pub(crate) fn from_units(units: impl IntoIterator<Item = u16>) -> Self {
+        Self(units.into_iter().map(normalize_instance_unit).collect())
+    }
+
+    pub(crate) fn units(&self) -> &[u16] {
+        &self.0
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn normalize_instance_unit(unit: u16) -> u16 {
+    if (u16::from(b'a')..=u16::from(b'z')).contains(&unit) {
+        unit - u16::from(b'a' - b'A')
+    } else {
+        unit
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct UsbEndpointInfo {
@@ -31,6 +61,10 @@ pub struct UsbDeviceInfo {
     pub product_string_index: u8,
     #[cfg(not(target_os = "windows"))]
     pub bus_number: u8,
+    #[cfg(target_os = "windows")]
+    instance_id: WindowsUsbInstanceId,
+    #[cfg(target_os = "windows")]
+    numeric_selector_bus: u8,
     pub device_address: u8,
     pub configuration_value: u8,
     pub interfaces: Vec<UsbInterfaceInfo>,
@@ -70,10 +104,13 @@ struct UsbDeviceKey {
     product_id: u16,
     #[cfg(not(target_os = "windows"))]
     bus_number: u8,
+    #[cfg(not(target_os = "windows"))]
     device_address: u8,
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "windows")]
+    instance_id: WindowsUsbInstanceId,
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     bus_id: String,
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     port_chain: Vec<u8>,
 }
 
@@ -92,10 +129,13 @@ impl UsbDeviceKey {
             product_id: info.product_id(),
             #[cfg(not(target_os = "windows"))]
             bus_number: device_bus_number(info),
+            #[cfg(not(target_os = "windows"))]
             device_address: info.device_address(),
-            #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+            #[cfg(target_os = "windows")]
+            instance_id: WindowsUsbInstanceId::from_device_info(info),
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             bus_id: info.bus_id().to_owned(),
-            #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             port_chain: info.port_chain().to_vec(),
         }
     }
@@ -105,7 +145,7 @@ impl UsbDeviceKey {
             return false;
         }
 
-        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             if info.bus_id() != self.bus_id {
                 return false;
@@ -124,11 +164,12 @@ impl UsbDeviceKey {
 
         #[cfg(target_os = "windows")]
         {
-            info.device_address() == self.device_address
+            WindowsUsbInstanceId::from_device_info(info) == self.instance_id
         }
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 fn device_bus_number(info: &NusbDeviceInfo) -> u8 {
     #[cfg(target_os = "linux")]
     {
@@ -140,7 +181,7 @@ fn device_bus_number(info: &NusbDeviceInfo) -> u8 {
         info.bus_id().parse::<u8>().unwrap_or(0)
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         0
     }
@@ -228,6 +269,10 @@ fn build_device_info(info: &NusbDeviceInfo) -> UsbDeviceInfo {
         product_string_index: 0,
         #[cfg(not(target_os = "windows"))]
         bus_number: device_bus_number(info),
+        #[cfg(target_os = "windows")]
+        instance_id: WindowsUsbInstanceId::from_device_info(info),
+        #[cfg(target_os = "windows")]
+        numeric_selector_bus: info.bus_id().parse::<u8>().unwrap_or(0),
         device_address: info.device_address(),
         configuration_value: 1,
         interfaces: Vec::new(),
@@ -304,6 +349,25 @@ pub fn list_devices() -> Result<Vec<UsbDeviceInfo>, UsbError> {
         .map_err(|error| map_nusb_error(&error))?
         .collect::<Vec<_>>();
     Ok(devices.iter().map(build_device_info).collect())
+}
+
+impl UsbDeviceInfo {
+    pub(crate) fn numeric_locator(&self) -> (u8, u8) {
+        #[cfg(not(target_os = "windows"))]
+        {
+            (self.bus_number, self.device_address)
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            (self.numeric_selector_bus, self.device_address)
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(crate) fn instance_id(&self) -> &WindowsUsbInstanceId {
+        &self.instance_id
+    }
 }
 
 #[cfg(not(target_os = "windows"))]

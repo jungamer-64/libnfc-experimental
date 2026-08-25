@@ -19,6 +19,15 @@ fn create_runtime_registry() -> rt::DriverRegistry {
     registry
 }
 
+pub(super) fn log_unavailable_drivers(unavailable: &[rt::UnavailableDriver]) {
+    for driver in unavailable {
+        log_general_info(&format!(
+            "driver '{}' unavailable during scan: {}",
+            driver.driver, driver.cause
+        ));
+    }
+}
+
 unsafe fn nfc_open_impl(context: *mut nfc_context, connstring: *const c_char) -> *mut nfc_device {
     let runtime_context = context_from_c(context.cast_const());
     let registry = create_runtime_registry();
@@ -27,7 +36,26 @@ unsafe fn nfc_open_impl(context: *mut nfc_context, connstring: *const c_char) ->
         Err(_) => return ptr::null_mut(),
     };
 
-    match registry.open(&runtime_context, requested.as_ref()) {
+    let requested = match requested {
+        Some(requested) => requested,
+        None => {
+            let outcome = match registry.scan(&runtime_context) {
+                Ok(outcome) => outcome,
+                Err(error) => {
+                    log_general_debug(&format!("nfc_open scan failed: {error:?}"));
+                    return ptr::null_mut();
+                }
+            };
+            log_unavailable_drivers(&outcome.unavailable_drivers);
+            let Some(device) = outcome.devices.into_iter().next() else {
+                log_general_debug("nfc_open found no available device");
+                return ptr::null_mut();
+            };
+            device.connstring
+        }
+    };
+
+    match registry.open(&runtime_context, Some(&requested)) {
         Ok(device) => attach_rust_device(device, context.cast_const()).unwrap_or(ptr::null_mut()),
         Err(error) => {
             log_general_debug(&format!("nfc_open failed: {:?}", error));
@@ -48,10 +76,17 @@ unsafe fn nfc_list_devices_impl(
     };
     let runtime_context = context_from_c(context.cast_const());
     let registry = create_runtime_registry();
-    let Ok(outcome) = registry.list_devices_outcome(&runtime_context) else {
-        return 0;
+    let outcome = match registry.scan(&runtime_context) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            log_general_debug(&format!("nfc_list_devices scan failed: {error:?}"));
+            return 0;
+        }
     };
-    if outcome.warn_manual_selection {
+    log_unavailable_drivers(&outcome.unavailable_drivers);
+    if !runtime_context.config.allow_autoscan
+        && runtime_context.config.user_defined_devices.is_empty()
+    {
         log_general_info("Warning: user must specify device(s) manually when autoscan is disabled");
     }
 

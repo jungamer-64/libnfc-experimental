@@ -136,6 +136,15 @@ pub struct DeviceDescriptor {
     pub origin: rt::DeviceOrigin,
 }
 
+/// Device discovery together with optional backend availability diagnostics.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScanOutcome {
+    /// Devices found by drivers that completed their scan.
+    pub devices: Vec<DeviceDescriptor>,
+    /// Drivers whose optional OS backend was unavailable during this scan.
+    pub unavailable_drivers: Vec<rt::UnavailableDriver>,
+}
+
 pub struct ContextBuilder {
     config: Config,
     registry: rt::DriverRegistry,
@@ -225,9 +234,16 @@ impl Context {
         Config(self.runtime.config.clone())
     }
 
-    pub fn scan(&self) -> Result<Vec<DeviceDescriptor>, rt::Error> {
-        let devices = self.registry.list_devices(&self.runtime)?;
-        Ok(devices
+    /// Scans configured drivers while retaining backend availability details.
+    ///
+    /// # Errors
+    ///
+    /// Returns an operational driver failure. Optional backend unavailability
+    /// is represented in [`ScanOutcome::unavailable_drivers`].
+    pub fn scan(&self) -> Result<ScanOutcome, rt::Error> {
+        let outcome = self.registry.scan(&self.runtime)?;
+        let devices = outcome
+            .devices
             .into_iter()
             .map(|descriptor| DeviceDescriptor {
                 display_name: descriptor.display_name,
@@ -236,7 +252,11 @@ impl Context {
                 exclusive: descriptor.exclusive,
                 origin: descriptor.origin,
             })
-            .collect())
+            .collect();
+        Ok(ScanOutcome {
+            devices,
+            unavailable_drivers: outcome.unavailable_drivers,
+        })
     }
 
     pub fn open(&self, selector: &Selector) -> Result<rt::Device, rt::Error> {
@@ -337,11 +357,11 @@ mod tests {
             rt::ScanType::NotIntrusive
         }
 
-        fn scan(&self, _context: &rt::Context) -> Result<Vec<rt::DiscoveredDevice>, rt::Error> {
-            Ok(vec![self.describe_discovered(
+        fn scan(&self, _context: &rt::Context) -> Result<rt::DriverScan, rt::Error> {
+            Ok(rt::DriverScan::Complete(vec![self.describe_discovered(
                 "fake descriptor".to_string(),
                 rt::ConnectionString::new("fake:001").unwrap(),
-            )])
+            )]))
         }
 
         fn open(
@@ -441,12 +461,13 @@ mod tests {
             .build();
 
         let scanned = context.scan().unwrap();
-        assert_eq!(scanned.len(), 1);
-        assert_eq!(scanned[0].display_name, "named");
-        assert_eq!(scanned[0].selector.as_str(), "fake:001");
-        assert_eq!(scanned[0].scan_type, rt::ScanType::NotAvailable);
-        assert!(!scanned[0].exclusive);
-        assert_eq!(scanned[0].origin, rt::DeviceOrigin::UserDefined);
+        assert!(scanned.unavailable_drivers.is_empty());
+        assert_eq!(scanned.devices.len(), 1);
+        assert_eq!(scanned.devices[0].display_name, "named");
+        assert_eq!(scanned.devices[0].selector.as_str(), "fake:001");
+        assert_eq!(scanned.devices[0].scan_type, rt::ScanType::NotAvailable);
+        assert!(!scanned.devices[0].exclusive);
+        assert_eq!(scanned.devices[0].origin, rt::DeviceOrigin::UserDefined);
     }
 
     #[test]

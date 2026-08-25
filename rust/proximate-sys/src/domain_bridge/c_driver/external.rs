@@ -39,9 +39,9 @@ impl rt::Driver for ExternalDriver {
         self.scan_type
     }
 
-    fn scan(&self, context: &rt::Context) -> Result<Vec<rt::DiscoveredDevice>, rt::Error> {
+    fn scan(&self, context: &rt::Context) -> Result<rt::DriverScan, rt::Error> {
         let Some(driver) = (unsafe { optional_ref(self.raw) }) else {
-            return Ok(Vec::new());
+            return Ok(rt::DriverScan::Complete(Vec::new()));
         };
         let Some(scan) = driver.scan else {
             return Err(missing_capability("scan"));
@@ -65,7 +65,7 @@ impl rt::Driver for ExternalDriver {
             }
 
             if devices.len() < capacity || capacity >= MAX_SCAN_CAPACITY {
-                return Ok(devices);
+                return Ok(rt::DriverScan::Complete(devices));
             }
             capacity = (capacity * 2).min(MAX_SCAN_CAPACITY);
         }

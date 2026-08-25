@@ -67,7 +67,7 @@ use self::backend::stringify_pcsc_error;
 pub(crate) use self::device::PcscDevice;
 #[cfg(feature = "driver-pcsc")]
 pub(crate) use self::driver::PcscDriver;
-pub(crate) use self::reader::{ReaderFilter, resolve_reader, scan_matching_readers};
+pub(crate) use self::reader::{ReaderFilter, ReaderScan, resolve_reader, scan_matching_readers};
 #[cfg(feature = "driver-pcsc")]
 pub(crate) use self::types::PcscAttribute;
 pub(crate) use self::types::{

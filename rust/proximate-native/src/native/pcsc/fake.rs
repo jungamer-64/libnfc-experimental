@@ -86,6 +86,7 @@ impl PcscCard for FakePcscCard {
 pub(super) struct FakePcscBackend {
     readers: Vec<String>,
     cards: HashMap<String, Arc<Mutex<FakeCardState>>>,
+    list_error: Option<i32>,
 }
 
 impl FakePcscBackend {
@@ -95,10 +96,18 @@ impl FakePcscBackend {
             .insert(reader.to_string(), Arc::new(Mutex::new(state)));
         self
     }
+
+    pub(super) fn with_list_error(mut self, status: i32) -> Self {
+        self.list_error = Some(status);
+        self
+    }
 }
 
 impl PcscBackend for FakePcscBackend {
     fn list_readers_owned(&self) -> Result<Vec<String>, i32> {
+        if let Some(status) = self.list_error {
+            return Err(status);
+        }
         Ok(self.readers.clone())
     }
 

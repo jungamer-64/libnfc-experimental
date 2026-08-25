@@ -29,20 +29,47 @@ fn reader_matches(filter: ReaderFilter, reader: &str) -> bool {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ReaderScan {
+    Complete(Vec<ConnectionString>),
+    Unavailable(Error),
+}
+
+fn pcsc_status(value: ::pcsc::ffi::LONG) -> i32 {
+    value as u32 as i32
+}
+
 pub(crate) fn scan_matching_readers(
     backend: &dyn PcscBackend,
     driver_name: &str,
     filter: ReaderFilter,
-) -> Result<Vec<ConnectionString>, Error> {
+) -> Result<ReaderScan, Error> {
     let readers = match backend.list_readers_owned() {
         Ok(readers) => readers,
-        Err(_) => return Ok(Vec::new()),
+        Err(status) if status == pcsc_status(::pcsc::ffi::SCARD_E_NO_READERS_AVAILABLE) => {
+            return Ok(ReaderScan::Complete(Vec::new()));
+        }
+        Err(status)
+            if status == pcsc_status(::pcsc::ffi::SCARD_E_NO_SERVICE)
+                || status == pcsc_status(::pcsc::ffi::SCARD_E_SERVICE_STOPPED) =>
+        {
+            return Ok(ReaderScan::Unavailable(device_error("pcsc_scan", status)));
+        }
+        Err(status) => return Err(device_error("pcsc_scan", status)),
     };
-    readers
+    let readers = readers
         .into_iter()
         .filter(|reader| reader_matches(filter, reader))
         .map(|reader| ConnectionString::new(format!("{driver_name}:{reader}")))
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ReaderScan::Complete(readers))
+}
+
+fn available_readers(scan: ReaderScan) -> Result<Vec<ConnectionString>, Error> {
+    match scan {
+        ReaderScan::Complete(readers) => Ok(readers),
+        ReaderScan::Unavailable(cause) => Err(cause),
+    }
 }
 
 fn parse_reader_index(value: &str) -> Option<usize> {
@@ -66,7 +93,7 @@ pub(crate) fn resolve_reader(
     }
 
     if decoded.match_depth == 1 {
-        let devices = scan_matching_readers(backend, driver_name, filter)?;
+        let devices = available_readers(scan_matching_readers(backend, driver_name, filter)?)?;
         let Some(resolved) = devices.into_iter().next() else {
             return Err(device_error("pcsc_scan", NFC_ENOTSUCHDEV));
         };
@@ -82,7 +109,7 @@ pub(crate) fn resolve_reader(
         .filter(|value| !value.is_empty())
         .ok_or_else(|| invalid_connection("reader name is missing"))?;
     if let Some(index) = parse_reader_index(&requested) {
-        let devices = scan_matching_readers(backend, driver_name, filter)?;
+        let devices = available_readers(scan_matching_readers(backend, driver_name, filter)?)?;
         let Some(resolved) = devices.into_iter().nth(index) else {
             return Err(device_error("pcsc_scan", NFC_ENOTSUCHDEV));
         };

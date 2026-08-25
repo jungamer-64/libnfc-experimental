@@ -25,7 +25,7 @@ pub(crate) fn error_to_status(error: &rt::Error) -> c_int {
         rt::Error::BufferTooSmall { .. } => NFC_EOVFLOW,
         rt::Error::InvalidConnectionString(_) => NFC_EINVARG,
         rt::Error::DriverNotFound(_) => NFC_ENOTSUCHDEV,
-        rt::Error::DriverOpenFailed(_) => NFC_ESOFT,
+        rt::Error::DriverOpenFailed(_) | rt::Error::AmbiguousDeviceSelection { .. } => NFC_ESOFT,
         rt::Error::MissingCapability(_) => NFC_EDEVNOTSUPP,
         rt::Error::UnsupportedOperation(_) => NFC_ENOTIMPL,
         rt::Error::Timeout(_) => NFC_ETIMEOUT,

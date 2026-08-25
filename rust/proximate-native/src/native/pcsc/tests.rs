@@ -20,11 +20,62 @@ fn scan_filters_out_acr122_readers() {
     let driver = PcscDriver::with_backend(backend);
     let context = Context::new();
 
-    let devices = driver.scan(&context).unwrap();
+    let proximate_driver::DriverScan::Complete(devices) = driver.scan(&context).unwrap() else {
+        panic!("PC/SC unexpectedly unavailable");
+    };
     assert_eq!(devices.len(), 1);
     assert_eq!(
         devices[0].connstring.as_str(),
         "pcsc:Feitian R502 CL Reader 0"
+    );
+}
+
+fn pcsc_status(value: ::pcsc::ffi::LONG) -> i32 {
+    value as u32 as i32
+}
+
+#[test]
+fn scan_distinguishes_no_readers_from_service_unavailability() {
+    let context = Context::new();
+    let no_readers = PcscDriver::with_backend(Arc::new(
+        FakePcscBackend::default()
+            .with_list_error(pcsc_status(::pcsc::ffi::SCARD_E_NO_READERS_AVAILABLE)),
+    ));
+    assert_eq!(
+        no_readers.scan(&context),
+        Ok(proximate_driver::DriverScan::Complete(Vec::new()))
+    );
+
+    for status in [
+        pcsc_status(::pcsc::ffi::SCARD_E_NO_SERVICE),
+        pcsc_status(::pcsc::ffi::SCARD_E_SERVICE_STOPPED),
+    ] {
+        let driver =
+            PcscDriver::with_backend(Arc::new(FakePcscBackend::default().with_list_error(status)));
+        assert_eq!(
+            driver.scan(&context),
+            Ok(proximate_driver::DriverScan::Unavailable(
+                Error::DeviceOperationFailed {
+                    operation: "pcsc_scan",
+                    code: status,
+                }
+            ))
+        );
+    }
+}
+
+#[test]
+fn scan_propagates_unexpected_pcsc_status() {
+    let context = Context::new();
+    let status = pcsc_status(::pcsc::ffi::SCARD_E_INVALID_HANDLE);
+    let driver =
+        PcscDriver::with_backend(Arc::new(FakePcscBackend::default().with_list_error(status)));
+    assert_eq!(
+        driver.scan(&context),
+        Err(Error::DeviceOperationFailed {
+            operation: "pcsc_scan",
+            code: status,
+        })
     );
 }
 

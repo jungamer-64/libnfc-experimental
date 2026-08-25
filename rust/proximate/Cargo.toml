@@ -1,6 +1,6 @@
 [package]
 name = "proximate"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "High-level Rust facade for the experimental libnfc core."
 license.workspace = true

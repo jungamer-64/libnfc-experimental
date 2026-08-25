@@ -99,18 +99,26 @@ impl Driver for Acr122PcscDriver {
         ScanType::NotIntrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
-        Ok(super::pcsc::scan_matching_readers(
+    fn scan(&self, _context: &Context) -> Result<proximate_driver::DriverScan, Error> {
+        let readers = match super::pcsc::scan_matching_readers(
             self.backend.as_ref(),
             DRIVER_NAME,
             ReaderFilter::Acr122,
-        )?
-        .into_iter()
-        .map(|connstring| {
-            let display_name = connstring.as_str().to_string();
-            self.describe_discovered(display_name, connstring)
-        })
-        .collect())
+        )? {
+            super::pcsc::ReaderScan::Complete(readers) => readers,
+            super::pcsc::ReaderScan::Unavailable(cause) => {
+                return Ok(proximate_driver::DriverScan::Unavailable(cause));
+            }
+        };
+        Ok(proximate_driver::DriverScan::Complete(
+            readers
+                .into_iter()
+                .map(|connstring| {
+                    let display_name = connstring.as_str().to_string();
+                    self.describe_discovered(display_name, connstring)
+                })
+                .collect(),
+        ))
     }
 
     fn open(
@@ -469,14 +477,15 @@ mod tests {
         let mut transport = Acr122PcscTransport::new(card, Some(PcscProtocol::T1));
 
         let frame = crate::native::pn53x::build_frame(&[0x02]).unwrap();
-        transport.send(&frame, 25).unwrap();
+        let timeout = OperationTimeout::try_milliseconds(25).unwrap();
+        transport.send(&frame, timeout).unwrap();
 
         let mut ack = [0u8; 6];
-        assert_eq!(transport.receive(&mut ack, 25).unwrap(), 6);
+        assert_eq!(transport.receive(&mut ack, timeout).unwrap(), 6);
         assert_eq!(ack, PN53X_ACK_FRAME);
 
         let mut response = [0u8; 32];
-        let size = transport.receive(&mut response, 25).unwrap();
+        let size = transport.receive(&mut response, timeout).unwrap();
         assert!(size > 0);
     }
 

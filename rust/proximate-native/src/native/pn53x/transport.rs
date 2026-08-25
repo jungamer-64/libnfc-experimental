@@ -81,7 +81,7 @@ pub(super) fn status_code(error: &Error) -> i32 {
         | Error::InvalidConnectionString(_) => -2,
         Error::BufferTooSmall { .. } => -5,
         Error::DriverNotFound(_) => -4,
-        Error::DriverOpenFailed(_) => -80,
+        Error::DriverOpenFailed(_) | Error::AmbiguousDeviceSelection { .. } => -80,
         Error::MissingCapability(_) => NFC_EDEVNOTSUPP,
         Error::UnsupportedOperation(_) => NFC_ENOTIMPL,
         Error::Timeout(_) => NFC_ETIMEOUT,

@@ -14,6 +14,8 @@ pub enum Error {
     DriverNotFound(String),
     #[error("driver open failed: {0}")]
     DriverOpenFailed(String),
+    #[error("device selection for driver {driver} matched {matches} devices")]
+    AmbiguousDeviceSelection { driver: String, matches: usize },
     #[error("missing capability: {0}")]
     MissingCapability(&'static str),
     #[error("unsupported operation: {0}")]

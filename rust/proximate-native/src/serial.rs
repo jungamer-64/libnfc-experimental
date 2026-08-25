@@ -254,10 +254,10 @@ mod platform {
         }
     }
 
-    pub(crate) fn list_candidate_paths() -> Vec<String> {
+    pub(crate) fn list_candidate_paths() -> Result<Vec<String>, Error> {
         let mut ports = Vec::new();
         let Ok(entries) = fs::read_dir("/dev") else {
-            return ports;
+            return Ok(ports);
         };
 
         for entry in entries.flatten() {
@@ -277,7 +277,7 @@ mod platform {
         }
 
         ports.sort();
-        ports
+        Ok(ports)
     }
 
     pub(crate) fn serial_name_prefixes() -> &'static [&'static str] {
@@ -337,6 +337,7 @@ mod platform {
 #[cfg(windows)]
 mod platform {
     use super::*;
+    use std::collections::BTreeSet;
     use std::ffi::c_void;
     use std::mem::size_of;
     use std::os::windows::ffi::OsStrExt;
@@ -347,14 +348,23 @@ mod platform {
         COMMTIMEOUTS, DCB, GetCommState, GetCommTimeouts, NOPARITY, ONESTOPBIT, PURGE_RXABORT,
         PURGE_RXCLEAR, PURGE_TXABORT, PURGE_TXCLEAR, PurgeComm, SetCommState, SetCommTimeouts,
     };
+    use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
+        DICS_FLAG_GLOBAL, DIGCF_DEVICEINTERFACE, DIGCF_PRESENT, DIREG_DEV, HDEVINFO,
+        SP_DEVINFO_DATA, SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW,
+        SetupDiOpenDevRegKey,
+    };
     use windows_sys::Win32::Foundation::{
-        ERROR_IO_PENDING, ERROR_NOT_FOUND, GENERIC_READ, GENERIC_WRITE, HANDLE,
-        INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+        ERROR_IO_PENDING, ERROR_NO_MORE_ITEMS, ERROR_NOT_FOUND, ERROR_SUCCESS, GENERIC_READ,
+        GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
     };
     use windows_sys::Win32::Storage::FileSystem::{
         CreateFileW, FILE_FLAG_OVERLAPPED, OPEN_EXISTING, ReadFile, WriteFile,
     };
     use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
+    use windows_sys::Win32::System::Ioctl::GUID_DEVINTERFACE_COMPORT;
+    use windows_sys::Win32::System::Registry::{
+        HKEY, KEY_QUERY_VALUE, REG_SZ, RegCloseKey, RegQueryValueExW,
+    };
     use windows_sys::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 
     struct WindowsCommandAbort {
@@ -665,8 +675,174 @@ mod platform {
         }
     }
 
-    pub(crate) fn list_candidate_paths() -> Vec<String> {
-        (1..=256).map(|port| format!(r"\\.\COM{port}")).collect()
+    struct DeviceInfoSet(HDEVINFO);
+
+    impl Drop for DeviceInfoSet {
+        fn drop(&mut self) {
+            // SAFETY: this wrapper owns the non-invalid HDEVINFO returned by
+            // SetupDiGetClassDevsW and destroys it exactly once.
+            let _ = unsafe { SetupDiDestroyDeviceInfoList(self.0) };
+        }
+    }
+
+    struct RegistryKey(HKEY);
+
+    impl Drop for RegistryKey {
+        fn drop(&mut self) {
+            // SAFETY: this wrapper owns the non-invalid HKEY returned by
+            // SetupDiOpenDevRegKey and closes it exactly once.
+            let _ = unsafe { RegCloseKey(self.0) };
+        }
+    }
+
+    pub(crate) fn list_candidate_paths() -> Result<Vec<String>, Error> {
+        // SAFETY: the class GUID pointer is valid for this call; null
+        // enumerator and parent select local present COM-port interfaces.
+        let raw_set = unsafe {
+            SetupDiGetClassDevsW(
+                &GUID_DEVINTERFACE_COMPORT,
+                null(),
+                null_mut(),
+                DIGCF_PRESENT | DIGCF_DEVICEINTERFACE,
+            )
+        };
+        if raw_set == -1isize {
+            return Err(last_win32_error("enumerate_com_ports"));
+        }
+        let device_info_set = DeviceInfoSet(raw_set);
+
+        let mut port_names = Vec::new();
+        let mut index = 0u32;
+        loop {
+            let mut device_info = SP_DEVINFO_DATA {
+                cbSize: size_of::<SP_DEVINFO_DATA>() as u32,
+                ..SP_DEVINFO_DATA::default()
+            };
+            // SAFETY: the set is live and device_info is writable storage with
+            // its required size field initialized.
+            if unsafe { SetupDiEnumDeviceInfo(device_info_set.0, index, &mut device_info) } == 0 {
+                let error = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+                if error == ERROR_NO_MORE_ITEMS as i32 {
+                    break;
+                }
+                return Err(Error::DeviceOperationFailed {
+                    operation: "enumerate_com_ports",
+                    code: error,
+                });
+            }
+            index = index.checked_add(1).ok_or(Error::DeviceOperationFailed {
+                operation: "enumerate_com_ports",
+                code: i32::try_from(ERROR_NO_MORE_ITEMS).unwrap_or(-1),
+            })?;
+
+            if let Some(port_name) = read_port_name(device_info_set.0, &device_info) {
+                port_names.push(port_name);
+            }
+        }
+
+        Ok(normalize_port_names(port_names))
+    }
+
+    fn read_port_name(device_info_set: HDEVINFO, device_info: &SP_DEVINFO_DATA) -> Option<String> {
+        // SAFETY: the set and device record belong to the same live SetupAPI
+        // enumeration. The returned key, when valid, is transferred to RAII.
+        let raw_key = unsafe {
+            SetupDiOpenDevRegKey(
+                device_info_set,
+                device_info,
+                DICS_FLAG_GLOBAL,
+                0,
+                DIREG_DEV,
+                KEY_QUERY_VALUE,
+            )
+        };
+        if raw_key == -1isize as HKEY {
+            return None;
+        }
+        let key = RegistryKey(raw_key);
+        let value_name: [u16; 9] = [
+            u16::from(b'P'),
+            u16::from(b'o'),
+            u16::from(b'r'),
+            u16::from(b't'),
+            u16::from(b'N'),
+            u16::from(b'a'),
+            u16::from(b'm'),
+            u16::from(b'e'),
+            0,
+        ];
+        let mut value_type = 0u32;
+        let mut byte_len = 0u32;
+        // SAFETY: value_name is NUL-terminated; null data requests the required
+        // byte count and both output pointers are valid.
+        let status = unsafe {
+            RegQueryValueExW(
+                key.0,
+                value_name.as_ptr(),
+                null(),
+                &mut value_type,
+                null_mut(),
+                &mut byte_len,
+            )
+        };
+        if status != ERROR_SUCCESS
+            || value_type != REG_SZ
+            || byte_len == 0
+            || !byte_len.is_multiple_of(2)
+        {
+            return None;
+        }
+
+        let mut units = vec![0u16; byte_len as usize / 2];
+        // SAFETY: units provides byte_len bytes of writable aligned storage;
+        // the key and value name remain live for the query.
+        let status = unsafe {
+            RegQueryValueExW(
+                key.0,
+                value_name.as_ptr(),
+                null(),
+                &mut value_type,
+                units.as_mut_ptr().cast::<u8>(),
+                &mut byte_len,
+            )
+        };
+        if status != ERROR_SUCCESS || value_type != REG_SZ || !byte_len.is_multiple_of(2) {
+            return None;
+        }
+        units.truncate(byte_len as usize / 2);
+        if units.last() == Some(&0) {
+            units.pop();
+        }
+        String::from_utf16(&units).ok()
+    }
+
+    fn normalize_port_names(names: impl IntoIterator<Item = String>) -> Vec<String> {
+        let ports = names
+            .into_iter()
+            .filter_map(|name| parse_port_number(&name))
+            .collect::<BTreeSet<_>>();
+        ports
+            .into_iter()
+            .map(|port| format!(r"\\.\COM{port}"))
+            .collect()
+    }
+
+    fn parse_port_number(name: &str) -> Option<u32> {
+        if name.len() <= 3 || !name[..3].eq_ignore_ascii_case("COM") {
+            return None;
+        }
+        let digits = &name[3..];
+        if !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        digits.parse::<u32>().ok().filter(|port| *port != 0)
+    }
+
+    fn last_win32_error(operation: &'static str) -> Error {
+        Error::DeviceOperationFailed {
+            operation,
+            code: std::io::Error::last_os_error().raw_os_error().unwrap_or(0),
+        }
     }
 
     fn normalize_port_path(path: &str) -> String {
@@ -700,6 +876,37 @@ mod platform {
             "failed to {action} for {path}: {}",
             std::io::Error::last_os_error()
         ))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn port_names_are_validated_deduplicated_and_sorted_numerically() {
+            let paths = normalize_port_names([
+                "com10".into(),
+                "COM2".into(),
+                "Com02".into(),
+                "COM1".into(),
+                "COM0".into(),
+                "COM-1".into(),
+                "LPT3".into(),
+                "COM3extra".into(),
+                String::new(),
+            ]);
+            assert_eq!(paths, [r"\\.\COM1", r"\\.\COM2", r"\\.\COM10"]);
+        }
+
+        #[test]
+        fn setupapi_com_enumeration_smoke_test() {
+            let paths = list_candidate_paths().unwrap();
+            assert!(
+                paths
+                    .iter()
+                    .all(|path| parse_port_number(&path[4..]).is_some())
+            );
+        }
     }
 }
 

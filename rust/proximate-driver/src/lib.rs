@@ -28,7 +28,10 @@ pub use device::{
     InitiatorBackend, InitiatorIoOps, Logger, PassiveScanOps, Pn53xBackend, Pn53xOps,
     PropertyBackend, PropertyOps, SessionOps, TargetBackend, TargetIoOps,
 };
-pub use driver::{DeviceOrigin, DiscoveredDevice, Driver, DriverRegistry, DriverScan};
+pub use driver::{
+    DeviceOrigin, DiscoveredDevice, Driver, DriverRegistry, DriverScan, ScanOutcome,
+    UnavailableDriver,
+};
 
 #[cfg(test)]
 mod tests;

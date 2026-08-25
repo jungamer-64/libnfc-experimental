@@ -2,8 +2,8 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use proximate_driver::{
-    BaudRate, ConnectionString, Context, Driver, Error, Mode, Modulation, ModulationType,
-    OperationTimeout, PollIterations, PollPeriod, Target, TargetInfo,
+    BaudRate, ConnectionString, Context, Driver, DriverScan, Error, Mode, Modulation,
+    ModulationType, OperationTimeout, PollIterations, PollPeriod, Target, TargetInfo,
 };
 
 use super::Pn71xxDriver;
@@ -105,7 +105,9 @@ fn scan_reports_success_and_failure() {
     reset_test_world();
 
     let driver = Pn71xxDriver::new();
-    let found = driver.scan(&Context::new()).unwrap();
+    let DriverScan::Complete(found) = driver.scan(&Context::new()).unwrap() else {
+        panic!("PN71xx fake backend unexpectedly became unavailable");
+    };
     assert_eq!(
         found
             .into_iter()
@@ -119,7 +121,9 @@ fn scan_reports_success_and_failure() {
 
     reset_test_world();
     with_backend_state_mut(|state| state.init_result = -1);
-    let found = driver.scan(&Context::new()).unwrap();
+    let DriverScan::Complete(found) = driver.scan(&Context::new()).unwrap() else {
+        panic!("PN71xx fake backend unexpectedly became unavailable");
+    };
     assert!(found.is_empty());
     let snapshot = backend_state_snapshot();
     assert_eq!(snapshot.initialize_calls, 1);

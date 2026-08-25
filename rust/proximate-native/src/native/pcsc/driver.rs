@@ -34,16 +34,23 @@ impl Driver for PcscDriver {
         ScanType::NotIntrusive
     }
 
-    fn scan(&self, _context: &Context) -> Result<Vec<proximate_driver::DiscoveredDevice>, Error> {
-        Ok(
-            scan_matching_readers(self.backend.as_ref(), self.driver_name, self.filter)?
+    fn scan(&self, _context: &Context) -> Result<proximate_driver::DriverScan, Error> {
+        let readers =
+            match scan_matching_readers(self.backend.as_ref(), self.driver_name, self.filter)? {
+                ReaderScan::Complete(readers) => readers,
+                ReaderScan::Unavailable(cause) => {
+                    return Ok(proximate_driver::DriverScan::Unavailable(cause));
+                }
+            };
+        Ok(proximate_driver::DriverScan::Complete(
+            readers
                 .into_iter()
                 .map(|connstring| {
                     let display_name = connstring.as_str().to_string();
                     self.describe_discovered(display_name, connstring)
                 })
                 .collect(),
-        )
+        ))
     }
 
     fn open(
