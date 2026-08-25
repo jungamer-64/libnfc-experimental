@@ -125,7 +125,7 @@ jobs:
           - name: windows-gnu
             os: windows-latest
             target: x86_64-pc-windows-gnu
-            command: cargo check -p proximate-native --target x86_64-pc-windows-gnu
+            command: cargo check -p proximate-native --target x86_64-pc-windows-gnu --features driver-pcsc,driver-acr122-pcsc
           - name: freebsd-serial
             os: ubuntu-latest
             target: x86_64-unknown-freebsd
@@ -401,3 +401,125 @@ jobs:
 
           create_consumer "$RUNNER_TEMP/libnfc-consumer-shared" "$RUNNER_TEMP/libnfc-install-shared"
           create_consumer "$RUNNER_TEMP/libnfc-consumer-static" "$RUNNER_TEMP/libnfc-install-static"
+
+  cmake-windows-product:
+    name: Windows MSVC product and package
+    runs-on: windows-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build, test, and install shared product
+        run: |
+          cmake -S . -B build-windows-shared -A x64 \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_EXAMPLES=ON \
+            -DBUILD_UTILS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build-windows-shared --parallel --config Release
+          ctest --test-dir build-windows-shared --output-on-failure -C Release
+          cmake --install build-windows-shared --prefix "$RUNNER_TEMP/libnfc-windows-shared" --config Release
+          cpack --config build-windows-shared/CPackConfig.cmake -C Release -G ZIP
+
+      - name: Build, test, and install static product
+        run: |
+          cmake -S . -B build-windows-static -A x64 \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_UTILS=OFF \
+            -DBUILD_TESTING=ON
+          cmake --build build-windows-static --parallel --config Release
+          ctest --test-dir build-windows-static --output-on-failure -C Release
+          cmake --install build-windows-static --prefix "$RUNNER_TEMP/libnfc-windows-static" --config Release
+
+      - name: Verify installed CMake consumers
+        run: |
+          create_consumer() {
+            local source_dir="$1"
+            local install_prefix="$2"
+            local linkage="$3"
+            mkdir -p "$source_dir"
+            cat > "$source_dir/CMakeLists.txt" <<EOF
+          cmake_minimum_required(VERSION 3.16)
+          project(libnfc_windows_consumer C)
+          find_package(LibNFC CONFIG REQUIRED PATHS "$install_prefix/lib/cmake/LibNFC" NO_DEFAULT_PATH)
+          add_executable(consumer main.c)
+          target_link_libraries(consumer PRIVATE LibNFC::nfc)
+          EOF
+            cat > "$source_dir/main.c" <<'EOF'
+          #include <nfc/nfc.h>
+          int main(void) { return nfc_version() == 0; }
+          EOF
+            cmake -S "$source_dir" -B "$source_dir/build" -A x64
+            cmake --build "$source_dir/build" --parallel --config Release
+            if [ "$linkage" = shared ]; then
+              PATH="$install_prefix/bin:$PATH" "$source_dir/build/Release/consumer.exe"
+            else
+              "$source_dir/build/Release/consumer.exe"
+            fi
+          }
+          create_consumer "$RUNNER_TEMP/libnfc-windows-consumer-shared" "$RUNNER_TEMP/libnfc-windows-shared" shared
+          create_consumer "$RUNNER_TEMP/libnfc-windows-consumer-static" "$RUNNER_TEMP/libnfc-windows-static" static
+
+  cmake-windows-mingw:
+    name: Windows MinGW product and consumer
+    runs-on: windows-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust GNU target
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add x86_64-pc-windows-gnu
+
+      - name: Install MinGW build environment
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          path-type: inherit
+          install: >-
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-ninja
+
+      - name: Build, test, install, and consume MinGW product
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build-windows-mingw -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_EXAMPLES=ON \
+            -DBUILD_UTILS=ON \
+            -DBUILD_TESTING=ON
+          cmake --build build-windows-mingw --parallel
+          ctest --test-dir build-windows-mingw --output-on-failure
+          install_prefix="$(cygpath -u "$RUNNER_TEMP")/libnfc-windows-mingw"
+          cmake --install build-windows-mingw --prefix "$install_prefix"
+
+          consumer_source="$(cygpath -u "$RUNNER_TEMP")/libnfc-mingw-consumer"
+          mkdir -p "$consumer_source"
+          cat > "$consumer_source/CMakeLists.txt" <<EOF
+          cmake_minimum_required(VERSION 3.16)
+          project(libnfc_mingw_consumer C)
+          find_package(LibNFC CONFIG REQUIRED PATHS "$install_prefix/lib/cmake/LibNFC" NO_DEFAULT_PATH)
+          add_executable(consumer main.c)
+          target_link_libraries(consumer PRIVATE LibNFC::nfc)
+          EOF
+          cat > "$consumer_source/main.c" <<'EOF'
+          #include <nfc/nfc.h>
+          int main(void) { return nfc_version() == 0; }
+          EOF
+          cmake -S "$consumer_source" -B "$consumer_source/build" -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$consumer_source/build" --parallel
+          PATH="$install_prefix/bin:$PATH" "$consumer_source/build/consumer.exe"

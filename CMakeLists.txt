@@ -127,7 +127,23 @@ list(APPEND LIBNFC_RUST_SOURCES
 
 set(RUST_CRATE_NAME proximate_sys)
 set(RUST_LIB_FILENAME "${CMAKE_STATIC_LIBRARY_PREFIX}${RUST_CRATE_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
-set(RUST_LIB_PATH "${RUST_TARGET_DIR}/release/${RUST_LIB_FILENAME}" CACHE INTERNAL "Path to Rust libnfc implementation")
+set(RUST_CARGO_TARGET_ARGS)
+set(RUST_TARGET_PROFILE_DIR "${RUST_TARGET_DIR}/release")
+if(WIN32)
+  if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(FATAL_ERROR "The Windows product build currently supports x64 only")
+  endif()
+  if(MINGW)
+    set(RUST_TARGET_TRIPLE x86_64-pc-windows-gnu)
+  elseif(MSVC)
+    set(RUST_TARGET_TRIPLE x86_64-pc-windows-msvc)
+  else()
+    message(FATAL_ERROR "The Windows product build requires MSVC or MinGW")
+  endif()
+  list(APPEND RUST_CARGO_TARGET_ARGS --target "${RUST_TARGET_TRIPLE}")
+  set(RUST_TARGET_PROFILE_DIR "${RUST_TARGET_DIR}/${RUST_TARGET_TRIPLE}/release")
+endif()
+set(RUST_LIB_PATH "${RUST_TARGET_PROFILE_DIR}/${RUST_LIB_FILENAME}" CACHE INTERNAL "Path to Rust libnfc implementation")
 
 set(RUST_CARGO_FEATURE_LIST external-drivers)
 if(LIBNFC_CONFFILES_MODE)
@@ -174,6 +190,7 @@ add_custom_command(
       --manifest-path "${CMAKE_SOURCE_DIR}/rust/Cargo.toml"
       --package proximate-sys
       --target-dir "${RUST_TARGET_DIR}"
+      ${RUST_CARGO_TARGET_ARGS}
       --no-default-features
       --features "${RUST_CARGO_FEATURES}"
   DEPENDS ${LIBNFC_RUST_SOURCES}
@@ -273,13 +290,6 @@ if(LIBNFC_DRIVER_PN71XX)
   list(APPEND LIBNFC_PKGCONFIG_REQUIRES_PRIVATE libnfc-nci)
 endif()
 
-if(PCSC_INCLUDE_DIRS)
-  include_directories(${PCSC_INCLUDE_DIRS})
-endif()
-if(PCSC_LIBRARY_DIRS)
-  link_directories(${PCSC_LIBRARY_DIRS})
-endif()
-
 if(LIBNFC_NCI_FOUND)
   include_directories(${LIBNFC_NCI_INCLUDE_DIRS})
 endif()
@@ -328,9 +338,6 @@ set(LIBNFC_CMAKE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/LibNFC")
 set(LIBNFC_STATIC_PACKAGE_LIBRARIES)
 set(LIBNFC_STATIC_TARGET_FILENAME "libnfc${CMAKE_STATIC_LIBRARY_SUFFIX}")
 if(NOT BUILD_SHARED_LIBS)
-  if(PCSC_FOUND)
-    list(APPEND LIBNFC_STATIC_PACKAGE_LIBRARIES ${PCSC_LIBRARIES})
-  endif()
   if(LIBNFC_NCI_FOUND)
     list(APPEND LIBNFC_STATIC_PACKAGE_LIBRARIES ${LIBNFC_NCI_LIBRARIES})
   endif()
@@ -372,6 +379,10 @@ write_basic_package_version_file(
 install(FILES
   "${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfig.cmake"
   "${CMAKE_CURRENT_BINARY_DIR}/LibNFCConfigVersion.cmake"
+  DESTINATION "${LIBNFC_CMAKE_INSTALL_DIR}")
+
+install(FILES
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/FindPCSC.cmake"
   DESTINATION "${LIBNFC_CMAKE_INSTALL_DIR}")
 
 install(EXPORT LibNFCTargets

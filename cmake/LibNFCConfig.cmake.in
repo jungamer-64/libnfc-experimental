@@ -1,5 +1,12 @@
 @PACKAGE_INIT@
 
+include(CMakeFindDependencyMacro)
+if(NOT "@BUILD_SHARED_LIBS@" STREQUAL "ON" AND
+   ("@LIBNFC_DRIVER_PCSC@" STREQUAL "ON" OR "@LIBNFC_DRIVER_ACR122_PCSC@" STREQUAL "ON"))
+  list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+  find_dependency(PCSC)
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/LibNFCTargets.cmake")
 
 set(_libnfc_static_link_libraries "@LIBNFC_STATIC_PACKAGE_LIBRARIES@")

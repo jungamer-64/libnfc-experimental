@@ -1,23 +1,45 @@
+if(WIN32)
+  set(PCSC_FOUND TRUE)
+  set(PCSC_LIBRARIES winscard)
+  if(NOT TARGET PCSC::PCSC)
+    add_library(PCSC::PCSC INTERFACE IMPORTED)
+    set_property(TARGET PCSC::PCSC PROPERTY INTERFACE_LINK_LIBRARIES winscard)
+  endif()
+  return()
+endif()
+
 find_package(PkgConfig QUIET)
-if(PKG_CONFIG_FOUND AND NOT WIN32)
+if(PKG_CONFIG_FOUND)
   pkg_check_modules(PCSC QUIET libpcsclite)
 endif()
 
 if(NOT PCSC_FOUND)
-  find_path(PCSC_INCLUDE_DIRS
-    NAMES WinSCard.h winscard.h)
-
+  find_path(PCSC_INCLUDE_DIRS NAMES winscard.h PCSC/winscard.h)
   if(APPLE)
     find_library(PCSC_LIBRARIES NAMES PCSC)
   else()
-    find_library(PCSC_LIBRARIES NAMES pcsclite PCSC libwinscard winscard WinSCard)
+    find_library(PCSC_LIBRARIES NAMES pcsclite PCSC)
   endif()
 endif()
 
-if(PCSC_LIBRARIES AND NOT PCSC_LIBRARY_DIRS)
-  get_filename_component(PCSC_LIBRARY_DIRS "${PCSC_LIBRARIES}" DIRECTORY)
+if(PCSC_LINK_LIBRARIES)
+  set(_PCSC_TARGET_LIBRARIES ${PCSC_LINK_LIBRARIES})
+else()
+  set(_PCSC_TARGET_LIBRARIES ${PCSC_LIBRARIES})
 endif()
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(PCSC REQUIRED_VARS PCSC_LIBRARIES PCSC_INCLUDE_DIRS)
+
+if(PCSC_FOUND AND NOT TARGET PCSC::PCSC)
+  add_library(PCSC::PCSC INTERFACE IMPORTED)
+  set_target_properties(PCSC::PCSC PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${PCSC_INCLUDE_DIRS}"
+    INTERFACE_LINK_LIBRARIES "${_PCSC_TARGET_LIBRARIES}")
+  if(PCSC_LIBRARY_DIRS)
+    set_property(TARGET PCSC::PCSC PROPERTY INTERFACE_LINK_DIRECTORIES "${PCSC_LIBRARY_DIRS}")
+  endif()
+endif()
+
+unset(_PCSC_TARGET_LIBRARIES)
 mark_as_advanced(PCSC_INCLUDE_DIRS PCSC_LIBRARIES PCSC_LIBRARY_DIRS)

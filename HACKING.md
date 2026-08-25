@@ -45,6 +45,35 @@ Here are some directions to get you started:
      Run `cargo check --manifest-path rust/Cargo.toml --workspace --all-features`
      on Linux, where all platform-constrained drivers are supported.
 
+     Windows x64 changes must also keep the product boundaries green. MSVC is
+     the primary product toolchain; both generic and ACR122 PC/SC drivers are
+     enabled by default for these CMake builds:
+
+            cmake -S . -B build-windows-shared -A x64 -DBUILD_EXAMPLES=ON -DBUILD_UTILS=ON -DBUILD_TESTING=ON
+            cmake --build build-windows-shared --parallel --config Release
+            ctest --test-dir build-windows-shared --output-on-failure -C Release
+            cmake --install build-windows-shared --prefix install-windows-shared --config Release
+            cpack --config build-windows-shared/CPackConfig.cmake -C Release -G ZIP
+
+            cmake -S . -B build-windows-static -A x64 -DBUILD_SHARED_LIBS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_UTILS=OFF -DBUILD_TESTING=ON
+            cmake --build build-windows-static --parallel --config Release
+            ctest --test-dir build-windows-static --output-on-failure -C Release
+            cmake --install build-windows-static --prefix install-windows-static --config Release
+
+     Configure and link a separate CMake consumer against each installed
+     package. The static consumer is the authority for transitive `winscard`
+     propagation. For the GNU ABI, also run:
+
+            rustup target add x86_64-pc-windows-gnu
+            cargo check --manifest-path rust/Cargo.toml -p proximate-native --target x86_64-pc-windows-gnu --features driver-pcsc,driver-acr122-pcsc
+            cmake -S . -B build-windows-mingw -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=ON -DBUILD_UTILS=ON -DBUILD_TESTING=ON
+            cmake --build build-windows-mingw --parallel
+            ctest --test-dir build-windows-mingw --output-on-failure
+
+     Hardware communication through PC/SC, WinUSB, or UART is a separate
+     validation boundary from enumeration, compilation, C ABI linkage, tests,
+     installation, and packaging.
+
   3. Preserve cross-platform compatibility
 
      The source code should remain compilable across various platforms,
@@ -54,4 +83,4 @@ Here are some directions to get you started:
      - Linux
      - FreeBSD
      - macOS
-     - Windows with MinGW
+     - Windows x64 with MSVC or MinGW-w64
